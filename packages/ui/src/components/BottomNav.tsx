@@ -2,6 +2,7 @@ import { useState, type ComponentType, type ReactNode } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { Ellipsis } from "lucide-react";
 import { cn } from "../lib/utils";
+import { useT } from "../i18n/proveedor";
 import type { SidebarPiePildora, SidebarSection } from "./Sidebar";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "./ui/sheet";
 
@@ -55,6 +56,7 @@ const claseTituloGrupo = "mb-1.5 px-2.5 py-1 font-mono text-2xs uppercase tracki
  */
 export function BottomNav({ items, moreSections, pie }: BottomNavProps) {
   const [masAbierto, setMasAbierto] = useState(false);
+  const t = useT();
   const { pathname } = useLocation();
   const destinos = items.slice(0, BOTTOM_NAV_MAX_DESTINOS);
   const hayMas = Boolean(moreSections && moreSections.length > 0);
@@ -67,7 +69,7 @@ export function BottomNav({ items, moreSections, pie }: BottomNavProps) {
   const masConAvisos = pildoras.some((p) => p.indicador);
   return (
     <nav
-      aria-label="Navegación móvil"
+      aria-label={t("shell.navMovil")}
       className="md:hidden fixed inset-x-0 bottom-0 z-40 border-t border-border bg-card safe-area-bottom pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]"
     >
       <ul className="flex">
@@ -95,11 +97,11 @@ export function BottomNav({ items, moreSections, pie }: BottomNavProps) {
               onClick={() => setMasAbierto(true)}
               aria-haspopup="dialog"
               aria-expanded={masAbierto}
-              aria-label={masConAvisos ? "Más, con avisos sin leer" : undefined}
+              aria-label={masConAvisos ? t("shell.masConAvisos") : undefined}
               className={cn("w-full", claseDestino, masActivo ? "text-primary" : "text-muted-foreground")}
             >
               <Ellipsis aria-hidden="true" className="size-[22px]" strokeWidth={masActivo ? 2.25 : 1.75} />
-              <span className={cn("max-w-full truncate px-1 text-xs", masActivo ? "font-semibold" : "font-medium")}>Más</span>
+              <span className={cn("max-w-full truncate px-1 text-xs", masActivo ? "font-semibold" : "font-medium")}>{t("shell.mas")}</span>
               {masConAvisos && <span data-testid="mas-indicador" aria-hidden="true" className="absolute right-[calc(50%-18px)] top-2 size-1.5 rounded-full bg-destructive" />}
             </button>
           </li>
@@ -112,8 +114,8 @@ export function BottomNav({ items, moreSections, pie }: BottomNavProps) {
             className="max-h-[80dvh] overflow-y-auto rounded-t-2xl bg-card px-4 pt-6 pb-[calc(2rem+var(--safe-area-bottom))]"
           >
             <SheetHeader className="mb-2 pr-11">
-              <SheetTitle>Más secciones</SheetTitle>
-              <SheetDescription className="sr-only">Todas las secciones del panel</SheetDescription>
+              <SheetTitle>{t("shell.masSecciones")}</SheetTitle>
+              <SheetDescription className="sr-only">{t("shell.masSeccionesDescripcion")}</SheetDescription>
             </SheetHeader>
             {(moreSections ?? []).map((section) => (
               <div key={section.title} className="mt-3">
@@ -139,7 +141,7 @@ export function BottomNav({ items, moreSections, pie }: BottomNavProps) {
             ))}
             {pildoras.length > 0 && (
               <div className="mt-3">
-                <p className={claseTituloGrupo}>Cuenta</p>
+                <p className={claseTituloGrupo}>{t("shell.cuenta")}</p>
                 <div className="flex flex-col">
                   {pildoras.map((p) => (
                     <PildoraCuenta key={p.label} pildora={p} onNavegar={alCerrar} />
@@ -155,6 +157,7 @@ export function BottomNav({ items, moreSections, pie }: BottomNavProps) {
 }
 
 function PildoraCuenta({ pildora, onNavegar }: { pildora: SidebarPiePildora; onNavegar: () => void }) {
+  const t = useT();
   const Icono = pildora.icon;
   const contenido = (
     <>
@@ -164,7 +167,7 @@ function PildoraCuenta({ pildora, onNavegar }: { pildora: SidebarPiePildora; onN
     </>
   );
   const clase = cn(claseFilaHoja, "w-full text-foreground hover:bg-muted-foreground/10");
-  const etiqueta = pildora.indicador ? `${pildora.label}, con avisos sin leer` : undefined;
+  const etiqueta = pildora.indicador ? t("shell.conAvisos", { etiqueta: pildora.label }) : undefined;
   if (pildora.to) {
     return (
       <NavLink to={pildora.to} onClick={onNavegar} aria-label={etiqueta} className={clase}>

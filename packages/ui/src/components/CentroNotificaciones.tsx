@@ -6,6 +6,7 @@ import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { Skeleton } from "./ui/skeleton";
+import { useT } from "../i18n/proveedor";
 import { RegionCargando } from "./CargandoDelegado";
 
 export type CentroSeveridad = "info" | "atencion" | "critica";
@@ -42,7 +43,7 @@ const COLOR = {
   atencion: "bg-warning-tint text-warning",
   critica: "bg-destructive-tint text-destructive",
 } as const;
-const ROTULO = { info: "Informativa", atencion: "Requiere atención", critica: "Crítica" } as const;
+const ROTULO = { info: "shell.notif.severidad.info", atencion: "shell.notif.severidad.atencion", critica: "shell.notif.severidad.critica" } as const;
 
 /**
  * Centro de notificaciones de la campana del encabezado: popover animado con las recientes (no leidas
@@ -51,6 +52,7 @@ const ROTULO = { info: "Informativa", atencion: "Requiere atención", critica: "
  */
 export function CentroNotificaciones({ href, hayNoLeidas, items, estado, onAbrir, onReintentar, onLeer, onMarcarTodas, className }: CentroNotificacionesProps) {
   const [abierto, setAbierto] = React.useState(false);
+  const t = useT();
   const cambiar = (v: boolean) => {
     setAbierto(v);
     if (v) onAbrir?.();
@@ -60,7 +62,7 @@ export function CentroNotificaciones({ href, hayNoLeidas, items, estado, onAbrir
       <PopoverTrigger asChild>
         <button
           type="button"
-          aria-label={hayNoLeidas ? "Notificaciones: hay avisos sin leer" : "Notificaciones"}
+          aria-label={hayNoLeidas ? t("shell.notif.conAvisos") : t("shell.notif.titulo")}
           data-no-leidas={hayNoLeidas ? "true" : "false"}
           className={cn(
             "relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border bg-card text-foreground transition-colors hover:bg-canvas",
@@ -71,19 +73,19 @@ export function CentroNotificaciones({ href, hayNoLeidas, items, estado, onAbrir
           {hayNoLeidas && <span data-testid="campana-punto" aria-hidden="true" className="absolute right-1 top-1 size-1.5 rounded-full bg-destructive" />}
         </button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-[min(24rem,calc(100vw-1.5rem))] overflow-hidden p-0" aria-label="Notificaciones">
+      <PopoverContent align="end" className="w-[min(24rem,calc(100vw-1.5rem))] overflow-hidden p-0" aria-label={t("shell.notif.titulo")}>
         <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
-          <h2 className="text-sm font-semibold">Notificaciones</h2>
+          <h2 className="text-sm font-semibold">{t("shell.notif.titulo")}</h2>
           {hayNoLeidas && onMarcarTodas && (
             <Button type="button" variant="ghost" size="xs" onClick={onMarcarTodas} iconLeft={<CheckCheck aria-hidden="true" />}>
-              Marcar todas
+              {t("shell.notif.marcarTodas")}
             </Button>
           )}
         </div>
 
         <div className="max-h-[min(24rem,60dvh)] overflow-y-auto">
           {estado === "cargando" && (
-            <RegionCargando etiqueta="Cargando notificaciones" className="grid gap-3 p-4" claseDs3="min-h-24">
+            <RegionCargando etiqueta={t("shell.notif.cargando")} className="grid gap-3 p-4" claseDs3="min-h-24">
               {[0, 1, 2].map((i) => (
                 <div key={i} className="flex items-start gap-3">
                   <Skeleton className="size-8 shrink-0 rounded-full" />
@@ -98,10 +100,10 @@ export function CentroNotificaciones({ href, hayNoLeidas, items, estado, onAbrir
           {estado === "error" && (
             <div role="alert" className="grid justify-items-center gap-2 px-4 py-8 text-center">
               <OctagonAlert aria-hidden="true" className="size-8 text-destructive" strokeWidth={1.5} />
-              <p className="text-ui text-muted-foreground">No se pudieron cargar las notificaciones.</p>
+              <p className="text-ui text-muted-foreground">{t("shell.notif.error")}</p>
               {onReintentar && (
                 <Button type="button" variant="outline" size="xs" onClick={onReintentar}>
-                  Volver a intentar
+                  {t("shell.notif.reintentar")}
                 </Button>
               )}
             </div>
@@ -109,7 +111,7 @@ export function CentroNotificaciones({ href, hayNoLeidas, items, estado, onAbrir
           {estado === "listo" && items.length === 0 && (
             <div role="status" className="grid justify-items-center gap-2 px-4 py-10 text-center">
               <BellOff aria-hidden="true" className="size-10 text-muted-foreground/30" strokeWidth={1.5} />
-              <p className="text-ui text-muted-foreground">Estás al día. No hay notificaciones.</p>
+              <p className="text-ui text-muted-foreground">{t("shell.notif.vacio")}</p>
             </div>
           )}
           {estado === "listo" && items.length > 0 && (
@@ -123,13 +125,13 @@ export function CentroNotificaciones({ href, hayNoLeidas, items, estado, onAbrir
                     </span>
                     <span className="min-w-0 flex-1 text-left">
                       <span className={cn("block text-ui leading-snug", n.sinLeer ? "font-medium text-foreground" : "text-muted-foreground")}>
-                        <span className="sr-only">{ROTULO[n.severidad]}. </span>
+                        <span className="sr-only">{t(ROTULO[n.severidad])}. </span>
                         {n.titulo}
                       </span>
                       {n.cuerpo && <span className="mt-0.5 line-clamp-2 block text-xs text-muted-foreground">{n.cuerpo}</span>}
                       <span className="mt-1 block text-eyebrow text-faint">{n.cuando}</span>
                     </span>
-                    {n.sinLeer && <span data-testid="centro-sin-leer" aria-label="Sin leer" role="img" className="mt-2 size-2 shrink-0 rounded-full bg-primary" />}
+                    {n.sinLeer && <span data-testid="centro-sin-leer" aria-label={t("shell.notif.sinLeer")} role="img" className="mt-2 size-2 shrink-0 rounded-full bg-primary" />}
                   </>
                 );
                 const clase = "flex w-full items-start gap-3 px-4 py-3 transition-colors duration-fast hover:bg-muted/40 focus-visible:bg-muted/40";
@@ -160,7 +162,7 @@ export function CentroNotificaciones({ href, hayNoLeidas, items, estado, onAbrir
 
         <div className="border-t border-border bg-muted/30 px-4 py-2.5">
           <Link to={href} onClick={() => setAbierto(false)} className="text-ui font-medium text-primary hover:underline">
-            Ver todas las notificaciones
+            {t("shell.notif.verTodas")}
           </Link>
         </div>
       </PopoverContent>

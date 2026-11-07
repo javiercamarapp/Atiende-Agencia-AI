@@ -23,6 +23,7 @@ import { EstadoVacio } from "./EstadoVacio";
 import { MobileAccountMenu } from "./MobileAccountMenu";
 import { Sidebar, type SidebarItem, type SidebarPiePildora, type SidebarSection, type SidebarUser } from "./Sidebar";
 import { Button } from "./ui/button";
+import { I18nContexto, useT, type ContextoI18n } from "../i18n/proveedor";
 
 export const VERTICAL_SHELL_MAIN_ID = "contenido-principal";
 
@@ -133,12 +134,13 @@ export interface VerticalShellEstadoProps {
 
 /** Centrado a pantalla completa para los estados que corren ANTES de que exista shell (sesion, sucursales). */
 export function VerticalShellEstado({ estado, mensaje, onReintentar }: VerticalShellEstadoProps) {
+  const t = useT();
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-6">
       <div className="w-full max-w-sm">
-        {estado === "cargando" && <EstadoCargando variante="pantalla" etiqueta={mensaje ?? "Cargando…"} />}
+        {estado === "cargando" && <EstadoCargando variante="pantalla" etiqueta={mensaje ?? t("shell.cargando")} />}
         {estado === "error" && <EstadoError mensaje={mensaje} onReintentar={onReintentar} />}
-        {estado === "vacio" && <EstadoVacio mensaje={mensaje ?? "No hay nada que mostrar todavía."} />}
+        {estado === "vacio" && <EstadoVacio mensaje={mensaje ?? t("shell.vacio")} />}
       </div>
     </div>
   );
@@ -161,6 +163,8 @@ interface RutaBoundaryState {
  * errores de red: esos los maneja cada pagina con su propio estado.
  */
 export class RutaBoundary extends React.Component<RutaBoundaryProps, RutaBoundaryState> {
+  static override contextType = I18nContexto;
+  declare context: ContextoI18n;
   override state: RutaBoundaryState = { error: null, resetKey: this.props.resetKey };
 
   static getDerivedStateFromError(error: Error): Partial<RutaBoundaryState> {
@@ -175,13 +179,13 @@ export class RutaBoundary extends React.Component<RutaBoundaryProps, RutaBoundar
     if (this.state.error) {
       return (
         <EstadoError
-          titulo="Esta pantalla no pudo mostrarse"
-          mensaje="Ocurrió un problema al abrir esta sección. Inténtalo de nuevo; el resto del panel sigue disponible."
+          titulo={this.context.t("shell.errorRuta.titulo")}
+          mensaje={this.context.t("shell.errorRuta.mensaje")}
           onReintentar={() => this.setState({ error: null })}
         />
       );
     }
-    return <React.Suspense fallback={<EstadoCargando variante="tarjeta" etiqueta="Cargando pantalla…" />}>{this.props.children}</React.Suspense>;
+    return <React.Suspense fallback={<EstadoCargando variante="tarjeta" etiqueta={this.context.t("shell.cargandoPantalla")} />}>{this.props.children}</React.Suspense>;
   }
 }
 
@@ -192,15 +196,16 @@ export interface VerticalNoEncontradoProps {
 }
 
 /** 404 dentro del shell: la navegacion sigue disponible y hay un enlace de regreso al panel. */
-export function VerticalNoEncontrado({ volverA, volverEtiqueta = "Volver al panel" }: VerticalNoEncontradoProps) {
+export function VerticalNoEncontrado({ volverA, volverEtiqueta }: VerticalNoEncontradoProps) {
+  const t = useT();
   return (
     <EstadoVacio
       icon={Compass}
-      titulo="Página no encontrada"
-      mensaje="La dirección que abriste no existe en este panel o cambió de lugar."
+      titulo={t("shell.noEncontrada.titulo")}
+      mensaje={t("shell.noEncontrada.mensaje")}
       accion={
         <Button asChild variant="outline" size="sm">
-          <Link to={volverA}>{volverEtiqueta}</Link>
+          <Link to={volverA}>{volverEtiqueta ?? t("shell.volverAlPanel")}</Link>
         </Button>
       }
     />
@@ -260,6 +265,7 @@ export function VerticalShell({
   children,
 }: VerticalShellProps) {
   const { pathname } = useLocation();
+  const t = useT();
   const mainRef = React.useRef<HTMLElement>(null);
   const [sinH1, setSinH1] = React.useState(false);
   // Una pagina sin <h1> propio no deja la pantalla sin encabezado: la barra hace de nivel 1 hasta que la pagina pinte el suyo.
@@ -281,7 +287,7 @@ export function VerticalShell({
   // la barra les pone su nombre en vez del titulo de la consola. Van DESPUES de `sections`, asi un destino que ya es de una
   // categoria (p. ej. "Costos de IA" -> "Costos y margen") conserva el nombre de su categoria.
   const destinosPie: SidebarSection[] = (sidebarPie ?? []).some((p) => p.to)
-    ? [{ title: "Cuenta", items: (sidebarPie ?? []).filter((p) => p.to).map((p) => ({ to: p.to as string, label: p.label, icon: p.icon ?? Compass })) }]
+    ? [{ title: t("shell.cuenta"), items: (sidebarPie ?? []).filter((p) => p.to).map((p) => ({ to: p.to as string, label: p.label, icon: p.icon ?? Compass })) }]
     : [];
   const activo = itemActivo([...sections, ...destinosPie], pathname);
   const esResumen = header.resumenTo !== undefined && pathname === header.resumenTo;
@@ -305,7 +311,7 @@ export function VerticalShell({
         href={`#${VERTICAL_SHELL_MAIN_ID}`}
         className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[60] focus:rounded-lg focus:border focus:border-border focus:bg-card focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-foreground focus:shadow-elevated"
       >
-        Saltar al contenido
+        {t("shell.saltarAlContenido")}
       </a>
 
       <div className="hidden md:block md:p-4 md:pr-0">

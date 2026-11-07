@@ -10,6 +10,7 @@
 import { Bell } from "lucide-react";
 import { Link } from "react-router-dom";
 import { cn } from "../lib/utils";
+import { useT } from "../i18n/proveedor";
 import { CentroNotificaciones, type CentroNotificacionesProps } from "./CentroNotificaciones";
 
 export interface NotificationBellProps {
@@ -26,11 +27,12 @@ export interface NotificationBellProps {
 }
 
 export function NotificationBell({ href, hayNoLeidas, className, centro }: NotificationBellProps) {
+  const t = useT();
   if (centro) return <CentroNotificaciones href={href} hayNoLeidas={hayNoLeidas} className={className} {...centro} />;
   return (
     <Link
       to={href}
-      aria-label={hayNoLeidas ? "Notificaciones: hay avisos sin leer" : "Notificaciones"}
+      aria-label={hayNoLeidas ? t("shell.notif.conAvisos") : t("shell.notif.titulo")}
       data-no-leidas={hayNoLeidas ? "true" : "false"}
       className={cn(
         "relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border bg-card text-foreground transition-colors hover:bg-canvas",
