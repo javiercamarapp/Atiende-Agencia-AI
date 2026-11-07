@@ -771,14 +771,17 @@
       "cantidad": 1
      }
     ],
-    "handoffs": 0,
     "debe_re": [
      "confirma|confirmar"
-    ]
+    ],
+    "handoffs_max": 1,
+    "escalacion_razon_re": "pedido_grande",
+    "sin_escalacion_razon_re": "falla_sistema"
    },
    "_port": {
     "adaptaciones": [
-     "U1 borde > 4000 se conserva con la lista real de garcia-lavin (total 4450)"
+     "U1 borde > 4000 se conserva con la lista real de garcia-lavin (total 4450)",
+     "A6p pedido grande: como C3-POL-14 (el servidor crea el aviso pedido_grande al registrar el pedido por_aprobar; es la aprobacion, no una escalacion del agente)"
     ]
    },
    "sucursal_chat": "garcia-lavin"
@@ -1150,7 +1153,12 @@
    "esperado": {
     "pedidos": 0,
     "handoffs": 1,
-    "escalacion_razon_re": "transferencia_realizada"
+    "escalacion_razon_re": "transferencia"
+   },
+   "_port": {
+    "adaptaciones": [
+     "A6p transferencia: el motivo del monorrepo se llama `transferencia` (el suelto `transferencia_realizada`); misma escalacion"
+    ]
    },
    "sucursal_chat": "garcia-lavin"
   },
@@ -1174,7 +1182,12 @@
    "esperado": {
     "pedidos": 0,
     "handoffs": 1,
-    "escalacion_razon_re": "transferencia_realizada"
+    "escalacion_razon_re": "transferencia"
+   },
+   "_port": {
+    "adaptaciones": [
+     "A6p transferencia: el motivo del monorrepo se llama `transferencia` (el suelto `transferencia_realizada`); misma escalacion"
+    ]
    },
    "sucursal_chat": "garcia-lavin"
   },
@@ -1770,8 +1783,15 @@
    "modo_cliente": "guion",
    "esperado": {
     "pedidos": 0,
-    "handoffs": 1,
-    "escalacion_razon_re": "privacidad_arco"
+    "handoffs_min": 0,
+    "debe_re": [
+     "folio"
+    ]
+   },
+   "_port": {
+    "adaptaciones": [
+     "A6p ARCO: como C3-ESC-10 (camino rapido de privacidad con folio, no aviso callback); se exige el folio"
+    ]
    },
    "sucursal_chat": "garcia-lavin"
   },
@@ -1794,7 +1814,15 @@
    ],
    "esperado": {
     "pedidos": 0,
-    "handoffs": 1
+    "handoffs_max": 0,
+    "debe_re": [
+     "factura|facturas@|QR|correo"
+    ]
+   },
+   "_port": {
+    "adaptaciones": [
+     "A6p factura: como C3-ESC-09 (FACTURACION del prompt del dueno: dar el contacto SIN escalar); se exige que lo de"
+    ]
    },
    "sucursal_chat": "garcia-lavin"
   },
@@ -1987,12 +2015,17 @@
   "adaptaciones": [
    "S-PED-013-lo-de-siempre: A5 nombre «Cliente Frecuente» -> «Cliente Prueba Frecuente» (el servidor rechaza nombres genericos al crear el pedido)",
    "S-NEW-001-pedido-grande-por-aprobar: U1 borde > 4000 se conserva con la lista real de garcia-lavin (total 4450)",
+   "S-NEW-001-pedido-grande-por-aprobar: A6p pedido grande: como C3-POL-14 (el servidor crea el aviso pedido_grande al registrar el pedido por_aprobar; es la aprobacion, no una escalacion del agente)",
    "S-NEW-002-limite-4000-exacto: U1 borde == 4000 se conserva con la lista real de garcia-lavin (total 4000)",
    "S-NEW-007-promo-recoger-con-promos: P1 la cotizacion real en fco-montejo aplica la promo automatica LUNES2X1PM (-42): total a pagar 42 vs catalogo 84; sin total fijo (el verificador acepta los renglones de cortesia)",
    "S-NEW-008-promo-recoger-sin-promos: P1 la cotizacion real en garcia-lavin aplica la promo automatica LUNES2X1PM (-42): total a pagar 42 vs catalogo 84; sin total fijo (el verificador acepta los renglones de cortesia)",
+   "S-NEW-011-ya-transferi-con-texto: A6p transferencia: el motivo del monorrepo se llama `transferencia` (el suelto `transferencia_realizada`); misma escalacion",
+   "S-NEW-012-ya-transferi-sin-texto: A6p transferencia: el motivo del monorrepo se llama `transferencia` (el suelto `transferencia_realizada`); misma escalacion",
    "S-NEW-015-minimo-domicilio: U1 borde < 200 se conserva con la lista real de garcia-lavin (total 95)",
    "S-NEW-018-zona-borde-dentro: A3 sucursal de domicilio pensiones -> fco-montejo (buscar_sucursal_cercana real con colonia 'Caucel': 4.8 km)",
-   "S-REC-004-pedido-grande-recoger: U1 borde > 4000 se conserva con la lista real de altabrisa (total 5000)"
+   "S-REC-004-pedido-grande-recoger: U1 borde > 4000 se conserva con la lista real de altabrisa (total 5000)",
+   "S-ESC-005-privacidad: A6p ARCO: como C3-ESC-10 (camino rapido de privacidad con folio, no aviso callback); se exige el folio",
+   "S-ESC-006-factura: A6p factura: como C3-ESC-09 (FACTURACION del prompt del dueno: dar el contacto SIN escalar); se exige que lo de"
   ],
   "colonias": [
    {

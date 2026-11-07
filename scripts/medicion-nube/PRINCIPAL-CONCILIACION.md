@@ -21,12 +21,13 @@ Cada escenario escribe al numero de UNA sucursal (decision del dueno, 2026-11-06
 
 - **S-NEW-005-sin-domicilio**: override del fixture sucursales.garcia-lavin.acepta_domicilio=false y en el catalogo real vale true: la cuenta real no reproduce la condicion que mide el escenario
 
-## Escenarios con adaptaciones o riesgos (11 de 51; 8 adaptaciones, 3 riesgos)
+## Escenarios con adaptaciones o riesgos (15 de 51; 13 adaptaciones, 3 riesgos)
 
 - **S-PED-013-lo-de-siempre**
   - ADAPTADO: A5 nombre «Cliente Frecuente» -> «Cliente Prueba Frecuente» (el servidor rechaza nombres genericos al crear el pedido)
 - **S-NEW-001-pedido-grande-por-aprobar**
   - ADAPTADO: U1 borde > 4000 se conserva con la lista real de garcia-lavin (total 4450)
+  - ADAPTADO: A6p pedido grande: como C3-POL-14 (el servidor crea el aviso pedido_grande al registrar el pedido por_aprobar; es la aprobacion, no una escalacion del agente)
 - **S-NEW-002-limite-4000-exacto**
   - ADAPTADO: U1 borde == 4000 se conserva con la lista real de garcia-lavin (total 4000)
 - **S-NEW-005-sin-domicilio**
@@ -36,6 +37,10 @@ Cada escenario escribe al numero de UNA sucursal (decision del dueno, 2026-11-06
 - **S-NEW-008-promo-recoger-sin-promos**
   - ADAPTADO: P1 la cotizacion real en garcia-lavin aplica la promo automatica LUNES2X1PM (-42): total a pagar 42 vs catalogo 84; sin total fijo (el verificador acepta los renglones de cortesia)
   - RIESGO (sin adaptar): el servidor destino aplica LUNES2X1PM en garcia-lavin, sucursal SIN promos segun la regla del dueno que mide el escenario (promos solo Fco. de Montejo, Pensiones y Galerias): los datos de promociones del destino la contradicen
+- **S-NEW-011-ya-transferi-con-texto**
+  - ADAPTADO: A6p transferencia: el motivo del monorrepo se llama `transferencia` (el suelto `transferencia_realizada`); misma escalacion
+- **S-NEW-012-ya-transferi-sin-texto**
+  - ADAPTADO: A6p transferencia: el motivo del monorrepo se llama `transferencia` (el suelto `transferencia_realizada`); misma escalacion
 - **S-NEW-015-minimo-domicilio**
   - ADAPTADO: U1 borde < 200 se conserva con la lista real de garcia-lavin (total 95)
 - **S-NEW-016-fuera-de-zona-cercano**
@@ -46,6 +51,10 @@ Cada escenario escribe al numero de UNA sucursal (decision del dueno, 2026-11-06
   - ADAPTADO: A3 sucursal de domicilio pensiones -> fco-montejo (buscar_sucursal_cercana real con colonia 'Caucel': 4.8 km)
 - **S-REC-004-pedido-grande-recoger**
   - ADAPTADO: U1 borde > 4000 se conserva con la lista real de altabrisa (total 5000)
+- **S-ESC-005-privacidad**
+  - ADAPTADO: A6p ARCO: como C3-ESC-10 (camino rapido de privacidad con folio, no aviso callback); se exige el folio
+- **S-ESC-006-factura**
+  - ADAPTADO: A6p factura: como C3-ESC-09 (FACTURACION del prompt del dueno: dar el contacto SIN escalar); se exige que lo de
 
 ## Corrida seca (herramientas reales, sin LLM)
 

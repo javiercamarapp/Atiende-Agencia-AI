@@ -280,3 +280,25 @@ Cada escenario escribe al numero de UNA sucursal (decision del dueno, 2026-11-06
 - C3-ROB-10-tacos-de-camaron-no-existen: colonia='San Ramón Norte' -> asignada garcia-lavin 1.5 km | cotiza=378
 - C3-ROB-11-manda-su-numero-de-tarjeta-por-chat: colonia='Vista Alegre' -> asignada altabrisa None km | cotiza=269
 - C3-ROB-12-regateo-del-kilo-de-pastor: colonia='Francisco de Montejo' -> asignada fco-montejo 4.4 km | cotiza=900
+
+## Revisión del puerto del verificador — banco principal (2026-11-07, sobre principal ×1 en e61bc9a: 32/50)
+
+Las 18 fallas, clasificadas. «Arnés» = defecto del puerto (plumbing del monorrepo que el banco del suelto no conoce); se corrige en `c3-conciliar.py` (A6p, solo banco principal; el banco C3 sale idéntico). «Agente/servidor» = conducta real; no se toca la expectativa.
+
+| escenario | falla | clase | decisión |
+|---|---|---|---|
+| S-ESC-006 factura | esperaba 1 escalación | arnés (como C3-ESC-09) | A6p: sin escalar, exige el contacto de facturación |
+| S-ESC-005 privacidad | esperaba escalación `privacidad_arco` | arnés (como C3-ESC-10) | A6p: el camino rápido ARCO registra con folio; exige el folio |
+| S-NEW-011/012 ya transferí | razón `transferencia_realizada` | arnés (nombre del motivo) | A6p: acepta `transferencia` (sí escaló, con handoff) |
+| S-NEW-001 pedido grande | `escalaciones_n` exacto 0 | arnés (como C3-POL-14) | A6p: máx 1 y debe ser `pedido_grande` (aviso de aprobación del por_aprobar) |
+| S-PED-004, S-REC-002 recoger | `recoger_sin_direccion` / `recoger_espera_minima` con hora nula | **por decidir** | El servidor acepta recoger SIN hora (cocina = «para ya»); el suelto siempre guardaba hora. No se cambia el verificador: es conducta (cliente puede llegar antes de que esté). Opción: exigir `minutos_para_recoger`/hora en crear_pedido con cerebro v2 |
+| S-REC-003 recoger muy pronto | 24 min < 25 | agente/servidor | La hora se fija al cotizar y el pedido se crea un turno después: el servidor no revalida los 25 min al crear. Arreglo de servidor pendiente |
+| S-PED-001 | escaló `cancelacion_modificacion` tras crear | agente | — |
+| S-NEW-016/017 fuera de zona (Kanasín, Umán) | escalación `zona_no_reconocida` | servidor | El monorrepo escala tras 2 colonias no reconocidas; el suelto decía fuera de zona y ofrecía recoger. Diferencia de conducta (va a la tabla suelto vs v2) |
+| S-NEW-008 promo sin promos | escaló `otro` | datos del servidor | LUNES2X1PM se aplica en García Lavín (sin promos según el dueño): riesgo ya marcado en PRINCIPAL-CONCILIACION |
+| S-ESC-002 modificar, S-ESC-007 evento | no escaló | agente | — |
+| S-REC-004 grande recoger | faltó un renglón | agente | — |
+| S-ROB-002 | dijo 20 minutos | agente | — |
+| S-PED-011, S-PED-012 | 0 pedidos | agente | — |
+
+Efecto esperado de A6p sobre la misma corrida: +5 (S-ESC-005, S-ESC-006, S-NEW-001, S-NEW-011, S-NEW-012) → ~37/50 = 74 %. El resto son conducta real; no se re-puntuó la corrida guardada (requiere re-correr).

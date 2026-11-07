@@ -107,6 +107,21 @@ A6_DECISIONES = {
     "C3-POL-04-": ({}, "Uman no existe como zona conocida en la cuenta real (buscar_sucursal_cercana -> no_reconocida); el escenario espera fuera_de_zona", True),
 }
 
+# A6p (2026-11-07, revision del puerto del verificador tras principal x1 en e61bc9a): las mismas decisiones de A6 llevadas al banco principal, que usa
+# `handoffs` EXACTO. Solo plumbing del monorrepo (donde se registra la solicitud, nombre del motivo, aviso de aprobacion); la conducta medida no cambia.
+A6P_DECISIONES = {
+    "S-ESC-006-": ({"handoffs": None, "handoffs_max": 0, "escalacion_razon_re": None, "debe_re_mas": ["factura|facturas@|QR|correo"]},
+                   "factura: como C3-ESC-09 (FACTURACION del prompt del dueno: dar el contacto SIN escalar); se exige que lo de", False),
+    "S-ESC-005-": ({"handoffs": None, "handoffs_min": 0, "escalacion_razon_re": None, "debe_re_mas": ["folio"]},
+                   "ARCO: como C3-ESC-10 (camino rapido de privacidad con folio, no aviso callback); se exige el folio", False),
+    "S-NEW-011-": ({"escalacion_razon_re": "transferencia"},
+                   "transferencia: el motivo del monorrepo se llama `transferencia` (el suelto `transferencia_realizada`); misma escalacion", False),
+    "S-NEW-012-": ({"escalacion_razon_re": "transferencia"},
+                   "transferencia: el motivo del monorrepo se llama `transferencia` (el suelto `transferencia_realizada`); misma escalacion", False),
+    "S-NEW-001-": ({"handoffs": None, "handoffs_max": 1, "escalacion_razon_re": "pedido_grande", "sin_escalacion_razon_re": "falla_sistema"},
+                   "pedido grande: como C3-POL-14 (el servidor crea el aviso pedido_grande al registrar el pedido por_aprobar; es la aprobacion, no una escalacion del agente)", False),
+}
+
 
 def main():
     banco_id = arg("--banco", "c3")
@@ -245,8 +260,8 @@ def main():
             riesgo.append(f"semilla del pedido previo fallo: {s['semilla_error'][:160]}")
         # A6 (2026-11-06, tras C3 x1 en 8b2c019): expectativas que chocan con una regla escrita del dueno o con el flujo real del monorrepo
         # (no con la conducta medida). Cada una cita su fuente; ver C3-CONCILIACION.md.
-        if not principal:
-            for clave, (cambios, motivo, excluir) in A6_DECISIONES.items():
+        if True:
+            for clave, (cambios, motivo, excluir) in (A6P_DECISIONES if principal else A6_DECISIONES).items():
                 if e["id"].startswith(clave):
                     if excluir: excl = excl or motivo
                     else:
@@ -255,7 +270,7 @@ def main():
                             elif k == "debe_re_mas": e["esperado"]["debe_re"] = list(e["esperado"].get("debe_re", [])) + v
                             elif k == "debe_1_o": e["esperado"]["debe_re"] = [f"(?:{e['esperado']['debe_re'][0]})|(?:{v})"] + list(e["esperado"]["debe_re"][1:])
                             else: e["esperado"][k] = v
-                        ad.append(f"A6 {motivo}")
+                        ad.append(f"{'A6p' if principal else 'A6'} {motivo}")
         if excl: excluidos.append((e["id"], excl))
         if ad or riesgo or excl:
             e["_port"] = {**({"adaptaciones": ad} if ad else {}), **({"riesgo": riesgo} if riesgo else {}), **({"excluido": excl} if excl else {})}
