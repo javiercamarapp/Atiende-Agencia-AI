@@ -64,6 +64,7 @@ function serializarModelo(m: (typeof MODELOS_AGENTE)[number]) {
     nivel: m.nivel,
     descripcion: m.descripcion,
     aceptaTemperatura: m.aceptaTemperatura,
+    vozZdr: m.vozZdr,
     predeterminado: m.predeterminado,
     costoWhatsappMicroUsdPorMensaje: whatsapp.microUsdPorUnidad,
     costoVozMicroUsdPorMinuto: voz.microUsdPorUnidad,

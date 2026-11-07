@@ -1,5 +1,5 @@
-export { CATALOGO_VOCES_GEMINI, VOZ_POR_DEFECTO, esVozDeGemini } from "./catalogo-voces.ts";
-export type { VozCatalogoItem } from "./catalogo-voces.ts";
+export { CATALOGO_VOCES_GEMINI, CATALOGO_VOCES_TELEFONO, VOZ_POR_DEFECTO, esVozDeGemini, esVozTelefono } from "./catalogo-voces.ts";
+export type { VozCatalogoItem, VozTelefonoItem } from "./catalogo-voces.ts";
 export * from "./types.ts";
 export type { VozRepository } from "./repository.ts";
 export { PostgresVozRepository, VOZ_CONFIG_POR_DEFECTO } from "./postgres-voz-repository.ts";
