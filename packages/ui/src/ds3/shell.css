@@ -419,6 +419,10 @@ html[data-diseno="ds3"] .ds3-popover-guia.ds3-popover-guia { width: min(340px, c
 /* Barra de alcance: una fila de 32 sin wrap (scroll-x interno, sin barra visible), margen de 12 con el contenido. */
 html[data-diseno="ds3"] .ds3-alcance.ds3-alcance { min-height: 32px; gap: 8px; margin-bottom: 12px; }
 html[data-diseno="ds3"] .ds3-alcance-filtros.ds3-alcance-filtros { height: 32px; border-radius: 8px; }
+/* La raiz ds3 mide 13 px: las alturas en rem de Tailwind encogen, asi que los controles de la barra fijan su alto en px. */
+html[data-diseno="ds3"] .ds3-alcance-filtros.ds3-alcance-filtros { padding: 0 10px; font-size: 13px; }
+html[data-diseno="ds3"] .ds3-alcance-chip.ds3-alcance-chip { height: 28px; font-size: 12px; }
+html[data-diseno="ds3"] .ds3-alcance-chip button { width: 24px; height: 24px; }
 
 /* ---- 4. Superposiciones: Drawer (420/480/640), Modal (440/560), Popover (340) -------------------------------------
  * Anatomia unica: cabecera (titulo 15/600 + subtitulo 12 + cerrar de 28 con radio 8), cuerpo con scroll propio (padding 16, gap 12,
