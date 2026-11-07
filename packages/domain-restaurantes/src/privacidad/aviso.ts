@@ -96,6 +96,10 @@ export function composeWithPrivacyNotice(notice: string, reply: string): string 
   return body ? `${notice}\n\n${body}` : notice;
 }
 
+/** Frase hablada que avisa que la voz pasa por un proveedor externo (ElevenLabs, ver `encargados.ts`) aunque no se autorice
+ * grabar. Corta a proposito: cada segundo de la llamada cuesta. El detalle (proveedor, pais, su politica) va en el aviso integral. */
+export const VOICE_PROCESSOR_NOTICE = "Su voz la procesa un proveedor externo para entenderle. ";
+
 /** Guion de apertura de la llamada: asistente virtual (IA) + aviso simplificado + consentimiento
  * de grabacion. Con retencion de voz 0 la llamada NUNCA se graba y no se pide consentimiento. */
 export function voiceOpeningScript(config: PrivacyConfig): string {
@@ -103,6 +107,7 @@ export function voiceOpeningScript(config: PrivacyConfig): string {
   const intro =
     `Hola, soy el asistente virtual de ${businessName}; soy una inteligencia artificial, no una persona. ` +
     "Aviso de privacidad: uso sus datos solo para tomar y entregar su pedido. " +
+    VOICE_PROCESSOR_NOTICE +
     (config.noticeUrl ? "El aviso integral está en nuestra página; también puede pedirlo en la sucursal. " : "Puede pedir el aviso integral en la sucursal. ") +
     "Para ejercer sus derechos sobre sus datos, escriba por WhatsApp o dígaselo a la sucursal. ";
   if (config.voiceRetentionDays === 0) return `${intro}Esta llamada no se graba.`;
