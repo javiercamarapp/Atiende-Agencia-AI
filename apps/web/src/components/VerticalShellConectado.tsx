@@ -5,13 +5,14 @@
 // lugar de armar a mano el Sidebar, el MobileHeader y el BottomNav.
 import { useState } from "react";
 import { Bell, MessageCircle, ShieldCheck } from "lucide-react";
-import { VerticalShell } from "@atiende/ui";
+import { useT, VerticalShell } from "@atiende/ui";
 import type { SidebarPiePildora, VerticalShellProps } from "@atiende/ui";
 import { useNotifications } from "../lib/useNotifications.ts";
 import { useChatDatosDisponible } from "./BotonChatDatos.tsx";
 import { BannerPlan } from "./BannerPlan.tsx";
 import { PanelChateaConTusDatos } from "./PanelChateaConTusDatos.tsx";
 import type { ChatDatosConexion } from "./PanelChateaConTusDatos.tsx";
+import { nav } from "@atiende/ui/i18n/nav";
 
 export type VerticalShellConectadoProps = VerticalShellProps & {
   readonly apiBaseUrl: string;
@@ -38,6 +39,7 @@ export function seguridadHrefDe(notificacionesHref: string): string {
 
 export function VerticalShellConectado({ apiBaseUrl, token, notificacionesHref, chat: chatProp, copilotoHref, ocultarChat = false, children, ...shell }: VerticalShellConectadoProps) {
   const notif = useNotifications(apiBaseUrl, token);
+  const t = useT(nav);
   const chat = ocultarChat ? undefined : chatProp;
   // Pildora "Pregúntale a tus datos" del pie del Sidebar (gemela de la de Likida): abre el panel real (o la pagina del Copiloto) y solo existe cuando el servidor confirma que el asistente esta activo (nunca una pildora "Pronto").
   const chatDisponible = useChatDatosDisponible(chat);
@@ -49,9 +51,9 @@ export function VerticalShellConectado({ apiBaseUrl, token, notificacionesHref, 
   const pie: SidebarPiePildora[] = [
     ...(shell.sidebarPie ?? []),
     // La campana del encabezado se quito: las notificaciones (y su punto de "sin leer") viven aqui, en escritorio y en "Mas" > "Cuenta".
-    { label: "Notificaciones", to: notificacionesHref, icon: Bell, indicador: notif.hayNoLeidas, contador: notif.unreadCount },
-    ...(yaEnNavegacion ? [] : [{ label: "Seguridad de la cuenta", to: seguridadHref, icon: ShieldCheck }]),
-    ...(chat && chatDisponible ? [copilotoHref ? { label: "Pregúntale a tus datos", to: copilotoHref, icon: MessageCircle } : { label: "Pregúntale a tus datos", onClick: () => setChatAbierto(true), icon: MessageCircle }] : []),
+    { label: t("nav.notificaciones"), to: notificacionesHref, icon: Bell, indicador: notif.hayNoLeidas, contador: notif.unreadCount },
+    ...(yaEnNavegacion ? [] : [{ label: t("nav.seguridadCuenta"), to: seguridadHref, icon: ShieldCheck }]),
+    ...(chat && chatDisponible ? [copilotoHref ? { label: t("nav.preguntaleATusDatos"), to: copilotoHref, icon: MessageCircle } : { label: t("nav.preguntaleATusDatos"), onClick: () => setChatAbierto(true), icon: MessageCircle }] : []),
   ];
   return (
     <>
