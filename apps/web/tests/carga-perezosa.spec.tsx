@@ -68,6 +68,8 @@ describe("ErrorBoundaryRaiz + cargaPerezosa", () => {
     await esperarHasta(() => rendered!.container.querySelector("[data-atiende-error-raiz]") !== null, "aparece el estado de error", 5000);
     expect(rendered.container.textContent).toContain("No pudimos cargar esta pantalla");
     expect([...rendered.container.querySelectorAll("button")].some((b) => /reintentar/i.test(b.textContent ?? ""))).toBe(true);
+    // Si ni la recarga basta (respuesta inválida guardada en la caché del navegador): segundo paso visible.
+    expect([...rendered.container.querySelectorAll("button")].some((b) => b.textContent === "Limpiar caché y recargar")).toBe(true);
   });
 
   it("un import que sí resuelve pinta la pantalla", async () => {
