@@ -251,3 +251,5 @@ export { VistaPreviaLlamada, type VistaPreviaLlamadaProps } from "./components/v
 export * from "./components/resumen-piezas.js";
 export * from "./components/consola-kit.js";
 export * from "./components/graficas-cfo.js";
+// i18n ES/EN (ds3): proveedor, `t()` con claves tipadas, plurales y formato es-MX / en-US. La preferencia vive en lib/idioma.
+export * from "./i18n/index.js";
