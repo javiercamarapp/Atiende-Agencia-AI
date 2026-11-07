@@ -194,13 +194,19 @@ async function chatCliente(messages: { role: string; content: string }[]): Promi
   }
   throw new Error(`cliente simulado sin respuesta: ${err}`);
 }
+const ultimoFinCliente = new Map<string, string>();
 async function siguienteMensaje(e: any, turnos: { cliente: string; agente: string }[], i: number, modo: string): Promise<string | null> {
   if (modo === "guion") { const l = e.guion?.[i]; return l === undefined ? null : textoLinea(l); }
   if (i === 0 && e.guion?.[0]) return textoLinea(e.guion[0]);
   const msgs = [{ role: "system", content: promptCliente(e) }];
   for (const t of turnos) { if (t.cliente) msgs.push({ role: "assistant", content: t.cliente }); msgs.push({ role: "user", content: t.agente.trim() || "(el restaurante no respondio este mensaje)" }); }
-  const crudo = (await chatCliente(msgs)).trim();
-  if (!crudo || crudo.includes(FIN)) return null;
+  // Un contenido VACIO del cliente simulado (solo razonamiento, tope de tokens) NO es <FIN>: antes cortaba la conversacion en silencio justo despues
+  // del «¿Es correcto?» y la rep salia FALLA por pedido no creado. Se reintenta; si sigue vacio, la rep es INVALIDA (cliente_simulado).
+  let crudo = (await chatCliente(msgs)).trim();
+  for (let k = 0; !crudo && k < 2; k++) crudo = (await chatCliente(msgs)).trim();
+  if (!crudo) throw new Error("cliente simulado devolvio contenido vacio 3 veces");
+  ultimoFinCliente.set(e.id, crudo.includes(FIN) ? crudo.slice(0, 200) : "");
+  if (crudo.includes(FIN)) return null;
   return crudo.replace(/^["“]|["”]$/g, "");
 }
 
@@ -279,7 +285,9 @@ export function verificarC3(e: any, ref: Ref, nuevos: any[], turnos: { cliente: 
     const suc = sucDe(o); const creado = creadoEn.get(o.id) ?? Date.now();
     out.push(check("pago_permitido", [null, "efectivo", "tarjeta"].includes(o.payment_method), `payment_method=${o.payment_method}`));
     const grande = o.total > PEDIDO_GRANDE;
-    out.push(check("estado_por_monto", o.status === (grande ? "por_aprobar" : "pending"), `total=${o.total}, status=${o.status}`, "dinero"));
+    // Puerto: el monorrepo crea en `programado` (migracion 034) un pedido con hora futura (recoger a las 4, programado_para); el suelto no tenia ese
+    // estado y lo dejaba `pending`. Para un pedido NO grande, `programado` equivale a `pending`.
+    out.push(check("estado_por_monto", grande ? o.status === "por_aprobar" : o.status === "pending" || o.status === "programado", `total=${o.total}, status=${o.status}`, "dinero"));
     if (o.canal !== "recoger") {
       out.push(check("minimo_domicilio", o.total >= MINIMO_DOMICILIO, `domicilio de $${o.total} < minimo $${MINIMO_DOMICILIO}`));
       const alcohol = (o.items ?? []).filter((x: any) => { const p = ref.prodPorId.get(x.id); const cat = p ? ref.catPorId.get(p.category_id) : null; return p?.no_domicilio || cat?.no_domicilio || esAlcohol(x.name, cat?.name); });
@@ -384,7 +392,7 @@ async function correrUna(s: Stack, ref: Ref, e: any, colonias: any[], rep: numbe
   if (sinRespuesta.length) { ver.comprobaciones.push(check("responde_cada_mensaje", false, `turnos sin respuesta del agente: ${sinRespuesta.join(",")}`, "flujo")); ver.fallas.push(`responde_cada_mensaje: turnos sin respuesta del agente: ${sinRespuesta.join(",")}`); ver.veredicto = "FALLA"; }
   const tels = turnos.flatMap((t) => t.tel ?? []);
   return {
-    escenario: e.id, rep, valida: !invalida, razon_invalida: invalida, causa_invalida: causa, modo_cliente: modo,
+    escenario: e.id, rep, valida: !invalida, razon_invalida: invalida, causa_invalida: causa, modo_cliente: modo, fin_cliente: ultimoFinCliente.get(e.id) || undefined,
     veredicto: invalida ? "INVALIDA" : ver.veredicto, fallas: invalida ? [] : ver.fallas, fallas_si_contara: invalida ? ver.fallas : undefined,
     comprobaciones: ver.comprobaciones.map((c) => (c.ok ? { id: c.id, ok: true } : c)),
     pedidos: nuevos.map((o: any) => ({ sucursal: ref.slugDe.get(o.property_id), entrega: o.canal, total: o.total, status: o.status, pago: o.payment_method, hora_recogida: o.hora_recogida, items: (o.items ?? []).map((x: any) => `${x.quantity}x ${x.name} @${x.price}${x.tortilla ? " (" + x.tortilla + ")" : ""}`) })),
