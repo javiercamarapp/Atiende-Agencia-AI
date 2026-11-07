@@ -44,7 +44,6 @@ import {
 } from "lucide-react";
 import { SelectorSucursal, useAmbitoVertical, VarianteEstadoVacioProvider, VerticalShellEstado } from "@atiende/ui";
 import type { BottomNavItem, SidebarSection } from "@atiende/ui";
-import { GUIA_RESTAURANTES, esencialesRestaurantes } from "./guia-restaurantes.ts";
 import { VerticalShellConectado } from "../../components/VerticalShellConectado.tsx";
 import type { ChatDatosConexion } from "../../components/PanelChateaConTusDatos.tsx";
 import { clearSession, logout, readPersistedSession } from "../../lib/auth-client.ts";
@@ -288,8 +287,8 @@ export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
       mobileSelector={branches.length > 1 ? sucursalSelector("restaurantes-sucursal-activa-movil") : null}
       contentKey={propertyId}
       guia={{
-        contenido: GUIA_RESTAURANTES,
-        esenciales: esencialesRestaurantes(role),
+        // Contenido diferido: solo se descarga con la bandera ds3 (GuiaDiferida).
+        cargar: () => import("./guia-restaurantes.ts").then((m) => ({ contenido: m.GUIA_RESTAURANTES, esenciales: m.esencialesRestaurantes(role) })),
         primerosPasosHref: STAFF_NAV_ROLES.has(role) ? `/restaurantes/${orgSlug}/primeros-pasos` : undefined,
       }}
     >

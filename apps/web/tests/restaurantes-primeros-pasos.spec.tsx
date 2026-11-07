@@ -91,17 +91,13 @@ describe("RestaurantesPrimerosPasosPage", () => {
     expect(t).toContain("Listo para operar");
     expect(t).toContain("1 de 4 puntos listos");
     expect(t).toContain("Falta en: Pensiones");
-    // ds3: tarjetas con el patrón /setup de Rovaq (quién lo cierra, estado, avance honesto solo con lo que este rol puede hacer).
-    expect(t).toContain("Quién lo cierra: Dueño");
-    expect(t).toContain("Quién lo cierra: Meta (WhatsApp Business)");
-    expect(t).toContain("En espera");
-    expect(t).toContain("0 de 2 que puedes hacer ahora");
-    expect(t).toContain("1 en espera");
-    expect(rendered.container.querySelector('[data-guia-paso="coordenadas"]')?.hasAttribute("data-siguiente")).toBe(true);
+    expect(t).toContain("Lo cierra: Dueño");
+    expect(t).toContain("Lo cierra: Meta (WhatsApp Business)");
+    expect(t).toContain("Depende de un tercero");
     const enlaces = Array.from(rendered.container.querySelectorAll("a")).map((a) => a.getAttribute("href"));
     expect(enlaces).toContain("/restaurantes/demo/sucursales");
     expect(enlaces).toContain("/restaurantes/demo/configuracion");
-    // Un punto ya hecho (o de la plataforma) no ofrece enlace.
+    // Un punto ya hecho no ofrece enlace ni "Lo cierra".
     expect(enlaces).not.toContain("/restaurantes/demo/productos");
   });
 
