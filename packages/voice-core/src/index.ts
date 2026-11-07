@@ -1,7 +1,7 @@
 // @atiende/voice-core -- esqueleto de voz compartido por las verticales (LiveKit + Gemini Live, escalera Gemini -> cascada OpenRouter -> humano/buzon).
 // Ver README.md: como una vertical monta su agente (perfil + registro de tools + guiones + repositorio).
-export { CATALOGO_VOCES_GEMINI, VOZ_POR_DEFECTO, esVozDeGemini } from "./catalogo-voces.ts";
-export type { VozCatalogoItem } from "./catalogo-voces.ts";
+export { CATALOGO_VOCES_GEMINI, CATALOGO_VOCES_TELEFONO, VOZ_POR_DEFECTO, esVozDeGemini, esVozTelefono } from "./catalogo-voces.ts";
+export type { VozCatalogoItem, VozTelefonoItem } from "./catalogo-voces.ts";
 export * from "./types.ts";
 export type { RepositorioKpiVoz, RepositorioLlamadasVoz } from "./repositorios.ts";
 export { firmarPreviewToken, verificarPreviewToken, PREVIEW_TOKEN_TTL_MAX_SEGUNDOS, PREVIEW_TOKEN_TTL_POR_DEFECTO_SEGUNDOS } from "./preview-token.ts";
@@ -31,8 +31,8 @@ export type { DecisionGuardiaCliente, DepsControlador, EventoKpiLlamada, Guardia
 export type { AbrirSesionLlamada, AperturaLlamada, ComponenteSesionCosto, ManejadoresSesion, ToolCallPedida, VozSesionLlamada } from "./llamada/sesion.ts";
 export { GEMINI_LIVE_WS_URL, crearProveedorGeminiLlamada, declaracionesDeHerramientas, mensajeSetup, vertexLiveWsUrl, vertexModelPath } from "./llamada/gemini-live-sesion.ts";
 export type { CrearSocketLive, GeminiLiveSesionOpciones, OpcionesSocketLive, ProveedorGeminiLlamada, SocketLive, VertexLiveOpciones } from "./llamada/gemini-live-sesion.ts";
-export { ESCALERA_VOZ, VOZ_PLATAFORMA, costoDeUsoGeminiMicroUsd, costoDeepgramAura2MicroUsd, costoDeepgramMicroUsd, costoEstimadoMicroUsd, costoHeygenMicroUsd, heygenUsdPorMillonCaracteres, precioPorMinutoMicroUsd } from "./config-plataforma.ts";
-export type { ConfigCascadaV2, PromocionPrecio, RelojFecha } from "./config-plataforma.ts";
+export { ESCALERA_VOZ, VOZ_PLATAFORMA, costoDeUsoGeminiMicroUsd, costoDeepgramAura2MicroUsd, costoDeepgramMicroUsd, costoElevenLabsSttMicroUsd, costoElevenLabsTtsMicroUsd, costoEstimadoMicroUsd, costoHeygenMicroUsd, heygenUsdPorMillonCaracteres, precioPorMinutoMicroUsd } from "./config-plataforma.ts";
+export type { ConfigCascadaV2, ConfigElevenLabs, PromocionPrecio, RelojFecha } from "./config-plataforma.ts";
 export type { ConfigPlataformaVoz, EscalonVoz, UsoGemini } from "./config-plataforma.ts";
 export { COSTO_MAX_LLAMADA_MICRO_USD, ESCENARIOS_COSTO_GEMINI, TOKENS_AUDIO_POR_SEGUNDO, estimarCostoLlamadaGemini } from "./costo-gemini.ts";
 export type { CostoLlamadaGemini, EscenarioLlamadaGemini } from "./costo-gemini.ts";
@@ -42,6 +42,8 @@ export { crearEscaleraLlamada } from "./escalera.ts";
 export type { EscalonLlamada, EscaleraLlamada, OpcionesEscalera } from "./escalera.ts";
 export { crearProveedorCascadaLlamada, energiaRms, pcm16AWav, pistaVocabulario } from "./llamada/cascada-openrouter.ts";
 export type { CascadaOpenRouterOpciones, MensajeLlmVoz, PeticionLlmVoz, ProveedorCascadaLlamada, PuertoLlmVoz, RespuestaLlmVoz, ToolCallLlmVoz } from "./llamada/cascada-openrouter.ts";
+export { ELEVENLABS_API_URL, ELEVENLABS_KEYTERMS_MAX, ELEVENLABS_KEYTERM_MAX_CHARS, ELEVENLABS_STT_URL, keytermsElevenLabs, completarConPlazo, crearSttElevenLabs, crearTtsElevenLabs, elegirNivelModelo, esAsentimiento, esVozElevenLabs, resolverVozElevenLabs, sttConRespaldo, ttsConRespaldo, urlSttElevenLabs } from "./llamada/cascada-v2/index.ts";
+export type { AvisoRespaldo, ElevenLabsSttOpciones, ElevenLabsTtsOpciones, OpcionesPlazoLlm, ProveedorStt, ProveedorTts, ResultadoPlazoLlm } from "./llamada/cascada-v2/index.ts";
 export { ColaAsync, DEEPGRAM_LISTEN_URL, DEEPGRAM_SPEAK_URL, VOCES_AURA2_ES, crearProveedorCascadaV2, crearRecortadorInicial, crearSegmentadorFrases, crearSttDeepgram, crearTtsDeepgram, ejecutarHerramientas, keytermsDe, limpiarParaVoz, partirTexto, resolverVozAura2, urlListenDeepgram, urlSpeakDeepgram } from "./llamada/cascada-v2/index.ts";
 export type { CascadaV2Opciones, ContextoTurnoLlm, CrearSocketDeepgram, DeepgramSttOpciones, DeepgramTtsOpciones, EventosStt, OpcionesSocketDeepgram, OpcionesStt, OpcionesTts, ProveedorCascadaV2Llamada, PuertoSttVoz, PuertoTtsVoz, SesionStt, SesionTts, SocketDeepgram } from "./llamada/cascada-v2/index.ts";
 export { crearEscalonesPlataforma, crearEscaleraPlataforma, estadoEscalera } from "./plataforma.ts";

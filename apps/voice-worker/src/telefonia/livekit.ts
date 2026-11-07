@@ -9,7 +9,7 @@
 import { randomUUID } from "node:crypto";
 import { AccessToken, RoomServiceClient } from "livekit-server-sdk";
 import { AudioFrame, AudioSource, AudioStream, LocalAudioTrack, ParticipantKind, Room, RoomEvent, TrackKind, TrackPublishOptions, TrackSource } from "@livekit/rtc-node";
-import type { RemoteParticipant, Track } from "@livekit/rtc-node";
+import type { NoiseCancellationOptions, RemoteParticipant, Track } from "@livekit/rtc-node";
 import type { MezcladorSalida } from "@atiende/voice-core";
 import { bombearConRespaldo } from "../audio/bombeo-salida.ts";
 import { remuestrearPcm16 } from "../audio/remuestreo.ts";
@@ -29,6 +29,8 @@ export interface OpcionesLiveKit {
   readonly prefijoSala?: string;
   readonly intervaloMs?: number;
   readonly log?: (evento: string, campos?: Readonly<Record<string, string | number | boolean>>) => void;
+  /** Fabrica de la cancelacion de ruido (Krisp) que se aplica a CADA pista del cliente; sin ella el audio llega tal cual. */
+  readonly cancelacionRuido?: () => NoiseCancellationOptions;
 }
 
 class LlamadaLiveKit implements LlamadaTelefonica {
@@ -235,7 +237,8 @@ export class LiveKitTelefonia implements TelefoniaPort {
     sala.on(RoomEvent.Disconnected, () => llamada.terminar());
 
     const suscribir = (track: Track): void => {
-      const flujo = new AudioStream(track, { sampleRate: HZ_ENTRADA_LIVEKIT, numChannels: 1 });
+      const nc = this.o.cancelacionRuido?.();
+      const flujo = new AudioStream(track, { sampleRate: HZ_ENTRADA_LIVEKIT, numChannels: 1, ...(nc ? { noiseCancellation: nc } : {}) });
       void (async () => {
         try {
           for await (const frame of flujo) llamada.entregarAudio(frame.data);
