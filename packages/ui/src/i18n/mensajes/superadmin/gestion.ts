@@ -52,5 +52,6 @@ export const superadminGestion = {
   "superadmin.gestion.enviando": "Enviando…",
   "superadmin.gestion.solicitar": "Solicitar",
   "superadmin.gestion.placeholderNombre": "Clínica San Rafael",
+  "superadmin.gestion.placeholderSlug": "clinica-san-rafael",
   "superadmin.gestion.slug": "Slug (identificador público)",
 } as const satisfies ModuloEs;

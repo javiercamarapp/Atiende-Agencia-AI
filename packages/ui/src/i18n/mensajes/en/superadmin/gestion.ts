@@ -52,5 +52,6 @@ export const superadminGestionEn: Traduccion<typeof superadminGestion> = {
   "superadmin.gestion.enviando": "Sending…",
   "superadmin.gestion.solicitar": "Request",
   "superadmin.gestion.placeholderNombre": "San Rafael Clinic",
+  "superadmin.gestion.placeholderSlug": "san-rafael-clinic",
   "superadmin.gestion.slug": "Slug (public identifier)",
 };
