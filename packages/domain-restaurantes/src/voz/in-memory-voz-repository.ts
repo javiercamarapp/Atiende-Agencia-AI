@@ -72,6 +72,25 @@ export class InMemoryVozRepository implements VozRepository {
     return out;
   }
 
+  /** Voz telefonica por sucursal (migracion 103). `migradaVozTelefono = false` simula la base sin la 103. */
+  migradaVozTelefono = true;
+  private readonly vocesTelefono = new Map<string, string | null>();
+
+  async getVozTelefono(propertyId: string): Promise<{ readonly disponible: boolean; readonly valor: string | null }> {
+    if (!this.migrada || !this.migradaVozTelefono) return { disponible: false, valor: null };
+    return { disponible: true, valor: this.vocesTelefono.get(propertyId) ?? null };
+  }
+
+  async setVozTelefono(organizationId: string, propertyId: string, voz: string | null): Promise<boolean> {
+    if (!this.migradaVozTelefono) throw new VozNoDisponibleError();
+    this.exigirMigrada();
+    const c = this.configs.get(propertyId);
+    if (!c || c.organizationId !== organizationId) return false;
+    if (voz !== null && !/^[A-Za-z0-9]{20}$/.test(voz)) throw new VozRechazadaError();
+    this.vocesTelefono.set(propertyId, voz);
+    return true;
+  }
+
   async crearPreviewSession(input: { organizationId: string; propertyId: string; createdBy: string; proveedor: VozProveedorId; voiceId: string; ttlSegundos: number }): Promise<VozPreviewSesion> {
     this.exigirMigrada();
     if (this.propiedades.get(input.propertyId) !== input.organizationId) throw new VozRechazadaError();

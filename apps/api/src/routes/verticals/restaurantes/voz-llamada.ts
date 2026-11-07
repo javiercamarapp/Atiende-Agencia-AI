@@ -30,6 +30,7 @@ import {
   STAFF_INVITE_ROLES,
   VOZ_POR_DEFECTO,
   ajustesDeLlamada,
+  esModeloVozZdr,
   armarInstruccionLlamada,
   canonicalizeMexicanPhone,
   diaLocalSucursal,
@@ -78,7 +79,7 @@ function parsearComponentes(value: unknown, donde: string, escalon: EscalonVoz, 
   const lista = value.map((c, j) => {
     const o = (c !== null && typeof c === "object" && !Array.isArray(c) ? c : {}) as Record<string, unknown>;
     const motivo = motivoComponenteInvalido({ proveedor: o.proveedor, unidad: o.unidad, costoReal: o.costoReal });
-    if (motivo === "proveedor") throw Errors.validation(`${donde}[${j}].proveedor: debe ser deepgram, deepgram-aura-2, heygen u openrouter:<modelo> (hasta 80 caracteres).`);
+    if (motivo === "proveedor") throw Errors.validation(`${donde}[${j}].proveedor: debe ser deepgram, deepgram-aura-2, elevenlabs, elevenlabs-tts, heygen u openrouter:<modelo> (hasta 80 caracteres).`);
     if (motivo === "unidad") throw Errors.validation(`${donde}[${j}].unidad: no corresponde al proveedor (deepgram: segundo; los demás: unidad).`);
     if (motivo === "costoReal") throw Errors.validation(`${donde}[${j}].costoReal: debe ser booleano y solo openrouter:<modelo> reporta su costo.`);
     const proveedor = o.proveedor as string;
@@ -166,6 +167,9 @@ export function restaurantesVozLlamadaRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
       const llamada = ajustesDeLlamada(ajustes);
       // Base sin la tabla de configuración (025): `getConfig` devuelve el valor inicial (habilitado: false) y el worker no abre sesión: honesto.
       const gasto = deps.vozLlamadaRepo ? await deps.vozLlamadaRepo(db).gastoMesMicroUsd(organizationId, ahora) : null;
+      // Voz telefonica (migracion 103): base sin la columna -> null (la de la plataforma).
+      const vozRepoLlamada = deps.vozRepo!(db);
+      const vozTelefono = vozRepoLlamada.getVozTelefono ? (await vozRepoLlamada.getVozTelefono(propertyId)).valor : null;
       return c.json({
         habilitado: lectura.disponible && lectura.valor.habilitado,
         configurada: lectura.valor.configurada,
@@ -179,6 +183,10 @@ export function restaurantesVozLlamadaRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
         temperatura: temperaturaParaLlamada(llamada.temperatura).valor,
         gastoMesMicroUsd: gasto,
         horaLocal,
+        vozTelefono,
+        // Modelo de texto de la cascada elegido en los ajustes del agente (panel); null = el de la plataforma (GPT-6 Luna).
+        // Solo si tiene endpoint de retencion cero: un valor viejo de la base (guardado antes de la regla) no debe dar 404 en cada turno de la llamada.
+        modeloVoz: esModeloVozZdr(ajustes.vozModeloCascada) ? ajustes.vozModeloCascada : null,
       });
     });
   });
