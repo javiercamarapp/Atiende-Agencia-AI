@@ -15,6 +15,8 @@ export interface EventosStt {
   turnoFinal(texto: string): void;
   /** El STT se cayo despues de abrir (cierre inesperado o error de red). Codigo corto sin PII. */
   caido(codigo: string): void;
+  /** El STT descarto un segmento confirmado (p. ej. `voz_de_fondo`): no abrio turno. Codigo corto sin PII. */
+  descartado?(motivo: string): void;
 }
 
 export interface OpcionesStt {

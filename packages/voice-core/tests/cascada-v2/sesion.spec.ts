@@ -195,7 +195,7 @@ describe("barge-in", () => {
     const { stt, inactivo } = await armar(llm, { tts });
     stt.eventos!.turnoFinal("quiero dos tacos");
     await turnoMicrotareas(60);
-    stt.eventos!.parcial("mejor");
+    stt.eventos!.parcial("mejor tres");
     stt.eventos!.turnoFinal("mejor tres");
     await inactivo();
     expect(llm.peticiones[1]!.mensajes).toEqual([
@@ -215,7 +215,7 @@ describe("barge-in", () => {
     expect(eventos).not.toContain("interrumpido");
     stt.eventos!.parcial("   ");
     expect(eventos).not.toContain("interrumpido");
-    stt.eventos!.parcial("espera");
+    stt.eventos!.parcial("espera tantito");
     expect(eventos).toContain("interrumpido");
     compuertaLlm.abrir();
     stt.eventos!.turnoFinal("espera un momento");
@@ -500,7 +500,7 @@ describe("lo que el cliente oyo, cola del puente y reproduccion estimada", () =>
     await inactivo();
     expect(eventos.at(-1)).toBe("fin"); // el turno ya termino: todo el audio esta generado (2 s) y encolado en el puente
     t += 500; // el cliente habla a los 0.5 s: solo sono la primera frase
-    stt.eventos!.parcial("espera");
+    stt.eventos!.parcial("espera tantito");
     expect(eventos.filter((e) => e === "interrumpido")).toHaveLength(1);
   });
 
@@ -511,7 +511,7 @@ describe("lo que el cliente oyo, cola del puente y reproduccion estimada", () =>
     stt.eventos!.turnoFinal("hola");
     await inactivo();
     t += 500;
-    stt.eventos!.parcial("espera");
+    stt.eventos!.parcial("espera tantito");
     stt.eventos!.turnoFinal("quiero otra cosa");
     await inactivo();
     expect(llm.peticiones[1]!.mensajes).toEqual([
@@ -653,7 +653,7 @@ describe("costo del LLM", () => {
     const { stt, costos, inactivo } = await armar(llm);
     stt.eventos!.turnoFinal("quiero dos tacos");
     await vi.waitFor(() => expect(llm.peticiones).toHaveLength(1));
-    stt.eventos!.parcial("espera"); // el cliente interrumpe mientras el LLM sigue
+    stt.eventos!.parcial("espera tantito"); // el cliente interrumpe mientras el LLM sigue
     compuertaLlm.abrir();
     await inactivo();
     expect(costos.filter((c) => c.proveedor?.startsWith("openrouter:"))).toEqual([{ micro: 700, real: true, proveedor: `openrouter:${MODELO}`, unidad: "unidad", cantidad: 1 }]);

@@ -39,6 +39,7 @@ class SttConRespaldo implements SesionStt {
       hablaIniciada: () => vigente() && this.eventos.hablaIniciada(),
       parcial: (t) => vigente() && this.eventos.parcial(t),
       turnoFinal: (t) => vigente() && this.eventos.turnoFinal(t),
+      descartado: (m) => vigente() && this.eventos.descartado?.(m),
       caido: (codigo) => {
         if (!vigente()) return;
         if (cual === "principal") void this.pasarARespaldo(codigo);

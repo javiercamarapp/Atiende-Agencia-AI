@@ -278,6 +278,8 @@ export function restaurantesVozAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
             salsasTexto: agente.salsasText ?? null,
             pedidoGrandeTexto: agente.largeOrderText ?? null,
             motivosDesactivados: agente.motivosDesactivados ?? [],
+            // La vista previa es Gemini Live: no recibe las reglas por tema aparte (dieta del prompt de voz), asi que van todas en la instruccion.
+            reglasCompletas: true,
           })
         : lectura.valor.comportamiento;
 

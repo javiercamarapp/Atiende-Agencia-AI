@@ -33,18 +33,26 @@ el Art. 16 exige indicar dónde consultar el integral; sin URL el mensaje debe d
 ## 2. Guion de apertura de la llamada (voz)
 
 Se dice en voz natural, sin leer cifras largas. La pregunta de grabación es **obligatoria** cuando la retención de voz es mayor que 0; con 0 la llamada no se graba y no se pregunta.
+Es **el mismo texto** que dice el código (`voiceOpeningScript` en `packages/domain-restaurantes/src/privacidad/aviso.ts`). Va **corto a propósito**: la E2E del 6-nov-2026 midió que el
+guion anterior (~90 palabras) ocupaba los primeros 25 s y el cliente contestaba con su pedido encima; el tope es de 45 palabras con un nombre comercial de 4 palabras.
 
 ```
-Hola, soy el asistente virtual de [[POR COMPLETAR: nombre comercial]]; soy una inteligencia artificial, no una persona.
-Sus datos los trata [[POR COMPLETAR: razón social]], domicilio [[POR COMPLETAR: domicilio, dicho en una frase corta]], para tomar y entregar su pedido.
+Soy el asistente virtual de [[POR COMPLETAR: nombre comercial]], inteligencia artificial.
+Uso sus datos solo para su pedido.
 Su voz la procesa un proveedor externo para entenderle.
-El aviso de privacidad completo está en [[POR COMPLETAR: página o "la sucursal"]]. Para ejercer sus derechos sobre sus datos, escriba "mis datos personales" por WhatsApp o dígalo en la sucursal.
-¿Autoriza que esta llamada se grabe y se transcriba para mejorar el servicio? Se guarda [[POR COMPLETAR: días]] días. Si dice que no, lo atiendo igual, sin grabar.
+Aviso y derechos: WhatsApp o sucursal.            (con URL publicada: «Aviso en la página; derechos: WhatsApp.»)
+¿Autoriza grabar y transcribir la llamada [[POR COMPLETAR: días]] días para mejorar el servicio?
 ```
 
-La frase «Su voz la procesa un proveedor externo para entenderle» ya va en `voiceOpeningScript` (`VOICE_PROCESSOR_NOTICE`): el audio pasa por ElevenLabs aunque no se autorice grabar, y ElevenLabs puede conservarlo según su política (sección 6.1 del integral).
+Qué cubre cada frase: identidad y que es una IA; finalidad de los datos; encargado de voz (ElevenLabs) aunque no se autorice grabar; dónde está el aviso integral (Art. 16) y el
+canal para ejercer los derechos ARCO (escribir "mis datos personales" por WhatsApp o pedirlo en la sucursal); consentimiento expreso de grabar **y transcribir**, con plazo y finalidad.
+La pregunta es **cerrada** (sí/no): no ofrece una alternativa en la misma frase, para que un «sí» no sea ambiguo.
 
-Respuestas ya implementadas (no cambian): si autoriza, "Gracias, queda registrado"; si dice que no, "Sin problema: esta llamada no se graba"; si es ambiguo, **no se graba** (`interpretRecordingConsent`).
+La frase «Su voz la procesa un proveedor externo para entenderle» es `VOICE_PROCESSOR_NOTICE`: el audio pasa por ElevenLabs aunque no se autorice grabar, y ElevenLabs puede conservarlo según su política (sección 6.1 del integral).
+El nombre del responsable, su domicilio y el detalle de los derechos van en el aviso integral (el guion de voz ya no los lee por la duración; pendiente de visto bueno legal).
+
+Respuestas ya implementadas: si autoriza, "Gracias, queda registrado"; si dice que no, "Sin problema: esta llamada no se graba" y se le atiende igual (la llamada no se condiciona al
+consentimiento); si es ambiguo, **no se graba** (`interpretRecordingConsent`).
 
 ## 3. Texto corto para el sitio y para formularios web
 

@@ -59,9 +59,32 @@ describe("guion de apertura de la llamada", () => {
     const text = voiceOpeningScript(CONFIG);
     expect(text).toContain("asistente virtual");
     expect(text).toContain("inteligencia artificial");
-    expect(text).toContain("¿Autoriza que esta llamada se grabe");
-    expect(text).toContain("lo atiendo igual, sin grabar");
+    expect(text).toContain("¿Autoriza grabar y transcribir la llamada 15 días para mejorar el servicio?");
     expect(text).toContain("15 días");
+  });
+
+  it("revision #752 P1-1/P2-5: conserva lo legal de #743 (canal ARCO, «y transcribir», finalidad de la grabacion) y la pregunta es CERRADA (si/no, sin «o»)", () => {
+    for (const config of [CONFIG, { ...CONFIG, noticeUrl: null }, PRIVACY_CONFIG_POR_DEFECTO]) {
+      const text = voiceOpeningScript(config);
+      expect(text).toMatch(/derechos[^.?]*WhatsApp/);
+      const pregunta = text.slice(text.indexOf("¿"), text.indexOf("?") + 1);
+      expect(pregunta).toMatch(/grabar y transcribir/);
+      expect(pregunta).toMatch(/para mejorar el servicio/);
+      expect(pregunta).toMatch(/\d+ días/);
+      expect(pregunta).not.toMatch(/,\s*o\s|\so\s+le\s/);
+      expect(text.trim().endsWith("?")).toBe(true);
+    }
+  });
+
+  it("CORTO (E2E 6-nov-2026: el aviso largo se comia el inicio de la llamada): a lo mas 45 palabras, el consentimiento en UNA pregunta y el aviso del proveedor de voz (#743)", () => {
+    for (const config of [CONFIG, { ...CONFIG, noticeUrl: "https://x.mx/aviso" }]) {
+      const text = voiceOpeningScript(config);
+      expect(text.split(/\s+/).length).toBeLessThanOrEqual(45);
+      expect(text.match(/¿/g) ?? []).toHaveLength(1);
+      expect(text).toContain("Su voz la procesa un proveedor externo para entenderle.");
+      expect(text).toMatch(/solo para (tomar y entregar )?su pedido/);
+      expect(text).toMatch(/Aviso (en la página|y derechos: WhatsApp o sucursal)/); // donde consultar el aviso integral (Art. 16)
+    }
   });
 
   it("con retencion de voz 0: avisa que NO se graba y no pide consentimiento", () => {
