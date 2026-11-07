@@ -1,5 +1,4 @@
 import type { ModuloEs } from "../tipos.ts";
-import { registrarModuloEs } from "./index.ts";
 
 /** Marco de las consolas: cabecera, Sidebar, barra movil, menu de cuenta, tema, campana y estados del shell. */
 export const shell = {
@@ -37,5 +36,3 @@ export const shell = {
   "shell.idioma.es": "Español (ES)",
   "shell.idioma.en": "English (EN)",
 } as const satisfies ModuloEs;
-
-registrarModuloEs(shell);

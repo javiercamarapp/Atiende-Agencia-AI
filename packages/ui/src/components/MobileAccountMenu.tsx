@@ -4,7 +4,7 @@ import { Button } from "./ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "./ui/sheet";
 import { useT } from "../i18n/proveedor";
 import { ThemeSelector } from "./ThemeSelector";
-import "../i18n/mensajes/shell.ts";
+import { shell } from "../i18n/mensajes/shell.ts";
 
 export interface MobileAccountMenuProps {
   user: { email: string; rol?: string } | null;
@@ -23,7 +23,7 @@ export interface MobileAccountMenuProps {
  */
 export function MobileAccountMenu({ user, onLogout, loggingOut = false, children }: MobileAccountMenuProps) {
   const [abierto, setAbierto] = useState(false);
-  const t = useT();
+  const t = useT(shell);
   return (
     <>
       <button

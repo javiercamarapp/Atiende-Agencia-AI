@@ -1,6 +1,6 @@
-// i18n ES/EN: el espanol de cada modulo de area se registra al IMPORTAR su archivo (viaja con el chunk de quien lo usa). Si un
-// archivo usa claves de un area sin importarla, en produccion pintaria la clave cruda y el typecheck no lo ve. Esta prueba lo
-// exige archivo por archivo, y que @atiende/ui no declare `sideEffects: false` (Rollup tiraria esos imports laterales).
+// i18n ES/EN: el espanol de cada modulo de area se registra cuando quien lo usa lo pasa a `useT(<area>)` / `useI18n(<area>)`
+// (viaja con el chunk de ese componente). Si un archivo traduce claves de un area sin importar su modulo, en produccion pintaria
+// la clave cruda y el typecheck no lo ve. Esta prueba lo exige archivo por archivo.
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -25,6 +25,8 @@ describe("modulos de area importados por quien los usa", () => {
     const patron = new RegExp(`["'\`](${AREAS.join("|")})\\.[A-Za-z0-9]+(?:\\.[A-Za-z0-9]+)*["'\`]`, "g");
     for (const f of [...fuentes(path.join(raiz, "apps/web/src")), ...fuentes(path.join(raiz, "packages/ui/src"))]) {
       const codigo = readFileSync(f, "utf8");
+      // Solo quien traduce (t / traducir) necesita el modulo registrado; un mapa de claves puro (p. ej. rutas-i18n.ts) no.
+      if (!/\bt\(|traducir\(/.test(codigo)) continue;
       const usadas = new Set([...codigo.matchAll(patron)].map((m) => m[1] as string));
       for (const area of usadas) {
         const importa = codigo.includes(`@atiende/ui/i18n/${area}"`) || codigo.includes(`mensajes/${area}.ts"`);

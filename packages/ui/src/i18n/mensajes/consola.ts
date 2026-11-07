@@ -1,5 +1,4 @@
 import type { ModuloEs } from "../tipos.ts";
-import { registrarModuloEs } from "./index.ts";
 
 /** Lo propio de cada consola (nombre de la vertical, titulo, carga inicial, vacios y selector de sucursal): solo lo usan los
  * shells de apps/web, asi que viaja con su chunk y no con el de arranque (a diferencia de `shell`, que usan los componentes). */
@@ -27,5 +26,3 @@ export const consola = {
   "consola.selector.propiedad": "Propiedad",
   "consola.selector.contribuyente": "Contribuyente",
 } as const satisfies ModuloEs;
-
-registrarModuloEs(consola);

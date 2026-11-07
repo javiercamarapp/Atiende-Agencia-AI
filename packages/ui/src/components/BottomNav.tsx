@@ -5,7 +5,7 @@ import { cn } from "../lib/utils";
 import { useT } from "../i18n/proveedor";
 import type { SidebarPiePildora, SidebarSection } from "./Sidebar";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "./ui/sheet";
-import "../i18n/mensajes/shell.ts";
+import { shell } from "../i18n/mensajes/shell.ts";
 
 type IconType = ComponentType<{ className?: string; strokeWidth?: number | string }>;
 
@@ -57,7 +57,7 @@ const claseTituloGrupo = "mb-1.5 px-2.5 py-1 font-mono text-2xs uppercase tracki
  */
 export function BottomNav({ items, moreSections, pie }: BottomNavProps) {
   const [masAbierto, setMasAbierto] = useState(false);
-  const t = useT();
+  const t = useT(shell);
   const { pathname } = useLocation();
   const destinos = items.slice(0, BOTTOM_NAV_MAX_DESTINOS);
   const hayMas = Boolean(moreSections && moreSections.length > 0);
@@ -158,7 +158,7 @@ export function BottomNav({ items, moreSections, pie }: BottomNavProps) {
 }
 
 function PildoraCuenta({ pildora, onNavegar }: { pildora: SidebarPiePildora; onNavegar: () => void }) {
-  const t = useT();
+  const t = useT(shell);
   const Icono = pildora.icon;
   const contenido = (
     <>

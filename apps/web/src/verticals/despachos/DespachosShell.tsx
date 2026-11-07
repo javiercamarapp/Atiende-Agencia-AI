@@ -58,9 +58,9 @@ import { persistPropertyId, readPersistedPropertyId } from "./lib/property-selec
 import { StepUpDialog } from "./components/StepUpDialog.tsx";
 import { AltaPrimerCliente } from "./pages/Cartera.tsx";
 import { COPILOTO_DESPACHOS_ROLES } from "./pages/Copiloto.tsx";
-import "@atiende/ui/i18n/nav";
-import "@atiende/ui/i18n/shell";
-import "@atiende/ui/i18n/consola";
+import { nav } from "@atiende/ui/i18n/nav";
+import { shell } from "@atiende/ui/i18n/shell";
+import { consola } from "@atiende/ui/i18n/consola";
 
 /** Adaptador de sesión de despachos. DEBE ser una constante de módulo (el hook lo usa como dependencia de sus efectos). */
 const DESPACHOS_SESSION: VerticalSessionAdapter<BranchOption> = {
@@ -197,7 +197,7 @@ function buildMobileItems(t: Traductor, orgSlug: string): BottomNavItem[] {
 
 export function DespachosShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: DespachosShellProps) {
   // Título de pestaña por vertical/organización (ver use-document-title.ts). El hook va ANTES de los returns condicionales.
-  const t = useT();
+  const t = useT(nav, shell, consola);
   useDocumentTitle(t("consola.vertical.despachos"), orgSlug);
   const s = useVerticalSession({ adapter: DESPACHOS_SESSION, apiBaseUrl, orgSlug, onRequireLogin, defaultRole: "readonly" });
 

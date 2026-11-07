@@ -27,9 +27,9 @@ import { clearLicitacionesSession, logout, readPersistedLicitacionesSession } fr
 import { fetchBranches } from "./lib/admin-client.ts";
 import type { BranchOption } from "./lib/admin-client.ts";
 import { STAFF_NAV_ROLES, puedeVerPrivacidad } from "./roles-nav.ts";
-import "@atiende/ui/i18n/nav";
-import "@atiende/ui/i18n/shell";
-import "@atiende/ui/i18n/consola";
+import { nav } from "@atiende/ui/i18n/nav";
+import { shell } from "@atiende/ui/i18n/shell";
+import { consola } from "@atiende/ui/i18n/consola";
 
 /** Adaptador de sesión de licitaciones. DEBE ser una constante de módulo (el hook lo usa como dependencia de sus efectos). */
 const LICITACIONES_SESSION: VerticalSessionAdapter<BranchOption> = {
@@ -144,7 +144,7 @@ function buildMobileItems(t: Traductor, orgSlug: string): BottomNavItem[] {
 
 export function LicitacionesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: LicitacionesShellProps) {
   // Título de pestaña por vertical/organización (ver use-document-title.ts). El hook va ANTES de los returns condicionales.
-  const t = useT();
+  const t = useT(nav, shell, consola);
   useDocumentTitle(t("consola.vertical.licitaciones"), orgSlug);
   const s = useVerticalSession({ adapter: LICITACIONES_SESSION, apiBaseUrl, orgSlug, onRequireLogin, defaultRole: "viewer" });
 

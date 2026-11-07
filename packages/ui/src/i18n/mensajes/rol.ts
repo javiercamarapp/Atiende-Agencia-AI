@@ -1,5 +1,4 @@
 import type { ModuloEs } from "../tipos.ts";
-import { registrarModuloEs } from "./index.ts";
 
 /** Etiquetas de los roles de cada vertical (tarjeta de cuenta del Sidebar y menu de cuenta movil). */
 export const rol = {
@@ -27,5 +26,3 @@ export const rol = {
   "rol.operadorSoloCalendario": "Operador (solo calendario)",
   "rol.limpieza": "Limpieza",
 } as const satisfies ModuloEs;
-
-registrarModuloEs(rol);

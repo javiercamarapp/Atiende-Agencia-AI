@@ -6,7 +6,7 @@ import { SelectorIdioma } from "./SelectorIdioma";
 import { AtiendeMark, AtiendeWordmark } from "./AtiendeLogo";
 import { cn } from "../lib/utils";
 import { useT } from "../i18n/proveedor";
-import "../i18n/mensajes/shell.ts";
+import { shell } from "../i18n/mensajes/shell.ts";
 
 type IconType = ComponentType<{ className?: string; strokeWidth?: number | string }>;
 
@@ -172,7 +172,7 @@ function FilaItem({ item, colapsado }: { item: SidebarItem; colapsado: boolean }
 }
 
 function PildoraPie({ pildora, colapsado }: { pildora: SidebarPiePildora; colapsado: boolean }) {
-  const t = useT();
+  const t = useT(shell);
   const { label, to, href, onClick, icon: Icono, indicador, contador } = pildora;
   const { pathname } = useLocation();
   const activa = to !== undefined && rutaEnItem(pathname, to);
@@ -216,7 +216,7 @@ function PildoraPie({ pildora, colapsado }: { pildora: SidebarPiePildora; colaps
  */
 export function Sidebar({ sections, user, onLogout, hotelSelector, storageScope, pie, organizacion }: SidebarProps) {
   const location = useLocation();
-  const t = useT();
+  const t = useT(shell);
   const claves = clavesSidebar(storageScope);
   const [collapsed, setCollapsed] = useState<boolean>(() => leerAlmacen(claves.colapsado) === "1");
 

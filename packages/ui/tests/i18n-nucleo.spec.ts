@@ -2,7 +2,10 @@
 // respaldo al espanol y formato es-MX / en-US de numeros, dinero, porcentajes y fechas.
 import { beforeAll, describe, expect, it } from "vitest";
 import { crearFormatos } from "../src/i18n/formato.ts";
-import "../src/i18n/mensajes/comun.ts";
+import { comun } from "../src/i18n/mensajes/comun.ts";
+import { registrarModuloEs } from "../src/i18n/mensajes/index.ts";
+
+registrarModuloEs(comun);
 import { cargarIdioma, idiomaListo, type Clave } from "../src/i18n/mensajes/index.ts";
 import { crearTraductor, traducir } from "../src/i18n/traducir.ts";
 

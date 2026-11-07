@@ -24,7 +24,7 @@ import { MobileAccountMenu } from "./MobileAccountMenu";
 import { Sidebar, type SidebarItem, type SidebarPiePildora, type SidebarSection, type SidebarUser } from "./Sidebar";
 import { Button } from "./ui/button";
 import { I18nContexto, useT, type ContextoI18n } from "../i18n/proveedor";
-import "../i18n/mensajes/shell.ts";
+import { shell } from "../i18n/mensajes/shell.ts";
 import { GrupoNavContext } from "./PageHeader";
 
 export const VERTICAL_SHELL_MAIN_ID = "contenido-principal";
@@ -142,7 +142,7 @@ export interface VerticalShellEstadoProps {
 
 /** Centrado a pantalla completa para los estados que corren ANTES de que exista shell (sesion, sucursales). */
 export function VerticalShellEstado({ estado, mensaje, onReintentar }: VerticalShellEstadoProps) {
-  const t = useT();
+  const t = useT(shell);
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-6">
       <div className="w-full max-w-sm">
@@ -205,7 +205,7 @@ export interface VerticalNoEncontradoProps {
 
 /** 404 dentro del shell: la navegacion sigue disponible y hay un enlace de regreso al panel. */
 export function VerticalNoEncontrado({ volverA, volverEtiqueta }: VerticalNoEncontradoProps) {
-  const t = useT();
+  const t = useT(shell);
   return (
     <EstadoVacio
       icon={Compass}
@@ -293,7 +293,7 @@ export function VerticalShell({
   onGuia,
   children,
 }: VerticalShellProps) {
-  const t = useT();
+  const t = useT(shell);
   const pie: SidebarPiePildora[] | undefined = adminHref
     ? [...(sidebarPie ?? []), { label: t("shell.administracionAtiende"), to: adminHref, icon: ShieldCheck }]
     : sidebarPie;

@@ -1,5 +1,4 @@
 import type { ModuloEs } from "../tipos.ts";
-import { registrarModuloEs } from "./index.ts";
 
 /**
  * Menu de las 7 consolas (Sidebar, barra inferior movil y hoja «Más»): titulos de grupo y destinos. Una etiqueta que se repite
@@ -156,5 +155,3 @@ export const nav = {
   "nav.costosIa": "Costos de IA",
   "nav.otrosPaneles": "Ver los otros paneles",
 } as const satisfies ModuloEs;
-
-registrarModuloEs(nav);

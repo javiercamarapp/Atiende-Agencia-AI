@@ -3,8 +3,8 @@
 // sigue siendo el de la sesion y el servidor es la unica autoridad (ver los *_NAV_ROLES de cada shell).
 //
 // Un rol que no aparece aqui (p. ej. uno nuevo del dominio) se muestra tal cual llego, nunca se inventa.
-import { traducir, type Clave, type Traductor } from "@atiende/ui";
-import "@atiende/ui/i18n/rol";
+import { registrarModuloEs, traducir, type Clave, type Traductor } from "@atiende/ui";
+import { rol as modRol } from "@atiende/ui/i18n/rol";
 
 /** Clave del catalogo i18n (packages/ui/src/i18n/mensajes/rol.ts) de cada rol conocido. */
 export const CLAVES_ROL: Readonly<Record<string, Clave>> = {
@@ -41,5 +41,6 @@ export function etiquetaRol(rol: string | undefined | null, t?: Traductor): stri
   if (!rol) return undefined;
   const clave = Object.hasOwn(CLAVES_ROL, rol) ? CLAVES_ROL[rol] : undefined;
   if (!clave) return rol;
+  registrarModuloEs(modRol);
   return t ? t(clave) : traducir("es", clave);
 }
