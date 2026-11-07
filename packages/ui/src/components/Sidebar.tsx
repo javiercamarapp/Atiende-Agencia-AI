@@ -171,6 +171,8 @@ function FilaItem({ item, colapsado }: { item: SidebarItem; colapsado: boolean }
 
 function PildoraPie({ pildora, colapsado }: { pildora: SidebarPiePildora; colapsado: boolean }) {
   const { label, to, href, onClick, icon: Icono, indicador, contador } = pildora;
+  const { pathname } = useLocation();
+  const activa = to !== undefined && rutaEnItem(pathname, to);
   const conContador = typeof contador === "number" && contador > 0;
   const contenido = (
     <>
@@ -190,7 +192,9 @@ function PildoraPie({ pildora, colapsado }: { pildora: SidebarPiePildora; colaps
     "aria-label": indicador ? `${label}, con avisos sin leer` : label,
     className: cn(CLASE_PILDORA, colapsado ? "justify-center" : cn("justify-center", Icono ? "lg:justify-start" : "lg:justify-between")),
   };
-  if (to) return <Link to={to} {...comunes}>{contenido}</Link>;
+  // La fila del pie que lleva a la pagina actual (Notificaciones, Seguridad...) se marca como el item activo del nav (aria-current;
+  // la hoja ds3 le pone el mismo tinte y filete). Sin la bandera solo cambia el atributo accesible.
+  if (to) return <Link to={to} aria-current={activa ? "page" : undefined} {...comunes}>{contenido}</Link>;
   if (href) return <a href={href} {...comunes}>{contenido}</a>;
   if (onClick) return <button type="button" onClick={onClick} aria-controls={pildora.ariaControls} aria-pressed={pildora.ariaPressed} {...comunes} className={cn(comunes.className, "w-full text-left")}>{contenido}</button>;
   return null;
