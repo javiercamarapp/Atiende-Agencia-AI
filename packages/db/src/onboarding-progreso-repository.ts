@@ -54,7 +54,8 @@ export class OnboardingProgresoInvalidoError extends Error {
 
 const PISTA_RE = /^[a-z]{3,20}(\.[a-z_]{2,20})?$/;
 const PASO_RE = /^[a-z0-9._:-]{1,80}$/;
-const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,79}$/;
+// Mismo largo maximo que core.organization.slug (100).
+const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,99}$/;
 
 /** Mismas reglas que la funcion SQL, para responder 400 sin ir a la base. Devuelve el motivo o null. */
 export function validarProgresoGuia(orgSlug: string | null, pista: string, datos?: GuardarProgresoGuia): string | null {
@@ -146,16 +147,17 @@ export class PostgresOnboardingProgresoRepository implements OnboardingProgresoR
 /** Doble en memoria con las MISMAS reglas que la funcion SQL (membresia por slug, superadmin, hito «terminado»). Solo pruebas. */
 export class InMemoryOnboardingProgresoRepository implements OnboardingProgresoRepository {
   private readonly filas = new Map<string, ProgresoGuia>();
-  private readonly miembros = new Map<string, Set<string>>();
+  /** slug -> (persona -> rol de la membresia). */
+  private readonly miembros = new Map<string, Map<string, string>>();
   private readonly verticales = new Map<string, string>();
   private readonly superadmins = new Set<string>();
   private reloj = Date.parse("2026-11-01T00:00:00.000Z");
   /** `false` simula la base sin la migracion 0075. */
   disponible = true;
 
-  seedOrganizacion(slug: string, vertical: string, miembros: readonly string[]): void {
+  seedOrganizacion(slug: string, vertical: string, miembros: Readonly<Record<string, string>>): void {
     this.verticales.set(slug, vertical);
-    this.miembros.set(slug, new Set(miembros));
+    this.miembros.set(slug, new Map(Object.entries(miembros)));
   }
   seedSuperadmin(userId: string): void {
     this.superadmins.add(userId);
@@ -173,8 +175,11 @@ export class InMemoryOnboardingProgresoRepository implements OnboardingProgresoR
     if (orgSlug === null) {
       if (!this.superadmins.has(userId)) throw new OnboardingProgresoProhibidoError();
     } else {
-      if (!this.miembros.get(orgSlug)?.has(userId)) throw new OnboardingProgresoProhibidoError();
-      if (pista.split(".")[0] !== this.verticales.get(orgSlug)) throw new OnboardingProgresoInvalidoError("la pista no corresponde a la vertical");
+      const rol = this.miembros.get(orgSlug)?.get(userId);
+      if (rol === undefined) throw new OnboardingProgresoProhibidoError();
+      const [vertical, sufijo] = pista.split(".");
+      if (vertical !== this.verticales.get(orgSlug)) throw new OnboardingProgresoInvalidoError("la pista no corresponde a la vertical");
+      if (sufijo !== undefined && sufijo !== rol) throw new OnboardingProgresoInvalidoError("la pista no corresponde a tu rol");
     }
     const clave = `${userId}|${orgSlug ?? ""}|${pista}`;
     this.reloj += 1000;

@@ -5,9 +5,13 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./guia": "./src/components/guia/GuiaRecorrido.tsx",
     "./logo-marca": "./src/components/LogoMarca.tsx",
     "./logos-marca": "./src/lib/logos-marca.generated.ts",
     "./styles.css": "./src/index.css",
+    "./cifra.css": "./src/cifra.css",
+    "./ds3-shell.css": "./src/ds3/shell.css",
+    "./ds3-copiloto.css": "./src/ds3/copiloto.css",
     "./tailwind-preset": "./src/tailwind-preset.ts",
     "./tailwind-ambito": "./src/tailwind-ambito.ts"
   },

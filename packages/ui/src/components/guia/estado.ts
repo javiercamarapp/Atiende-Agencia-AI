@@ -121,5 +121,6 @@ export function limpiarProgresoGuia(almacen: Almacen | null): number {
 export interface ServidorProgreso {
   /** null = sin fila o no disponible (base sin migrar, sin red). */
   leer(): Promise<ProgresoLocal | null>;
-  guardar(estado: ProgresoLocal): Promise<void>;
+  /** `keepalive`: la peticion debe sobrevivir a la descarga de la pagina (cerrar pestaña o sesion). */
+  guardar(estado: ProgresoLocal, opciones?: { readonly keepalive?: boolean }): Promise<void>;
 }

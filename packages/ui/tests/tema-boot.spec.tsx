@@ -159,6 +159,27 @@ describe("/theme-boot.js", () => {
     expect(estado().diseno).toBe("ds3");
   });
 
+  it("en /<vertical>/login el tema es siempre claro (como Rovaq): el script y aplicarTema coinciden", () => {
+    sistema(true);
+    encender();
+    window.localStorage.setItem("atiende-tema", "oscuro");
+    for (const ruta of ["/restaurantes/login", "/citas/login/", "/hoteles/login?lang=en"]) {
+      window.history.replaceState(null, "", ruta);
+      document.documentElement.className = "";
+      correrScript();
+      const delScript = estado();
+      expect(delScript.oscuro, ruta).toBe(false);
+      expect(delScript.color, ruta).toBe("#ffffff");
+      document.documentElement.classList.add("dark");
+      aplicarTema(leerTema());
+      expect(estado(), ruta).toEqual(delScript);
+    }
+    // Fuera del login el tema guardado sigue aplicando.
+    window.history.replaceState(null, "", "/restaurantes/login-telefono");
+    correrScript();
+    expect(estado().oscuro).toBe(true);
+  });
+
   it("puente data-theme: solo con ds3 (sin la bandera <html> nunca lo lleva)", () => {
     sistema(true);
     window.localStorage.setItem("atiende-tema", "oscuro");

@@ -66,23 +66,22 @@ test.describe("publicas @humo", () => {
 
   // --- PL-21: cuenta de staff en las 6 verticales (API simulada de e2e/mock-api/fixtures/cuenta.ts) ----------------
 
+  // Decision del dueno (6-nov): el login es como el de Rovaq, SOLO enlace por correo y Google, sin contrasena. Quien tiene
+  // contrasena entra con el enlace a su mismo correo; el restablecer sigue vivo para los enlaces que ya salieron por correo.
   for (const v of VERTICALES) {
-    test(`login de ${v}: olvide mi contrasena -> aviso uniforme (no confirma la cuenta) y manda la vertical`, async ({ page, vigilante }) => {
-      const correo = `olvido.${v}.${Date.now().toString(36)}@example.test`;
+    test(`login de ${v}: sin contrasena; el enlace por correo pide POST /auth/magic-link/iniciar con la vertical`, async ({ page, vigilante }) => {
+      const correo = `enlace.${v}.${Date.now().toString(36)}@example.test`;
       await page.goto(`/${v}/login`);
-      await page.getByRole("button", { name: "¿Olvidaste tu contraseña?" }).click();
-      await expect(page.getByText("Restablece tu contraseña")).toBeVisible();
+      await expect(page.getByRole("button", { name: "¿Olvidaste tu contraseña?" })).toHaveCount(0);
+      await expect(page.locator('input[type="password"]')).toHaveCount(0);
       await page.getByRole("textbox", { name: /correo/i }).fill(correo);
-      await page.getByRole("button", { name: "Enviarme el enlace" }).click();
-      const aviso = page.getByRole("status");
-      await expect(aviso).toContainText(`Si ${correo} tiene una cuenta`);
-      await expect(aviso).not.toContainText(/no existe|no encontr/i);
+      await page.getByRole("button", { name: "Continuar con correo" }).click();
+      await expect(page.getByRole("status")).toContainText(`Te mandamos un enlace a ${correo}`);
       const anon = new ClienteMock(URL_API, "anon");
-      const enviados = (await anon.buscar({ metodo: "POST", ruta: "/auth/password-reset/solicitar" })).filter((p) => JSON.stringify(p.cuerpo).includes(correo));
+      const enviados = (await anon.buscar({ metodo: "POST", ruta: "/auth/magic-link/iniciar" })).filter((p) => JSON.stringify(p.cuerpo).includes(correo));
       expect(enviados).toHaveLength(1);
       expect(enviados[0]!.cuerpo).toEqual({ email: correo, vertical: v });
-      await page.getByRole("button", { name: "Volver a iniciar sesión" }).click();
-      await expect(page.getByRole("button", { name: "Continuar con correo" })).toBeVisible();
+      await expect(page.getByRole("button", { name: /Reintentar en \d+ s/ })).toBeDisabled();
       vigilante.verificar();
     });
   }
@@ -183,15 +182,12 @@ test.describe("publicas @humo", () => {
     });
   }
 
-  test("capturas: login, olvide mi contrasena y 404 en claro, oscuro y movil (adjuntas) @oscuro", async ({ page, vigilante }, info) => {
+  test("capturas: login y 404 en claro, oscuro y movil (adjuntas) @oscuro", async ({ page, vigilante }, info) => {
     await page.goto("/citas/login");
     await expect(page.getByRole("heading", { level: 1 })).toContainText("atiende citas");
     await afirmarSinScrollHorizontal(page);
     await page.waitForTimeout(1300); // la entrada escalonada termina (login-entra)
     await info.attach(`login-${info.project.name}.png`, { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
-    await page.getByRole("button", { name: "¿Olvidaste tu contraseña?" }).click();
-    await page.waitForTimeout(900);
-    await info.attach(`olvido-${info.project.name}.png`, { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
     await page.goto("/restablecer-no-existe");
     await afirmarSinScrollHorizontal(page);
     await info.attach(`404-${info.project.name}.png`, { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });

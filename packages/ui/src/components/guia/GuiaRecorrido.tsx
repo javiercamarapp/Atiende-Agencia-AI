@@ -22,6 +22,7 @@ import {
   ladoHojaMovil,
   pantallaActiva,
   planearViaje,
+  rectResaltado,
   puedeTomarFoco,
   reducir,
   siguienteDelPaso,
@@ -37,24 +38,17 @@ import {
   type EventoRecorrido,
   type ModoTour,
   type PasoTour,
+  type Rect,
   type SeccionMenu,
 } from "./motor";
 import { almacenDelNavegador, claveProgreso, guardarLocal, leerLocal, PROGRESO_VACIO, reconciliar, type ProgresoLocal, type ServidorProgreso } from "./estado";
 import { abrirGrupoDelMenu, enCampo, esperarObjetivo, hayFormularioSucio, nombreDe, pantallaEstrecha, primerVisible, reducirMovimiento } from "./dom";
 import { Ilustracion } from "./ilustraciones";
 import { enIdioma, traductorGuia, useIdiomaGuia, type TraductorGuia } from "./textos";
+import { GUIA_ABRIR_EVENTO_RECORRIDO, GUIA_RECORRIDO_EVENTO, GUIA_VACIAR_EVENTO } from "./eventos";
 import "./guia.css";
 
-/** Evento que emite el boton «Guía» de la cabecera ds3 (mismo valor que exporta VerticalShell en el carril del shell). */
-export const GUIA_ABRIR_EVENTO_RECORRIDO = "atiende:guia:abrir";
-/** Empieza el recorrido directamente (p. ej. desde «Primeros pasos»), sin pasar por el menu. `detail.modo`: «corto» o «completo». */
-export const GUIA_RECORRIDO_EVENTO = "atiende:guia:recorrido";
-
-export function iniciarRecorridoGuia(modo: ModoTour = "corto"): void {
-  if (typeof window === "undefined") return;
-  const a = document.activeElement;
-  window.dispatchEvent(new CustomEvent(GUIA_RECORRIDO_EVENTO, { detail: { modo, desde: a instanceof HTMLElement ? a : null } }));
-}
+export { GUIA_ABRIR_EVENTO_RECORRIDO, GUIA_RECORRIDO_EVENTO, iniciarRecorridoGuia } from "./eventos";
 
 export interface GuiaRecorridoProps {
   /** Menu real del rol (las mismas `sections` del Sidebar). */
@@ -67,7 +61,8 @@ export interface GuiaRecorridoProps {
   readonly persona: string;
   readonly organizacion: string;
   readonly organizacionNombre: string;
-  readonly rolEtiqueta: string;
+  /** Rol legible. Sin el: «Superadmin» (traducido) en la pista de plataforma o el rol de la pista. */
+  readonly rolEtiqueta?: string;
   readonly contenido?: ContenidoConsola;
   /** Rutas relativas del recorrido corto. */
   readonly esenciales?: readonly string[];
@@ -145,7 +140,23 @@ export function GuiaRecorrido(props: GuiaRecorridoProps) {
     },
     [clave],
   );
-  React.useEffect(() => () => { if (pendiente.current) clearTimeout(pendiente.current); }, []);
+  // Lo que quedo en la rafaga no se pierde: al desmontar (cambio de consola), al cerrar la pestaña (`pagehide`) o al cerrar sesion
+  // (`vaciarGuardadoGuia`) se envia ya, con `keepalive` para que sobreviva a la descarga de la pagina.
+  React.useEffect(() => {
+    const vaciar = () => {
+      if (!pendiente.current) return;
+      clearTimeout(pendiente.current);
+      pendiente.current = null;
+      servidorRef.current?.guardar(localRef.current, { keepalive: true }).catch(() => undefined);
+    };
+    window.addEventListener("pagehide", vaciar);
+    window.addEventListener(GUIA_VACIAR_EVENTO, vaciar);
+    return () => {
+      window.removeEventListener("pagehide", vaciar);
+      window.removeEventListener(GUIA_VACIAR_EVENTO, vaciar);
+      vaciar();
+    };
+  }, []);
 
   // Lectura al montar (y al cambiar de rol u organizacion): primero el navegador; luego el servidor, gana el mas nuevo. Si el recorrido
   // estaba abierto, se reabre en el mismo paso pero SIN viaje automatico.
@@ -301,8 +312,10 @@ export function GuiaRecorrido(props: GuiaRecorridoProps) {
   // Boton «Guía» de la cabecera: alterna el menu. Recuerda el disparador para devolverle el foco.
   React.useEffect(() => {
     if (!activa) return undefined;
-    const alAbrir = () => {
-      const a = document.activeElement;
+    const alAbrir = (e: Event) => {
+      // Safari no enfoca un <button> al hacer clic: si quien emite el evento dice de donde viene, ese es el disparador.
+      const desde = (e as CustomEvent<{ desde?: unknown } | undefined>).detail?.desde;
+      const a = desde instanceof HTMLElement ? desde : document.activeElement;
       if (a instanceof HTMLElement && a !== document.body && !a.closest(".guia-raiz")) disparador.current = a;
       setMenuAbierto((v) => !v);
     };
@@ -362,7 +375,7 @@ export function GuiaRecorrido(props: GuiaRecorridoProps) {
             setMenuAbierto(false);
             devolverFoco();
           }}
-          contexto={t("guia.menu.contexto", { organizacion: props.organizacionNombre, rol: props.rolEtiqueta })}
+          contexto={t("guia.menu.contexto", { organizacion: props.organizacionNombre, rol: props.rolEtiqueta ?? (pista === "superadmin" ? t("guia.rol.superadmin") : pista.split(".")[1] ?? "") })}
           opciones={hayCorto ? { corto: contarPasos(corto), completo: contarPasos(completo) } : undefined}
           tienePaso={pasos.some((p) => p.id === local.paso)}
           descartado={local.descartado}
@@ -464,8 +477,8 @@ function Paneles(c: PanelesProps) {
   React.useEffect(() => {
     if (!el) return undefined;
     const estrecha = pantallaEstrecha();
-    if (estrecha) el.style.setProperty("scroll-margin-top", "88px");
-    if (typeof el.scrollIntoView === "function") el.scrollIntoView({ behavior: reducirMovimiento() ? "auto" : "smooth", block: estrecha ? "start" : "center" });
+    if (estrecha || el.getBoundingClientRect().height > innerHeight * 0.6) el.style.setProperty("scroll-margin-top", "88px");
+    if (typeof el.scrollIntoView === "function") el.scrollIntoView({ behavior: reducirMovimiento() ? "auto" : "smooth", block: estrecha || el.getBoundingClientRect().height > innerHeight * 0.6 ? "start" : "center" });
     return () => {
       el.style.removeProperty("scroll-margin-top");
     };
@@ -540,10 +553,13 @@ function Paneles(c: PanelesProps) {
     let cuadro = 0;
     let ultima = "";
     let primera = true;
-    const colocar = (r: DOMRect | null) => {
+    // Hueco real entre la hoja movil y el borde inferior (barra de navegacion + respiro), medido cuando la hoja esta abajo.
+    let reservaMovil = 0;
+    const colocar = (r: Rect | null) => {
       if (!tarjetaEl) return;
       if (pantallaEstrecha()) {
-        tarjetaEl.setAttribute("data-hoja", ladoHojaMovil(r, innerHeight, tarjetaEl.offsetHeight, 75));
+        if (tarjetaEl.getAttribute("data-hoja") !== "arriba") reservaMovil = Math.max(0, innerHeight - tarjetaEl.getBoundingClientRect().bottom);
+        tarjetaEl.setAttribute("data-hoja", ladoHojaMovil(r, innerHeight, tarjetaEl.offsetHeight, reservaMovil));
         return;
       }
       const pos = colocarTarjeta(r, { width: tarjetaEl.offsetWidth || 380, height: tarjetaEl.offsetHeight || 320 }, { width: innerWidth, height: innerHeight });
@@ -575,11 +591,14 @@ function Paneles(c: PanelesProps) {
         setReintento((n) => n + 1);
         return;
       }
-      const r = el.getBoundingClientRect();
-      if (r.width === 0 && r.height === 0) {
+      const caja = el.getBoundingClientRect();
+      if (caja.width === 0 && caja.height === 0) {
         capaEl.setAttribute("data-sin-foco", "");
         return;
       }
+      // Un objetivo mas alto que media ventana se resalta por su franja superior visible: el foco cabe y la tarjeta nunca lo tapa.
+      const v = rectResaltado(caja, { width: innerWidth, height: innerHeight }, pantallaEstrecha() ? 0 : (tarjetaEl?.offsetHeight ?? 0));
+      const r = { ...v, right: v.left + v.width, bottom: v.top + v.height };
       const e = etiqueta.current;
       const w = e?.offsetWidth ?? 0;
       const h = e?.offsetHeight ?? 0;

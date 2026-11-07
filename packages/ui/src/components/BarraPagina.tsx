@@ -16,19 +16,27 @@ export interface BarraPaginaProps {
   readonly acciones?: ReactNode;
   /** Solo cuando la pagina activa no pinta ningun `<h1>`: el nombre hace de encabezado de nivel 1. */
   readonly comoH1?: boolean;
+  /**
+   * ds3: nombre de la pagina cuando difiere de `title` (en el Resumen y en el Copiloto la barra del diseno actual lleva el titulo de la
+   * consola). Se pinta por CSS (data-titulo) y solo con la bandera; sin ella no se ve ni cambia el texto de la barra.
+   */
+  readonly tituloDs3?: string;
   readonly className?: string;
 }
 
-export function BarraPagina({ icon, title, acciones, comoH1 = false, className }: BarraPaginaProps) {
+export function BarraPagina({ icon, title, acciones, comoH1 = false, tituloDs3, className }: BarraPaginaProps) {
   return (
     <header data-testid="barra-pagina" className={cn("flex items-center justify-between h-11 px-5 gap-3 shrink-0 border-b border-border bg-card", className)}>
-      <div className="flex items-center gap-2 text-ui font-medium min-w-0 text-foreground">
+      <div className="ds3-cabecera-titulo flex items-center gap-2 text-ui font-medium min-w-0 text-foreground">
         {icon}
-        <p data-testid="barra-pagina-titulo" role={comoH1 ? "heading" : undefined} aria-level={comoH1 ? 1 : undefined} className="truncate">
+        <p data-testid="barra-pagina-titulo" role={comoH1 ? "heading" : undefined} aria-level={comoH1 ? 1 : undefined} className={tituloDs3 ? "ds3-no truncate" : "truncate"}>
           {title}
         </p>
+        {tituloDs3 ? (
+          <p hidden data-titulo={tituloDs3} role={comoH1 ? "heading" : undefined} aria-level={comoH1 ? 1 : undefined} className="ds3-solo ds3-cabecera-titulo-ds3 truncate" />
+        ) : null}
       </div>
-      {acciones ? <div className="flex items-center gap-2 shrink-0">{acciones}</div> : null}
+      {acciones ? <div className="ds3-cabecera-acciones flex items-center gap-2 shrink-0">{acciones}</div> : null}
     </header>
   );
 }

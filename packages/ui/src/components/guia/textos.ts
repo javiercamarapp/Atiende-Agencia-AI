@@ -2,17 +2,19 @@
 // lo absorbe tal cual (mismas claves `guia.*`), sin tocar los componentes. Ninguna cifra va escrita a mano: todo numero entra por
 // `{variable}`. Patron de copy de Rovaq (AUDITORIA-VEXA-3 §4.12): tuteo, frases cortas y honestas, verbos en las acciones.
 //
-// Idioma: misma convencion que el selector del pie del sidebar (carril del shell): `?lang=` -> localStorage «atiende-idioma» -> «es»,
-// y el evento «atiende:idioma:cambio» para cambiar en caliente. Se repiten aqui las dos constantes para no depender de ese PR.
+// Idioma: el mismo del selector del pie del sidebar (`lib/idioma.ts`): `?lang=` -> localStorage «atiende-idioma» -> «es», y el evento
+// «atiende:idioma:cambio» para cambiar en caliente.
 import * as React from "react";
+import { CLAVE_IDIOMA, IDIOMA_CAMBIO_EVENTO } from "../../lib/idioma";
 
 export type IdiomaGuia = "es" | "en";
-export const CLAVE_IDIOMA_GUIA = "atiende-idioma";
-export const EVENTO_IDIOMA_GUIA = "atiende:idioma:cambio";
+export const CLAVE_IDIOMA_GUIA = CLAVE_IDIOMA;
+export const EVENTO_IDIOMA_GUIA = IDIOMA_CAMBIO_EVENTO;
 
 export const TEXTOS_GUIA = {
   es: {
     "guia.boton": "Guía",
+    "guia.rol.superadmin": "Superadmin",
     "guia.menu.aria": "Menú de la guía",
     "guia.menu.contexto": "{organizacion} · {rol}",
     "guia.menu.corto": "Recorrido corto ({n} pasos)",
@@ -80,6 +82,7 @@ export const TEXTOS_GUIA = {
   },
   en: {
     "guia.boton": "Guide",
+    "guia.rol.superadmin": "Superadmin",
     "guia.menu.aria": "Guide menu",
     "guia.menu.contexto": "{organizacion} · {rol}",
     "guia.menu.corto": "Short tour ({n} steps)",

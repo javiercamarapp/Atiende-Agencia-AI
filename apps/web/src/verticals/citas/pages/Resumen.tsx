@@ -155,6 +155,12 @@ export function ResumenPage({ apiBaseUrl, token, propertyId, orgSlug, role, staf
         nombre={primerNombreOCorreo(staffFullName, staffEmail)}
         // El odómetro se oculta bajo `sm` (como en Likida): en móvil la cifra de hoy viaja en el subtítulo.
         subtitulo={`${formatDiaNegocio(resumen.today.date)} · ${plural(resumen.today.total, "cita hoy", "citas hoy")}`}
+        // ds3: la cifra clave en negritas sustituye al odometro (Rovaq «Hoy»).
+        frase={
+          <>
+            {formatDiaNegocio(resumen.today.date)}: <strong>{plural(resumen.today.total, "cita hoy", "citas hoy")}</strong>.
+          </>
+        }
         destacado={<Odometro valor={resumen.today.total} digitos={Math.max(3, String(resumen.today.total).length)} etiqueta="Citas hoy" tamano="md" />}
         kpis={kpis}
         acciones={<PillLink to={`${base}/agenda`}>Ver agenda</PillLink>}

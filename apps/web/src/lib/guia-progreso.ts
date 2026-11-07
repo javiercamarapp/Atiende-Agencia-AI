@@ -36,10 +36,12 @@ export function servidorProgresoGuia(fetchImpl: typeof fetch, apiBaseUrl: string
         return null;
       }
     },
-    async guardar(p: ProgresoLocal) {
+    async guardar(p: ProgresoLocal, opciones?: { readonly keepalive?: boolean }) {
       try {
         await fetchImpl(url, {
           method: "PUT",
+          // keepalive: el ultimo guardado sale aunque se cierre la pestaña o la sesion (cuerpo < 2 KB, dentro del limite de keepalive).
+          ...(opciones?.keepalive ? { keepalive: true } : {}),
           headers: { ...headers, "content-type": "application/json" },
           body: JSON.stringify({ pista, org: orgSlug, modo: p.modo, paso: p.paso, visto: p.visto, omitido: p.omitido, descartado: p.descartado, activo: p.activo, terminado: p.terminado }),
         });

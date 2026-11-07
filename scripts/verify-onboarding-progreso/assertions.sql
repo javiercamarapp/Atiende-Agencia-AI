@@ -1,6 +1,6 @@
 -- Verifica, contra Postgres REAL (RLS + GRANT + auth.uid() reales), packages/db/migrations/0075_onboarding_progreso.sql:
 -- guardar_onboarding_progreso (miembro de la organizacion guarda SU fila; otra organizacion, sistema y anon no; superadmin sin organizacion),
--- upsert idempotente (una fila por persona/organizacion/pista, «terminado» no se borra), formato cerrado, y lectura por RLS solo de la propia fila.
+-- upsert idempotente (una fila por persona/organizacion/pista, «terminado» no se borra), formato cerrado, rol real en la pista, FK a staff_user, y lectura por RLS solo de la propia fila.
 -- Convenciones del gate (scripts/verify-real-postgres-ci/run-gate.mjs): cada escenario es un begin/rollback; deberia_ser_N = ultima fila
 -- vale N; should_fail = el escenario debe terminar en ERROR.
 \set ON_ERROR_STOP off
@@ -88,6 +88,32 @@ begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f7520', true);
 select core.guardar_onboarding_progreso('org-guia-a', 'citas.owner', null, null, true, false, false, false, false) as should_fail;
+rollback;
+
+\echo '8b. rol inventado en la pista (el owner no es admin): 22023 -- RECHAZADO'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f7520', true);
+select core.guardar_onboarding_progreso('org-guia-a', 'restaurantes.admin', null, null, true, false, false, false, false) as should_fail;
+rollback;
+
+\echo '8c. pista sin rol (solo la vertical) del miembro: OK'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f7520', true);
+select core.guardar_onboarding_progreso('org-guia-a', 'restaurantes', null, null, true, false, false, false, false);
+select (select count(*) from core.onboarding_progreso where pista = 'restaurantes')::int as deberia_ser_1;
+rollback;
+
+\echo '8d. borrar a la persona borra su progreso (FK on delete cascade) -- OK'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f7521', true);
+select core.guardar_onboarding_progreso('org-guia-a', 'restaurantes.staff', null, null, true, false, false, false, false);
+reset role;
+delete from core.membership where user_id = '00000000-0000-0000-0000-0000000f7521';
+delete from core.staff_user where id = '00000000-0000-0000-0000-0000000f7521';
+select (select count(*) from core.onboarding_progreso where user_id = '00000000-0000-0000-0000-0000000f7521')::int as deberia_ser_0;
 rollback;
 
 \echo '9. paso con caracteres fuera del formato: 22023 -- RECHAZADO'

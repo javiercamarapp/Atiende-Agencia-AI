@@ -500,12 +500,14 @@ export const HOLGURA_FOCO = 14;
  * devuelve la esquina con MENOR area tapada y `tapa: true` (la capa entonces deja el foco y la tarjeta se puede mover con el scroll).
  * Sin objetivo: centrada.
  */
-export function colocarTarjeta(objetivo: Rect | null, tarjeta: { width: number; height: number }, ventana: { width: number; height: number }): { left: number; top: number; tapa: boolean; centrada: boolean } {
+export function colocarTarjeta(objetivoCompleto: Rect | null, tarjeta: { width: number; height: number }, ventana: { width: number; height: number }): { left: number; top: number; tapa: boolean; centrada: boolean } {
   const w = Math.min(tarjeta.width, ventana.width - 2 * 16);
   const h = Math.min(tarjeta.height, ventana.height - 2 * 16);
   const m = ventana.width < 2 * MARGEN_TARJETA + w ? 16 : MARGEN_TARJETA;
   const acot = (x: number, y: number) => ({ left: Math.round(Math.max(m, Math.min(x, ventana.width - w - m))), top: Math.round(Math.max(m, Math.min(y, ventana.height - h - m))) });
-  if (!objetivo) return { ...acot((ventana.width - w) / 2, (ventana.height - h) / 2), tapa: false, centrada: true };
+  if (!objetivoCompleto) return { ...acot((ventana.width - w) / 2, (ventana.height - h) / 2), tapa: false, centrada: true };
+  // Solo cuenta la parte VISIBLE del objetivo: una tabla mas alta que la ventana no debe empujar la tarjeta fuera de todo hueco.
+  const objetivo = recortarAVentana(objetivoCompleto, ventana) ?? objetivoCompleto;
   const foco: Rect = { left: objetivo.left - HOLGURA_FOCO, top: objetivo.top - HOLGURA_FOCO, width: objetivo.width + 2 * HOLGURA_FOCO, height: objetivo.height + 2 * HOLGURA_FOCO };
   const derecha = objetivo.left + objetivo.width / 2 > ventana.width / 2;
   const abajo = objetivo.top + objetivo.height / 2 > ventana.height / 2;
@@ -531,6 +533,28 @@ export function colocarTarjeta(objetivo: Rect | null, tarjeta: { width: number; 
   };
   const mejor = [...candidatos].sort((a, b) => area(a) - area(b))[0]!;
   return { ...mejor, tapa: true, centrada: false };
+}
+
+/** Interseccion del rectangulo con la ventana (null si queda fuera por completo). */
+export function recortarAVentana(r: Rect, ventana: { width: number; height: number }): Rect | null {
+  const left = Math.max(0, r.left);
+  const top = Math.max(0, r.top);
+  const right = Math.min(ventana.width, r.left + r.width);
+  const bottom = Math.min(ventana.height, r.top + r.height);
+  return right > left && bottom > top ? { left, top, width: right - left, height: bottom - top } : null;
+}
+
+/**
+ * Rectangulo que se RESALTA: un objetivo muy alto (tabla larga, formulario) se acota a su franja superior visible, asi el foco dice
+ * «aqui empieza» y la tarjeta cabe debajo sin taparlo. Con `altoTarjeta` la franja deja exactamente el hueco de la tarjeta (escritorio);
+ * sin el, a lo sumo el 45 % de la ventana. Los objetivos que ya caben, tal cual.
+ */
+export function rectResaltado(r: Rect, ventana: { width: number; height: number }, altoTarjeta = 0): Rect {
+  const visible = recortarAVentana(r, ventana) ?? r;
+  const tope = altoTarjeta > 0
+    ? Math.max(48, ventana.height - altoTarjeta - 2 * MARGEN_TARJETA - 2 * HOLGURA_FOCO - Math.max(0, visible.top))
+    : Math.round(ventana.height * 0.45);
+  return visible.height > tope ? { ...visible, height: tope } : visible;
 }
 
 /** Hoja inferior movil: si el objetivo queda debajo del borde superior de la hoja, la hoja sube arriba (tampoco tapa en movil). */
