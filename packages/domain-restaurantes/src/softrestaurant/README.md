@@ -161,3 +161,15 @@ bandera efectiva es `apagado`, encolar/reclamar no hacen nada y las lecturas res
   de pago se asume efectivo (la comanda no cobra).
 - Si el request que creo el pedido hace rollback despues de un envio en linea, el POS puede quedar
   con una comanda sin pedido en Atiende (raro; el staff la ve en caja).
+
+## Sucursal "solo venta local" (migracion 105)
+
+Una sucursal que vende solo en mostrador (PM: Galerias, decision del dueno 6-nov-2026) se marca con
+`restaurantes.branch_policy.solo_venta_local = true` y se deja `core.property.status = 'active'`:
+
+- **Cuenta** en tableros, KPIs, filtro de sucursal y CFO; su venta entra importando el export de SoftRestaurant
+  (`POST /v1/restaurantes/:propertyId/admin/cfo/softrestaurant/importar/vista-previa` y `.../importar`, funcion `sr_importar`; alias de columnas en `cfo/sr-normalizar.ts`).
+- **Nunca** la ofrecen los agentes ni el pedido en linea: la regla vive en `src/solo-venta-local.ts`
+  (`buscarSucursalParaClientes`, `sucursalesParaClientes`, `resumenSucursalesParaClientes`, `atiendeClientes`) y la usan
+  el prompt de WhatsApp y de voz, las herramientas del agente, `orders.ts` (cotizar/crear), despacho, pin de reparto,
+  conocimiento generado y la emision del token de llamada. Sin pedidos de Atiende tampoco hay comandas en el outbox.

@@ -32,7 +32,7 @@
 // apps/api/tests/voice-order-closed-loop.spec.ts.
 import { Hono } from "hono";
 import type { Context } from "hono";
-import { canonicalizeMexicanPhone, consumeRateLimit, crearHookAgregados, invokeAgentTool, OrderValidationError } from "@atiende/domain-restaurantes";
+import { atiendeClientes, canonicalizeMexicanPhone, consumeRateLimit, crearHookAgregados, invokeAgentTool, OrderValidationError } from "@atiende/domain-restaurantes";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import type { AgentToolContext, RestaurantesRepository } from "@atiende/domain-restaurantes";
 import { Errors } from "../../../errors.ts";
@@ -311,7 +311,8 @@ export function restaurantesVoiceToolsRoutes(deps: AppDeps): Hono {
       // Sucursal de la llamada: la del secreto de sucursal; con el secreto legado (sin sucursal) debe venir en el body.
       const requestedSlug = typeof body.branch_slug === "string" ? body.branch_slug : null;
       const branch = requestedSlug ? await repo.findBranch(org.id, { slug: requestedSlug }) : caller.propertyId ? await repo.findBranchById(org.id, caller.propertyId) : null;
-      if (!branch || branch.status !== "active") {
+      // Una sucursal solo venta local (migracion 105) no atiende llamadas del agente: mismo rechazo que una inactiva.
+      if (!branch || !(await atiendeClientes(repo, branch))) {
         await auditVoice(repo, org, { propertyId: caller.propertyId, callId, phone }, "emitir_token_de_llamada", "denied", "sucursal_no_encontrada");
         return c.json({ code: "validation_error", message: "branch_slug es requerido y debe ser una sucursal activa de este restaurante" }, 400);
       }

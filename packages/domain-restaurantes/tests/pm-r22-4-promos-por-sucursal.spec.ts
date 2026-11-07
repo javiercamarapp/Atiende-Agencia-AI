@@ -21,9 +21,10 @@ describe("R22-4 seed: alcance por sucursal de las promos", () => {
       expect(p.channels, code).toEqual(["recoger"]);
     }
   });
-  it("el texto de promociones del agente nombra las 3 sucursales y ya no dice 'todas las sucursales'", () => {
+  it("el texto de promociones del agente nombra Francisco de Montejo y Pensiones (Galerias es solo venta local desde el 6-nov) y ya no dice 'todas las sucursales'", () => {
     expect(plan.whatsappAgent.promosText).toBe(PM_PROMOS_POR_OMISION);
-    expect(plan.whatsappAgent.promosText).toMatch(/solo en Francisco de Montejo, Pensiones y Galerías/);
+    expect(plan.whatsappAgent.promosText).toMatch(/solo en Francisco de Montejo y Pensiones$/);
+    expect(plan.whatsappAgent.promosText).not.toMatch(/Galer/);
     expect(plan.whatsappAgent.promosText).not.toMatch(/todas las sucursales/);
     // la cuenta real ya sembrada con el texto anterior lo recibe (reemplazo de texto sembrado)
     expect(plan.whatsappAgent.legacyPromosTexts).toContain("lunes 2x1 en tacos al pastor y martes nachos de pastor con 2 aguas de cortesía; solo para recoger, en todas las sucursales");
@@ -57,8 +58,8 @@ describe("R22-4 agente: la regla H3/H13 dice donde aplica y que ahi no aplica do
   const base = { businessName: PM_CONFIG_POR_OMISION.businessName, agentName: "el asistente virtual", deliveryTimeText: PM_CONFIG_POR_OMISION.deliveryTimeText, branches };
   const wa = buildPmSystemPrompt({ ...base, saludo: "Buenas tardes", entryBranch: null, customer: { isNew: true }, fechaHoraLocal: "lunes 14:00", diaSemana: "lunes" });
   const voz = comportamientoVozPm(base);
-  it.each([["whatsapp", wa], ["voz", voz]])("%s: H3 lista las 3 sucursales y manda decir que ahi no aplica (a domicilio u otra sucursal)", (_c, p) => {
-    expect(p).toMatch(/H3\. Promociones solo para recoger: [^\n]*solo en Francisco de Montejo, Pensiones y Galerías/);
+  it.each([["whatsapp", wa], ["voz", voz]])("%s: H3 lista donde aplica (sin Galerias, solo venta local) y manda decir que ahi no aplica (a domicilio u otra sucursal)", (_c, p) => {
+    expect(p).toMatch(/H3\. Promociones solo para recoger: [^\n]*solo en Francisco de Montejo y Pensiones/);
     expect(p).toMatch(/no aplica/);
     expect(p).not.toMatch(/en todas las sucursales/);
   });
