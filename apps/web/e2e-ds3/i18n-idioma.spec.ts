@@ -13,6 +13,14 @@ const SALIDA = process.env["DS3_SALIDA"] ?? "test-results-ds3/evidencia";
 
 test.beforeEach(async ({ page }) => {
   await prepararBandera(page);
+  // El idioma solo cambia con el diseno ds3 (el unico con selector ES/EN): este spec lo enciende siempre.
+  await page.addInitScript(() => {
+    try {
+      window.localStorage.setItem("atiende-diseno", "ds3");
+    } catch {
+      // Sin almacenamiento: el spec fallara al no ver ingles, que es lo correcto.
+    }
+  });
 });
 
 for (const consola of CONSOLAS) {

@@ -312,7 +312,7 @@ export function HistorialPage({ apiBaseUrl, token, propertyId, role }: Restauran
         <Card>
           <CardHeader className="p-3 pb-2">
             <CardTitle className="sr-only">Órdenes</CardTitle>
-            <p className="font-mono text-eyebrow tabular-nums text-muted-foreground" data-testid="historial-conteo">
+            <p className="text-eyebrow tabular-nums text-muted-foreground" data-testid="historial-conteo">
               {orders.length === 0 ? "0 pedidos" : `Mostrando ${orders.length}${nextCursor ? " · hay más" : ""}`}
             </p>
           </CardHeader>

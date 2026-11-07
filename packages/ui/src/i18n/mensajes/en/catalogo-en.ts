@@ -6,6 +6,7 @@ import type { ModulosTraducidos } from "../index.ts";
 import { comunEn } from "./comun.ts";
 import { consolaEn } from "./consola.ts";
 import { navEn } from "./nav.ts";
+import { notifEn } from "./notif.ts";
 import { rolEn } from "./rol.ts";
 import { shellEn } from "./shell.ts";
 
@@ -15,4 +16,5 @@ export const MODULOS_EN = {
   shell: shellEn,
   rol: rolEn,
   consola: consolaEn,
+  notif: notifEn,
 } as const satisfies ModulosTraducidos;

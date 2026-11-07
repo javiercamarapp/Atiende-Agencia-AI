@@ -1,8 +1,10 @@
 import { cn } from "../lib/utils";
 import { CargandoLogo } from "./CargandoLogo";
+import { CifraTexto } from "./Cifra";
 import { Card } from "./ui/card";
 import { useT } from "../i18n/proveedor";
 import type { Traductor } from "../i18n/traducir.ts";
+import "../i18n/mensajes/datos.ts";
 
 type IconType = React.ComponentType<{ className?: string; strokeWidth?: number | string }>;
 
@@ -35,8 +37,23 @@ export interface StatCardProps {
    * circular, como en los Resumenes de las verticales. El resto (cifra, pie punteado, delta en texto) es identico.
    */
   variante?: StatCardVariante;
+  /**
+   * ds3 (Rovaq KindBadge): sello «● Observado · fuente · cuando». Solo se pinta si la pagina sabe de verdad de donde sale la cifra
+   * (nunca se infiere aqui). Sin la bandera queda oculto.
+   */
+  sello?: StatCardSello;
   className?: string;
 }
+
+export interface StatCardSello {
+  readonly clase: "observado" | "estimado" | "inferido";
+  /** De donde sale la cifra (p. ej. "pedidos de Atiende"). */
+  readonly fuente: string;
+  /** Frescura ya resuelta por la pagina (p. ej. "hace 5 min"). */
+  readonly cuando?: string;
+}
+
+const CLASE_SELLO: Record<StatCardSello["clase"], string> = { observado: "Observado", estimado: "Estimado", inferido: "Inferido" };
 
 export type StatCardVariante = "marca" | "neutra";
 
@@ -46,12 +63,12 @@ export type StatCardVariante = "marca" | "neutra";
  * Atiende, etiqueta gris, cifra grande) y, debajo, un pie tras divisor punteado.
  * Con la disciplina de "nunca inventar una cifra": sin dato real muestra "—" y dice por que.
  */
-export function StatCard({ icon: Icon, label, value, nota, delta, deltaNota: deltaNotaProp, sinDato, cargando = false, variante = "marca", className }: StatCardProps) {
+export function StatCard({ icon: Icon, label, value, nota, delta, deltaNota: deltaNotaProp, sinDato, cargando = false, variante = "marca", sello, className }: StatCardProps) {
   const mostrarSinDato = Boolean(sinDato);
   // CargandoLogo es un div role=status: no puede vivir dentro de un <p>.
   const Valor = cargando ? "div" : "p";
   const t = useT();
-  const deltaNota = deltaNotaProp ?? t("comun.kpi.vsPeriodoAnterior");
+  const deltaNota = deltaNotaProp ?? t("datos.kpi.vsPeriodoAnterior");
   const pie = pieDe({ t, mostrarSinDato, sinDato, delta, deltaNota, nota });
   return (
     <Card className={cn("ds3-stat flex h-full min-w-0 flex-col p-2", className)} aria-busy={cargando || undefined}>
@@ -65,14 +82,19 @@ export function StatCard({ icon: Icon, label, value, nota, delta, deltaNota: del
         <Valor
           className={cn("ds3-stat-valor mt-0.5 min-w-0 truncate font-display text-xl font-semibold leading-tight tabular-nums", mostrarSinDato ? "text-faint" : "text-foreground", cargando && "flex min-h-7 items-center")}
           title={mostrarSinDato || cargando ? undefined : value}
-          aria-label={mostrarSinDato ? t("comun.sinDato", { etiqueta: label }) : undefined}
+          aria-label={mostrarSinDato ? t("datos.sinDato", { etiqueta: label }) : undefined}
         >
-          {cargando ? <CargandoLogo tamano="linea" etiqueta={t("comun.cargandoEtiqueta", { etiqueta: label })} /> : mostrarSinDato ? "—" : value}
+          {cargando ? <CargandoLogo tamano="linea" etiqueta={t("datos.cargandoEtiqueta", { etiqueta: label })} /> : mostrarSinDato ? "—" : <CifraTexto texto={value} />}
         </Valor>
       </div>
       {/* El espaciador alinea los pies en una fila de tarjetas parejas aunque una etiqueta envuelva a dos lineas. */}
       <div className="grow" />
       {pie && <div aria-hidden={cargando || undefined} className={cn("ds3-stat-pie mx-1.5 mt-1.5 border-t border-dashed border-line2 pt-1.5 text-xs", cargando && "invisible")}>{pie}</div>}
+      {sello && !cargando && !mostrarSinDato && (
+        <p data-testid="stat-card-sello" data-clase={sello.clase} className="ds3-sello hidden mx-1.5 mt-1">
+          {[CLASE_SELLO[sello.clase], sello.fuente, sello.cuando].filter(Boolean).join(" · ")}
+        </p>
+      )}
     </Card>
   );
 }
@@ -97,11 +119,11 @@ function pieDe({
     const cero = delta.pct === 0;
     return (
       <p className="flex min-w-0 items-baseline gap-1.5">
-        <span className={cn("shrink-0 font-medium tabular-nums", cero ? "text-faint" : delta.bueno ? "text-success" : "text-destructive")}>
+        <span data-tono={cero ? "neutro" : delta.bueno ? "bueno" : "malo"} className={cn("ds3-delta shrink-0 font-medium tabular-nums", cero ? "text-faint" : delta.bueno ? "text-success" : "text-destructive")}>
           {cero ? "" : delta.pct > 0 ? "↑ " : "↓ "}
           {Math.abs(delta.pct)}%
         </span>
-        <span className="truncate text-faint">{cero ? t("comun.kpi.sinCambio") : deltaNota}</span>
+        <span className="truncate text-faint">{cero ? t("datos.kpi.sinCambio") : deltaNota}</span>
       </p>
     );
   }
@@ -109,7 +131,7 @@ function pieDe({
     const t = nota.trim();
     return <p className={t.startsWith("+") ? "text-success" : t.startsWith("-") ? "text-destructive" : "text-faint"}>{nota}</p>;
   }
-  if (delta === null) return <p className="text-faint">{t("comun.kpi.sinComparable")}</p>;
+  if (delta === null) return <p className="text-faint">{t("datos.kpi.sinComparable")}</p>;
   return null;
 }
 

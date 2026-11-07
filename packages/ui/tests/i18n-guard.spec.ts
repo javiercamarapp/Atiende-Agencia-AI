@@ -2,7 +2,7 @@
 // con texto, que respete `t()` e `i18n-ignorar`, y que el veredicto suba/baje como un trinquete.
 import { describe, expect, it } from "vitest";
 import { detectar } from "../../../scripts/i18n-guard/detector.ts";
-import { evaluar } from "../../../scripts/i18n-guard/guard.ts";
+import { evaluar, revisar } from "../../../scripts/i18n-guard/guard.ts";
 
 const textos = (codigo: string) => detectar(codigo, "x.tsx").map((h) => h.texto);
 
@@ -44,6 +44,18 @@ describe("detector de textos escritos a mano", () => {
 
   it("respeta // i18n-ignorar en la linea anterior", () => {
     expect(textos(`// i18n-ignorar: mensaje que el agente envia al cliente por WhatsApp (va en espanol)\nconst m = "¡Gracias por tu pedido!";`)).toEqual([]);
+  });
+
+  it("cuenta constantes y arreglos con nombre visible y concatenaciones", () => {
+    expect(textos(`const etiqueta = "Pedidos";\nconst etiquetas = ["Lunes", "Martes"];\nconst x = <p>{"Hola " + nombre}</p>;`)).toEqual(["Pedidos", "Lunes", "Martes", "Hola"]);
+  });
+
+  it("i18n-ignorar solo como comentario, no dentro de un literal", () => {
+    expect(textos(`const etiqueta = "texto // i18n-ignorar";\nconst titulo = "Pedidos";`)).toEqual(["texto // i18n-ignorar", "Pedidos"]);
+  });
+
+  it("una ruta del alcance que no existe es error", () => {
+    expect(() => revisar(process.cwd(), { alcance: ["no/existe.tsx"], excluir: [], baseline: {} })).toThrow(/no existe|sin archivos/);
   });
 
   it("trinquete: sube falla, baja pide bajar el baseline, igual pasa", () => {

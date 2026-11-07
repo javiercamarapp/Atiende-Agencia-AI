@@ -31,18 +31,11 @@ export const shell = {
   "shell.noEncontrada.titulo": "Página no encontrada",
   "shell.noEncontrada.mensaje": "La dirección que abriste no existe en este panel o cambió de lugar.",
   "shell.volverAlPanel": "Volver al panel",
-  "shell.notif.titulo": "Notificaciones",
-  "shell.notif.conAvisos": "Notificaciones: hay avisos sin leer",
-  "shell.notif.marcarTodas": "Marcar todas",
-  "shell.notif.cargando": "Cargando notificaciones",
-  "shell.notif.error": "No se pudieron cargar las notificaciones.",
-  "shell.notif.reintentar": "Volver a intentar",
-  "shell.notif.vacio": "Estás al día. No hay notificaciones.",
-  "shell.notif.sinLeer": "Sin leer",
-  "shell.notif.verTodas": "Ver todas las notificaciones",
-  "shell.notif.severidad.info": "Informativa",
-  "shell.notif.severidad.atencion": "Requiere atención",
-  "shell.notif.severidad.critica": "Crítica",
+  "shell.guia": "Guía",
+  "shell.administracionAtiende": "Administración de Atiende",
+  "shell.idioma": "Idioma de la interfaz",
+  "shell.idioma.es": "Español (ES)",
+  "shell.idioma.en": "English (EN)",
 } as const satisfies ModuloEs;
 
 registrarModuloEs(shell);

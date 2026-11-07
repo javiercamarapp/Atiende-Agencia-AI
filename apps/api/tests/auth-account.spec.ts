@@ -263,3 +263,38 @@ describe("bordes y seguridad de los enlaces de un solo uso (L-02)", () => {
     expect(((await (await sinResend.request("/auth/email-verification/enviar", authedJson(token, { vertical: "licitaciones" }))).json()) as { sent: boolean }).sent).toBe(false);
   });
 });
+
+describe("POST /auth/email-verification/reenviar (publico, onboarding P0)", () => {
+  it("cuenta sin verificar: manda un enlace nuevo que verifica; respuesta generica identica para un correo inexistente o ya verificado", async () => {
+    const { ctx, core, app } = await setup();
+    const sent = captureResend();
+    const staff = { id: "00000000-0000-0000-0000-00000000f0a1" };
+    core.addStaff({ id: staff.id, email: "nueva@registro.mx", fullName: "Nueva", passwordHash: null, createdVia: "registro_autoservicio", emailVerifiedAt: null });
+    const r = await app.request("/auth/email-verification/reenviar", json({ email: "Nueva@Registro.mx", vertical: "rentas" }));
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual({ ok: true });
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.to).toEqual(["nueva@registro.mx"]);
+    expect(sent[0]!.text).toContain("/rentas/verificar-correo?token=");
+    expect((await app.request("/auth/email-verification/confirmar", json({ token: tokenFromEmail(sent[0]!.text) }))).status).toBe(200);
+    expect((await core.findStaffById(staff.id))?.emailVerifiedAt).toBeTruthy();
+
+    // Ya verificada o inexistente: mismo 200 y ningun correo.
+    for (const email of ["nueva@registro.mx", "nadie@registro.mx"]) {
+      const g = await app.request("/auth/email-verification/reenviar", json({ email, vertical: "rentas" }));
+      expect(g.status).toBe(200);
+      expect(await g.json()).toEqual({ ok: true });
+    }
+    expect(sent).toHaveLength(1);
+    void ctx;
+  });
+
+  it("validacion y tope por correo (3 por ventana)", async () => {
+    const { app } = await setup();
+    captureResend();
+    expect((await app.request("/auth/email-verification/reenviar", json({ email: "no-es-correo", vertical: "rentas" }))).status).toBe(400);
+    expect((await app.request("/auth/email-verification/reenviar", json({ email: "a@b.mx", vertical: "otra" }))).status).toBe(400);
+    for (let i = 0; i < 3; i++) expect((await app.request("/auth/email-verification/reenviar", json({ email: "a@b.mx", vertical: "rentas" }))).status).toBe(200);
+    expect((await app.request("/auth/email-verification/reenviar", json({ email: "a@b.mx", vertical: "rentas" }))).status).toBe(429);
+  });
+});

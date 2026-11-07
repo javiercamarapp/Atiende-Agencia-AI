@@ -84,10 +84,12 @@ export function crearFormatos(idioma: Idioma): Formatos {
     numero: (valor, opciones) => enCache("num", locale, opciones, () => new Intl.NumberFormat(locale, opciones)).format(valor),
     moneda: (valor, opciones) => {
       const decimales = opciones?.decimales ?? 2;
+      const moneda = opciones?.moneda ?? "MXN";
       const o: Intl.NumberFormatOptions = {
         style: "currency",
-        currency: opciones?.moneda ?? "MXN",
-        currencyDisplay: "narrowSymbol",
+        currency: moneda,
+        // «$» solo para pesos; otra moneda lleva su codigo («USD 10.00») para no confundirse con MXN (costos de IA en USD).
+        currencyDisplay: moneda === "MXN" ? "narrowSymbol" : "code",
         minimumFractionDigits: decimales,
         maximumFractionDigits: decimales,
       };

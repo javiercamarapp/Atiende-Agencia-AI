@@ -1,4 +1,5 @@
 import type { ModuloEs } from "../tipos.ts";
+import { registrarModuloEs } from "./index.ts";
 
 /** Textos transversales (estados, acciones genericas, idioma). La traduccion vive en `en/comun.ts`. */
 export const comun = {
@@ -55,3 +56,5 @@ export const comun = {
   "comun.agente.sinCorridas": "Sin corridas registradas.",
   "comun.sinMedir": "sin medir",
 } as const satisfies ModuloEs;
+
+registrarModuloEs(comun);
