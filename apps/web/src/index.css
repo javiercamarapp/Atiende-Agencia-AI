@@ -1,4 +1,5 @@
 /* Sistema de diseño real de atiende.ai — ver packages/ui/src/index.css (fuente
    compartida entre repos standalone y este monorepo, nunca reinventar aquí). */
 @import "@atiende/ui/styles.css";
+@import "@atiende/ui/cifra.css";
 @import "./fuentes-ds3.css";
