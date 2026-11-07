@@ -41,6 +41,7 @@ import type {
   SuperadminOrganizationBillingRow,
   SuperadminOrganizationRow,
   UpsertOrganizationBillingInput,
+  ActivacionPorPago,
 } from "./core-repository.ts";
 import {
   MembershipRemovalError,
@@ -768,6 +769,18 @@ export class InMemoryCoreRepository implements CoreRepository, CoreStaffReposito
       currentPeriodEnd: input.currentPeriodEnd,
     });
     return this.buildOrganizationBillingRow(input.organizationId);
+  }
+
+  async activateOrganizationOnPayment(organizationId: string): Promise<ActivacionPorPago> {
+    // Misma regla que core.organization_activate_on_payment (0072): solo 'trial' -> 'active'; suspendida nunca se reactiva.
+    const org = this.organizations.get(organizationId);
+    if (!org) return "no_existe";
+    const status = org.status ?? "active";
+    if (status === "trial") {
+      this.organizations.set(organizationId, { ...org, status: "active" });
+      return "activada";
+    }
+    return status === "active" ? "ya_activa" : "suspendida";
   }
 
   async markBillingWebhookEventSeen(eventId: string): Promise<BillingWebhookEventMark> {

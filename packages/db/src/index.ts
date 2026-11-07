@@ -22,6 +22,7 @@ export type {
   CreateProspectoInput,
   OrganizationBillingRow,
   UpsertOrganizationBillingInput,
+  ActivacionPorPago,
   BillingWebhookEventMark,
   SuperadminOrganizationBillingRow,
   BillingWebhookEventSummaryRow,
