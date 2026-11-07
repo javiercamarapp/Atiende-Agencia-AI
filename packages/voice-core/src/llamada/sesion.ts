@@ -51,6 +51,16 @@ export interface AperturaLlamada {
   readonly vocabulario?: readonly string[];
   /** Voz telefonica de la sucursal para el TTS de la cascada v2 (id de ElevenLabs, `branch_voice_config.tts_voice_id`); null = la de la plataforma (Regina). Gemini Live no la usa. */
   readonly vozTelefono?: string | null;
+  /** Reglas del prompt que solo aplican a un tema (dieta del prompt de voz): la cascada v2 las agrega a la conversacion cuando el cliente toca el tema
+   * (`reglasActivadas`); los demas escalones las reciben todas dentro de `instruccion` (la escalera las fija con `instruccionConReglasFijas`). */
+  readonly reglasCondicionales?: readonly ReglaCondicional[];
+}
+
+/** Regla por tema: `patron` es el `source` de una RegExp SIN acentos y en minusculas, probada con la bandera "i" contra el texto del cliente normalizado. */
+export interface ReglaCondicional {
+  readonly id: string;
+  readonly patron: string;
+  readonly texto: string;
 }
 
 export interface VozSesionLlamada {

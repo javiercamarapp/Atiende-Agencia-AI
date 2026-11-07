@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest";
 import { LIMITES_POR_DEFECTO as LIMITES_CORE } from "@atiende/voice-core";
 import { LIMITES_POR_DEFECTO, LIMITES_VOZ_PM, ControladorLlamada, crearEjecutorTools, FakeVoiceProvider } from "../src/index.ts";
-import { COMPORTAMIENTO_VOZ_MAX, REGLAS_VIVAS_VOZ, bloqueReglasVozPm, comportamientoVozPm, instruccionVozConReglas } from "../src/voz/perfil-voz-pm.ts";
+import { COMPORTAMIENTO_VOZ_MAX, REGLAS_CONDICIONALES_VOZ_PM, REGLAS_VIVAS_VOZ, REGLAS_VOZ_NUCLEO, bloqueReglasVozPm, comportamientoVozPm, instruccionVozConReglas } from "../src/voz/perfil-voz-pm.ts";
 import { PM_REGLA_NO_REPETIR_DATOS, PM_REGLA_REINTENTO_PEDIDO, PM_REGLA_RESERVACIONES, buildPmSystemPrompt, pmCustomerContextBlock } from "../src/whatsapp/perfil-pm.ts";
 import { PM_CONFIG_POR_OMISION } from "../src/whatsapp/llm-turn-handler.ts";
 import type { BranchSummary, CustomerLookupResult } from "../src/types.ts";
@@ -28,7 +28,9 @@ describe("instruccion de voz = texto editable + bloque de reglas al FINAL", () =
     expect(REGLAS_VIVAS_VOZ).toMatch(/solo precios y totales que devolvió una herramienta en ESTA llamada/);
     expect(REGLAS_VIVAS_VOZ).toMatch(/UNA sola vez si sigue en la línea/);
     expect(REGLAS_VIVAS_VOZ).toContain(PM_REGLA_NO_REPETIR_DATOS);
-    expect(bloque).toContain(REGLAS_VIVAS_VOZ);
+    // dieta del prompt de voz: el bloque lleva el NUCLEO; lo tematico viaja como regla condicional (juntos cubren REGLAS_VIVAS_VOZ)
+    expect(bloque).toContain(REGLAS_VOZ_NUCLEO);
+    for (const l of REGLAS_VIVAS_VOZ.split("\n").filter((x) => x.startsWith("- "))) expect(bloque.includes(l) || REGLAS_CONDICIONALES_VOZ_PM.some((r) => r.texto.includes(l))).toBe(true);
     // lo que depende de la organizacion (H3, paso 8) sale con SU config
     const propio = bloqueReglasVozPm({ promosTexto: "martes 3x2 en tortas", deliveryTimeText: "30 min", pedidoGrandeTexto: "mas de $9,000" });
     expect(propio).toContain("martes 3x2 en tortas");
@@ -121,7 +123,9 @@ describe("perfil PM: piezas del original que faltaban", () => {
 
   it("voz: las mismas reglas llegan por el bloque no borrable, aunque el comportamiento editable las haya perdido", () => {
     const instruccion = instruccionVozConReglas({ comportamiento: "" });
-    for (const regla of [PM_REGLA_NO_REPETIR_DATOS, PM_REGLA_REINTENTO_PEDIDO, PM_REGLA_RESERVACIONES]) expect(instruccion).toContain(regla);
+    for (const regla of [PM_REGLA_NO_REPETIR_DATOS, PM_REGLA_REINTENTO_PEDIDO]) expect(instruccion).toContain(regla);
+    // reservaciones: regla condicional (llega cuando el cliente habla de reservar o de un evento)
+    expect(REGLAS_CONDICIONALES_VOZ_PM.find((r) => r.id === "reservaciones")?.texto).toContain(PM_REGLA_RESERVACIONES);
   });
 
   it("el perfil de voz compacto sigue teniendo la misma seccion de reglas que WhatsApp (el bloque se arma de ahi)", () => {

@@ -388,6 +388,7 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
     voiceId: contexto.voiceId,
     // Cascada v2: nombres del menu como keyterms del STT, modelo de los ajustes del agente y voz telefonica de la sucursal (la API vieja no los manda: valores de la plataforma).
     vocabulario: contexto.vocabulario,
+    ...(contexto.reglasCondicionales.length > 0 ? { reglasCondicionales: contexto.reglasCondicionales } : {}),
     ...(contexto.modeloVoz ? { modeloLlm: contexto.modeloVoz } : {}),
     ...(contexto.vozTelefono ? { vozTelefono: contexto.vozTelefono } : {}),
     limites,

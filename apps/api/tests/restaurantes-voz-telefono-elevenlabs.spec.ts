@@ -117,6 +117,16 @@ describe("contexto de la llamada para la cascada v2", () => {
     expect((await app.request(`${base}/ajustes`, authedJson(ctx.staff.owner.token, { ...AJUSTES_AGENTE_POR_DEFECTO, vozModeloCascada: "openai/gpt-6-luna" }, "PUT"))).status).toBe(200);
   });
 
+  it("con comportamiento editado manda las reglas por tema aparte (reglasCondicionales: id, patron, texto) para que la cascada las agregue segun el tema", async () => {
+    const { app, base, ctx, contexto } = await construir();
+    await app.request(`${base}/config`, authedJson(ctx.staff.owner.token, { ...CONFIG, comportamiento: "Hable de usted." }, "PUT"));
+    const c = await (await contexto()).json();
+    expect(Array.isArray(c.reglasCondicionales)).toBe(true);
+    const kilos = c.reglasCondicionales.find((r: { id: string }) => r.id === "kilos");
+    expect(kilos).toMatchObject({ id: "kilos", patron: expect.any(String), texto: expect.stringContaining("KILOS Y FRACCIONES") });
+    expect(c.instruccion).not.toContain("KILOS Y FRACCIONES");
+  });
+
   it("si leer el menu falla, la llamada NO se cae: vocabulario vacio; sin voz ni modelo guardados, null", async () => {
     const { ctx, contexto } = await construir();
     ctx.restaurantesRepo.listAvailableProductsForBranch = () => Promise.reject(new Error("caida"));
