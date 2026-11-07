@@ -14,6 +14,7 @@ import type {
   ConsolaRepository,
   OrgEquipoRepository,
   AltaPropiedadRepository,
+  RegistroAutoservicioRepository,
   LoginChoferRepository,
   OrgFichaRepository,
   FichasAgenteRepository,
@@ -708,6 +709,8 @@ export interface AppDeps {
   /** Onboarding P0: alta de sucursal/propiedad (dueño o superadmin), migracion 0071 y routes/alta-sucursal.ts. Fabrica por sesion del caller.
    *  OPCIONAL: ausente o migracion sin aplicar -> 503 honesto, nunca un 500. */
   readonly altaPropiedadRepo?: (db: TenantDbSession) => AltaPropiedadRepository;
+  /** Registro autoservicio de restaurantes (0077). Ausente = la pantalla de registro responde 503 «no disponible aún». */
+  readonly registroAutoservicioRepo?: (db: TenantDbSession) => RegistroAutoservicioRepository;
   /** Login del repartidor por celular + codigo de WhatsApp (docs/LOGIN-CHOFER-WHATSAPP.md, migracion 0059). Fabrica por sesion: el login y la
    *  verificacion usan `withAppSession({ userId: null })`; el registro del telefono, la sesion del encargado/admin. OPCIONAL: ausente o migracion
    *  sin aplicar -> "no disponible aun" (503), nunca un 500. Ademas exige `env.loginChoferWhatsapp` (apagado por omision). */
