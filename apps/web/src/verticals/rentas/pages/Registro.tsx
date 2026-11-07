@@ -4,14 +4,12 @@
 // al menos una unidad + admin (+ propietario opcional) — mismo patrón visual que
 // Login.tsx/OwnerPortalActivar.tsx (formulario público, sin sesión).
 //
-// Nota HONESTA post-registro (nunca finge lo que no existe todavía): el admin recién
-// creado queda con `created_via='registro_autoservicio'` y `email_verified_at: null`
-// (`POST /auth/login` lo bloquea explícito con 403 hasta que se verifique el correo,
-// ver `apps/api/src/routes/auth.ts`) — este monorepo TODAVÍA no envía/consume un
-// correo real de verificación (gap documentado desde la Fase 11 original, ver
-// `packages/domain-rentas/src/onboarding/tipos.ts`). Esta pantalla NUNCA promete "revisa
-// tu correo" (sería mentir: no se envía nada) — en vez de eso dice con claridad qué
-// pasó y qué falta para poder entrar.
+// Post-registro (onboarding P0): el admin recién creado queda con `email_verified_at: null` y
+// `POST /auth/login` lo bloquea con 403 hasta verificar el correo. El registro ya encola ese
+// correo de verificación (outbox de rentas; lo envía su despachador, puede tardar unos minutos),
+// así que la pantalla de éxito dice «revisa tu correo» y ofrece «Reenviar correo», que llama al
+// reenvío público POST /auth/email-verification/reenviar (`RevisaTuCorreo`, con aviso propio
+// cuando el servidor responde 429). ES/EN con `?lang=en`, mismo criterio que el login.
 //
 // Ronda de portado del sistema de diseño real (@atiende/ui): Card/Input/Label/Button
 // y clases de token en vez de los `style={{...}}` hechos a mano. CERO cambios de
@@ -20,8 +18,9 @@
 // apps/web/tests/rentas-registro-page.spec.tsx.
 import { useState } from "react";
 import type { FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button, Card, CardContent, Input, Label, NativeSelect } from "@atiende/ui";
+import { RevisaTuCorreo } from "../../../shell/cuenta/RevisaTuCorreo.tsx";
 import { OnboardingError, registrarTenant, ZONAS_HORARIAS_FRECUENTES } from "../lib/onboarding-client.ts";
 import type { RegistroTenantResultado, RegistroUnidadInput } from "../lib/onboarding-client.ts";
 
@@ -37,6 +36,14 @@ function nuevaUnidadVacia(): RegistroUnidadInput {
 
 export function RentasRegistroPage({ apiBaseUrl }: RegistroPageProps) {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const locale = searchParams.get("lang") === "en" ? "en" : "es";
+  const tr = (es: string, en: string) => (locale === "en" ? en : es);
+  function cambiarIdioma(siguiente: "es" | "en") {
+    const params = new URLSearchParams(searchParams);
+    params.set("lang", siguiente);
+    setSearchParams(params, { replace: true });
+  }
 
   const [organizacionNombre, setOrganizacionNombre] = useState("");
   const [tipoOrganizacion, setTipoOrganizacion] = useState<"anfitrion" | "empresa_gestora">("anfitrion");
@@ -95,20 +102,24 @@ export function RentasRegistroPage({ apiBaseUrl }: RegistroPageProps) {
   if (resultado) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-background px-4 py-6">
-        <Card className="w-[min(480px,92vw)]">
+        <Card className="w-[min(480px,92vw)]" lang={locale}>
           <CardContent className="p-5 flex flex-col gap-3">
-            <h1 className="font-display text-xl font-semibold text-foreground m-0">Tu cuenta se creó</h1>
+            <nav className="flex justify-end gap-2 text-xs" aria-label={tr("Idioma", "Language")}>
+              <button type="button" onClick={() => cambiarIdioma("es")} aria-current={locale === "es" ? "true" : undefined} aria-label="Español" className="text-muted-foreground aria-[current=true]:font-semibold aria-[current=true]:text-foreground">
+                ES
+              </button>
+              <button type="button" onClick={() => cambiarIdioma("en")} aria-current={locale === "en" ? "true" : undefined} aria-label="English" className="text-muted-foreground aria-[current=true]:font-semibold aria-[current=true]:text-foreground">
+                EN
+              </button>
+            </nav>
+            <h1 className="font-display text-xl font-semibold text-foreground m-0">{tr("Tu cuenta se creó", "Your account was created")}</h1>
             <p className="m-0 text-sm text-foreground">
-              Organización <strong>{organizacionNombre}</strong>, propiedad <strong>{propiedadNombre}</strong> y {resultado.unidadIds.length}{" "}
-              {resultado.unidadIds.length === 1 ? "unidad" : "unidades"} quedaron registradas.
+              {tr("Organización", "Organization")} <strong>{organizacionNombre}</strong>, {tr("propiedad", "property")} <strong>{propiedadNombre}</strong> {tr("y", "and")} {resultado.unidadIds.length}{" "}
+              {resultado.unidadIds.length === 1 ? tr("unidad", "unit") : tr("unidades", "units")} {tr("quedaron registradas.", "were registered.")}
             </p>
-            <div className="rounded-lg border border-border bg-muted px-3 py-3 text-sm text-muted-foreground">
-              Este entorno todavía no envía un correo de verificación automático, así que <strong className="text-foreground">{adminCorreo}</strong> no puede iniciar sesión todavía
-              (tu cuenta exige correo verificado antes del primer login). Contacta al equipo de Atiende con tu correo de registro para que activen tu
-              acceso manualmente mientras esa pieza se conecta.
-            </div>
-            <Button type="button" onClick={() => navigate("/rentas/login")} className="w-full">
-              Ir a iniciar sesión
+            <RevisaTuCorreo apiBaseUrl={apiBaseUrl} vertical="rentas" correo={adminCorreo.trim()} locale={locale} />
+            <Button type="button" onClick={() => navigate(locale === "en" ? "/rentas/login?lang=en" : "/rentas/login")} className="w-full">
+              {tr("Ir a iniciar sesión", "Go to sign in")}
             </Button>
           </CardContent>
         </Card>
