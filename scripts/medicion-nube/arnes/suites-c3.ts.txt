@@ -11,6 +11,8 @@
 //  - INVALIDA (no FALLA) cuando el turno del agente fallo por el proveedor (telemetria error_proveedor / presupuesto_agotado, "fetch failed") o el
 //    cliente simulado no pudo responder; se guarda la causa para poder recontar con el criterio estricto del origen.
 //  - QA_C3_SECO=1: corrida SECA sin LLM (sin cliente ni agente): buscar_sucursal_cercana y cotizar_pedido reales por escenario + siembra de previos.
+//  - QA_C3_BANCO=principal: mismo corredor y mismo veredicto con el banco PRINCIPAL del suelto (catalogo.mjs, 51 escenarios; arnes/principal.json
+//    generado por `c3-conciliar.py --banco principal`). Los escenarios con `_port.excluido` (overrides del fixture que la cuenta real no reproduce) no se corren.
 import { createHmac, randomUUID } from "node:crypto";
 import { readFileSync, writeFileSync, appendFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -37,8 +39,10 @@ function hav(a: number, b: number, c: number, d: number) { const r = (x: number)
 const merida = (ms: number) => { const p = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: "America/Merida", weekday: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(ms)).map((x) => [x.type, x.value])); return { dow: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(p.weekday!), min: Number(p.hour) * 60 + Number(p.minute), hhmm: `${p.hour}:${p.minute}` }; };
 
 // ---------- banco ----------
+/** Banco a correr: `c3` (ciego-3.json, por omision) o `principal` (principal.json). QA_C3_JSON manda sobre ambos. */
+export const BANCO = process.env.QA_C3_BANCO === "principal" ? "principal" : "c3";
 export function cargarBanco(): any {
-  const ruta = process.env.QA_C3_JSON ?? fileURLToPath(new URL("./ciego-3.json", import.meta.url));
+  const ruta = process.env.QA_C3_JSON ?? fileURLToPath(new URL(BANCO === "principal" ? "./principal.json" : "./ciego-3.json", import.meta.url));
   return JSON.parse(readFileSync(ruta, "utf8"));
 }
 
@@ -109,7 +113,7 @@ async function cotizar(s: Stack, ref: Ref, slug: string, canal: string, colonia:
   for (let intento = 0; intento < 10; intento++) {
     const body = { branch_slug: slug, canal, ...(canal === "domicilio" && colonia ? { colonia_entrega: colonia } : {}), ...(canal === "recoger" ? { minutos_para_recoger: 40 } : {}), items: lineas(ref, slug, items, pack, conTortilla), payment_method: pago ?? "efectivo", adult_confirmed: true };
     const r = await api(s, "/orders/quote", body, extra); ultimo = { r, body };
-    if (r.status === 200) return { ok: true, total: r.j?.quote?.total ?? null, body };
+    if (r.status === 200) return { ok: true, total: r.j?.quote?.total ?? null, promo: r.j?.quote?.promocionAplicada?.code ?? null, descuento: r.j?.quote?.descuento ?? 0, body };
     const msg = String(r.j?.message ?? r.txt);
     const m = /^(.+?) solo se vende en [oó]rdenes de (\d+) piezas/.exec(msg);
     if (m && !pack.has(norm(m[1]))) { pack.set(norm(m[1]), Number(m[2])); continue; }
@@ -219,7 +223,16 @@ export function verificarC3(e: any, ref: Ref, nuevos: any[], turnos: { cliente: 
   if (typeof esp.pedidos === "number") out.push(check("pedidos_n", nuevos.length === esp.pedidos, `pedidos creados=${nuevos.length}, esperados=${esp.pedidos}`, "dinero"));
   const o1 = nuevos[0];
   if (o1 && typeof esp.pedidos === "number" && esp.pedidos >= 1) {
-    const suc = sucDe(o1); const items: any[] = o1.items ?? [];
+    const suc = sucDe(o1); const crudos: any[] = o1.items ?? [];
+    // Promocion automatica del servidor destino (PM PR-4, promotions.ts `renglonesConPromocionAplicada`): el 2x1 parte el renglon en uno pagado y otro
+    // de CORTESIA a $0 (`courtesy`, `listPrice`, `promoCode`) y la cortesia de otro producto (aguas del martes) llega como renglon propio. El origen no
+    // aplicaba promos en el pedido: para comparar con el banco, las cantidades se cuentan por producto y tortilla (como `fusionarRenglonesPorProducto`)
+    // y los renglones SOLO de cortesia no cuentan como renglones de mas. Solo se une la cortesia a su renglon pagado (mismo producto y tortilla): dos
+    // renglones PAGADOS del mismo producto siguen separados, como antes, asi que sin cortesia nada cambia respecto al veredicto anterior.
+    const esCortesia = (x: any) => x.courtesy === true && Number(x.price) === 0;
+    const clave = (x: any) => `${x.id ?? x.name}|${x.tortilla ?? ""}`;
+    const items: any[] = crudos.filter((x) => !esCortesia(x)).map((x) => ({ ...x, soloCortesia: false }));
+    for (const x of crudos.filter(esCortesia)) { const p = items.find((y) => !y.soloCortesia && clave(y) === clave(x)); if (p) p.quantity += x.quantity; else items.push({ ...x, soloCortesia: true }); }
     if (Array.isArray(esp.items)) {
       const faltan: string[] = [];
       for (const it of esp.items) {
@@ -229,17 +242,27 @@ export function verificarC3(e: any, ref: Ref, nuevos: any[], turnos: { cliente: 
         else if (h.quantity !== it.cantidad) faltan.push(`${h.name}: cantidad ${h.quantity}, esperada ${it.cantidad}`);
         else if (it.tortilla && h.tortilla !== it.tortilla) faltan.push(`${h.name}: tortilla ${h.tortilla ?? "ninguna"}, esperada ${it.tortilla}`);
       }
-      if (!esp.items_extra_ok && items.length > esp.items.length) faltan.push(`renglones de mas: ${items.length} vs ${esp.items.length}`);
+      const conCobro = items.filter((x) => !x.soloCortesia).length;
+      if (!esp.items_extra_ok && conCobro > esp.items.length) faltan.push(`renglones de mas: ${conCobro} vs ${esp.items.length}`);
       out.push(check("items", !faltan.length, faltan.join("; "), "dinero"));
     }
-    const malos: string[] = []; let suma = 0;
-    for (const x of items) { const p = precioCat(suc, x.id); if (p == null || x.price !== p) malos.push(`${x.name}: precio ${x.price}, catalogo ${p}`); suma += (p ?? x.price) * x.quantity; }
+    const malos: string[] = []; let suma = 0; let cortesiaDeEsperados = 0;
+    for (const x of crudos) {
+      const p = precioCat(suc, x.id);
+      if (esCortesia(x)) {
+        // cortesia: el precio de lista que guarda el servidor debe ser el del catalogo; no se cobra (no entra en la suma)
+        if (x.listPrice != null && p != null && x.listPrice !== p) malos.push(`${x.name} (cortesia ${x.promoCode ?? ""}): precio de lista ${x.listPrice}, catalogo ${p}`);
+        if (Array.isArray(esp.items) && esp.items.some((it: any) => (it.producto_re ? new RegExp(it.producto_re, "i").test(x.name) : norm(x.name) === norm(it.producto)))) cortesiaDeEsperados += (p ?? x.listPrice ?? 0) * x.quantity;
+        continue;
+      }
+      if (p == null || x.price !== p) malos.push(`${x.name}: precio ${x.price}, catalogo ${p}`); suma += (p ?? x.price) * x.quantity;
+    }
     suma = Math.round(suma * 100) / 100;
     if (Math.abs(suma - o1.total) > 0.001) malos.push(`total ${o1.total} != suma de catalogo ${suma}`);
     if (esp.total_fijo === true && typeof esp.total_mxn === "number" && Math.abs(o1.total - esp.total_mxn) > 0.001) malos.push(`total ${o1.total} != esperado ${esp.total_mxn}`);
     if (Array.isArray(esp.items) && !esp.items_extra_ok && esp.total_fijo !== true) {
       let t = 0; for (const it of esp.items) { const p = it.producto ? (ref.prodPorNombre.get(norm(it.producto)) ?? []).find((x) => precioCat(suc, x.id) != null) : null; const pr = p ? precioCat(suc, p.id) : null; if (pr != null) t += pr * it.cantidad; }
-      if (t > 0 && Math.abs(Math.round(t * 100) / 100 - o1.total) > 0.001) malos.push(`total ${o1.total} != esperado por catalogo ${t}`);
+      if (t > 0 && Math.abs(Math.round((t - cortesiaDeEsperados) * 100) / 100 - o1.total) > 0.001) malos.push(`total ${o1.total} != esperado por catalogo ${t}${cortesiaDeEsperados ? ` - cortesia ${cortesiaDeEsperados}` : ""}`);
     }
     out.push(check("precio_total", !malos.length, malos.join("; "), "dinero"));
     if (esp.sucursal) out.push(check("sucursal", suc === esp.sucursal, `sucursal=${suc}, esperada=${esp.sucursal}`));
@@ -378,19 +401,25 @@ async function seca(s: Stack, ref: Ref, E: any[], res: string) {
   for (const e of E) {
     await conRelojPropio(e.reloj, async () => {
       const esp = e.esperado ?? {}; const r: any = { id: e.id };
-      const col = e.zona?.colonia ?? e.persona?.hechos?.colonia ?? (e.persona?.hechos?.direccion ? coloniaDeDireccion(e.persona.hechos.direccion) : null);
+      // Principal: los clientes existentes traen la colonia en `cliente` (colonia_entrega o la direccion guardada), no en los hechos. Solo en ese
+      // banco, para que una corrida seca de C3 siga dando lo mismo que la que concilio ciego-3.json.
+      const colCli = BANCO === "principal" ? e.cliente?.colonia_entrega ?? (e.cliente?.direcciones?.[0] ? coloniaDeDireccion(e.cliente.direcciones[0]) : null) : null;
+      const col = e.zona?.colonia ?? e.persona?.hechos?.colonia ?? (e.persona?.hechos?.direccion ? coloniaDeDireccion(e.persona.hechos.direccion) : null) ?? colCli;
       if (col) { r.colonia = col; r.cercana = await cercana(s, col); }
-      if (esp.sucursal && Array.isArray(esp.items) && esp.items.every((i: any) => i.producto)) {
-        const q = await cotizar(s, ref, esp.sucursal, esp.entrega ?? "domicilio", col, esp.items.map((i: any) => ({ nombre: i.producto, cantidad: i.cantidad, tortilla: i.tortilla })), esp.pago ?? null);
-        r.cotizacion = q.ok ? { total: q.total } : { error: q.error };
+      // Sucursal para cotizar: la esperada o (principal, domicilio sin sucursal esperada) la que asigna la herramienta real a la colonia.
+      const slugQ = esp.sucursal ?? (BANCO === "principal" && (esp.entrega ?? "domicilio") === "domicilio" && r.cercana?.estado === "asignada" ? r.cercana.slug : null);
+      if (slugQ && !esp.sucursal) r.sucursal_implicita = slugQ;
+      if (slugQ && Array.isArray(esp.items) && esp.items.length && esp.items.every((i: any) => i.producto)) {
+        const q = await cotizar(s, ref, slugQ, esp.entrega ?? "domicilio", col, esp.items.map((i: any) => ({ nombre: i.producto, cantidad: i.cantidad, tortilla: i.tortilla })), esp.pago ?? null);
+        r.cotizacion = q.ok ? { total: q.total, ...(q.promo ? { promo: q.promo, descuento: q.descuento } : {}) } : { error: q.error };
         const asig = r.cercana?.slug;
-        if ((esp.entrega ?? "domicilio") === "domicilio" && asig && asig !== esp.sucursal) {
+        if ((esp.entrega ?? "domicilio") === "domicilio" && asig && asig !== slugQ) {
           const q2 = await cotizar(s, ref, asig, "domicilio", col, esp.items.map((i: any) => ({ nombre: i.producto, cantidad: i.cantidad, tortilla: i.tortilla })), esp.pago ?? null);
-          r.cotizacion_asignada = q2.ok ? { slug: asig, total: q2.total } : { slug: asig, error: q2.error };
+          r.cotizacion_asignada = q2.ok ? { slug: asig, total: q2.total, ...(q2.promo ? { promo: q2.promo, descuento: q2.descuento } : {}) } : { slug: asig, error: q2.error };
         }
       }
       if (e.cliente?.existente) { try { r.semilla = (await sembrarCliente(s, ref, newPhone(), e.cliente)).nota; } catch (err) { r.semilla_error = (err as Error).message; } }
-      out.push(r); console.log(`SECO ${e.id} colonia=${r.colonia ?? "-"} -> ${r.cercana ? `${r.cercana.estado} ${r.cercana.slug ?? ""} ${r.cercana.km ?? ""}` : "-"} | esperada=${esp.sucursal ?? "-"} | cotiza=${r.cotizacion ? r.cotizacion.total ?? r.cotizacion.error : "-"} vs ${esp.total_mxn ?? "-"}${r.cotizacion_asignada ? ` | en ${r.cotizacion_asignada.slug}=${r.cotizacion_asignada.total ?? r.cotizacion_asignada.error}` : ""}${r.semilla ? " | semilla " + r.semilla : ""}${r.semilla_error ? " | SEMILLA FALLO " + r.semilla_error : ""}`);
+      out.push(r); console.log(`SECO ${e.id} colonia=${r.colonia ?? "-"} -> ${r.cercana ? `${r.cercana.estado} ${r.cercana.slug ?? ""} ${r.cercana.km ?? ""}` : "-"} | esperada=${esp.sucursal ?? (r.sucursal_implicita ? r.sucursal_implicita + " (implicita)" : "-")} | cotiza=${r.cotizacion ? r.cotizacion.total ?? r.cotizacion.error : "-"} vs ${esp.total_mxn ?? "-"}${r.cotizacion_asignada ? ` | en ${r.cotizacion_asignada.slug}=${r.cotizacion_asignada.total ?? r.cotizacion_asignada.error}` : ""}${r.semilla ? " | semilla " + r.semilla : ""}${r.semilla_error ? " | SEMILLA FALLO " + r.semilla_error : ""}`);
     });
   }
   writeFileSync(`${res}/c3-seco.json`, JSON.stringify({ generado: new Date().toISOString(), escenarios: out }, null, 1));
@@ -403,7 +432,9 @@ function pnidDe(e: any): string { return MODO_NUMERO === "org" ? PNID_ORG : PNID
 // ---------- entrada desde run.ts ----------
 export async function correrC3(s: Stack, o: { conc: number; filtro: RegExp | null; res: string }) {
   const banco = cargarBanco(); const colonias = banco._port?.colonias ?? [];
-  const E = (banco.escenarios as any[]).filter((e) => !o.filtro || o.filtro.test(e.id));
+  const excluidos = (banco.escenarios as any[]).filter((e) => e._port?.excluido);
+  const E = (banco.escenarios as any[]).filter((e) => !e._port?.excluido && (!o.filtro || o.filtro.test(e.id)));
+  console.log(`banco ${BANCO}: ${banco.escenarios.length} escenarios, ${excluidos.length} excluidos del puerto${excluidos.length ? " (" + excluidos.map((e) => e.id).join(",") + ")" : ""}`);
   const ref = await referencia(s);
   // Numero por sucursal (por omision): cada sucursal activa con su numero en whatsapp_branch_channel. Modo `org`: el numero de la organizacion sin sucursal.
   PNID_DE_SUCURSAL = new Map((await s.pool.query(`select bd.slug, b.phone_number_id from restaurantes.whatsapp_branch_channel b join restaurantes.branch_detail bd on bd.property_id = b.property_id where b.organization_id = $1`, [ORG_ID])).rows.map((x: any) => [x.slug, x.phone_number_id]));
@@ -432,7 +463,7 @@ export async function correrC3(s: Stack, o: { conc: number; filtro: RegExp | nul
   await Promise.all(Array.from({ length: Math.max(1, Math.min(o.conc, E.length)) }, worker));
   const val = resultados.filter((r) => r.valida); const pasan = val.filter((r) => r.veredicto === "PASA").length;
   const ms = resultados.flatMap((r) => r.ms ?? []);
-  console.log(`\nRESUMEN c3 rep${rep}: ${pasan}/${val.length} PASAN (validas) | invalidas ${resultados.length - val.length} | latencia turno ${JSON.stringify(stats(ms))} | cliente simulado $${gasto.usd.toFixed(3)}`);
+  console.log(`\nRESUMEN c3 banco=${BANCO} rep${rep}: ${pasan}/${val.length} PASAN (validas) | invalidas ${resultados.length - val.length} | latencia turno ${JSON.stringify(stats(ms))} | cliente simulado $${gasto.usd.toFixed(3)}`);
   try { appendFileSync(`${o.res}/RESUMEN-c3.txt`, `rep${rep} ${pasan}/${val.length} invalidas=${resultados.length - val.length}\n`); } catch { /* opcional */ }
 }
 export const _probar = { verificarC3, escalaciones, hashTel, merida, randomUUID };
