@@ -263,10 +263,19 @@ export function buildCerebroV2ZdrLadders(env: ApiEnv, _models?: LlmModelsConfig)
   const salida = new Map<string, { ladder: LlmProvider[]; alternativas: LlmProvider[] }>();
   const { openrouter } = env.llmProviders;
   if (!openrouter) return salida;
-  const alternativasRoute: LlmRouteConfig = { models: [...CEREBRO_V2_ALTERNATIVAS], routing: { allowFallbacks: true, zdr: true } };
-  const alternativas = CEREBRO_V2_ALTERNATIVAS.map((rung) => proveedorOpenRouter(env, openrouter, alternativasRoute, rung));
-  salida.set(RESTAURANTES_WHATSAPP_AGENT_ROLE, { ladder: CEREBRO_V2_WHATSAPP_ROUTE.models.map((rung) => proveedorOpenRouter(env, openrouter, CEREBRO_V2_WHATSAPP_ROUTE, rung)), alternativas });
-  const escalada = CEREBRO_V2_ESCALADO_ROUTE;
+  // Esfuerzo de razonamiento de Luna en el cerebro v2 (CEREBRO_V2_LUNA_ESFUERZO = none|minimal|low; otro valor o ausente = low): para medir latencia sin redeploy de codigo.
+  const esfuerzo = ["none", "minimal", "low"].includes(String(process.env.CEREBRO_V2_LUNA_ESFUERZO ?? "").trim()) ? String(process.env.CEREBRO_V2_LUNA_ESFUERZO).trim() : "low";
+  const conEsfuerzo = (r: LlmRungConfig): LlmRungConfig => {
+    if (r.model !== "openai/gpt-6-luna") return r;
+    if (esfuerzo === "none") { const { reasoningEffort: _sin, ...resto } = r; return resto; }
+    return { ...r, reasoningEffort: esfuerzo as LlmRungConfig["reasoningEffort"] };
+  };
+  const ajustar = (route: LlmRouteConfig): LlmRouteConfig => ({ ...route, models: route.models.map(conEsfuerzo) });
+  const alternativasRoute: LlmRouteConfig = { models: CEREBRO_V2_ALTERNATIVAS.map(conEsfuerzo), routing: { allowFallbacks: true, zdr: true } };
+  const alternativas = alternativasRoute.models.map((rung) => proveedorOpenRouter(env, openrouter, alternativasRoute, rung));
+  const principal = ajustar(CEREBRO_V2_WHATSAPP_ROUTE);
+  salida.set(RESTAURANTES_WHATSAPP_AGENT_ROLE, { ladder: principal.models.map((rung) => proveedorOpenRouter(env, openrouter, principal, rung)), alternativas });
+  const escalada = ajustar(CEREBRO_V2_ESCALADO_ROUTE);
   salida.set(RESTAURANTES_WHATSAPP_AGENT_ESCALATED_ROLE, { ladder: escalada.models.map((rung) => proveedorOpenRouter(env, openrouter, escalada, rung)), alternativas: [] });
   return salida;
 }
