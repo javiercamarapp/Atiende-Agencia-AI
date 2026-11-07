@@ -386,7 +386,6 @@ export function RestaurantesDashboardPage({
   // se pinta (nunca un valor inventado).
   const estadoDatos: ResumenEstadoDato[] = [
     { etiqueta: "Periodo", valor: etiquetaPeriodo },
-    { etiqueta: "Pedidos en el periodo", valor: formatInt(sales.orders) },
     ...(ultimaWa ? [{ etiqueta: "Último WhatsApp", valor: ultimaWa }] : []),
     ...(ultimaVz ? [{ etiqueta: "Última llamada", valor: ultimaVz }] : []),
     ...(extras.zona ? [{ etiqueta: "Zona horaria", valor: extras.zona }] : []),
