@@ -356,6 +356,30 @@ export function buildResumenDiarioLlmGateway(env: ApiEnv, killSwitch?: GatewayKi
   return gateway;
 }
 
+/** Topes del gateway DEDICADO de las recomendaciones del CFO de la plataforma: pocas llamadas al dia, a pedido de un superadmin. */
+export const RECOMENDACIONES_CFO_LLM_BUDGET_LIMITS: GatewayBudgetLimits = {
+  maxRunUsd: 0.25,
+  maxTenantDailyUsd: 2,
+};
+
+/**
+ * Gateway DEDICADO a las recomendaciones del CFO de la plataforma (`apps/api/src/cfo/recomendaciones.ts`), por la misma razon que
+ * `buildResumenDiarioLlmGateway`: es gasto de PLATAFORMA (sin `organization_id`), asi que no pasa por el registro de uso por organizacion. El
+ * modelo sale de la tabla central actividad -> modelo (rol `plataforma:recomendaciones_cfo`, siempre con ZDR y modelos baratos).
+ * `undefined` sin ningun proveedor (las recomendaciones caen a las reglas deterministas).
+ */
+export function buildRecomendacionesCfoLlmGateway(env: ApiEnv, killSwitch?: GatewayKillSwitch): LlmGateway | undefined {
+  if (!hasAnyProvider(env)) return undefined;
+  const gateway = new LlmGateway({
+    breaker: buildCircuitBreaker(env),
+    budgetStore: new InMemoryBudgetLedgerStore(),
+    budgetLimits: RECOMENDACIONES_CFO_LLM_BUDGET_LIMITS,
+    killSwitch,
+  });
+  gateway.registerLadder("plataforma:recomendaciones_cfo", buildRoleLadder(env, "plataforma:recomendaciones_cfo", loadLlmModelsConfig(env))!);
+  return gateway;
+}
+
 /** Topes de defensa en profundidad del gateway DEDICADO del Copiloto de superadmin: en memoria de proceso, por corrida y por dia. El tope MENSUAL propio
  *  (que si es persistente) lo aplica la ruta contra la bitacora (`core.get_copiloto_plataforma_gasto_mes`). Deliberadamente bajos: un turno son 2
  *  llamadas con un modelo premium y el uso es de un puñado de superadmins. */

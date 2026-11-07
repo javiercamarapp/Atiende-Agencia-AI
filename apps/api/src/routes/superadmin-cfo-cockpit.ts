@@ -17,6 +17,7 @@ import { requestActor } from "../http-security.ts";
 import { armarCockpit, COCKPIT_NO_DISPONIBLE, leerCockpit, mesActualUtc, sumarMeses } from "../cfo/cockpit.ts";
 import type { Cockpit } from "../cfo/cockpit.ts";
 import { economiaACsv } from "../cfo/cockpit-csv.ts";
+import { generarRecomendaciones } from "../cfo/recomendaciones.ts";
 import { traducirErrorSeguridad } from "./superadmin-mfa.ts";
 import type { AppDeps } from "../deps.ts";
 
@@ -25,6 +26,7 @@ const MES_RE = /^(\d{4})-(0[1-9]|1[0-2])$/u;
 const PROVEEDOR_RE = /^(\*|[a-z0-9][a-z0-9.-]{0,40})$/u;
 const EXPORT_RATE_LIMIT = { max: 30, windowMs: 5 * 60_000 } as const;
 const MUTACION_RATE_LIMIT = { max: 60, windowMs: 5 * 60_000 } as const;
+const RECOMENDACIONES_RATE_LIMIT = { max: 10, windowMs: 10 * 60_000 } as const;
 const MAX_MONTO_MXN = 1_000_000_000;
 
 export function parseMesCockpit(raw: string | undefined): string {
@@ -78,6 +80,26 @@ export function superadminCfoCockpitRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
         "x-content-type-options": "nosniff",
       },
     });
+  });
+
+  // POST (no GET): cada llamada puede gastar en el modelo. Solo superadmin completo (la zona CFO no lo abre al rol `finanzas`). Queda en la
+  // bitacora de la zona CFO ANTES de responder; si la bitacora falla, no se responde con datos.
+  app.post("/superadmin/cfo/recomendaciones", async (c) => {
+    const mes = parseMesCockpit(c.req.query("mes"));
+    const callerId = c.get("userId");
+    const allowed = await rateLimit(`admin:cfo-recomendaciones:${requestActor(c.req.raw, callerId)}`, RECOMENDACIONES_RATE_LIMIT.max, RECOMENDACIONES_RATE_LIMIT.windowMs, { category: "admin" });
+    if (!allowed) throw Errors.tooManyRequests("Demasiadas solicitudes de recomendaciones en poco tiempo.");
+    const cockpit = await cockpitDelMes(deps, callerId, mes);
+    if (cockpit === null) return c.json({ disponible: false, mes, mensaje: COCKPIT_NO_DISPONIBLE });
+    const r = await generarRecomendaciones(cockpit, deps.recomendacionesCfoLlmGateway);
+    if (deps.cfoZoneRepo) {
+      const zona = deps.cfoZoneRepo;
+      const log = await deps.engine
+        .withAppSession({ userId: callerId }, (db) => zona(db).logAccess(callerId, "consulta", "cfo/recomendaciones", { mes, fuente: r.fuente, recomendaciones: r.recomendaciones.length }))
+        .catch(() => null);
+      if (log === null) throw Errors.serviceUnavailable("No se pudo registrar la consulta en la bitácora de la zona CFO; por seguridad no se muestran las recomendaciones.");
+    }
+    return c.json({ disponible: true, mes, ...r });
   });
 
   app.get("/superadmin/cfo/supuestos", async (c) => {

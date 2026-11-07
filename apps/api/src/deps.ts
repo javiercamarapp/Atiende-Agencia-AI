@@ -603,6 +603,9 @@ export interface AppDeps {
    *  resumen se redacta con la plantilla determinista, nunca finge una
    *  llamada al LLM. */
   readonly resumenDiarioLlmGateway: LlmGateway | undefined;
+  /** Recomendaciones del CFO de la plataforma (`POST /superadmin/cfo/recomendaciones`, ver cfo/recomendaciones.ts). OPCIONAL: sin el, las
+   *  recomendaciones salen de las reglas deterministas. Gateway DEDICADO de plataforma, como el del resumen diario. */
+  readonly recomendacionesCfoLlmGateway?: LlmGateway | undefined;
   /** Copiloto de superadmin (CHAT-16): `POST /superadmin/copiloto` y `GET /superadmin/copiloto/estado`. OPCIONAL: sin el las rutas responden "no
    *  activado". En produccion lo arma `buildProductionSuperadminCopiloto` con un gateway DEDICADO (no el de los tenants); las pruebas inyectan un LLM
    *  guionado y fuentes en memoria. Ver `superadmin-copiloto/deps.ts`. */
