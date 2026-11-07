@@ -513,3 +513,110 @@ html[data-diseno="ds3"] [data-carga-tamano="pantalla"] .carga-logo { visibility:
   html[data-diseno="ds3"] #arranque.ds3-arranque[hidden] { background-color: Canvas; color: CanvasText; }
   html[data-diseno="ds3"] .ds3-arranque-punto.ds3-arranque-punto { fill: CanvasText; }
 }
+
+/* ---- 6. Movil (< 768) -----------------------------------------------------------------------------------------------
+ * Cabecera fija de vidrio de 56 px (+ area segura) en una sola fila: logo a la izquierda, selector y menu de cuenta (44, borde, radio 12)
+ * a la derecha; el nombre de la pagina queda solo para lectores de pantalla (sigue siendo el h1 de respaldo si la pagina no trae uno).
+ * Barra inferior flotante en pildora (64 px, a 12 px de los bordes) con 4 destinos + «Más»; se oculta con el teclado abierto.
+ * «Más» = el sidebar completo (secciones, filas de 44, cuenta) en una hoja inferior de 90dvh.
+ */
+@media (max-width: 767.98px) {
+  html[data-diseno="ds3"] .ds3-movil-cabecera.ds3-movil-cabecera {
+    background-color: color-mix(in srgb, hsl(var(--card)) 92%, transparent);
+    -webkit-backdrop-filter: saturate(1.4) blur(14px);
+    backdrop-filter: saturate(1.4) blur(14px);
+    border-bottom: 1px solid hsl(var(--border));
+  }
+  html[data-diseno="ds3"] .ds3-movil-cabecera-fila.ds3-movil-cabecera-fila {
+    min-height: 56px;
+    gap: 8px;
+    padding: 0 max(12px, env(safe-area-inset-right)) 0 max(12px, env(safe-area-inset-left));
+    border-bottom: 0;
+  }
+  html[data-diseno="ds3"] .ds3-movil-titulo.ds3-movil-titulo {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+  html[data-diseno="ds3"] .ds3-movil-menu.ds3-movil-menu {
+    width: 44px;
+    height: 44px;
+    border: 1px solid hsl(var(--border));
+    border-radius: 12px;
+    background-color: hsl(var(--card));
+    color: hsl(var(--foreground));
+  }
+  html[data-diseno="ds3"] .ds3-shell-contenido.ds3-shell-contenido {
+    padding: calc(56px + var(--safe-area-top, 0px) + 16px) 16px calc(64px + max(10px, env(safe-area-inset-bottom)) + 24px);
+  }
+
+  html[data-diseno="ds3"] .ds3-barra-inferior.ds3-barra-inferior {
+    left: max(12px, env(safe-area-inset-left));
+    right: max(12px, env(safe-area-inset-right));
+    bottom: max(10px, env(safe-area-inset-bottom));
+    height: 64px;
+    padding: 4px;
+    border: 1px solid hsl(var(--border));
+    border-radius: 999px;
+    background-color: color-mix(in srgb, hsl(var(--card)) 90%, transparent);
+    -webkit-backdrop-filter: blur(16px) saturate(1.4);
+    backdrop-filter: blur(16px) saturate(1.4);
+    box-shadow: var(--shadow-pop);
+  }
+  html[data-diseno="ds3"] .ds3-barra-inferior.ds3-barra-inferior > ul { height: 100%; gap: 2px; }
+  html[data-diseno="ds3"] .ds3-barra-destino.ds3-barra-destino {
+    height: 100%;
+    min-height: 44px;
+    gap: 2px;
+    padding: 2px 0;
+    border-radius: 999px;
+    color: hsl(var(--muted-foreground));
+    touch-action: manipulation;
+  }
+  html[data-diseno="ds3"] .ds3-barra-destino svg { width: 22px; height: 22px; }
+  html[data-diseno="ds3"] .ds3-barra-destino > span:not([aria-hidden]) { font-size: 12px; line-height: 1.1; }
+  html[data-diseno="ds3"] .ds3-barra-destino.ds3-barra-destino[aria-current="page"],
+  html[data-diseno="ds3"] .ds3-barra-destino.ds3-barra-destino[data-activo] {
+    background-color: hsl(var(--soft));
+    color: hsl(var(--foreground));
+    font-weight: 600;
+  }
+  html[data-diseno="ds3"][data-teclado="abierto"] .ds3-barra-inferior.ds3-barra-inferior { display: none; }
+
+  html[data-diseno="ds3"] .ds3-hoja-mas.ds3-hoja-mas {
+    max-height: 90dvh;
+    border-radius: 16px 16px 0 0;
+    padding: 20px 16px calc(16px + env(safe-area-inset-bottom));
+  }
+  html[data-diseno="ds3"] .ds3-hoja-mas a,
+  html[data-diseno="ds3"] .ds3-hoja-mas button { min-height: 44px; }
+  html[data-diseno="ds3"] .ds3-hoja-mas a[aria-current="page"] {
+    background-color: color-mix(in srgb, hsl(var(--foreground)) 7%, transparent);
+    color: hsl(var(--foreground));
+    box-shadow: inset 2px 0 0 hsl(var(--highlight, var(--primary)));
+  }
+  html[data-diseno="ds3"] .ds3-hoja-mas-ajustes > * { width: 100%; justify-content: stretch; }
+  html[data-diseno="ds3"] .ds3-hoja-mas-ajustes [role="radio"],
+  html[data-diseno="ds3"] .ds3-hoja-mas-ajustes button { flex: 1 1 0; }
+}
+html[data-diseno="ds3"] .ds3-hoja-mas-cuenta.ds3-solo[hidden] { display: block; }
+html[data-diseno="ds3"] .ds3-hoja-mas-ajustes .ds3-idioma { display: flex; height: 48px; }
+html[data-diseno="ds3"] .ds3-hoja-mas-ajustes .ds3-idioma-opcion { height: 44px; width: auto; }
+
+@media (max-width: 767.98px) and (pointer: coarse) {
+  html[data-diseno="ds3"] .ds3-shell input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="hidden"]),
+  html[data-diseno="ds3"] .ds3-shell select,
+  html[data-diseno="ds3"] .ds3-shell textarea { font-size: 16px; }
+}
+
+@media (forced-colors: active) {
+  html[data-diseno="ds3"] .ds3-barra-inferior,
+  html[data-diseno="ds3"] .ds3-movil-cabecera { border: 1px solid CanvasText; }
+  html[data-diseno="ds3"] .ds3-barra-destino[aria-current="page"] { outline: 2px solid Highlight; }
+}

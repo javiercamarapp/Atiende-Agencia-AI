@@ -388,7 +388,7 @@ export function VerticalShell({
 
       {panelLateral}
 
-      <BottomNav items={mobileItems} moreSections={sections} pie={pie} />
+      <BottomNav items={mobileItems} moreSections={sections} pie={pie} cuenta={{ user, onLogout, loggingOut }} />
     </div>
   );
 }
