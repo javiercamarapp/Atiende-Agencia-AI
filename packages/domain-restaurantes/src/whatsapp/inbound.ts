@@ -345,7 +345,7 @@ export async function handleInboundWhatsAppMessage(
         if (isFirstContact) reply = composeWithPrivacyNotice(privacyNoticeWhatsApp(config), reply);
       }
 
-      const assistantMessage: ConversationMessage = turn.orderId ? { role: "assistant", content: reply, pedidoCreado: true, at: ahoraIso() } : { role: "assistant", content: reply, at: ahoraIso() };
+      const assistantMessage: ConversationMessage = { role: "assistant", content: reply, ...(turn.orderId ? { pedidoCreado: true as const } : {}), at: ahoraIso(), ...(turn.herramientas?.length ? { herramientas: turn.herramientas } : {}) };
       await repo.whatsappAppendTurn(organizationId, phone, [assistantMessage], turn.orderId ? "completed" : "active", turn.orderId, turn.propertyId);
 
       // R-21: el agente pidio una persona -> abre la toma de handoff (misma transaccion que la conversacion).
@@ -880,7 +880,7 @@ export async function responderTrasEspera(
           const isFirstContact = claimed ?? !historial.some((m) => m.role === "assistant" && m.autor !== "humano_app");
           if (isFirstContact) reply = composeWithPrivacyNotice(privacyNoticeWhatsApp(config), reply);
         }
-        await repo.whatsappAppendTurn(organizationId, phone, [turn.orderId ? { role: "assistant", content: reply, pedidoCreado: true, at: ahoraIso() } : { role: "assistant", content: reply, at: ahoraIso() }], turn.orderId ? "completed" : "active", turn.orderId, turn.propertyId);
+        await repo.whatsappAppendTurn(organizationId, phone, [{ role: "assistant", content: reply, ...(turn.orderId ? { pedidoCreado: true as const } : {}), at: ahoraIso(), ...(turn.herramientas?.length ? { herramientas: turn.herramientas } : {}) }], turn.orderId ? "completed" : "active", turn.orderId, turn.propertyId);
         const abreToma = Boolean(turn.escalacion && handoffGate && (await escalacionAbreToma(repo, organizationId, phone, turn, historial)));
         if (turn.escalacion && handoffGate && abreToma) {
           await handoffGate.solicitarHumano({ organizationId, propertyId: turn.propertyId ?? propertyId ?? null, phone, motivo: turn.escalacion.motivo });

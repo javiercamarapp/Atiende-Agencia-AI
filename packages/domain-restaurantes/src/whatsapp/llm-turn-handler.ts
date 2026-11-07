@@ -67,6 +67,8 @@ import { cambioSoloDeFormaDePago } from "./cerebro-v2/pago.ts";
 import { normalizePhone } from "../phone.ts";
 import { consultasDeMenuParaPromesa, corregirPromesaSinBuscar, guardiaTextoFinal, MOTIVO_PEDIDO_NO_REGISTRADO, promesaDeProductoSinBuscar, quitarAlgoMasRepetido } from "./cerebro-v2/texto-final.ts";
 import { esTextoEnIngles } from "./cerebro-v2/salud.ts";
+import { herramientaParaElHilo, hiloDelSuelto } from "./cerebro-v2/hilo-herramientas.ts";
+import type { HerramientaDelHilo } from "../repository.ts";
 import { buscarEnCatalogo } from "./cerebro-v2/busqueda.ts";
 import { PM_AGENT_NAME_POR_OMISION, PM_COPY, buildPmSystemPrompt, saludoPorHora } from "./perfil-pm.ts";
 import { bloqueConocimientoPrompt, listarConocimientoVigente } from "../conocimiento/dominio.ts";
@@ -827,6 +829,8 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       let cotizacionDelTurno: string | null = null;
       // R11 (cierre como maquina de estados): resumen armado por el servidor para la cotizacion de este turno (solo con la maquina activa).
       let resumenCanonicoDelTurno: { texto: string; total: number } | null = null;
+      // Cerebro v2 (bloque 4): las herramientas del turno que leen las guardas de sesion del suelto; se guardan en el mensaje del asistente (hilo-herramientas.ts).
+      const herramientasV2: HerramientaDelHilo[] = [];
       const done = <R extends { readonly reply: string }>(r: R): R & { readonly escalacion?: { readonly motivo: string }; readonly pedirUbicacion?: true; readonly pedirConfirmacion?: { readonly quoteHash: string; readonly quotedAtMs: number }; readonly pedidoSimulado?: unknown; readonly accionMutante?: true } => ({
         ...r,
         ...(escalarMotivo ? { escalacion: { motivo: escalarMotivo } } : {}),
@@ -834,6 +838,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         ...(mutoEnTurno ? { accionMutante: true as const } : {}),
         ...(pedirUbicacionEnTurno && !escalarMotivo ? { pedirUbicacion: true as const } : {}),
         ...(pedirConfirmacionEnTurno && !escalarMotivo ? { pedirConfirmacion: pedirConfirmacionEnTurno } : {}),
+        ...(herramientasV2.length > 0 ? { herramientas: [...herramientasV2] } : {}),
       });
       // Contadores deterministas (§3): "no entiendo" y "colonia no reconocida" seguidos. Cuenta el SERVIDOR entre turnos (migracion 047); sin donde
       // contar (base sin migrar) se cuenta solo dentro del turno. Al llegar al umbral escala por su cuenta con un texto fijo.
@@ -1658,7 +1663,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           const firmaPrecargada = result === undefined && lecturasPrecargadas.size > 0 ? firmaDeLecturaPrecargable(call.name, input, zonaDeColonia) : null;
           const memo = firmaPrecargada !== null && lecturasPrecargadas.has(firmaPrecargada) ? { result: lecturasPrecargadas.get(firmaPrecargada) } : null;
           if (result === undefined) {
-            const executed: AgentToolOutcome = memo ? { result: memo.result, orderId: null, propertyId: null } : await executeAgentToolSafely(repo, { organizationId, channel: "whatsapp", phone, ...(cerebroV2 ? { cerebroV2: true } : {}), conversacionReciente: messages.flatMap((m) => (m.role === "user" || m.role === "assistant") && typeof m.content === "string" ? [{ role: m.role, content: m.content, ...(m.at ? { at: m.at } : {}) }] : []).slice(-30), flow: { key: `wa:${phone}`, turn: userTurn }, sharedLocation, ubicacionEntrega, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...(options.autopiloto?.pedidoGrande ? { pedidoGrande: options.autopiloto.pedidoGrande } : {}), ...(options.agregados ? { agregados: options.agregados } : {}), ...(options.menuPdfBaseUrl ? { menuPdfBaseUrl: options.menuPdfBaseUrl } : {}), ...modoCtx }, call.name, input);
+            const executed: AgentToolOutcome = memo ? { result: memo.result, orderId: null, propertyId: null } : await executeAgentToolSafely(repo, { organizationId, channel: "whatsapp", phone, ...(cerebroV2 ? { cerebroV2: true } : {}), ...(cerebroV2 && call.name === "crear_pedido" ? { hiloV2: [...hiloDelSuelto(messages), ...hiloDelSuelto([{ role: "assistant", content: "", herramientas: herramientasV2 }]).slice(0, -1)] } : {}), conversacionReciente: messages.flatMap((m) => (m.role === "user" || m.role === "assistant") && typeof m.content === "string" ? [{ role: m.role, content: m.content, ...(m.at ? { at: m.at } : {}) }] : []).slice(-30), flow: { key: `wa:${phone}`, turn: userTurn }, sharedLocation, ubicacionEntrega, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...(options.autopiloto?.pedidoGrande ? { pedidoGrande: options.autopiloto.pedidoGrande } : {}), ...(options.agregados ? { agregados: options.agregados } : {}), ...(options.menuPdfBaseUrl ? { menuPdfBaseUrl: options.menuPdfBaseUrl } : {}), ...modoCtx }, call.name, input);
             result = executed.result;
             fallaSistema = executed.fallaSistema === true;
             codigoDeRechazo = executed.rechazoDelFlujo ?? null;
@@ -1819,6 +1824,10 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             huboFalloDeHerramienta = true;
           }
           loteDeVuelta.push({ name: call.name, input, result, error: isToolErrorResult(result) || argumentosInvalidos });
+          if (cerebroV2 && perfil === "taqueria_pm" && !preview) {
+            const h = herramientaParaElHilo(call.id, call.name, input, result, now().toISOString());
+            if (h) herramientasV2.push(h);
+          }
           working.push({ role: "tool", toolCallId: call.id, content: JSON.stringify(result) });
         }
         // Cerebro v2 (decision B): la respuesta fue lecturas + cotizar_pedido con todos los datos del cierre y nada que explicar antes del resumen. La vuelta siguiente solo

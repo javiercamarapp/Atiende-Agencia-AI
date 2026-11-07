@@ -1,3 +1,4 @@
+import type { HerramientaDelHilo } from "../repository.ts";
 // Seam explícito hacia Fase 2 (diseño Fase 1 §4.3/§6): el loop de tool-use real
 // contra un LLM (`@atiende/agent-core`'s GatewayRouter con las tools
 // buscar_producto/cotizar_pedido/crear_pedido/registrar_contacto/
@@ -51,6 +52,8 @@ export interface WhatsAppTurnHandler {
     readonly accionMutante?: true;
     /** Solo `preview`: el pedido SIMULADO que devolvio `crear_pedido` (no existe en la base). */
     readonly pedidoSimulado?: unknown;
+    /** Cerebro v2 (bloque 4): herramientas del turno para guardar en el mensaje del asistente (guardas de sesion del suelto). */
+    readonly herramientas?: readonly HerramientaDelHilo[];
   }>;
 }
 

@@ -147,6 +147,18 @@ export interface ConversationMessage {
   readonly at?: string;
   /** Persona del panel que contesto (`autor: "humano"`). */
   readonly staffId?: string;
+  /** Cerebro v2 (bloque 4): las herramientas del turno que leen las guardas de sesion del suelto (cotizar/crear/estado), con el resultado recortado. Solo en el
+   * mensaje del asistente; metadato del hilo (no se manda al modelo ni se muestra). Ver whatsapp/cerebro-v2/hilo-herramientas.ts. */
+  readonly herramientas?: readonly HerramientaDelHilo[];
+}
+
+/** Una llamada de herramienta guardada en el hilo (cerebro v2): `argumentos` y `resultado` son JSON (el resultado, recortado). */
+export interface HerramientaDelHilo {
+  readonly id: string;
+  readonly nombre: string;
+  readonly argumentos: string;
+  readonly resultado: string;
+  readonly at: string;
 }
 
 // ---- KPIs de admin (Fase 3, ver diseño §2) ----

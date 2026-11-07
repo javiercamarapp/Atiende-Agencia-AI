@@ -18,6 +18,8 @@ import { registerCallbackRequest } from "../callback-requests.ts";
 import { decidirBloqueoAlergia, evidenciaAlergiaEnSesion, MARCA_AVISO_URGENTE, notaAlergiaDelPedido, notaPreferenciaDelPedido, notasConAlergia, notasConPreferencia, rechazoAlergiaSinConfirmar, type EstadoAlergia, type MensajeSalud } from "../whatsapp/cerebro-v2/salud.ts";
 import type { AvisoDelTelefono } from "../repository.ts";
 import { avisoCreadoUrgente, planDeAviso } from "../whatsapp/cerebro-v2/avisos.ts";
+import { idsPedidosCreadosEnSesion, motivoOtroPedidoEnSesion } from "../whatsapp/cerebro-v2/pedido-aparte.ts";
+import type { MensajeHilo } from "../whatsapp/cerebro-v2/texto-plano.ts";
 import { MOTIVOS_AVISO_CON_PEDIDO, armarBloquePedidoParaAviso, componerMensajeAviso, corregirAvisoCotizado } from "../aviso-pedido-gerente.ts";
 import { cargarMemoria, evaluarReincidencia } from "../cliente-360/memoria.ts";
 import { elegirPedido, repetirPedido } from "../cliente-360/repetir.ts";
@@ -172,6 +174,8 @@ export interface AgentToolContext {
   readonly organizationId: string;
   /** Cerebro v2 (bandera por organizacion, migracion 190): buscar_producto usa la busqueda medida del suelto antes que la de siempre. */
   readonly cerebroV2?: boolean;
+  /** Cerebro v2 (bloque 4): el hilo en el formato del suelto (con tool_calls y resultados) para la guarda de otro pedido en la sesion de crear_pedido. */
+  readonly hiloV2?: readonly MensajeHilo[];
   /** Cerebro v2: el aviso que deja ESTA llamada (escalar_a_humano del servidor) es URGENTE. Lo pone el turno con la decision determinista; el modelo no lo controla. */
   readonly avisoUrgente?: boolean;
   readonly channel: AgentChannel;
@@ -2409,6 +2413,12 @@ async function dispatchTool(
         const notas = await guardaAlergiaV2(repo, ctx, createInput);
         if (notas !== createInput.notes) createInput = { ...createInput, notes: notas };
       }
+      // Cerebro v2 (bloque 4, suelto ~8022-8075): con un pedido creado en la sesion (90 min), otro crear_pedido es una modificacion (va a la sucursal) salvo el
+      // si al pedido aparte con su cotizacion posterior. Sin clasificador «¿aparte?» (intencionAparte null: el modo degradado del suelto, R24).
+      if (ctx.cerebroV2 && ctx.channel === "whatsapp" && ctx.hiloV2) {
+        const motivo = await motivoOtroPedidoV2(repo, ctx.organizationId, ctx.hiloV2, input);
+        if (motivo) throw new OrderValidationError(motivo);
+      }
       if (ctx.cerebroV2 && ctx.channel === "whatsapp" && createInput.canal === "recoger" && !createInput.programadoPara && createInput.horaRecogida) {
         const hora = await revalidarRecogerAlCrear(repo, ctx, createInput.horaRecogida);
         if (hora !== createInput.horaRecogida) createInput = { ...createInput, horaRecogida: hora };
@@ -2948,6 +2958,20 @@ export function municipioFueraDeCoberturaPm(colonia: string): { readonly lat: nu
   const plano = colonia.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
   if (!plano) return null;
   return MUNICIPIOS_FUERA_DE_COBERTURA_PM.find((m) => m.nombres.some((n) => new RegExp(`(?:^| )${n}(?: |$)`).test(plano))) ?? null;
+}
+
+/** motivoOtroPedidoEnSesion del suelto con los cancelados/entregados que sabe la base (findOrderById de los pedidos de la sesion; un fallo de lectura = no se sabe). */
+async function motivoOtroPedidoV2(repo: RestaurantesRepository, organizationId: string, hilo: readonly MensajeHilo[], input: Record<string, unknown>): Promise<string | null> {
+  const ids = idsPedidosCreadosEnSesion(hilo);
+  if (ids.length === 0) return null;
+  const cancelados = new Set<string>();
+  const entregados = new Set<string>();
+  for (const id of ids) {
+    const o = await repo.findOrderById(organizationId, id).catch(() => null);
+    if (o?.status === "cancelado" || o?.status === "no_recogido") cancelados.add(id);
+    if (o?.status === "entregado" || o?.status === "completado") entregados.add(id);
+  }
+  return motivoOtroPedidoEnSesion(hilo, input, { ahoraMs: Date.now(), intencionAparte: null, cancelados, entregados });
 }
 
 /** Razones de callback que son aviso de alergia (monorrepo: escalar_a_humano con motivo alergia_salud; suelto: alto_riesgo:alergia). */
