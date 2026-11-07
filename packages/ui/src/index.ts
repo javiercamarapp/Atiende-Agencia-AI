@@ -251,3 +251,15 @@ export { VistaPreviaLlamada, type VistaPreviaLlamadaProps } from "./components/v
 export * from "./components/resumen-piezas.js";
 export * from "./components/consola-kit.js";
 export * from "./components/graficas-cfo.js";
+// ds3 «Guía»: recorrido guiado animado (menu, foco que no tapa, tarjeta, viaje entre pantallas), progreso por persona y «Primeros pasos».
+export { GuiaRecorrido, TarjetaPaso, GUIA_ABRIR_EVENTO_RECORRIDO, GUIA_RECORRIDO_EVENTO, iniciarRecorridoGuia } from "./components/guia/GuiaRecorrido";
+export type { GuiaRecorridoProps, TarjetaPasoProps } from "./components/guia/GuiaRecorrido";
+export { PrimerosPasos, resumirPrimerosPasos, hitosNuevos } from "./components/guia/PrimerosPasos";
+export type { PrimerPaso, PrimerosPasosProps, EstadoPrimerPaso } from "./components/guia/PrimerosPasos";
+export { construirTour, contarPasos, colocarTarjeta, pantallasDelMenu, rutaRelativa, slugDe } from "./components/guia/motor";
+export type { ContenidoConsola, ContenidoPantalla, ModoTour, PasoTour, SeccionMenu, TextoBilingue } from "./components/guia/motor";
+export { limpiarProgresoGuia, normalizar as normalizarProgresoGuia } from "./components/guia/estado";
+export type { ProgresoLocal, ServidorProgreso } from "./components/guia/estado";
+export { TEXTOS_GUIA, traductorGuia, useIdiomaGuia } from "./components/guia/textos";
+export type { ClaveGuia, IdiomaGuia } from "./components/guia/textos";
+export { Ilustracion as IlustracionGuia, TIPOS_ILUSTRACION } from "./components/guia/ilustraciones";
