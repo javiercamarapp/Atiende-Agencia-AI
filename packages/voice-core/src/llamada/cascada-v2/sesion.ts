@@ -985,7 +985,8 @@ function armarPilaStt(opts: CascadaV2Opciones, config: ConfigPlataformaVoz, aper
 }
 
 /** Acuses NEUTROS del acuse rapido (revision #752 P1-2): no afirman nada del pedido, del menu ni de la cuenta; ningun modelo los escribe. */
-export const ACUSES_NEUTROS: readonly string[] = Object.freeze(["Claro.", "Un momento.", "Entendido, lo reviso.", "Con gusto, déjeme ver."]);
+/** Todos piden esperar (E2E r2 7-nov-2026: tras un «Claro.» suelto el agente callaba 2-3 s y el cliente lo tomaba como fin de turno y hablaba encima). */
+export const ACUSES_NEUTROS: readonly string[] = Object.freeze(["Claro, un momento.", "Déjeme ver.", "Entendido, lo reviso.", "Con gusto, déjeme ver."]);
 
 /** Silencio del agente (ms) antes del acuse: pasado este plazo ya no suena (el temporizador corre una sola vez por turno). */
 export const ACUSE_ESPERA_MS = 700;
