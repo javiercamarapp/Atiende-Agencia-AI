@@ -71,7 +71,9 @@ const IGUALES_PERMITIDOS = new Set<string>([
   "Subtotal",
   "Total",
   "{min} min",
+  "Callbacks",
 ]);
+
 
 describe("catalogo i18n", () => {
   it("hay traduccion para cada modulo y ninguna de mas", () => {

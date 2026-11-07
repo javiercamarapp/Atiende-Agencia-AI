@@ -1,30 +1,35 @@
 // Cliente HTTP tipado de la bandeja de conversaciones, handoff, turnos y callbacks (R-21, migracion 028).
 // Contrato real: apps/api/src/routes/verticals/restaurantes/conversaciones-admin.ts. Mismo criterio que el resto de
 // lib/*.ts: `fetchImpl` inyectado y renovacion de sesion via `fetchJson`/`sendJson` (withAuthRefresh).
+import { etiquetasTraducidas, traductorActivo } from "@atiende/ui";
+import { restaurantesConversaciones } from "@atiende/ui/i18n/restaurantes/conversaciones";
 import { fetchJson, sendJson } from "./admin-client.ts";
+
+// Etiquetas en el idioma activo (i18n): cada lectura traduce; en espanol, los textos de siempre.
+const tr = traductorActivo(restaurantesConversaciones);
 
 export type ConversacionCanal = "whatsapp" | "voz";
 /** `agente` = sin toma; el resto son los estados del handoff. */
 export type HandoffEstado = "agente" | "pendiente" | "tomada" | "devuelta" | "cerrada";
 export type CallbackResultado = "contactado" | "no_contesto" | "buzon" | "numero_invalido" | "reprogramar";
 
-export const ESTADO_LABEL: Readonly<Record<HandoffEstado, string>> = {
-  agente: "Con el agente",
-  pendiente: "Esperando a una persona",
-  tomada: "Con una persona",
-  devuelta: "Devuelta al agente",
-  cerrada: "Resuelta",
-};
+export const ESTADO_LABEL: Readonly<Record<HandoffEstado, string>> = etiquetasTraducidas<HandoffEstado>(
+  ["agente", "pendiente", "tomada", "devuelta", "cerrada"],
+  (e) => `restaurantes.conversaciones.estado.${e}` as const,
+  restaurantesConversaciones,
+);
 
-export const CANAL_LABEL: Readonly<Record<ConversacionCanal, string>> = { whatsapp: "WhatsApp", voz: "Llamada" };
+export const CANAL_LABEL: Readonly<Record<ConversacionCanal, string>> = etiquetasTraducidas<ConversacionCanal>(
+  ["whatsapp", "voz"],
+  (c) => `restaurantes.conversaciones.canal.${c}` as const,
+  restaurantesConversaciones,
+);
 
-export const CALLBACK_RESULTADO_LABEL: Readonly<Record<CallbackResultado, string>> = {
-  contactado: "Contactado (resuelto)",
-  no_contesto: "No contestó",
-  buzon: "Buzón de voz",
-  numero_invalido: "Número inválido (cerrar)",
-  reprogramar: "Reprogramar",
-};
+export const CALLBACK_RESULTADO_LABEL: Readonly<Record<CallbackResultado, string>> = etiquetasTraducidas<CallbackResultado>(
+  ["contactado", "no_contesto", "buzon", "numero_invalido", "reprogramar"],
+  (r) => `restaurantes.conversaciones.resultado.${r}` as const,
+  restaurantesConversaciones,
+);
 
 export interface EscalacionWire {
   readonly nivel: 0 | 1 | 2;
@@ -101,16 +106,17 @@ export type CallbackEstado = "nuevo" | "en_curso" | "resuelto";
 export type CallbackAccion = "tomar" | "asignar" | "liberar" | "resolver" | "reabrir";
 export type SlaCallbackEstado = "en_plazo" | "por_vencer" | "vencido" | "cumplido" | "incumplido" | "sin_dato";
 
-export const CALLBACK_ESTADO_LABEL: Readonly<Record<CallbackEstado, string>> = { nuevo: "Nuevo", en_curso: "En curso", resuelto: "Resuelto" };
+export const CALLBACK_ESTADO_LABEL: Readonly<Record<CallbackEstado, string>> = etiquetasTraducidas<CallbackEstado>(
+  ["nuevo", "en_curso", "resuelto"],
+  (e) => `restaurantes.conversaciones.cbEstado.${e}` as const,
+  restaurantesConversaciones,
+);
 
-export const SLA_LABEL: Readonly<Record<SlaCallbackEstado, string>> = {
-  en_plazo: "En plazo",
-  por_vencer: "Por vencer",
-  vencido: "Vencido",
-  cumplido: "Atendido a tiempo",
-  incumplido: "Atendido fuera de plazo",
-  sin_dato: "Sin dato",
-};
+export const SLA_LABEL: Readonly<Record<SlaCallbackEstado, string>> = etiquetasTraducidas<SlaCallbackEstado>(
+  ["en_plazo", "por_vencer", "vencido", "cumplido", "incumplido", "sin_dato"],
+  (s) => `restaurantes.conversaciones.sla.${s}` as const,
+  restaurantesConversaciones,
+);
 
 export interface SlaCallbackWire {
   readonly objetivoMin: number;
@@ -122,11 +128,11 @@ export interface SlaCallbackWire {
 /** Motivo legible: `escalada:queja` (lo que deja escalar_a_humano) -> "Escalada: queja". */
 export function textoMotivoCallback(motivo: string | null): string | null {
   if (!motivo) return null;
-  if (motivo === "evento") return "Evento o catering";
+  if (motivo === "evento") return tr("restaurantes.conversaciones.motivo.evento");
   // Agregados por validar (099): tareas de «devolver llamada» que deja la sucursal al rechazar, o el sistema al vencer, un agregado.
-  if (motivo === "agregado_rechazado") return "Devolver llamada: agregado rechazado";
-  if (motivo === "agregado_vencido") return "Devolver llamada: agregado sin respuesta";
-  return motivo.startsWith("escalada:") ? `Escalada: ${motivo.slice("escalada:".length).replace(/_/g, " ")}` : motivo;
+  if (motivo === "agregado_rechazado") return tr("restaurantes.conversaciones.motivo.agregadoRechazado");
+  if (motivo === "agregado_vencido") return tr("restaurantes.conversaciones.motivo.agregadoVencido");
+  return motivo.startsWith("escalada:") ? tr("restaurantes.conversaciones.motivo.escalada", { motivo: motivo.slice("escalada:".length).replace(/_/g, " ") }) : motivo;
 }
 
 export interface CallbackWire {
@@ -235,8 +241,9 @@ export function registrarIntento(
 /** Texto de la escalacion para el badge de la bandeja. */
 export function textoEscalacion(e: EscalacionWire | null): string | null {
   if (!e) return null;
-  if (e.sinCobertura) return "Sin personal de guardia: avisar a administración";
-  if (e.nivel === 2) return `${e.minutosEspera} min sin respuesta: avisar a administración`;
-  if (e.nivel === 1) return `${e.minutosEspera} min sin respuesta: avisar al respaldo`;
+  if (e.sinCobertura) return tr("restaurantes.conversaciones.escalacion.sinGuardia");
+  if (e.nivel === 2) return tr("restaurantes.conversaciones.escalacion.administracion", { min: e.minutosEspera });
+  if (e.nivel === 1) return tr("restaurantes.conversaciones.escalacion.respaldo", { min: e.minutosEspera });
+
   return null;
 }

@@ -24,7 +24,11 @@ import {
   formatMoney,
   notify,
   useConfirm,
+  useT,
 } from "@atiende/ui";
+import type { Clave } from "@atiende/ui";
+import { restaurantesComandas } from "@atiende/ui/i18n/restaurantes/comandas";
+import { restaurantesComun } from "@atiende/ui/i18n/restaurantes/comun";
 import { ClipboardCopy, RefreshCw } from "lucide-react";
 import { fechaHoraEsMx } from "../../../lib/formato-fecha.ts";
 import { fetchBranches } from "../dashboard-client.ts";
@@ -53,19 +57,20 @@ const REFRESCO_MS = 30_000;
 
 type FiltroCola = "activas" | EstadoComandaWire | "resueltas";
 
-const FILTROS: ReadonlyArray<{ readonly valor: FiltroCola; readonly etiqueta: string; readonly estados: readonly EstadoComandaWire[] }> = [
-  { valor: "activas", etiqueta: "Por atender", estados: ESTADOS_FILTRO_POR_DEFECTO },
-  { valor: "captura_manual", etiqueta: ETIQUETA_ESTADO_COMANDA.captura_manual, estados: ["captura_manual"] },
-  { valor: "fallida", etiqueta: ETIQUETA_ESTADO_COMANDA.fallida, estados: ["fallida"] },
-  { valor: "pendiente", etiqueta: ETIQUETA_ESTADO_COMANDA.pendiente, estados: ["pendiente"] },
-  { valor: "enviada", etiqueta: ETIQUETA_ESTADO_COMANDA.enviada, estados: ["enviada"] },
-  { valor: "resueltas", etiqueta: "Resueltas", estados: ["confirmada", "capturada_manual"] },
+// Las etiquetas se leen en el render (`t(clave)` o ETIQUETA_ESTADO_COMANDA, que traduce en cada lectura).
+const FILTROS: ReadonlyArray<{ readonly valor: FiltroCola; readonly clave: Clave; readonly estados: readonly EstadoComandaWire[] }> = [
+  { valor: "activas", clave: "restaurantes.comandas.filtro.activas", estados: ESTADOS_FILTRO_POR_DEFECTO },
+  { valor: "captura_manual", clave: "restaurantes.comanda.captura_manual", estados: ["captura_manual"] },
+  { valor: "fallida", clave: "restaurantes.comanda.fallida", estados: ["fallida"] },
+  { valor: "pendiente", clave: "restaurantes.comanda.pendiente", estados: ["pendiente"] },
+  { valor: "enviada", clave: "restaurantes.comanda.enviada", estados: ["enviada"] },
+  { valor: "resueltas", clave: "restaurantes.comandas.filtro.resueltas", estados: ["confirmada", "capturada_manual"] },
 ];
 
-const ETIQUETA_MODO: Readonly<Record<ModoPos, string>> = {
-  apagado: "Apagado: no se envía nada al POS",
-  sombra: "Sombra: se encola en paralelo para comparar contra caja",
-  activo: "Activo: se envía al POS al crear el pedido",
+const ETIQUETA_MODO: Readonly<Record<ModoPos, Clave>> = {
+  apagado: "restaurantes.comandas.modo.apagado",
+  sombra: "restaurantes.comandas.modo.sombra",
+  activo: "restaurantes.comandas.modo.activo",
 };
 
 function mensaje(err: unknown, porDefecto: string): string {
@@ -73,6 +78,7 @@ function mensaje(err: unknown, porDefecto: string): string {
 }
 
 export function ComandasPosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: RestaurantesShellContext) {
+  const t = useT(restaurantesComun, restaurantesComandas);
   const esAdmin = ADMINS.has(role);
   const [config, setConfig] = useState<ConfigPosWire | null>(null);
   const [configError, setConfigError] = useState<string | null>(null);
@@ -108,7 +114,7 @@ export function ComandasPosPage({ apiBaseUrl, token, propertyId, orgSlug, role }
           return siguiente;
         });
       } catch (err) {
-        if (!cancelado) setConfigError(mensaje(err, "No se pudo cargar el estado de SoftRestaurant."));
+        if (!cancelado) setConfigError(mensaje(err, t("restaurantes.comandas.error.estado")));
       }
     })();
     return () => {
@@ -147,7 +153,7 @@ export function ComandasPosPage({ apiBaseUrl, token, propertyId, orgSlug, role }
         setColaError(null);
         setAhoraMs(Date.now());
       } catch (err) {
-        if (!cancelado) setColaError(mensaje(err, "No se pudo cargar la cola de comandas."));
+        if (!cancelado) setColaError(mensaje(err, t("restaurantes.comandas.error.cola")));
       } finally {
         if (!cancelado) setCargando(false);
       }
@@ -162,33 +168,33 @@ export function ComandasPosPage({ apiBaseUrl, token, propertyId, orgSlug, role }
     };
   }, [apiBaseUrl, token, propertyId, filtro, branchId, version]);
 
-  const nombreSucursal = (id: string) => sucursales.find((s) => s.propertyId === id)?.name ?? "Sucursal";
+  const nombreSucursal = (id: string) => sucursales.find((s) => s.propertyId === id)?.name ?? t("restaurantes.comandas.sucursal");
 
   async function copiar(c: ComandaWire) {
     try {
       await navigator.clipboard.writeText(textoParaPos(c));
-      notify.success("Comanda copiada: pégala en SoftRestaurant.");
+      notify.success(t("restaurantes.comandas.copiada"));
     } catch {
-      notify.error("Este navegador no permitió copiar. Selecciona el texto de la comanda y cópialo a mano.");
+      notify.error(t("restaurantes.comandas.noCopio"));
     }
   }
 
   async function marcarCapturada(c: ComandaWire) {
     const nota = await pedirTexto({
-      titulo: `Marcar capturada la comanda ${referenciaPedido(c.orderId)}`,
-      descripcion: "Confírmalo solo cuando ya la capturaste en SoftRestaurant: se dejan de reintentar los envíos automáticos de esta comanda.",
-      confirmar: "Marcar capturada",
-      cancelar: "Volver",
-      campo: { etiqueta: "Folio del POS (opcional)", placeholder: "Ej. T1-004512", requerido: false, maxLength: 300 },
+      titulo: t("restaurantes.comandas.capturar.titulo", { ref: referenciaPedido(c.orderId) }),
+      descripcion: t("restaurantes.comandas.capturar.descripcion"),
+      confirmar: t("restaurantes.comandas.capturar.confirmar"),
+      cancelar: t("restaurantes.volver"),
+      campo: { etiqueta: t("restaurantes.comandas.capturar.folio"), placeholder: t("restaurantes.comandas.capturar.folioEjemplo"), requerido: false, maxLength: 300 },
     });
     if (nota === null) return; // Volver, Escape o cerrar: no se llama al API
     setOcupado(c.id);
     try {
       await marcarComandaCapturada(fetch, apiBaseUrl, token, propertyId, c.id, nota.trim() || null);
-      notify.success("Comanda marcada como capturada.");
+      notify.success(t("restaurantes.comandas.capturar.hecho"));
       refrescar();
     } catch (err) {
-      notify.error(mensaje(err, "No se pudo marcar la comanda como capturada."));
+      notify.error(mensaje(err, t("restaurantes.comandas.capturar.error")));
     } finally {
       setOcupado(null);
     }
@@ -198,10 +204,10 @@ export function ComandasPosPage({ apiBaseUrl, token, propertyId, orgSlug, role }
     setGuardandoModo(true);
     try {
       await fijarModoPos(fetch, apiBaseUrl, token, propertyId, modo);
-      notify.success("Modo de SoftRestaurant actualizado.");
+      notify.success(t("restaurantes.comandas.modo.actualizado"));
       refrescar();
     } catch (err) {
-      notify.error(mensaje(err, "No se pudo cambiar el modo."));
+      notify.error(mensaje(err, t("restaurantes.comandas.modo.error")));
     } finally {
       setGuardandoModo(false);
     }
@@ -213,16 +219,16 @@ export function ComandasPosPage({ apiBaseUrl, token, propertyId, orgSlug, role }
     const umbral = config?.umbralCapturaManual;
     if (!umbral) return;
     if (!/^\d+$/.test(texto) || valor < umbral.minimo || valor > umbral.maximo) {
-      notify.error(`Escribe un número entero de minutos entre ${umbral.minimo} y ${umbral.maximo}.`);
+      notify.error(t("restaurantes.comandas.umbral.rango", { min: umbral.minimo, max: umbral.maximo }));
       return;
     }
     setOcupado(`umbral:${id}`);
     try {
       await fijarUmbralCapturaManual(fetch, apiBaseUrl, token, propertyId, id, valor);
-      notify.success("Umbral guardado.");
+      notify.success(t("restaurantes.comandas.umbral.guardado"));
       refrescar();
     } catch (err) {
-      notify.error(mensaje(err, "No se pudo guardar el umbral."));
+      notify.error(mensaje(err, t("restaurantes.comandas.umbral.error")));
     } finally {
       setOcupado(null);
     }
@@ -233,34 +239,33 @@ export function ComandasPosPage({ apiBaseUrl, token, propertyId, orgSlug, role }
   return (
     <PageContainer padding="none">
       {/* El nombre de la pagina lo pinta la barra superior del shell (contrato de pagina UNI-4): el h1 queda solo para lectores de pantalla. */}
-      <h1 className="sr-only">Comandas al POS</h1>
+      <h1 className="sr-only">{t("restaurantes.comandas.titulo")}</h1>
 
       {configError && <EstadoError mensaje={configError} onReintentar={refrescar} />}
-      {!config && !configError && <EstadoCargando etiqueta="Cargando el estado de SoftRestaurant…" />}
+      {!config && !configError && <EstadoCargando etiqueta={t("restaurantes.comandas.cargandoEstado")} />}
 
       {config && (
-        <section className="flex flex-col gap-2" aria-label="Estado de SoftRestaurant">
+        <section className="flex flex-col gap-2" aria-label={t("restaurantes.comandas.estadoAria")}>
           {!real && (
-            <Callout tone="warning" titulo="SoftRestaurant no conectado: requiere la API del distribuidor" data-testid="pos-no-conectado">
-              Mientras tanto los pedidos no se envían solos: alguien captura cada comanda en el POS desde esta cola (captura asistida). Con el adaptador sin configurar, el servidor
-              rechaza (409) cualquier modo distinto de «Apagado».
+            <Callout tone="warning" titulo={t("restaurantes.comandas.noConectado.titulo")} data-testid="pos-no-conectado">
+              {t("restaurantes.comandas.noConectado.texto")}
             </Callout>
           )}
           {config.disponible === false && (
-            <Callout tone="neutral" titulo="Cola no disponible aún" data-testid="pos-sin-migracion">
-              Requiere la migración 024 de restaurantes en esta base de datos.
+            <Callout tone="neutral" titulo={t("restaurantes.comandas.sinMigracion.titulo")} data-testid="pos-sin-migracion">
+              {t("restaurantes.comandas.sinMigracion.texto")}
             </Callout>
           )}
           <Card>
             <CardContent className="flex flex-wrap items-end justify-between gap-3 p-4">
               <div>
-                <p className="m-0 text-sm font-semibold text-foreground">Modo efectivo</p>
+                <p className="m-0 text-sm font-semibold text-foreground">{t("restaurantes.comandas.modoEfectivo")}</p>
                 <p className="m-0 mt-0.5 text-xs text-muted-foreground" data-testid="pos-modo-actual">
-                  {ETIQUETA_MODO[config.modo]} · adaptador «{config.adaptador.nombre}» {real ? "(real)" : "(no real)"}
+                  {t("restaurantes.comandas.adaptador", { modo: t(ETIQUETA_MODO[config.modo]), nombre: config.adaptador.nombre, real: t(real ? "restaurantes.comandas.adaptadorReal" : "restaurantes.comandas.adaptadorNoReal") })}
                 </p>
               </div>
               {esAdmin ? (
-                <FormField label="Modo" hint={!real ? "Deshabilitado: requiere el adaptador real de SoftRestaurant." : undefined} className="w-full max-w-xs">
+                <FormField label={t("restaurantes.comandas.modo.campo")} hint={!real ? t("restaurantes.comandas.modo.deshabilitado") : undefined} className="w-full max-w-xs">
                   <Selector
                     id="pos-modo"
                     size="sm"
@@ -268,26 +273,26 @@ export function ComandasPosPage({ apiBaseUrl, token, propertyId, orgSlug, role }
                     disabled={!real || guardandoModo}
                     onChange={(e) => void cambiarModo(e.target.value as ModoPos)}
                   >
-                    <option value="apagado">Apagado</option>
-                    <option value="sombra">Sombra</option>
-                    <option value="activo">Activo</option>
+                    <option value="apagado">{t("restaurantes.comandas.modo.opcion.apagado")}</option>
+                    <option value="sombra">{t("restaurantes.comandas.modo.opcion.sombra")}</option>
+                    <option value="activo">{t("restaurantes.comandas.modo.opcion.activo")}</option>
                   </Selector>
                 </FormField>
               ) : (
-                <p className="m-0 text-xs text-muted-foreground">El modo solo lo cambia un dueño o administrador.</p>
+                <p className="m-0 text-xs text-muted-foreground">{t("restaurantes.comandas.modo.soloAdmin")}</p>
               )}
             </CardContent>
           </Card>
         </section>
       )}
 
-      <section className="flex flex-col gap-3" aria-label="Cola de comandas">
+      <section className="flex flex-col gap-3" aria-label={t("restaurantes.comandas.colaAria")}>
         <div className="flex flex-wrap items-end justify-between gap-3">
           <Tabs value={filtro} onValueChange={(v) => setFiltro(v as FiltroCola)}>
             <TabsList className="flex-wrap">
               {FILTROS.map((f) => (
                 <TabsTrigger key={f.valor} value={f.valor}>
-                  {f.etiqueta}
+                  {t(f.clave)}
                   {f.valor !== "activas" && f.valor !== "resueltas" && resumen ? ` (${resumen[f.valor] ?? 0})` : ""}
                 </TabsTrigger>
               ))}
@@ -295,9 +300,9 @@ export function ComandasPosPage({ apiBaseUrl, token, propertyId, orgSlug, role }
           </Tabs>
           <div className="flex items-end gap-2">
             {sucursales.length > 1 && (
-              <FormField label="Sucursal">
+              <FormField label={t("restaurantes.comandas.sucursal")}>
                 <Selector id="pos-sucursal" size="sm" value={branchId} onChange={(e) => setBranchId(e.target.value)} wrapperClassName="w-auto min-w-44">
-                  <option value="">Todas mis sucursales</option>
+                  <option value="">{t("restaurantes.comandas.todasSucursales")}</option>
                   {sucursales.map((s) => (
                     <option key={s.propertyId} value={s.propertyId}>
                       {s.name}
@@ -308,15 +313,15 @@ export function ComandasPosPage({ apiBaseUrl, token, propertyId, orgSlug, role }
             )}
             <Button type="button" size="sm" variant="outline" onClick={refrescar} disabled={cargando}>
               <RefreshCw className={`mr-1 h-3.5 w-3.5 ${cargando ? "animate-spin" : ""}`} strokeWidth={1.75} aria-hidden="true" />
-              Actualizar
+              {t("restaurantes.comandas.actualizar")}
             </Button>
           </div>
         </div>
 
         {colaError && <EstadoError mensaje={colaError} onReintentar={refrescar} />}
-        {!cola && !colaError && <EstadoCargando etiqueta="Cargando comandas…" />}
-        {cola && !cola.disponible && <EstadoVacio mensaje="La cola de comandas aún no está disponible: requiere la migración 024 de restaurantes en esta base." />}
-        {cola && cola.disponible && cola.comandas.length === 0 && <EstadoVacio mensaje="No hay comandas en este filtro." />}
+        {!cola && !colaError && <EstadoCargando etiqueta={t("restaurantes.comandas.cargando")} />}
+        {cola && !cola.disponible && <EstadoVacio mensaje={t("restaurantes.comandas.colaNoDisponible")} />}
+        {cola && cola.disponible && cola.comandas.length === 0 && <EstadoVacio mensaje={t("restaurantes.comandas.vacio")} />}
 
         <div className="flex flex-col gap-2.5">
           {cola?.comandas.map((c) => {
@@ -327,15 +332,15 @@ export function ComandasPosPage({ apiBaseUrl, token, propertyId, orgSlug, role }
                   <div className="flex flex-wrap justify-between gap-2">
                     <div>
                       <p className="m-0 font-semibold text-foreground">
-                        Pedido {referenciaPedido(c.orderId)} · {p.cliente.nombre}
+                        {t("restaurantes.comandas.pedido", { ref: referenciaPedido(c.orderId), cliente: p.cliente.nombre })}
                       </p>
                       <p className="mt-0.5 text-xs text-muted-foreground">
-                        {telefonoEnmascarado(p.cliente.telefono)} · {nombreSucursal(c.propertyId)} (POS {p.sucursal}) · {antiguedadTexto(c.creadoEn, ahoraMs)}
+                        {telefonoEnmascarado(p.cliente.telefono)} · {nombreSucursal(c.propertyId)} (POS {p.sucursal}) · {antiguedadTexto(c.creadoEn, ahoraMs)}{/* // i18n-ignorar: «POS» es sigla, igual en ingles */}
                       </p>
                     </div>
                     <div className="flex flex-wrap items-start gap-1.5 self-start">
                       <StatusBadge tone="neutral" dot={false}>
-                        {p.tipo === "domicilio" ? "Domicilio" : "Recoger"}
+                        {t(p.tipo === "domicilio" ? "restaurantes.canal.domicilio" : "restaurantes.canal.recoger")}
                       </StatusBadge>
                       <StatusBadge tone={TONO_ESTADO_COMANDA[c.estado]} data-testid={`estado-${c.id}`}>
                         {ETIQUETA_ESTADO_COMANDA[c.estado]}
@@ -349,36 +354,37 @@ export function ComandasPosPage({ apiBaseUrl, token, propertyId, orgSlug, role }
                         {it.cantidad}× <span className="font-mono text-xs">{it.codigo}</span>
                         {it.nombre ? ` ${it.nombre}` : ""}
                         {it.modificadores.length > 0 && <span className="text-xs text-muted-foreground"> · {it.modificadores.map((m) => m.nombre ?? m.codigo).join(", ")}</span>}
-                        {it.nota && <span className="text-xs text-muted-foreground"> · nota: {it.nota}</span>}
+                        {it.nota && <span className="text-xs text-muted-foreground">{t("restaurantes.comandas.nota", { nota: it.nota })}</span>}
                       </li>
                     ))}
                   </ul>
-                  {p.notas && <p className="mt-1 text-xs text-muted-foreground">Notas: {p.notas}</p>}
+                  {p.notas && <p className="mt-1 text-xs text-muted-foreground">{t("restaurantes.comandas.notas", { notas: p.notas })}</p>}
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {c.totalPedido !== null ? `Total del pedido $${formatMoney(c.totalPedido)}` : "Total no disponible"}
-                    {p.propina !== undefined && p.propina > 0 ? ` · Propina $${formatMoney(p.propina)}` : ""} · {p.formaPago === "tarjeta" ? "Tarjeta" : "Efectivo"} · cobra caja o el repartidor
+                    {c.totalPedido !== null ? t("restaurantes.comandas.totalPedido", { total: formatMoney(c.totalPedido) }) : t("restaurantes.comandas.totalNoDisponible")}
+                    {p.propina !== undefined && p.propina > 0 ? t("restaurantes.comandas.propina", { propina: formatMoney(p.propina) }) : ""}
+                    {t("restaurantes.comandas.cobro", { forma: t(p.formaPago === "tarjeta" ? "restaurantes.comandas.forma.tarjeta" : "restaurantes.comandas.forma.efectivo") })}
                   </p>
                   {(c.estado === "captura_manual" || c.estado === "fallida") && c.ultimoError && (
                     <p className="mt-1 text-xs text-destructive">
-                      Motivo: {c.ultimoError} · intentos {c.intentos}/{c.maxIntentos}
+                      {t("restaurantes.comandas.motivo", { error: c.ultimoError, intentos: c.intentos, max: c.maxIntentos })}
                     </p>
                   )}
                   {c.estado === "capturada_manual" && (
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Capturada a mano{c.notaCaptura ? ` · folio del POS: ${c.notaCaptura}` : ""}
+                      {t("restaurantes.comandas.capturadaAMano")}{c.notaCaptura ? t("restaurantes.comandas.folioCaptura", { folio: c.notaCaptura }) : ""}
                       {c.capturadoEn ? ` · ${fechaHoraEsMx(c.capturadoEn)}` : ""}
                     </p>
                   )}
-                  {c.estado === "confirmada" && c.folio && <p className="mt-1 text-xs text-muted-foreground">Folio del POS: {c.folio}</p>}
+                  {c.estado === "confirmada" && c.folio && <p className="mt-1 text-xs text-muted-foreground">{t("restaurantes.comandas.folio", { folio: c.folio })}</p>}
 
                   <div className="mt-2.5 flex flex-wrap gap-1.5">
                     <Button type="button" size="sm" variant="outline" onClick={() => void copiar(c)}>
                       <ClipboardCopy className="mr-1 h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
-                      Copiar para POS
+                      {t("restaurantes.comandas.copiar")}
                     </Button>
                     {CAPTURABLES.has(c.estado) && (
                       <Button type="button" size="sm" onClick={() => void marcarCapturada(c)} loading={ocupado === c.id}>
-                        Marcar capturada
+                        {t("restaurantes.comandas.capturar.confirmar")}
                       </Button>
                     )}
                   </div>
@@ -390,17 +396,17 @@ export function ComandasPosPage({ apiBaseUrl, token, propertyId, orgSlug, role }
       </section>
 
       {esAdmin && config && (
-        <section className="flex flex-col gap-2" aria-label="Aviso de captura manual por sucursal">
-          <p className="m-0 text-sm font-semibold text-foreground">Aviso de captura manual por sucursal</p>
+        <section className="flex flex-col gap-2" aria-label={t("restaurantes.comandas.umbral.titulo")}>
+          <p className="m-0 text-sm font-semibold text-foreground">{t("restaurantes.comandas.umbral.titulo")}</p>
           <p className="m-0 text-xs text-muted-foreground">
-            Si una comanda lleva más de estos minutos esperando captura manual, el equipo recibe un aviso en la campana. Sin configurar son {config.umbralCapturaManual.porOmisionMin} minutos.
+            {t("restaurantes.comandas.umbral.texto", { min: config.umbralCapturaManual.porOmisionMin })}
           </p>
           {!config.umbralCapturaManual.disponible ? (
-            <Callout tone="neutral" titulo="No disponible aún" data-testid="umbral-sin-migracion">
-              Requiere la migración 054 de restaurantes en esta base de datos.
+            <Callout tone="neutral" titulo={t("restaurantes.comandas.umbral.noDisponible")} data-testid="umbral-sin-migracion">
+              {t("restaurantes.comandas.umbral.sinMigracion")}
             </Callout>
           ) : sucursales.length === 0 ? (
-            <EstadoVacio mensaje="Todavía no hay sucursales activas." />
+            <EstadoVacio mensaje={t("restaurantes.comandas.umbral.sinSucursales")} />
           ) : (
             <div className="flex flex-col gap-2">
               {sucursales.map((s) => {
@@ -410,13 +416,13 @@ export function ComandasPosPage({ apiBaseUrl, token, propertyId, orgSlug, role }
                     <CardContent className="flex flex-wrap items-center justify-between gap-3 p-3">
                       <div>
                         <p className="m-0 text-sm font-semibold text-foreground">{s.name}</p>
-                        <p className="m-0 mt-0.5 text-xs text-muted-foreground">{actual === undefined ? `Sin configurar (${config.umbralCapturaManual.porOmisionMin} min)` : `${actual} min`}</p>
+                        <p className="m-0 mt-0.5 text-xs text-muted-foreground">{actual === undefined ? t("restaurantes.comandas.umbral.sinConfigurar", { min: config.umbralCapturaManual.porOmisionMin }) : t("restaurantes.comandas.umbral.min", { min: actual })}</p>
                       </div>
                       <div className="flex items-center gap-2">
                         <Input
                           type="number"
                           inputMode="numeric"
-                          aria-label={`Minutos de espera en ${s.name}`}
+                          aria-label={t("restaurantes.comandas.umbral.aria", { sucursal: s.name })}
                           min={config.umbralCapturaManual.minimo}
                           max={config.umbralCapturaManual.maximo}
                           value={minutos[s.propertyId] ?? ""}
@@ -424,7 +430,8 @@ export function ComandasPosPage({ apiBaseUrl, token, propertyId, orgSlug, role }
                           className="w-24"
                         />
                         <Button type="button" size="sm" variant="outline" onClick={() => void guardarUmbral(s.propertyId)} loading={ocupado === `umbral:${s.propertyId}`}>
-                          Guardar
+                          {t("restaurantes.comandas.guardar")}
+
                         </Button>
                       </div>
                     </CardContent>

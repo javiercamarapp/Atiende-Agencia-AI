@@ -24,7 +24,11 @@ import {
   StatusBadge,
   statusTone,
   useConfirm,
+  useT,
 } from "@atiende/ui";
+import type { Clave } from "@atiende/ui";
+import { restaurantesComun } from "@atiende/ui/i18n/restaurantes/comun";
+import { restaurantesHistorial } from "@atiende/ui/i18n/restaurantes/historial";
 import { AlertTriangle, CalendarDays, ChevronDown, Search, Store } from "lucide-react";
 import { etiquetaFolio, fetchOrders, ORDER_STATUS_LABELS, updateOrderStatus } from "../lib/orders-client.ts";
 import type { OrderStatus, OrderSummary } from "../lib/orders-client.ts";
@@ -40,18 +44,19 @@ import { montoFila } from "../components/pedidos/formato.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 
 /** Periodos rapidos (chip «Periodo» del original): fijan «Desde» y vacian «Hasta»; editar las fechas a mano pasa a «Personalizado». */
-const PERIODOS: ReadonlyArray<{ readonly id: string; readonly rotulo: string; readonly dias: number | null }> = [
-  { id: "todo", rotulo: "Todo el historial", dias: null },
-  { id: "hoy", rotulo: "Hoy", dias: 0 },
-  { id: "7", rotulo: "Últimos 7 días", dias: 7 },
-  { id: "30", rotulo: "Últimos 30 días", dias: 30 },
-  { id: "90", rotulo: "Últimos 90 días", dias: 90 },
+const PERIODOS: ReadonlyArray<{ readonly id: string; readonly clave: Clave; readonly dias: number | null }> = [
+  { id: "todo", clave: "restaurantes.historial.periodo.todo", dias: null },
+  { id: "hoy", clave: "restaurantes.historial.periodo.hoy", dias: 0 },
+  { id: "7", clave: "restaurantes.historial.periodo.7", dias: 7 },
+  { id: "30", clave: "restaurantes.historial.periodo.30", dias: 30 },
+  { id: "90", clave: "restaurantes.historial.periodo.90", dias: 90 },
 ];
 const BUSQUEDA_MIN = 2;
 
 const ALL_STATUSES: readonly OrderStatus[] = ["pending", "preparando", "en_camino", "entregado", "cancelado", "completado", "problema"];
 
 export function HistorialPage({ apiBaseUrl, token, propertyId, role }: RestaurantesShellContext) {
+  const t = useT(restaurantesComun, restaurantesHistorial);
   const [statusFilter, setStatusFilter] = useState<OrderStatus | "">("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -79,8 +84,8 @@ export function HistorialPage({ apiBaseUrl, token, propertyId, role }: Restauran
   const generacionRef = useRef(0);
 
   useEffect(() => {
-    const t = setTimeout(() => setBusqueda(busquedaTexto.trim().length >= BUSQUEDA_MIN ? busquedaTexto.trim() : ""), 350);
-    return () => clearTimeout(t);
+    const pausa = setTimeout(() => setBusqueda(busquedaTexto.trim().length >= BUSQUEDA_MIN ? busquedaTexto.trim() : ""), 350);
+    return () => clearTimeout(pausa);
   }, [busquedaTexto]);
 
   // Chip de sucursal: solo si el staff puede leer la lista de sucursales; si falla, el chip no se pinta (sin error ruidoso).
@@ -135,7 +140,7 @@ export function HistorialPage({ apiBaseUrl, token, propertyId, role }: Restauran
       setNextCursor(page.nextCursor);
       setCursor(page.nextCursor ?? undefined);
     } catch (err) {
-      if (generacion === generacionRef.current) setError(err instanceof Error ? err.message : "No se pudo cargar el historial.");
+      if (generacion === generacionRef.current) setError(err instanceof Error ? err.message : t("restaurantes.historial.errorCargar"));
     } finally {
       if (generacion === generacionRef.current) setLoading(false);
     }
@@ -157,7 +162,7 @@ export function HistorialPage({ apiBaseUrl, token, propertyId, role }: Restauran
       generacionRef.current += 1;
       await load(true);
     } catch (err) {
-      setAccionError(err instanceof Error ? err.message : "No se pudo cerrar el pedido.");
+      setAccionError(err instanceof Error ? err.message : t("restaurantes.historial.errorCerrar"));
     } finally {
       setAccionId(null);
     }
@@ -165,12 +170,12 @@ export function HistorialPage({ apiBaseUrl, token, propertyId, role }: Restauran
 
   async function registrarIncidencia(o: OrderSummary) {
     const nota = await pedirTexto({
-      titulo: `Registrar incidencia del pedido de ${o.customerName}`,
-      descripcion: "¿Qué pasó después de la entrega? La nota queda en el pedido y el equipo la ve de inmediato.",
+      titulo: t("restaurantes.historial.incidencia.titulo", { cliente: o.customerName }),
+      descripcion: t("restaurantes.historial.incidencia.descripcion"),
       tono: "danger",
-      confirmar: "Registrar incidencia",
-      cancelar: "Volver",
-      campo: { etiqueta: "Nota de la incidencia", placeholder: "Ej. El cliente reporta que faltó un producto.", multilinea: true, maxLength: 2000 },
+      confirmar: t("restaurantes.historial.incidencia.confirmar"),
+      cancelar: t("restaurantes.volver"),
+      campo: { etiqueta: t("restaurantes.historial.incidencia.nota"), placeholder: t("restaurantes.historial.incidencia.ejemplo"), multilinea: true, maxLength: 2000 },
     });
     if (nota === null) return; // Volver, Escape o cerrar: no se llama al API
     setAccionId(o.id);
@@ -180,7 +185,7 @@ export function HistorialPage({ apiBaseUrl, token, propertyId, role }: Restauran
       generacionRef.current += 1;
       await load(true);
     } catch (err) {
-      setAccionError(err instanceof Error ? err.message : "No se pudo registrar la incidencia.");
+      setAccionError(err instanceof Error ? err.message : t("restaurantes.historial.errorIncidencia"));
     } finally {
       setAccionId(null);
     }
@@ -189,7 +194,7 @@ export function HistorialPage({ apiBaseUrl, token, propertyId, role }: Restauran
   if (detalleId) {
     return (
       <PageContainer padding="none">
-        <h1 className="sr-only">Detalle del pedido</h1>
+        <h1 className="sr-only">{t("restaurantes.historial.detalle")}</h1>
         <PedidoDetalle
           apiBaseUrl={apiBaseUrl}
           token={token}
@@ -214,24 +219,24 @@ export function HistorialPage({ apiBaseUrl, token, propertyId, role }: Restauran
 
   return (
     <PageContainer padding="none">
-      <h1 className="sr-only">Historial de órdenes</h1>
+      <h1 className="sr-only">{t("restaurantes.historial.titulo")}</h1>
 
       {/* Chips de filtro del original: periodo, sucursal, incidencias / no entregados y busqueda por cliente o telefono. */}
-      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filtros rápidos del historial">
+      <div className="flex flex-wrap items-center gap-2" role="group" aria-label={t("restaurantes.historial.filtros")}>
         <span className="relative inline-flex items-center">
           <CalendarDays className="pointer-events-none absolute left-3 z-10 size-3.5 text-muted-foreground" aria-hidden="true" />
-          <Selector aria-label="Periodo" value={periodo === "custom" ? "custom" : periodo} onChange={(e) => elegirPeriodo(e.target.value)} wrapperClassName="w-auto" className="rounded-full pl-9">
+          <Selector aria-label={t("restaurantes.historial.periodo")} value={periodo === "custom" ? "custom" : periodo} onChange={(e) => elegirPeriodo(e.target.value)} wrapperClassName="w-auto" className="rounded-full pl-9">
             {PERIODOS.map((p) => (
-              <option key={p.id} value={p.id}>{p.rotulo}</option>
+              <option key={p.id} value={p.id}>{t(p.clave)}</option>
             ))}
-            {periodo === "custom" && <option value="custom">Personalizado</option>}
+            {periodo === "custom" && <option value="custom">{t("restaurantes.historial.periodo.personalizado")}</option>}
           </Selector>
         </span>
         {sucursales && sucursales.length > 1 && (
           <span className="relative inline-flex items-center">
             <Store className="pointer-events-none absolute left-3 z-10 size-3.5 text-muted-foreground" aria-hidden="true" />
-            <Selector aria-label="Sucursal" value={sucursal} onChange={(e) => setSucursal(e.target.value)} wrapperClassName="w-auto" className="rounded-full pl-9">
-              <option value="">Todas las sucursales</option>
+            <Selector aria-label={t("restaurantes.historial.sucursal")} value={sucursal} onChange={(e) => setSucursal(e.target.value)} wrapperClassName="w-auto" className="rounded-full pl-9">
+              <option value="">{t("restaurantes.historial.todasSucursales")}</option>
               {sucursales.map((b) => (
                 <option key={b.propertyId} value={b.propertyId}>{b.name}</option>
               ))}
@@ -247,14 +252,14 @@ export function HistorialPage({ apiBaseUrl, token, propertyId, role }: Restauran
           className={cn("rounded-full", soloIncidencias && "border-primary bg-primary/10 text-primary")}
           iconLeft={<AlertTriangle />}
         >
-          Incidencias / no entregados
+          {t("restaurantes.historial.incidencias")}
         </Button>
         <span className="relative inline-flex items-center">
           <Search className="pointer-events-none absolute left-3 size-3.5 text-muted-foreground" aria-hidden="true" />
           <Input
             type="search"
-            aria-label="Buscar por cliente o teléfono"
-            placeholder="Cliente o teléfono…"
+            aria-label={t("restaurantes.historial.buscarAria")}
+            placeholder={t("restaurantes.historial.buscar")}
             value={busquedaTexto}
             maxLength={60}
             onChange={(e) => setBusquedaTexto(e.target.value)}
@@ -264,14 +269,14 @@ export function HistorialPage({ apiBaseUrl, token, propertyId, role }: Restauran
       </div>
 
       <div className="flex flex-wrap items-end gap-3">
-        <FormField label="Estado">
+        <FormField label={t("restaurantes.historial.estado")}>
           <Selector
             id="restaurantes-historial-estado"
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as OrderStatus | "")}
             wrapperClassName="w-auto min-w-44"
           >
-            <option value="">Todos los estados</option>
+            <option value="">{t("restaurantes.historial.todosEstados")}</option>
             {ALL_STATUSES.map((s) => (
               <option key={s} value={s}>
                 {ORDER_STATUS_LABELS[s]}
@@ -279,10 +284,10 @@ export function HistorialPage({ apiBaseUrl, token, propertyId, role }: Restauran
             ))}
           </Selector>
         </FormField>
-        <FormField label="Desde">
+        <FormField label={t("restaurantes.historial.desde")}>
           <Input id="restaurantes-historial-desde" type="date" value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); setPeriodo("custom"); }} className="w-auto" />
         </FormField>
-        <FormField label="Hasta">
+        <FormField label={t("restaurantes.historial.hasta")}>
           <Input id="restaurantes-historial-hasta" type="date" value={dateTo} onChange={(e) => { setDateTo(e.target.value); setPeriodo("custom"); }} className="w-auto" />
         </FormField>
         {/* R-17: exporta con los filtros vigentes (mismos limites de fecha que la tabla). Solo owner/admin. */}
@@ -306,29 +311,29 @@ export function HistorialPage({ apiBaseUrl, token, propertyId, role }: Restauran
       </div>
 
       {error && <EstadoError mensaje={error} onReintentar={() => { generacionRef.current += 1; void load(true); }} />}
-      {accionError && <EstadoError titulo="No se pudo completar la acción" mensaje={accionError} compacto onReintentar={() => setAccionError(null)} />}
+      {accionError && <EstadoError titulo={t("restaurantes.historial.errorAccion")} mensaje={accionError} compacto onReintentar={() => setAccionError(null)} />}
 
       {!(error && orders.length === 0) && (
         <Card>
           <CardHeader className="p-3 pb-2">
-            <CardTitle className="sr-only">Órdenes</CardTitle>
+            <CardTitle className="sr-only">{t("restaurantes.historial.ordenes")}</CardTitle>
             <p className="text-eyebrow tabular-nums text-muted-foreground" data-testid="historial-conteo">
-              {orders.length === 0 ? "0 pedidos" : `Mostrando ${orders.length}${nextCursor ? " · hay más" : ""}`}
+              {orders.length === 0 ? t("restaurantes.historial.ceroPedidos") : t(nextCursor ? "restaurantes.historial.hayMas" : "restaurantes.historial.mostrando", { n: orders.length })}
             </p>
           </CardHeader>
           <CardContent className="p-0">
             <DataTable<OrderSummary>
-              etiqueta="Historial de órdenes de esta sucursal"
+              etiqueta={t("restaurantes.historial.tabla")}
               filas={orders}
               obtenerId={(o) => o.id}
               estado={loading && orders.length === 0 ? "loading" : orders.length === 0 ? "empty" : "ok"}
-              vacio={{ titulo: "Sin pedidos", mensaje: "No hay pedidos que coincidan con estos filtros." }}
+              vacio={{ titulo: t("restaurantes.historial.vacioTitulo"), mensaje: t("restaurantes.historial.vacioMensaje") }}
               paginacion={false}
               onFilaClick={(o) => setDetalleId(o.id)}
               columnas={[
                 {
                   id: "cliente",
-                  encabezado: "Cliente",
+                  encabezado: t("restaurantes.historial.col.cliente"),
                   principal: true,
                   celda: (o) => (
                     <span className="block">
@@ -337,23 +342,23 @@ export function HistorialPage({ apiBaseUrl, token, propertyId, role }: Restauran
                     </span>
                   ),
                 },
-                { id: "pedido", encabezado: "N° de pedido", className: "whitespace-nowrap font-mono text-eyebrow text-muted-foreground", celda: (o) => etiquetaFolio(o) },
-                { id: "sucursal", encabezado: "Sucursal", celda: (o) => o.branch ?? "—" },
-                { id: "total", encabezado: "Monto", alinear: "right", className: "font-semibold tabular-nums", celda: (o) => montoFila(o.total) },
-                { id: "estado", encabezado: "Estado", celda: (o) => <StatusBadge tone={statusTone(ORDER_STATUS_TONES, o.status)}>{ORDER_STATUS_LABELS[o.status]}</StatusBadge> },
-                { id: "fecha", encabezado: "Fecha", className: "whitespace-nowrap text-muted-foreground", celda: (o) => fechaAnioHoraEsMx(o.createdAt) },
+                { id: "pedido", encabezado: t("restaurantes.historial.col.pedido"), className: "whitespace-nowrap font-mono text-eyebrow text-muted-foreground", celda: (o) => etiquetaFolio(o) },
+                { id: "sucursal", encabezado: t("restaurantes.historial.col.sucursal"), celda: (o) => o.branch ?? "—" },
+                { id: "total", encabezado: t("restaurantes.historial.col.monto"), alinear: "right", className: "font-semibold tabular-nums", celda: (o) => montoFila(o.total) },
+                { id: "estado", encabezado: t("restaurantes.historial.col.estado"), celda: (o) => <StatusBadge tone={statusTone(ORDER_STATUS_TONES, o.status)}>{ORDER_STATUS_LABELS[o.status]}</StatusBadge> },
+                { id: "fecha", encabezado: t("restaurantes.historial.col.fecha"), className: "whitespace-nowrap text-muted-foreground", celda: (o) => fechaAnioHoraEsMx(o.createdAt) },
                 {
                   id: "acciones",
-                  encabezado: "Acciones",
+                  encabezado: t("restaurantes.historial.col.acciones"),
                   alinear: "right",
                   celda: (o) =>
                     o.status === "entregado" ? (
                       <span className="inline-flex flex-wrap justify-end gap-1.5">
                         <Button type="button" size="sm" variant="outline" loading={accionId === o.id} onClick={() => void cerrarPedido(o)}>
-                          Cerrar (completado)
+                          {t("restaurantes.historial.cerrar")}
                         </Button>
                         <Button type="button" size="sm" variant="outline" disabled={accionId === o.id} onClick={() => void registrarIncidencia(o)}>
-                          Registrar incidencia
+                          {t("restaurantes.historial.incidencia.confirmar")}
                         </Button>
                       </span>
                     ) : null,
@@ -367,7 +372,8 @@ export function HistorialPage({ apiBaseUrl, token, propertyId, role }: Restauran
       {nextCursor && (
         <Button type="button" variant="outline" size="sm" className="self-start" onClick={() => void load(false)} loading={loading}>
           <ChevronDown />
-          Cargar más
+          {t("restaurantes.historial.cargarMas")}
+
         </Button>
       )}
 
