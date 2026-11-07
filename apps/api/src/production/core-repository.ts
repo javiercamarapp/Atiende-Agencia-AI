@@ -50,6 +50,7 @@ import type {
   SuperadminOrganizationBillingRow,
   SuperadminOrganizationRow,
   UpsertOrganizationBillingInput,
+  ActivacionPorPago,
 } from "@atiende/db";
 import { PostgresCoreRepository } from "@atiende/db";
 import type { TenancyEngine } from "@atiende/core-tenancy";
@@ -235,6 +236,10 @@ export class ProductionCoreRepository implements CoreRepository {
 
   upsertOrganizationBilling(input: UpsertOrganizationBillingInput): Promise<OrganizationBillingRow> {
     return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).upsertOrganizationBilling(input));
+  }
+
+  activateOrganizationOnPayment(organizationId: string): Promise<ActivacionPorPago> {
+    return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).activateOrganizationOnPayment(organizationId));
   }
 
   markBillingWebhookEventSeen(eventId: string): Promise<BillingWebhookEventMark> {

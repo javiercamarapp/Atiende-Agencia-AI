@@ -334,10 +334,12 @@ export interface OnboardingExtras {
 
 export async function cargarOnboarding(repo: RestaurantesRepository, organizationId: string, extras: OnboardingExtras = {}): Promise<OnboardingChecklist> {
   const branches = await repo.listBranchesForOrganizationAdmin(organizationId);
+  // Solo venta local (migracion 105): no atiende clientes por Atiende, asi que no se le piden productos, zonas ni WhatsApp (se lista como no activa para el agente).
+  const soloLocal = new Set(branches.length > 0 ? await repo.listarSucursalesSoloVentaLocal(organizationId) : []);
   const numerosPropios = new Set((await repo.listWhatsappBranchChannels(organizationId)).map((c) => c.propertyId));
   const sucursales: OnboardingBranchSnapshot[] = [];
   for (const b of branches) {
-    const activa = b.status === "active";
+    const activa = b.status === "active" && !soloLocal.has(b.propertyId);
     if (!activa) {
       sucursales.push({ nombre: b.name, activa, conCoordenadas: b.lat !== null && b.lng !== null, productosDisponibles: 0, conHorario: false, dobleTurno: false, conPedidoMinimo: false, zonasDeEntrega: 0, conWhatsappPropio: numerosPropios.has(b.propertyId), voz: "sin_configurar" });
       continue;

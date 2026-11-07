@@ -47,6 +47,8 @@ export interface ModeloAgenteVista {
   readonly nivel: "economico" | "equilibrado" | "premium";
   readonly descripcion: string;
   readonly aceptaTemperatura: boolean;
+  /** Tiene endpoint de retencion cero: solo estos se ofrecen para la voz. Una API anterior no lo manda (se ofrecen todos). */
+  readonly vozZdr?: boolean;
   readonly predeterminado: boolean;
   /** Micro-USD por mensaje de WhatsApp / por minuto de cascada (estimacion con precio de lista); null = sin precio conocido. */
   readonly costoWhatsappMicroUsdPorMensaje: number | null;

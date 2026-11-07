@@ -1,6 +1,6 @@
 # Aviso de Privacidad Integral
 
-**Versión:** 1.0 · **Vigente a partir del 21 de octubre de 2026** (fecha de última actualización: 21 de octubre de 2026).
+**Versión:** 1.1 · **Vigente a partir de su publicación en esta página** (fecha de última actualización: 6 de noviembre de 2026). La versión 1.0 estuvo vigente desde el 21 de octubre de 2026; la 1.1 detalla los proveedores de voz (sección 6.1).
 
 Este aviso está vigente a la fecha indicada y sustituye a cualquier versión anterior. Se emite conforme a la Ley Federal de Protección de Datos Personales en Posesión de los Particulares (LFPDPPP), publicada en el Diario Oficial de la Federación el 20 de marzo de 2025.
 
@@ -35,7 +35,7 @@ Cuando usted nos escribe por WhatsApp o nos llama por teléfono, lo atiende **un
 | Entrega | Dirección escrita, referencias, **ubicación** (pin de WhatsApp) si usted la comparte | Directamente de usted; la ubicación solo si decide enviarla |
 | Pedido | Productos, cantidades, sucursal, hora de recoger, forma de pago elegida, notas | Directamente de usted |
 | Mensajes | Texto, notas de voz, fotos o archivos que usted nos envía por WhatsApp | Directamente de usted |
-| Audio de llamadas | Grabación y transcripción de la llamada, **solo si usted autoriza** | Directamente de usted, por la llamada |
+| Audio de llamadas | Su voz durante la llamada, que se procesa para entenderle y tomar su pedido (sección 6.1). La grabación y la transcripción **se guardan solo si usted autoriza** | Directamente de usted, por la llamada |
 | Uso del servicio | Fechas y horas, estado de pedidos, historial para recordar "su pedido de siempre" | Generados por el servicio |
 | Pago | **No recabamos número de tarjeta, vencimiento ni código.** El pago con tarjeta se hace en terminal en la sucursal; si se ofrece un pago en línea, lo procesa un proveedor de pagos externo (sección 6.1) | Directamente del proveedor, que nos informa solo si el pago se realizó |
 | Sitio web | Datos técnicos del navegador y almacenamiento local (sección 14) | Automáticamente |
@@ -71,24 +71,27 @@ Puede, en cualquier momento: (a) negarse a la grabación de la llamada; (b) pedi
 
 ### 6.1 Proveedores que tratan datos para prestar el servicio (subencargados)
 
-Atiende usa proveedores tecnológicos para prestar el servicio. **Solo tratan los datos para ese fin y no para los suyos propios**; esto no es una transferencia en el sentido del Art. 35, porque actúan por cuenta de Atiende, que a su vez trata los datos por cuenta del restaurante, como encargados. Según lo que esté activado en el servicio:
+Atiende usa proveedores tecnológicos para prestar el servicio. **Los tratan para prestar ese servicio**, no para venderlos ni para fines del restaurante distintos de su pedido; algunos, como ElevenLabs, pueden conservarlos según su propia política de privacidad (ver «Pedidos por teléfono» abajo); esto no es una transferencia en el sentido del Art. 35, porque actúan por cuenta de Atiende, que a su vez trata los datos por cuenta del restaurante, como encargados. Según lo que esté activado en el servicio:
 
 | Proveedor | Para qué | Datos que trata |
 | --- | --- | --- |
 | Meta (WhatsApp) | Enviar y recibir los mensajes de WhatsApp | Mensajes, teléfono, ubicación compartida |
-| Google (Gemini) | Modelo de lenguaje y voz del asistente | Texto y audio del turno |
-| OpenRouter y los proveedores de modelos que enruta | Entender los mensajes y las llamadas y tomar el pedido | Texto del turno |
-| Deepgram | Convertir voz en texto y texto en voz (cascada de voz, si está habilitada) | Audio de la llamada |
-| ElevenLabs | Voz sintética del asistente (si está habilitada) | Texto que el asistente pronuncia |
+| ElevenLabs (Eleven Labs Inc., Estados Unidos) | Pedidos por teléfono: convertir su voz en texto y generar la voz del asistente | Audio de la llamada y su transcripción, con lo que usted diga en ella (nombre, dirección, teléfono, pedido). Puede conservarlos conforme a su propia política de privacidad |
+| Deepgram | Respaldo de ElevenLabs: convertir voz en texto y texto en voz si ElevenLabs falla | Audio de la llamada y su transcripción |
+| OpenRouter y los proveedores de modelos que enruta (por ejemplo Google, OpenAI o Anthropic) | Entender los mensajes, las notas de voz y las llamadas y tomar el pedido; se solicitan con retención cero de datos cuando el modelo lo ofrece | Texto del turno y, cuando aplica, la nota de voz o el audio de la llamada |
+| Google (Gemini) | Modelo de lenguaje y, en algunas configuraciones, voz del asistente | Texto y audio del turno |
 | Twilio | Recibir y transportar llamadas telefónicas | Número, metadatos y audio de la llamada |
 | LiveKit | Transmitir el audio de la llamada en tiempo real | Audio de la llamada |
+| Fly.io | Servidores donde corre el asistente de voz | Audio y texto de la llamada mientras se atiende |
 | Supabase | Base de datos donde se guarda su información | Los datos de la sección 3 |
-| Vercel | Alojamiento de la aplicación | Datos técnicos y de tránsito |
+| Vercel | Alojamiento de la aplicación y del asistente de WhatsApp | Mensajes en tránsito, datos técnicos y de tránsito |
 | Resend | Envío de correos (por ejemplo, respuesta a solicitudes ARCO) | Correo y contenido del mensaje |
 | Sentry | Detección de errores técnicos | Datos técnicos de los errores |
 | Stripe | Cobro de pagos en línea y de la suscripción de los clientes de Atiende | Datos de pago, que **recibe y guarda el proveedor, no nosotros** |
 
-Varios de estos proveedores tienen su sede o tratan datos fuera de México, principalmente en Estados Unidos; sus datos se envían al extranjero para poder prestar el servicio. Para conocer el país o la región exacta de tratamiento de un proveedor específico, escriba a ventas@likida.ai.
+**Pedidos por teléfono.** Si hace su pedido por teléfono, el audio de su voz y su transcripción, con los datos que diga en la llamada (nombre, dirección, teléfono y pedido), los procesa **ElevenLabs (Eleven Labs Inc., Estados Unidos)** como encargado, solo para convertir voz en texto y texto en voz y así tomar su pedido. Esto ocurre aunque usted no autorice la grabación: sin autorización no guardamos la grabación, pero el audio se procesa para entenderle. **ElevenLabs puede conservar ese audio y ese texto conforme a su propia política de privacidad** (https://elevenlabs.io/privacy-policy); los plazos de la sección 7 son los de Atiende, no los de ElevenLabs. Si prefiere que su voz no se procese así, puede pedir por WhatsApp o en la sucursal, u oponerse con sus derechos ARCO (sección 9).
+
+Varios de estos proveedores tienen su sede o tratan datos fuera de México, principalmente en **Estados Unidos** (entre ellos ElevenLabs, Deepgram, OpenRouter, Twilio, LiveKit y Fly.io); sus datos se envían al extranjero para poder prestar el servicio. Para conocer el país o la región exacta de tratamiento de un proveedor específico, escriba a ventas@likida.ai.
 
 ### 6.2 Transferencias a terceros
 
