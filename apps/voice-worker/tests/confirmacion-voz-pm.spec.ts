@@ -2,7 +2,7 @@
 // frases de registro de restaurantes (no se dice «quedó registrado» antes de que crear_pedido tenga exito). E2E LiveKit del 6/7-nov-2026.
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { CONFIRMACION_VOZ_PM } from "../src/llamada.ts";
+import { CONFIRMACION_VOZ_PM, OMITIR_ACUSE_VOZ_PM } from "../src/llamada.ts";
 
 describe("CONFIRMACION_VOZ_PM", () => {
   it("nombra las herramientas de restaurantes, la escalacion y el clasificador de registro", () => {
@@ -14,5 +14,18 @@ describe("CONFIRMACION_VOZ_PM", () => {
   it("main.ts usa esa regla (no una copia sin escalacion ni clasificador)", () => {
     const main = readFileSync(new URL("../src/main.ts", import.meta.url), "utf8");
     expect(main).toContain("confirmacionAntesDeCrear: CONFIRMACION_VOZ_PM");
+  });
+});
+
+describe("OMITIR_ACUSE_VOZ_PM (revision #752 P1-2)", () => {
+  it("sin acuse cuando la guardia de voz de PM ve riesgo o que piden una persona; con acuse en un pedido normal", () => {
+    expect(OMITIR_ACUSE_VOZ_PM("soy alérgico al cacahuate")).toBe(true);
+    expect(OMITIR_ACUSE_VOZ_PM("quiero hablar con una persona")).toBe(true);
+    expect(OMITIR_ACUSE_VOZ_PM("quiero tres tacos de pastor")).toBe(false);
+  });
+
+  it("main.ts lo conecta a la escalera", () => {
+    const main = readFileSync(new URL("../src/main.ts", import.meta.url), "utf8");
+    expect(main).toContain("omitirAcuse: OMITIR_ACUSE_VOZ_PM");
   });
 });
