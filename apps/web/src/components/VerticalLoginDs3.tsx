@@ -169,10 +169,12 @@ export function VerticalLoginDs3({ apiBaseUrl, vertical, nombre, descripcion, ki
             )}
 
             {conGoogle && conMagicLink && (
+              // El texto cambia («Comprobando…» -> «o» o el aviso): un nodo nuevo por estado sobre un filete de ancho completo, asi
+              // nada existente se mueve (CLS 0).
               <div className="ld3-separador">
-                <span />
-                <p id={idDisponibilidad}>{googleHabilitado ? tr("o", "or") : avisoGoogle}</p>
-                <span />
+                <p key={googleHabilitado ? "o" : avisoGoogle} id={idDisponibilidad}>
+                  {googleHabilitado ? tr("o", "or") : avisoGoogle}
+                </p>
               </div>
             )}
 

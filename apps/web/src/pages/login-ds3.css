@@ -70,10 +70,11 @@
 .login-ds3 .login-btn:is(:hover, :focus-visible) .login-glifo { width: 44px; opacity: 1; }
 
 .login-ds3 .ld3-google { margin-top: 32px; }
-.login-ds3 .ld3-separador { display: flex; align-items: center; gap: 10px; margin: 24px 0 32px; font-size: 12px; text-align: center; color: var(--ld3-tenue); }
-.login-ds3 .ld3-separador span { flex: 1; min-width: 0; height: 1px; background: var(--ld3-borde); }
-/* Un solo renglon siempre (el aviso de Google no debe pasar a dos renglones al llegar la fuente y empujar lo de abajo). */
-.login-ds3 .ld3-separador p { flex: 0 1 auto; min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Filete de ancho completo y el texto encima con el fondo de la pagina: cambiar el texto no mueve los filetes. Un solo renglon
+   siempre (el aviso de Google no debe pasar a dos renglones al llegar la fuente y empujar lo de abajo). */
+.login-ds3 .ld3-separador { position: relative; display: flex; justify-content: center; margin: 24px 0 32px; font-size: 12px; line-height: 18px; text-align: center; color: var(--ld3-tenue); }
+.login-ds3 .ld3-separador::before { content: ""; position: absolute; inset: 50% 0 auto; height: 1px; background: var(--ld3-borde); }
+.login-ds3 .ld3-separador p { position: relative; max-width: 100%; margin: 0; padding: 0 10px; background: hsl(var(--background)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .login-ds3 .ld3-correo { display: grid; gap: 16px; }
 /* Segundos del reenvio en cifras tabulares (siempre dos de ancho, ver segundosVisibles): no se mueven de un segundo a otro. */
 .login-ds3 .ld3-segundos { font-variant-numeric: tabular-nums; }
