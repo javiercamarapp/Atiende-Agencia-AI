@@ -1,7 +1,8 @@
 // R-17 -- boton "Exportar" de la cabecera de Historial y Clientes: CTA secundario (outline) con menu CSV (Excel) / PDF. Solo se pinta para
 // owner/admin (el servidor exige lo mismo con 403). Llama al endpoint real; errores (p. ej. 413 por pasar del tope de filas) se muestran con su mensaje.
 import { useState } from "react";
-import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, notify } from "@atiende/ui";
+import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, notify, useT } from "@atiende/ui";
+import { restaurantesExportar } from "@atiende/ui/i18n/restaurantes/exportar";
 import { Download, FileSpreadsheet, FileText } from "lucide-react";
 import { descargarExportacion, guardarArchivo } from "../lib/exportar-client.ts";
 import type { FormatoExportacion } from "../lib/exportar-client.ts";
@@ -17,7 +18,7 @@ export function BotonExportar({
   token,
   urlPara,
   fetchImpl,
-  etiqueta = "Exportar",
+  etiqueta,
   variante = "outline",
 }: {
   readonly role: string;
@@ -29,6 +30,7 @@ export function BotonExportar({
   /** Historial usa el CTA azul del original; Clientes conserva el secundario. */
   readonly variante?: "outline" | "default";
 }) {
+  const t = useT(restaurantesExportar);
   const [exportando, setExportando] = useState(false);
   if (!puedeExportar(role)) return null;
 
@@ -36,9 +38,9 @@ export function BotonExportar({
     setExportando(true);
     try {
       guardarArchivo(await descargarExportacion(fetchImpl ?? fetch, urlPara(formato), token, formato));
-      notify.success(formato === "csv" ? "Exportación lista (CSV, ábrelo con Excel)." : "Exportación lista (PDF).");
+      notify.success(t(formato === "csv" ? "restaurantes.exportar.listaCsv" : "restaurantes.exportar.listaPdf"));
     } catch (err) {
-      notify.error(err instanceof Error ? err.message : "No se pudo exportar.");
+      notify.error(err instanceof Error ? err.message : t("restaurantes.exportar.error"));
     } finally {
       setExportando(false);
     }
@@ -49,17 +51,19 @@ export function BotonExportar({
       <DropdownMenuTrigger asChild>
         <Button type="button" variant={variante} size="sm" loading={exportando} disabled={exportando}>
           <Download />
-          {etiqueta}
+          {etiqueta ?? t("restaurantes.exportar.boton")}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuItem onSelect={() => void exportar("csv")}>
           <FileSpreadsheet />
-          CSV (Excel)
+          {t("restaurantes.exportar.csv")}
+
         </DropdownMenuItem>
         <DropdownMenuItem onSelect={() => void exportar("pdf")}>
           <FileText />
-          PDF
+          {t("restaurantes.exportar.pdf")}
+
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

@@ -3,7 +3,9 @@
 // telefonos, tope de 5,000 renglones, huella del archivo para no duplicar, bitacora). No crea pedidos ni manda mensajes a nadie.
 import { useRef, useState } from "react";
 import { Upload } from "lucide-react";
-import { Button, Callout, Checkbox, FormDialog, FormField, Label, Selector, notify } from "@atiende/ui";
+import { Button, Callout, Checkbox, FormDialog, FormField, Label, Selector, notify, useT } from "@atiende/ui";
+import { restaurantesComun } from "@atiende/ui/i18n/restaurantes/comun";
+import { restaurantesClientes } from "@atiende/ui/i18n/restaurantes/clientes";
 import {
   ArchivoImportacionError,
   CAMPOS_IMPORTACION,
@@ -35,6 +37,7 @@ function mensaje(err: unknown, porDefecto: string): string {
 }
 
 export function ImportarClientesDialog({ open, onOpenChange, apiBaseUrl, token, propertyId, onTerminado }: ImportarClientesDialogProps) {
+  const t = useT(restaurantesComun, restaurantesClientes);
   const [archivo, setArchivo] = useState<ArchivoLeido | null>(null);
   const [conEncabezado, setConEncabezado] = useState(true);
   const [mapeo, setMapeo] = useState<MapeoColumnas>(SIN_MAPEO);
@@ -57,7 +60,8 @@ export function ImportarClientesDialog({ open, onOpenChange, apiBaseUrl, token, 
 
   const columnas = archivo ? Math.max(0, ...archivo.filas.map((f) => f.length)) : 0;
   const encabezados = archivo ? (conEncabezado ? archivo.filas[0] ?? [] : []) : [];
-  const nombreColumna = (i: number) => (conEncabezado && encabezados[i]?.trim() ? `Columna ${i + 1}: ${encabezados[i]!.trim()}` : `Columna ${i + 1}`);
+  const nombreColumna = (i: number) =>
+    conEncabezado && encabezados[i]?.trim() ? t("restaurantes.clientes.imp.columnaCon", { n: i + 1, nombre: encabezados[i]!.trim() }) : t("restaurantes.clientes.imp.columna", { n: i + 1 });
   const filasDatos = archivo ? (conEncabezado ? archivo.filas.slice(1) : archivo.filas) : [];
   const excedeTope = filasDatos.length > IMPORTACION_MAX_FILAS;
 
@@ -71,7 +75,7 @@ export function ImportarClientesDialog({ open, onOpenChange, apiBaseUrl, token, 
       setMapeo(sugerirMapeo(leido.filas[0] ?? []));
     } catch (err) {
       setArchivo(null);
-      setError(err instanceof ArchivoImportacionError ? err.message : mensaje(err, "No se pudo leer el archivo."));
+      setError(err instanceof ArchivoImportacionError ? err.message : mensaje(err, t("restaurantes.clientes.imp.errorLeer")));
     } finally {
       setLeyendo(false);
     }
@@ -102,7 +106,7 @@ export function ImportarClientesDialog({ open, onOpenChange, apiBaseUrl, token, 
       setVista(await vistaPreviaImportacionClientes(fetch, apiBaseUrl, token, propertyId, await huellaConMapeo(archivo.huella, mapeo), construirFilas(filasDatos, mapeo)));
     } catch (err) {
       setVista(null);
-      setError(mensaje(err, "No se pudo revisar el archivo."));
+      setError(mensaje(err, t("restaurantes.clientes.imp.errorRevisar")));
     } finally {
       setTrabajando(false);
     }
@@ -115,11 +119,11 @@ export function ImportarClientesDialog({ open, onOpenChange, apiBaseUrl, token, 
     try {
       const r = await importarClientes(fetch, apiBaseUrl, token, propertyId, await huellaConMapeo(archivo.huella, mapeo), construirFilas(filasDatos, mapeo));
       setResultado(r);
-      if (r.yaImportado) notify.info("Este archivo con estas mismas columnas ya se había importado: no se volvió a escribir nada.");
-      else notify.success(`Importación terminada: ${r.creados} clientes nuevos.`);
+      if (r.yaImportado) notify.info(t("restaurantes.clientes.imp.yaImportado"));
+      else notify.success(t("restaurantes.clientes.imp.terminada", { n: r.creados }));
       onTerminado();
     } catch (err) {
-      setError(mensaje(err, "No se pudo importar."));
+      setError(mensaje(err, t("restaurantes.clientes.imp.errorImportar")));
     } finally {
       setTrabajando(false);
     }
@@ -134,42 +138,42 @@ export function ImportarClientesDialog({ open, onOpenChange, apiBaseUrl, token, 
         if (!o && !trabajando) reiniciar();
         onOpenChange(o);
       }}
-      titulo="Importar clientes"
-      subtitulo="Sube tu cartera en CSV o Excel (.xlsx). Se agregan clientes nuevos y se completan datos vacíos; nunca se pisa un nombre que ya conocemos."
+      titulo={t("restaurantes.clientes.importar")}
+      subtitulo={t("restaurantes.clientes.imp.subtitulo")}
       anchoClase="max-w-3xl"
       bloquearCierre={trabajando}
       footer={
         resultado ? (
           <>
             <Button type="button" variant="outline" className="rounded-full px-6" onClick={reiniciar}>
-              Importar otro archivo
+              {t("restaurantes.clientes.imp.otro")}
             </Button>
             <Button type="button" className="rounded-full px-6" onClick={() => onOpenChange(false)}>
-              Cerrar
+              {t("restaurantes.clientes.imp.cerrar")}
             </Button>
           </>
         ) : (
           <>
             <Button type="button" variant="outline" className="rounded-full px-6" onClick={() => onOpenChange(false)} disabled={trabajando}>
-              Cancelar
+              {t("restaurantes.cancelar")}
             </Button>
             <Button type="button" variant="outline" className="rounded-full px-6" onClick={() => void revisar()} disabled={!archivo || sinTelefono || excedeTope || trabajando} loading={trabajando && !vista}>
-              Revisar vista previa
+              {t("restaurantes.clientes.imp.revisar")}
             </Button>
             <Button type="button" className="rounded-full px-6" onClick={() => void importar()} disabled={!vista || vista.validos === 0 || trabajando} loading={trabajando && !!vista}>
               <Upload />
-              {vista ? `Importar ${vista.validos} ${vista.validos === 1 ? "cliente" : "clientes"}` : "Importar clientes"}
+              {vista ? t("restaurantes.clientes.imp.importarN", { count: vista.validos }) : t("restaurantes.clientes.importar")}
             </Button>
           </>
         )
       }
     >
       <div className="flex flex-col gap-3">
-        <Callout tone="neutral">Importar no crea pedidos ni manda mensajes a nadie. La reactivación de clientes es otra función y exige su consentimiento.</Callout>
+        <Callout tone="neutral">{t("restaurantes.clientes.imp.aviso")}</Callout>
 
         {!resultado && (
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="clientes-import-archivo">Archivo (.csv o .xlsx, hasta {IMPORTACION_MAX_FILAS} renglones)</Label>
+            <Label htmlFor="clientes-import-archivo">{t("restaurantes.clientes.imp.archivo", { max: IMPORTACION_MAX_FILAS })}</Label>
             <input
               id="clientes-import-archivo"
               ref={inputRef}
@@ -179,7 +183,7 @@ export function ImportarClientesDialog({ open, onOpenChange, apiBaseUrl, token, 
               onChange={(e) => void elegirArchivo(e.target.files?.[0])}
               disabled={trabajando}
             />
-            {leyendo && <p className="text-xs text-muted-foreground">Leyendo el archivo…</p>}
+            {leyendo && <p className="text-xs text-muted-foreground">{t("restaurantes.clientes.imp.leyendo")}</p>}
           </div>
         )}
 
@@ -192,19 +196,19 @@ export function ImportarClientesDialog({ open, onOpenChange, apiBaseUrl, token, 
         {archivo && !resultado && (
           <div className="flex flex-col gap-3">
             <p className="text-xs text-muted-foreground">
-              {archivo.nombre}: {filasDatos.length} {filasDatos.length === 1 ? "renglón" : "renglones"} de datos.
+              {t("restaurantes.clientes.imp.renglonesDatos", { archivo: archivo.nombre, count: filasDatos.length })}
             </p>
             {excedeTope && (
               <p role="alert" className="text-sm text-destructive">
-                El archivo tiene más de {IMPORTACION_MAX_FILAS} renglones: divídelo en partes.
+                {t("restaurantes.clientes.imp.excede", { max: IMPORTACION_MAX_FILAS })}
               </p>
             )}
-            <Checkbox checked={conEncabezado} onChange={(e) => cambiarEncabezado(e.target.checked)} label="La primera fila trae los nombres de las columnas" wrapperClassName="text-sm" />
+            <Checkbox checked={conEncabezado} onChange={(e) => cambiarEncabezado(e.target.checked)} label={t("restaurantes.clientes.imp.encabezado")} wrapperClassName="text-sm" />
             <div className="grid gap-3 sm:grid-cols-2">
               {CAMPOS_IMPORTACION.map((campo) => (
-                <FormField key={campo} label={ETIQUETA_CAMPO[campo]} required={campo === "telefono"} hint={campo === "telefono" ? "10 dígitos; +52 y 521 se aceptan." : undefined}>
+                <FormField key={campo} label={ETIQUETA_CAMPO[campo]} required={campo === "telefono"} hint={campo === "telefono" ? t("restaurantes.clientes.imp.telefonoAyuda") : undefined}>
                   <Selector id={`clientes-import-${campo}`} size="sm" value={mapeo[campo] === null ? "" : String(mapeo[campo])} onChange={(e) => cambiarMapeo(campo, e.target.value)}>
-                    <option value="">{campo === "telefono" ? "Elige la columna…" : "No importar"}</option>
+                    <option value="">{t(campo === "telefono" ? "restaurantes.clientes.imp.eligeColumna" : "restaurantes.clientes.imp.noImportar")}</option>
                     {Array.from({ length: columnas }, (_, i) => (
                       <option key={i} value={i}>
                         {nombreColumna(i)}
@@ -220,31 +224,31 @@ export function ImportarClientesDialog({ open, onOpenChange, apiBaseUrl, token, 
         {vista && !resultado && (
           <div className="flex flex-col gap-2" data-testid="importar-vista-previa">
             <p className="m-0 text-sm text-foreground">
-              {vista.validos} de {vista.total} renglones son válidos
-              {vista.duplicadosEnArchivo > 0 ? ` (${vista.duplicadosEnArchivo} repiten un teléfono del mismo archivo: gana el primero)` : ""}.
+              {t("restaurantes.clientes.imp.validos", { validos: vista.validos, total: vista.total })}
+              {vista.duplicadosEnArchivo > 0 ? t("restaurantes.clientes.imp.duplicados", { n: vista.duplicadosEnArchivo }) : ""}.
             </p>
             {vista.totalErrores > 0 && (
               <div className="flex flex-col gap-1">
                 <p className="m-0 text-sm font-semibold text-destructive">
-                  {vista.totalErrores} {vista.totalErrores === 1 ? "renglón" : "renglones"} con error (no se importan)
+                  {t("restaurantes.clientes.imp.conError", { count: vista.totalErrores })}
                 </p>
                 <ul className="m-0 max-h-40 list-disc overflow-auto pl-5 text-xs text-foreground">
                   {vista.errores.map((e) => (
                     <li key={e.renglon}>
-                      Renglón {e.renglon}: {e.motivo}
+                      {t("restaurantes.clientes.imp.renglon", { n: e.renglon, motivo: e.motivo })}
                     </li>
                   ))}
                 </ul>
-                {vista.totalErrores > vista.errores.length && <p className="m-0 text-xs text-muted-foreground">Se muestran los primeros {vista.errores.length}.</p>}
+                {vista.totalErrores > vista.errores.length && <p className="m-0 text-xs text-muted-foreground">{t("restaurantes.clientes.imp.primeros", { n: vista.errores.length })}</p>}
               </div>
             )}
             {vista.muestra.length > 0 && (
               <div className="text-xs text-muted-foreground">
-                Ejemplo:{" "}
+                {t("restaurantes.clientes.imp.ejemplo")}{" "}
                 {vista.muestra.map((m, i) => (
                   <span key={i}>
                     {i > 0 ? " · " : ""}
-                    {m.nombre ?? "Sin nombre"} ({m.telefonoEnmascarado})
+                    {m.nombre ?? t("restaurantes.clientes.sinNombre")} ({m.telefonoEnmascarado})
                   </span>
                 ))}
               </div>
@@ -254,15 +258,16 @@ export function ImportarClientesDialog({ open, onOpenChange, apiBaseUrl, token, 
 
         {resultado && (
           <div className="flex flex-col gap-2" data-testid="importar-resultado">
-            {resultado.yaImportado && <Callout tone="info">Este archivo con estas mismas columnas ya se había importado antes: no se volvió a escribir nada. Estas son las cifras de la primera vez.</Callout>}
+            {resultado.yaImportado && <Callout tone="info">{t("restaurantes.clientes.imp.yaImportadoAntes")}</Callout>}
             <dl className="m-0 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
-              <dt className="text-muted-foreground">Clientes nuevos</dt>
+              <dt className="text-muted-foreground">{t("restaurantes.clientes.imp.nuevos")}</dt>
               <dd className="m-0 font-semibold text-foreground">{resultado.creados}</dd>
-              <dt className="text-muted-foreground">Completados (datos que faltaban)</dt>
+              <dt className="text-muted-foreground">{t("restaurantes.clientes.imp.completados")}</dt>
               <dd className="m-0 text-foreground">{resultado.actualizados}</dd>
-              <dt className="text-muted-foreground">Sin cambios (ya existían)</dt>
+              <dt className="text-muted-foreground">{t("restaurantes.clientes.imp.sinCambios")}</dt>
               <dd className="m-0 text-foreground">{resultado.sinCambios}</dd>
-              <dt className="text-muted-foreground">Rechazados</dt>
+              <dt className="text-muted-foreground">{t("restaurantes.clientes.imp.rechazados")}</dt>
+
               <dd className="m-0 text-foreground">{resultado.rechazados}</dd>
             </dl>
           </div>
