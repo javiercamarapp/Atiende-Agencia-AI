@@ -255,6 +255,18 @@ function proveedorOpenRouter(env: ApiEnv, openrouter: NonNullable<ApiEnv["llmPro
 }
 
 /**
+ * Parametros de un escalon del cerebro v2: Luna con el esfuerzo de razonamiento elegido (none = sin `reasoningEffort`); los modelos de Anthropic (Haiku 5.5, respaldo de Luna) con
+ * `cacheSystemPrompt` (punto de cache explicito sobre herramientas + system: ~250k tokens de entrada por conversacion casi todos repetidos). Luna (OpenAI por Azure) cachea sola el
+ * prefijo comun, sin marca. Pura.
+ */
+export function paramsDeEscalonCerebroV2(r: LlmRungConfig, esfuerzo: string): LlmRungConfig {
+  if (r.model.startsWith("anthropic/")) return { ...r, cacheSystemPrompt: true };
+  if (r.model !== "openai/gpt-6-luna") return r;
+  if (esfuerzo === "none") { const { reasoningEffort: _sin, ...resto } = r; return resto; }
+  return { ...r, reasoningEffort: esfuerzo as LlmRungConfig["reasoningEffort"] };
+}
+
+/**
  * Escaleras de RETENCION CERO del cerebro v2 por rol del agente de WhatsApp de restaurantes: el rol por defecto y el escalado usan Luna -> Haiku 5.5 (decision
  * del 6-nov: el escalado es Luna, no Terra). Todas las rutas llevan `zdr: true`, que
  * `routingForModel` traslada a `provider.zdr`. Sin llave de OpenRouter: ninguna (la llamada v2 falla cerrada).
@@ -265,11 +277,7 @@ export function buildCerebroV2ZdrLadders(env: ApiEnv, _models?: LlmModelsConfig)
   if (!openrouter) return salida;
   // Esfuerzo de razonamiento de Luna en el cerebro v2 (CEREBRO_V2_LUNA_ESFUERZO = none|minimal|low; otro valor o ausente = low): para medir latencia sin redeploy de codigo.
   const esfuerzo = ["none", "minimal", "low"].includes(String(process.env.CEREBRO_V2_LUNA_ESFUERZO ?? "").trim()) ? String(process.env.CEREBRO_V2_LUNA_ESFUERZO).trim() : "low";
-  const conEsfuerzo = (r: LlmRungConfig): LlmRungConfig => {
-    if (r.model !== "openai/gpt-6-luna") return r;
-    if (esfuerzo === "none") { const { reasoningEffort: _sin, ...resto } = r; return resto; }
-    return { ...r, reasoningEffort: esfuerzo as LlmRungConfig["reasoningEffort"] };
-  };
+  const conEsfuerzo = (r: LlmRungConfig): LlmRungConfig => paramsDeEscalonCerebroV2(r, esfuerzo);
   const ajustar = (route: LlmRouteConfig): LlmRouteConfig => ({ ...route, models: route.models.map(conEsfuerzo) });
   const alternativasRoute: LlmRouteConfig = { models: CEREBRO_V2_ALTERNATIVAS.map(conEsfuerzo), routing: { allowFallbacks: true, zdr: true } };
   const alternativas = alternativasRoute.models.map((rung) => proveedorOpenRouter(env, openrouter, alternativasRoute, rung));
