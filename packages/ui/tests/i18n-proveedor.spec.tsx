@@ -6,7 +6,7 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { IdiomaProvider, cargarIdioma, useI18n, useT } from "../src/i18n/index";
+import { IdiomaProvider, cargarIdioma, useFormatos, useI18n, useT } from "../src/i18n/index";
 import { CLAVE_IDIOMA, guardarIdioma } from "../src/lib/idioma";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -16,7 +16,8 @@ let contenedor: HTMLElement | null = null;
 let cambiar: ((i: "es" | "en") => void) | null = null;
 
 function Muestra() {
-  const { t, formatos, idioma, cambiarIdioma } = useI18n();
+  const { t, idioma, cambiarIdioma } = useI18n();
+  const formatos = useFormatos();
   cambiar = cambiarIdioma;
   return createElement("p", { "data-idioma": idioma }, `${t("comun.reintentar")} · ${t("comun.resultados", { count: 2 })} · ${formatos.moneda(5)}`);
 }
