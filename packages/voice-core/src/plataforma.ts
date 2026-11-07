@@ -38,6 +38,8 @@ export interface DepsPlataformaVoz extends CredencialesVoz {
   readonly dosNiveles?: boolean;
   /** Ver `CascadaV2Opciones.confirmacionAntesDeCrear` (restaurantes: confirmar_resumen / crear_pedido). */
   readonly confirmacionAntesDeCrear?: ReglaConfirmacion;
+  /** Ver `CascadaV2Opciones.omitirAcuse`: guardia de riesgo de la vertical (sin acuse en ese turno). */
+  readonly omitirAcuse?: (texto: string) => boolean;
   readonly crearSocketDeepgram?: CrearSocketDeepgram;
   /** Registro de eventos de la cascada v2 (sin PII: modelo, tokens, latencias). */
   readonly log?: SumideroLog;
@@ -122,6 +124,7 @@ export function crearEscalonesPlataforma(deps: DepsPlataformaVoz): EscalonLlamad
         ...(deps.crearSocketDeepgram ? { crearSocket: deps.crearSocketDeepgram } : {}),
         ...(deps.herramientasEnParalelo ? { herramientasEnParalelo: deps.herramientasEnParalelo } : {}),
         ...(deps.confirmacionAntesDeCrear ? { confirmacionAntesDeCrear: deps.confirmacionAntesDeCrear } : {}),
+        ...(deps.omitirAcuse ? { omitirAcuse: deps.omitirAcuse } : {}),
         ...(deps.log ? { log: deps.log } : {}),
       })
     : null;

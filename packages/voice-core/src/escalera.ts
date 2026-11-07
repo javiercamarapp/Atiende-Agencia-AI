@@ -162,6 +162,7 @@ function envolverSesion(sesion: VozSesionLlamada, tramo: TramoAbierto, cerrarTra
     enviarTexto: (t) => sesion.enviarTexto(t),
     ...(sesion.enviarAudio ? { enviarAudio: (pcm: Uint8Array) => sesion.enviarAudio?.(pcm) } : {}),
     interrumpir: () => sesion.interrumpir(),
+    ...(sesion.silenciarTurnoPendiente ? { silenciarTurnoPendiente: () => sesion.silenciarTurnoPendiente?.() } : {}),
     cerrar: async () => {
       cerrarTramo(tramo);
       await sesion.cerrar();

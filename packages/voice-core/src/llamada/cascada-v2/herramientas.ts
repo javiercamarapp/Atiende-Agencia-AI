@@ -71,8 +71,13 @@ export interface EstadoEspera {
   confirmadoEnTurno?: boolean;
   /** `crear` respondio en este turno: `ok` (pedido creado), `falla` (error del servidor) o `compuerta` (lo freno esta compuerta: el cliente no ha dado un «si» valido). */
   crearEnTurno?: "ok" | "falla" | "compuerta" | null;
-  /** Ya hay un pedido creado en esta llamada (las frases de registro ya son ciertas). */
+  /** Ya hay un pedido creado en esta llamada (las frases de registro ya son ciertas). Vuelve a false con una cotizacion NUEVA (otro pedido: revision #752 P2-3c) y no se
+   * enciende si el servidor lo dejo pendiente de aprobar (`pedido_grande` / `por_aprobar`: «quedó registrado» seria falso, P2-3d). */
   pedidoCreado?: boolean;
+  /** Huella del ultimo pedido creado: una cotizacion con otra huella es otro pedido. */
+  huellaCreada?: string | null;
+  /** `crear` respondio que el pedido es grande y queda por aprobar (o retenido) en este turno. */
+  pedidoPorAprobar?: boolean;
   /** Herramienta que la sesion debe FORZAR en la vuelta siguiente (escalacion bloqueada con la compuerta abierta: primero confirmar/crear). */
   forzarSiguiente?: string | null;
 }
@@ -120,6 +125,16 @@ function conError(salida: unknown): boolean {
   if (typeof salida !== "object" || Array.isArray(salida)) return false;
   const o = salida as Record<string, unknown>;
   return ("error" in o && o["error"] !== undefined && o["error"] !== null && o["error"] !== false) || o["ok"] === false;
+}
+
+/** Motivos de escalacion que se frenan con la compuerta abierta (primero se registra el pedido). `""` = sin motivo. */
+const MOTIVOS_ESCALAR_FRENABLES: ReadonlySet<string> = new Set(["", "falla_sistema", "no_entiende"]);
+
+/** `crear` respondio sin error pero el pedido NO quedo en firme: pedido grande retenido o por aprobar por la sucursal. */
+function esPorAprobar(salida: unknown): boolean {
+  if (!salida || typeof salida !== "object" || Array.isArray(salida)) return false;
+  const o = salida as Record<string, unknown>;
+  return o["pedido_grande"] === true || o["por_aprobar"] === true || o["estado"] === "por_aprobar";
 }
 
 export const MENSAJE_ESPERA_CONFIRMACION =
@@ -175,6 +190,8 @@ export async function ejecutarHerramientas(
     }
     if (h !== null && espera.totalCotizado === null) log?.("v2_total_desconocido", { motivo: "sin_total", herramienta: regla.cotizar });
     if (h === null || h !== espera.huellaOida) espera.huellaOida = null;
+    // Otro pedido en la misma llamada: sus frases de registro vuelven a esperar a su propio crear.
+    if (h !== null && espera.pedidoCreado === true && h !== (espera.huellaCreada ?? null)) espera.pedidoCreado = false;
   };
   const una = async (tc: ToolCallLlmVoz): Promise<ResultadoHerramienta> => {
     try {
@@ -197,15 +214,17 @@ export async function ejecutarHerramientas(
       continue;
     }
     if (regla?.escalar && tc.nombre === regla.escalar && espera.crearEnTurno !== "ok" && espera.crearEnTurno !== "falla") {
+      const motivo = argumentosDe(tc.argsJson)["motivo"];
       // Escalar con el pedido confirmado y sin crear deja al cliente sin pedido (E2E 6-nov-2026): primero se registra; la escalacion solo vale si crear falla.
-      if (compuertaAbierta(espera)) {
+      // Solo se frena una escalacion sin motivo de fondo (falla_sistema, no_entiende o sin motivo): alergia, privacidad, queja, urgencia o el cliente que pide una
+      // persona pasan SIEMPRE (revision #752 P2-4).
+      if (compuertaAbierta(espera) && MOTIVOS_ESCALAR_FRENABLES.has(typeof motivo === "string" ? motivo : "")) {
         espera.forzarSiguiente = espera.confirmadoEnTurno === true ? regla.crear : regla.confirmar;
         log?.("v2_escalar_sin_crear", { motivo: "compuerta_abierta", herramienta: espera.forzarSiguiente });
         resultados.push({ llamada: tc, salida: { error: "primero_crear_pedido", mensaje: MENSAJE_PRIMERO_CREAR } });
         continue;
       }
       // La compuerta acaba de frenar crear (el cliente no dio un «si» limpio) y el modelo lo toma como falla del sistema: no lo es.
-      const motivo = argumentosDe(tc.argsJson)["motivo"];
       if (espera.crearEnTurno === "compuerta" && (motivo === undefined || motivo === "falla_sistema")) {
         log?.("v2_escalar_sin_crear", { motivo: "compuerta_no_es_falla", herramienta: regla.escalar });
         resultados.push({ llamada: tc, salida: { error: "no_es_falla_del_sistema", mensaje: MENSAJE_COMPUERTA_NO_ES_FALLA } });
@@ -254,7 +273,14 @@ export async function ejecutarHerramientas(
     // Pedido creado: ese resumen ya se uso. Un segundo «si» (o un crear repetido) debe pasar por una confirmacion nueva; la idempotencia sigue siendo del servidor.
     if (regla && tc.nombre === regla.crear) {
       espera.crearEnTurno = conError(res.salida) ? "falla" : "ok";
-      if (!conError(res.salida)) espera.pedidoCreado = true;
+      if (!conError(res.salida)) {
+        const porAprobar = esPorAprobar(res.salida);
+        espera.pedidoPorAprobar = porAprobar;
+        if (!porAprobar) {
+          espera.pedidoCreado = true;
+          espera.huellaCreada = espera.huellaCotizada ?? espera.huellaOida ?? espera.huellaUltima ?? null;
+        }
+      }
     }
     if (regla?.cotizar && tc.nombre === regla.crear && !conError(res.salida)) {
       espera.huellaOida = null;

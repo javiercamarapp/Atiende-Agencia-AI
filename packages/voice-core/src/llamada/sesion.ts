@@ -68,6 +68,8 @@ export interface VozSesionLlamada {
   enviarAudio?(pcm16: Uint8Array): void;
   /** Hace callar al agente (el controlador lo usa si la maquina ordena cortar el audio). */
   interrumpir(): void;
+  /** Una guardia determinista del controlador actuo sobre lo ultimo que dijo el cliente: el turno del modelo para ese mensaje (en curso o encolado) no habla. Opcional. */
+  silenciarTurnoPendiente?(): void;
   cerrar(): Promise<void>;
 }
 

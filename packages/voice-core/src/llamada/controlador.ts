@@ -277,7 +277,9 @@ export class ControladorLlamada<R extends string = string> {
     if (!decision) return false;
     // Solo el MOTIVO queda en el log: nunca lo que dijo el cliente.
     this.log("guardia_cliente", { motivo: decision.motivo });
-    this.sesion?.interrumpir();
+    // El turno del modelo para este mismo mensaje (y su acuse) no debe sonar encima ni despues del texto de la guardia (revision #752 P2-1).
+    if (this.sesion?.silenciarTurnoPendiente) this.sesion.silenciarTurnoPendiente();
+    else this.sesion?.interrumpir();
     this.deps.cortarAudio?.();
     await guardia.decir(decision.texto);
     await this.escalar(decision.motivo, decision.resumen);
