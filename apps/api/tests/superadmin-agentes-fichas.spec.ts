@@ -291,10 +291,10 @@ describe("GET /superadmin/model-ops", () => {
 
   it("usa la ruta vigente de deps.rutaLlmDeRol (LLM_MODELS_JSON) cuando existe", async () => {
     const t = await setup();
-    const app = buildApp({ ...t.s.deps, fichasAgenteRepo: () => t.fichas!, consolaRepo: () => t.consola!, rutaLlmDeRol: () => ({ models: [{ model: "anthropic/claude-sonnet-5.5" }] }) });
+    const app = buildApp({ ...t.s.deps, fichasAgenteRepo: () => t.fichas!, consolaRepo: () => t.consola!, rutaLlmDeRol: () => ({ models: [{ model: "anthropic/claude-haiku-5.5" }] }) });
     const sa = await t.superadmin();
     const b = await cuerpo(await get(app, "/superadmin/model-ops", sa.token));
-    expect(b.fichas[0].modelo).toBe("anthropic/claude-sonnet-5.5");
+    expect(b.fichas[0].modelo).toBe("anthropic/claude-haiku-5.5");
     expect(b.fichas[0].proveedores.length).toBeGreaterThan(0);
   });
 });

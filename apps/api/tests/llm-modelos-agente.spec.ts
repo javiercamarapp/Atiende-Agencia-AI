@@ -57,9 +57,7 @@ describe("registro en el gateway de produccion", () => {
     const e = env({ openai: null, openrouter: OPENROUTER });
     expect(buildRoleLadder(e, RESTAURANTES_WHATSAPP_AGENT_ROLE, { roles: {} })!.map((p) => p.id)).toEqual([
       "openrouter:openai/gpt-6-luna",
-      "openrouter:deepseek/deepseek-v4.1-flash",
-      "openrouter:google/gemini-2.5-flash-lite",
-      "openrouter:meta/muse-spark-1.3",
+      "openrouter:anthropic/claude-haiku-5.5",
     ]);
     expect(buildProductionLlmGateway(e, new InMemoryTenancyEngine())).toBeInstanceOf(LlmGateway);
   });
