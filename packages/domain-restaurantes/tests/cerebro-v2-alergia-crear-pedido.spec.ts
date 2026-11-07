@@ -42,7 +42,9 @@ describe("cerebro v2: alergia sin confirmar en crear_pedido", () => {
     v.guion([{ texto: "¡Listo! Su pedido quedó registrado." }]);
     const r = await v.escribe("Sí, así está bien");
     expect(await pedidosDe(v)).toHaveLength(0);
-    expect(r.reply).not.toMatch(/qued[oó] registrado/i);
+    // Clase «alergia» (suelto R84-1): «Perdón, su pedido todavía no quedó registrado: por su seguridad…»; nunca el «¡Listo!» del modelo.
+    expect(r.reply).not.toMatch(/¡Listo!/i);
+    expect(r.reply).toMatch(/todavía no quedó registrado/i);
     // El aviso de alergia existe y es URGENTE.
     expect(v.callbacks.some((c) => c.reason === "escalada:alergia_salud" && c.urgente === true && c.message?.startsWith(MARCA_AVISO_URGENTE))).toBe(true);
   });

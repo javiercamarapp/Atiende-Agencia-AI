@@ -65,7 +65,7 @@ import { enforcePromoPolicy, stripUnpromptedTip } from "./cerebro-v2/politicas-p
 import { PM_POLICY_RULES_V2, adaptarPromptPmV2 } from "./cerebro-v2/prompt-v2.ts";
 import { cambioSoloDeFormaDePago } from "./cerebro-v2/pago.ts";
 import { normalizePhone } from "../phone.ts";
-import { consultasDeMenuParaPromesa, corregirPromesaSinBuscar, guardiaTextoFinal, MOTIVO_PEDIDO_NO_REGISTRADO, promesaDeProductoSinBuscar, quitarAlgoMasRepetido } from "./cerebro-v2/texto-final.ts";
+import { consultasDeMenuParaPromesa, corregirPromesaSinBuscar, crearFallidoTrasHerramienta, guardiaTextoFinal, MOTIVO_PEDIDO_NO_REGISTRADO, promesaDeProductoSinBuscar, quitarAlgoMasRepetido, siguienteCrearFallido, type CrearPedidoFallido } from "./cerebro-v2/texto-final.ts";
 import { esTextoEnIngles } from "./cerebro-v2/salud.ts";
 import { herramientaParaElHilo, hiloDelSuelto } from "./cerebro-v2/hilo-herramientas.ts";
 import { cambioNoAplicadoEnTurno } from "./cerebro-v2/pedido-aparte.ts";
@@ -785,6 +785,8 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       // `porAprobarEnTurno` = el pedido creado quedo por_aprobar (pedido grande con autopiloto).
       let crearFalloInternoEnTurno = false;
       let crearRechazadoEnTurno = false;
+      // El ultimo crear_pedido rechazado del turno con su CLASE (suelto R84-1/R85-1: interno, nada, alergia, cotizar, aparte, existente, otro) y si una cotizacion o la zona lo resolvio.
+      let crearFallidoV2: CrearPedidoFallido | null = null;
       let porAprobarEnTurno = false;
       // Un pedido grande ya retenido (incluido `por_aprobar` del autopiloto) YA tiene su aviso: un "ya avise a la sucursal" del modelo no genera otro ni abre toma.
       let pedidoGrandeVisto = false;
@@ -1601,7 +1603,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
               productosDevueltosPorHerramientas: [],
               productoPrometidoEnMenu: null,
               mensajes: hiloGuardia,
-              crearFallido: orderId === null ? (crearFalloInternoEnTurno ? { interno: true, clase: "interno" } : null) : crearRechazadoEnTurno ? { interno: false, clase: "otro" } : null,
+              crearFallido: crearFallidoV2 ?? (crearFalloInternoEnTurno ? { interno: true, clase: "interno" } : crearRechazadoEnTurno ? { interno: false, clase: "otro" } : null),
               pedidoEnCurso: pedidoEnCursoV2 ? "abierto" : null,
               pedidoPrevioRegistrado: true,
               enIngles: esTextoEnIngles(pendientes.map((m) => m.content)),
@@ -1636,6 +1638,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           let result: unknown;
           let fallaSistema = false;
           let codigoDeRechazo: string | null = null;
+          let rechazoClase: AgentToolOutcome["rechazoClase"];
           let argumentosInvalidos = false;
           const toolInicio = Date.now();
           // R11-05a: pasado el tope por respuesta NO se ejecuta nada, pero cada tool_call recibe su resultado (el protocolo exige uno por id).
@@ -1675,6 +1678,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             result = executed.result;
             fallaSistema = executed.fallaSistema === true;
             codigoDeRechazo = executed.rechazoDelFlujo ?? null;
+            rechazoClase = executed.rechazoClase;
             anyToolCalled = true;
             if ((call.name === "crear_pedido" || call.name === "registrar_contacto" || call.name === "solicitar_agregado_pedido" || call.name === "escalar_a_humano") && !isToolErrorResult(result)) mutoEnTurno = true;
             if ((call.name === "cotizar_pedido" || call.name === "repetir_pedido") && !isToolErrorResult(result) && executed.quoteHash) cotizacionDelTurno = executed.quoteHash;
@@ -1728,8 +1732,19 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             if (isToolErrorResult(result)) {
               crearRechazadoEnTurno = true;
               if (fallaSistema) crearFalloInternoEnTurno = true;
+              const error = (result as { error?: unknown }).error;
+              crearFallidoV2 = siguienteCrearFallido(crearFallidoV2, {
+                error: typeof error === "string" ? error : undefined,
+                codigo: codigoDeRechazo ?? undefined,
+                interno: fallaSistema,
+                clase: rechazoClase?.clase ?? null,
+                pregunta: rechazoClase?.pregunta,
+                sucursal: rechazoClase?.sucursal ?? null,
+                input,
+              });
             } else if ((result as { por_aprobar?: unknown } | null)?.por_aprobar === true) porAprobarEnTurno = true;
           }
+          crearFallidoV2 = crearFallidoTrasHerramienta(crearFallidoV2, call.name, result);
           if (call.name === "escalar_a_humano" && !isToolErrorResult(result)) {
             escalacionOkEnTurno = true;
             escalarMotivo = typeof input.motivo === "string" ? input.motivo : "otro";

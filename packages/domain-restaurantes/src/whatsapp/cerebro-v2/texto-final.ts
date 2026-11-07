@@ -507,7 +507,8 @@ export function razonDelRechazo(
   const r = (motivoEn: string, preguntaEn: string, motivoEs: string, preguntaEs: string) =>
     enIngles ? { motivo: motivoEn, pregunta: preguntaEn } : { motivo: motivoEs, pregunta: preguntaEs };
   const temprano = /lo mas temprano es ([0-9:]+\s*(?:am|pm)?)/.exec(n)?.[1];
-  const minimo = /pedido minimo a domicilio es de \$?([\d.,]*\d)(?: y este suma \$?([\d.,]*\d))?/.exec(n);
+  // Monorrepo (reglas-pedido.ts): «El pedido mínimo a domicilio en <sucursal> es de $200. El pedido suma $120; …» (misma razón, otra redacción).
+  const minimo = /pedido minimo a domicilio (?:en [^$]*? )?es de \$?([\d.,]*\d)(?:(?: y este suma|\. el pedido suma) \$?([\d.,]*\d))?/.exec(n);
   if (minimo) {
     const [, m, suma] = minimo;
     return r(
@@ -557,7 +558,8 @@ export function razonDelRechazo(
       "¿Lo quitamos del pedido o prefiere pasar a recoger?",
     );
   }
-  if (/sucursal esta cerrada/.test(n)) {
+  // Monorrepo (horarios.ts mensajeSucursalCerrada): «La sucursal <nombre> está cerrada en este momento; abre hoy a las …».
+  if (/sucursal esta cerrada/.test(n) || /^la sucursal [^.;:]* esta cerrada en este momento/.test(n)) {
     const horario = /\(horario de hoy: ([^)]*)\)/.exec(error)?.[1];
     // Revisión 83 (R83-6): programar solo si hoy abre más tarde; si ya cerró por hoy, que escriba cuando esté abierta.
     if (!extra.abreMasTardeHoy) {
@@ -907,4 +909,63 @@ export function quitarAlgoMasRepetido(reply: string, historial: readonly { reado
   if (!yaPreguntado) return reply;
   const limpio = reply.replace(PREGUNTA_ALGO_MAS, (p) => (ALTERNATIVA.test(p) ? p : /correct|confirm/i.test(p) ? "¿Es correcto?" : "")).replace(/[ \t]+\n/g, "\n").replace(/[ \t]{2,}/g, " ").trim();
   return limpio === "" ? reply : limpio;
+}
+
+// ── Clase del último rechazo de crear_pedido en el turno (suelto whatsapp-agent-core.ts ~8320-8360, R81-G/R84-1/R85-1) ─────────────────────────────
+
+/** renglonesLegibles(null, args) del suelto: «4 × Coca-Cola, 2 × Taco de pastor» de los renglones de la llamada. Pura. */
+export function pideDelCrear(input: Record<string, unknown>): string {
+  const items = Array.isArray(input.items) ? (input.items as Array<{ product_name?: unknown; requested_quantity?: unknown }>) : [];
+  return items
+    .filter((i) => String(i?.product_name ?? "").trim())
+    .map((i) => `${Number(i?.requested_quantity ?? 1) || 1} × ${String(i?.product_name).trim()}`)
+    .join(", ");
+}
+
+/** Lo que el turno sabe de un crear_pedido rechazado: el texto y código, si fue error del sistema y la clase que trae el rechazo (alergia o la guarda del pedido en la sesión). */
+export interface RechazoDeCrear {
+  readonly error?: string;
+  readonly codigo?: string;
+  readonly interno: boolean;
+  readonly clase?: ClaseRechazo | null;
+  readonly pregunta?: string;
+  readonly sucursal?: { name?: string | null; phone?: string | null } | null;
+  readonly input: Record<string, unknown>;
+}
+
+/**
+ * El CrearPedidoFallido del turno tras un crear_pedido rechazado, como el suelto: la clase del ÚLTIMO rechazo (interno ? "interno" : la que trae el rechazo ??
+ * (razonDelRechazo ? "nada" : "otro")), `interno` pegajoso en el turno y la herramienta que lo resuelve (R85-1). `abreMasTardeHoy` sale del rechazo de sucursal
+ * cerrada del monorrepo («abre hoy a las …»; el suelto lo calculaba con el horario). Pura.
+ */
+export function siguienteCrearFallido(previo: CrearPedidoFallido | null, r: RechazoDeCrear): CrearPedidoFallido {
+  // Monorrepo (maquina de estados del pedido): tras un error del sistema al crear, el reintento del turno choca con el reclamo de esa misma llamada
+  // («pedido_en_proceso»). Es el mismo fallo, no un rechazo nuevo: la clase sigue siendo «interno» (el suelto no tiene ese rechazo).
+  if (previo?.interno === true && previo.clase === "interno" && r.codigo === "pedido_en_proceso") return previo;
+  const error = r.error;
+  const n = normAviso(error ?? "");
+  const clase: ClaseRechazo = r.interno ? "interno" : r.clase ?? (razonDelRechazo(error ?? "", r.codigo, false) ? "nada" : "otro");
+  return {
+    interno: r.interno || previo?.interno === true,
+    error,
+    codigo: r.codigo,
+    clase,
+    pide: pideDelCrear(r.input),
+    pregunta: r.pregunta,
+    sucursal: r.sucursal ?? null,
+    abreMasTardeHoy: /esta cerrada[^.]*; abre hoy a las/.test(n),
+    resuelveCon: clase === "cotizar" ? "cotizar_pedido" : /aun no se ha ubicado la zona/.test(n) ? "buscar_sucursal_cercana" : null,
+  };
+}
+
+/** R85-1: tras el rechazo, una cotizar_pedido (con total) o buscar_sucursal_cercana (encontrada, dentro de zona) exitosa marca el rechazo como resuelto. Pura. */
+export function crearFallidoTrasHerramienta(previo: CrearPedidoFallido | null, nombre: string, result: unknown): CrearPedidoFallido | null {
+  if (!previo || (nombre !== "cotizar_pedido" && nombre !== "buscar_sucursal_cercana")) return previo;
+  if (!result || typeof result !== "object" || "error" in result) return previo;
+  const r = result as { quote?: { total?: unknown }; total?: unknown; encontrada?: unknown; fuera_de_zona?: unknown };
+  const totalCrudo = r.quote?.total ?? r.total;
+  const total = nombre === "cotizar_pedido" && typeof totalCrudo === "number" ? totalCrudo : null;
+  const valido = nombre === "cotizar_pedido" ? total !== null : r.encontrada !== false && r.fuera_de_zona !== true;
+  if (!valido) return { ...previo, resuelto: previo.resuelto === true };
+  return { ...previo, resuelto: previo.resuelto === true || previo.resuelveCon === nombre, totalCotizado: total ?? previo.totalCotizado ?? null };
 }

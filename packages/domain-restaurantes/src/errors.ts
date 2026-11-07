@@ -4,6 +4,17 @@
 // el origen (400 validación, 409 conflicto de idempotencia).
 export class OrderValidationError extends Error {}
 export class OrderConflictError extends OrderValidationError {}
+/** Cerebro v2: rechazo de crear_pedido que trae su CLASE (suelto R84-1: alergia en espera o la guarda del pedido en la sesion), para que el texto final del turno
+ *  lo arme el servidor segun la clase. Para todo lo demas es un OrderValidationError normal (el modelo ve solo `{error}`). */
+export class RechazoConClaseError extends OrderValidationError {
+  constructor(
+    message: string,
+    readonly clase: "alergia" | "cotizar" | "aparte" | "existente",
+    readonly extra: { readonly pregunta?: string; readonly sucursal?: { readonly name?: string | null; readonly phone?: string | null } | null } = {},
+  ) {
+    super(message);
+  }
+}
 
 /** Guardas SQL de negocio conocidas de la creacion de pedidos que levantan 22023 con un mensaje pensado para el agente/cliente. LISTA CERRADA: cualquier otro 22023 (un
  * error interno de Postgres, una funcion que no es esta) sigue siendo error interno. Hoy: 034_pedidos_programados ("programado_para debe ser una hora futura"). */

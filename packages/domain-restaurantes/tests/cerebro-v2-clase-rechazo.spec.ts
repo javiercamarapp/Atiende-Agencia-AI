@@ -27,6 +27,8 @@ describe("cerebro v2: clase del último rechazo de crear_pedido (puro, paridad c
     expect(a).toMatchObject({ interno: true, clase: "interno", pide: "4 × Coca-Cola, 2 × Taco de pastor" });
     const b = siguienteCrearFallido(a, { error: "Algo que no se reconoce", interno: false, input: INPUT });
     expect(b).toMatchObject({ interno: true, clase: "otro" });
+    // Monorrepo: el reintento tras el error del sistema choca con el reclamo de esa misma llamada (pedido_en_proceso): sigue siendo «interno».
+    expect(siguienteCrearFallido(a, { error: "El pedido se está registrando en este momento; espera un momento antes de reintentar.", codigo: "pedido_en_proceso", interno: false, input: INPUT })).toBe(a);
   });
 
   it("la clase que trae el rechazo (alergia, guarda del pedido en la sesión) manda; sin ella, razonDelRechazo decide nada/otro", () => {
@@ -95,7 +97,9 @@ describe("cerebro v2: la clase del rechazo llega al turno", () => {
     v.guion([{ texto: "¡Listo! Su pedido quedó registrado." }]);
     const r = await v.escribe("Sí, así está bien");
     expect(await pedidosDe(v)).toHaveLength(0);
-    expect(r.reply).not.toMatch(/qued[oó] registrado/i);
+    // El texto del suelto dice «Perdón, su pedido todavía no quedó registrado: …»; nunca el «¡Listo! …» del modelo.
+    expect(r.reply).not.toMatch(/¡Listo!|^Su pedido qued[oó] registrado/i);
+    expect(r.reply).toMatch(/^Perdón, su pedido todavía no quedó registrado: por su seguridad, el pedido espera a que una persona de la sucursal le confirme lo de la alergia/i);
     expect(r.reply).toMatch(/Por su seguridad, el pedido espera a que una persona de la sucursal le confirme lo de la alergia/i);
     expect(r.reply).toContain("La sucursal ya tiene su aviso; en cuanto le confirme, tomamos su pedido.");
   });

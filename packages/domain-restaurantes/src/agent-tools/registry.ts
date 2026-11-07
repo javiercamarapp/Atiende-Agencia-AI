@@ -18,7 +18,7 @@ import { registerCallbackRequest } from "../callback-requests.ts";
 import { decidirBloqueoAlergia, evidenciaAlergiaEnSesion, MARCA_AVISO_URGENTE, notaAlergiaDelPedido, notaPreferenciaDelPedido, notasConAlergia, notasConPreferencia, rechazoAlergiaSinConfirmar, type EstadoAlergia, type MensajeSalud } from "../whatsapp/cerebro-v2/salud.ts";
 import type { AvisoDelTelefono } from "../repository.ts";
 import { avisoCreadoUrgente, planDeAviso } from "../whatsapp/cerebro-v2/avisos.ts";
-import { idsPedidosCreadosEnSesion, motivoOtroPedidoEnSesion } from "../whatsapp/cerebro-v2/pedido-aparte.ts";
+import { claseDelRechazoOtroPedido, idsPedidosCreadosEnSesion, motivoOtroPedidoEnSesion } from "../whatsapp/cerebro-v2/pedido-aparte.ts";
 import type { MensajeHilo } from "../whatsapp/cerebro-v2/texto-plano.ts";
 import { MOTIVOS_AVISO_CON_PEDIDO, armarBloquePedidoParaAviso, componerMensajeAviso, corregirAvisoCotizado } from "../aviso-pedido-gerente.ts";
 import { cargarMemoria, evaluarReincidencia } from "../cliente-360/memoria.ts";
@@ -28,7 +28,7 @@ import { VENTANA_PEDIDO_RECIENTE_MIN, buscarPedidoRecienteConSucursal, estadoPar
 import { fusionarRenglonesPorProducto } from "../promotions.ts";
 import { aclararGuacamoleExtra } from "../whatsapp/guards.ts";
 import { sanitizeInlineText } from "../text-sanitize.ts";
-import { OrderValidationError, esGuardaSqlDeNegocioDePedido } from "../errors.ts";
+import { OrderValidationError, RechazoConClaseError, esGuardaSqlDeNegocioDePedido } from "../errors.ts";
 import { normalizePhone, toWhatsAppRecipient } from "../phone.ts";
 import { resolverMenuPdf } from "../menu-pdf.ts";
 import { mismosRenglones, VENTANA_PEDIDO_IGUAL_MIN } from "../pedido-igual-reciente.ts";
@@ -247,6 +247,8 @@ export interface AgentToolOutcome {
   readonly pedidoRetenido?: boolean;
   /** Codigo de la violacion de la maquina de estados que el SERVIDOR rechazo a proposito (solo `executeAgentToolSafely`, con `{error}`). */
   readonly rechazoDelFlujo?: OrderFlowViolationCode;
+  /** Cerebro v2: clase del rechazo de crear_pedido (alergia en espera o la guarda del pedido en la sesion), para el texto final del turno. Nunca la ve el modelo. */
+  readonly rechazoClase?: { readonly clase: RechazoConClaseError["clase"]; readonly pregunta?: string; readonly sucursal?: { readonly name?: string | null; readonly phone?: string | null } | null };
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -2417,7 +2419,10 @@ async function dispatchTool(
       // si al pedido aparte con su cotizacion posterior. Sin clasificador «¿aparte?» (intencionAparte null: el modo degradado del suelto, R24).
       if (ctx.cerebroV2 && ctx.channel === "whatsapp" && ctx.hiloV2) {
         const motivo = await motivoOtroPedidoV2(repo, ctx.organizationId, ctx.hiloV2, input);
-        if (motivo) throw new OrderValidationError(motivo);
+        if (motivo) {
+          const c = claseDelRechazoOtroPedido(motivo);
+          throw new RechazoConClaseError(motivo, c.clase === "cotizar" || c.clase === "aparte" ? c.clase : "existente", c.pregunta ? { pregunta: c.pregunta } : {});
+        }
       }
       if (ctx.cerebroV2 && ctx.channel === "whatsapp" && createInput.canal === "recoger" && !createInput.programadoPara && createInput.horaRecogida) {
         const hora = await revalidarRecogerAlCrear(repo, ctx, createInput.horaRecogida);
@@ -3008,7 +3013,8 @@ async function guardaAlergiaV2(repo: RestaurantesRepository, ctx: AgentToolConte
       });
     }
     const branch = createInput.branchSlug ? await repo.findBranch(ctx.organizationId, { slug: createInput.branchSlug }).catch(() => null) : null;
-    throw new OrderValidationError(rechazoAlergiaSinConfirmar(branch ? { name: branch.name, phone: branch.phone } : null));
+    const sucursal = branch ? { name: branch.name, phone: branch.phone } : null;
+    throw new RechazoConClaseError(rechazoAlergiaSinConfirmar(sucursal), "alergia", { sucursal });
   }
   return notasConAlergia(notaAlergiaDelPedido(hilo), notasConPreferencia(notaPreferenciaDelPedido(hilo), createInput.notes));
 }
@@ -3042,6 +3048,7 @@ export async function executeAgentToolSafely(repo: RestaurantesRepository, ctx: 
       propertyId: null,
       ...(esRegla ? {} : { fallaSistema: true }),
       ...(err instanceof OrderFlowViolationError ? { rechazoDelFlujo: err.code } : {}),
+      ...(err instanceof RechazoConClaseError ? { rechazoClase: { clase: err.clase, ...err.extra } } : {}),
     };
   }
 }
