@@ -18,7 +18,7 @@ function stubGraph(opciones: { fallaEn?: string } = {}) {
     "fetch",
     vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       const u = String(url);
-      if (!u.startsWith("https://graph.facebook.com")) return originalFetch(url as never, init);
+      if (new URL(u).hostname !== "graph.facebook.com") return originalFetch(url as never, init);
       llamadas.push(`${init?.method ?? "GET"} ${new URL(u).pathname}`);
       const ruta = new URL(u).pathname;
       if (opciones.fallaEn && ruta.endsWith(opciones.fallaEn)) return new Response(JSON.stringify({ error: { message: `fallo con ${TOKEN}`, code: 100 } }), { status: 400 });
