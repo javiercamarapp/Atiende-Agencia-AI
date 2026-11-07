@@ -460,7 +460,7 @@ const COMO_CANCELAR =
   /\bcomo\s+(?:(?:le\s+)?(?:hago|hacemos|puedo|podemos|debo|se\s+puede)\s+(?:para\s+)?)?(?:(?:me|nos|se|lo|la|le)\s+)*(?:cancel|anul)/;
 /** Un trozo entre comas que es solo cortesía o vocativo («porfa», «por favor», «oigan»): no cierra la pregunta. */
 const TROZO_CORTESIA =
-  /^\s*(?:(?:porfa|porfavor|por\s+favor|plis|pls|gracias|oigan|oiga|oye|amigo|amiga|joven|senorita|senor|ok|ya|y|pues)\s*)*[¿?\s]*$/;
+  /^\s*(?:(?:porfa|porfavor|por\s+favor|plis|pls|gracias|oigan|oiga|oye|amigo|amiga|joven|senorita|senor|ok|ya|y|pues)\b\s*)*(?:[¿?]+\s*)*$/; // CodeQL js/polynomial-redos: sin espacios ambiguos entre palabras y signos
 /**
  * La parte de una frase que pregunta: desde el «¿» (si lo hay) o, con solo «?», el último trozo entre comas con contenido
  * y la cortesía que lo sigue («cancelen mi pedido, ¿cuánto tardan?» pregunta solo «¿cuánto tardan?»; «oye, me lo cancelan,
@@ -828,7 +828,7 @@ export function esCancelacionDudosa(texto: string, opciones: OpcionesCancelacion
 // Revisión 71 (R71-5d): tampoco con la promo, el descuento, el cupón o la oferta («¿cancelan la promo si pago con tarjeta?»).
 /** Revisión 67 (R67-7): «…? no», «…? no, gracias», «…? no, mejor no» al final del mensaje (texto plano). */
 const DECLINA_TRAS_PREGUNTA =
-  /\?[\s.!¡]*(?:no|nel|nop|nah)\b(?:\s*[,.!]?\s*(?:(?:muchas\s+|mil\s+)?gracias|mejor\s+no|asi\s+esta\s+bien|todo\s+bien|por\s+ahora|ahorita\s+no))*[\s.!]*$/;
+  /\?[\s.!¡]*(?:no|nel|nop|nah)\b(?:[\s,.!]+(?:(?:muchas\s+|mil\s+)?gracias|mejor\s+no|asi\s+esta\s+bien|todo\s+bien|por\s+ahora|ahorita\s+no)\b)*[\s.!]*$/; // CodeQL js/redos: separador sin cuantificadores anidados
 const FORMA_CANCELAN_PREGUNTA =
   /(?<!\b(?:que|porque)\s(?:(?:me|nos|se)\s)?(?:(?:lo|la|los|las)\s)?)\b(?:(?:me|nos|se)\s+)?(?:(?:lo|la|los|las)\s+)?(?:cancelan|cancelarian|cancelaria|anularian|anularia|van\s+a\s+cancelar\w*)\b(?!\s+(?:(?:el|la|los|las|mi|mis|su|sus|este|ese|esta|esa)\s+)?(?:pagos?|cargos?|cobros?|tarjetas?|transferencias?|depositos?|promos?|promociones?|descuentos?|cupon(?:es)?|ofertas?)\b)/;
 /** Revisión 66 (R66-1): relleno alrededor de la pregunta de cancelar (texto plano). */
@@ -1018,7 +1018,7 @@ export function esSiQueConfirmaCancelar(
   declaraAlergia: (texto: string) => boolean = mencionaAlergia,
 ): boolean {
   // Revisión 52: «pues sí», «pues sí, cancélelo»: el «pues» de arranque no cambia la respuesta.
-  const sinPues = String(texto ?? "").replace(/^[\s¡!]*pues\s*,?\s+(?=\S)/i, "");
+  const sinPues = String(texto ?? "").replace(/^[\s¡!]*pues(?:\s*,\s*|\s+)(?=\S)/i, "");
   if (sinPues !== String(texto ?? "")) return esSiQueConfirmaCancelar(sinPues, soloPreguntaCancelar, declaraAlergia);
   // Revisión 57 (R57-1): «sí, quita la coca», «si, cambia la coca por agua», «sí, el de pastor no lo quiero»: modificación.
   if (esSiConCambioDeProducto(texto)) return false;

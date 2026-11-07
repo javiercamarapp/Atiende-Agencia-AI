@@ -170,7 +170,8 @@ export function prometeTransferenciaVoz(texto: string): boolean {
 
 /** Cambia las frases que prometen transferir/esperar por la devolucion de llamada (una sola vez); conserva el resto (total, pregunta). Pura. */
 export function quitarTransferenciaVoz(texto: string): string {
-  const frases = String(texto ?? "").trim().split(/(?<=[.!?])\s+/);
+  // Corte lineal tras el signo (CodeQL js/polynomial-redos: la mirada atras con \s+ era polinomial en espacios largos).
+  const frases = String(texto ?? "").trim().replace(/([.!?])\s+/g, "$1\u0000").split("\u0000");
   let puesta = /devuelv\w*\s+(?:la|su)\s+llamada/i.test(texto);
   const salida: string[] = [];
   for (const f of frases) {
