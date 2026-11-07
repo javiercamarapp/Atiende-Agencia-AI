@@ -111,6 +111,16 @@ describe("compuerta por nivel del STT de ElevenLabs (platica de fondo)", () => {
     expect(t.vistos).toContain("final:Quiero tres tacos de pastor y una coca para recoger.");
   });
 
+  it("un parcial que llega TARDE (el cliente ya callo hace 400 ms) en linea limpia sigue siendo voz: el nivel mira los ultimos 800 ms (E2E r3: parcial_fondo en limpio)", async () => {
+    const t = await abrir();
+    t.audio(4, 0);
+    t.audio(1, 3000);
+    t.audio(0.4, 0);
+    t.parcial("quiero cuatro tacos");
+    expect(t.vistos).toContain("parcial:quiero cuatro tacos");
+    expect(t.vistos).not.toContain("descartado:parcial_fondo");
+  });
+
   it("en una linea limpia (piso bajo) un cliente que habla bajito pasa siempre", async () => {
     const t = await abrir();
     t.audio(4, 0);
