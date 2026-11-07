@@ -4,6 +4,7 @@ import { restaurantesConocimientoEn } from "../conocimiento.ts";
 import { restaurantesIndicadoresWhatsappEn } from "../indicadoresWhatsapp.ts";
 import { restaurantesAgenteVozEn } from "../agenteVoz.ts";
 import { restaurantesIndicadoresVozEn } from "../indicadoresVoz.ts";
+import { restaurantesAjustesAgenteEn } from "../ajustesAgente.ts";
 
 export const EN_RESTAURANTES_AGENTE = {
   restaurantesAgenteWhatsapp: restaurantesAgenteWhatsappEn,
@@ -11,4 +12,5 @@ export const EN_RESTAURANTES_AGENTE = {
   restaurantesIndicadoresWhatsapp: restaurantesIndicadoresWhatsappEn,
   restaurantesAgenteVoz: restaurantesAgenteVozEn,
   restaurantesIndicadoresVoz: restaurantesIndicadoresVozEn,
+  restaurantesAjustesAgente: restaurantesAjustesAgenteEn,
 } as const;

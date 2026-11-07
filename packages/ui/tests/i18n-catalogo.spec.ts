@@ -71,6 +71,9 @@ const IGUALES_PERMITIDOS = new Set<string>([
   "Subtotal",
   "Total",
   "{min} min",
+  // Ajustes del agente de voz: nivel del modelo y ritmo de habla.
+  "Premium",
+  "Normal",
 ]);
 
 describe("catalogo i18n", () => {
