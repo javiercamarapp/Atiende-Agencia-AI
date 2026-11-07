@@ -16,6 +16,7 @@ import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 import { puedeEn } from "../lib/permisos.ts";
 import { ReglasSucursal } from "./ReglasSucursal.tsx";
 import { ControlesSucursal } from "../components/ControlesSucursal.tsx";
+import { UbicacionSucursal } from "../components/UbicacionSucursal.tsx";
 import { Link } from "react-router-dom";
 import { AVISO_FUERA_DE_YUCATAN, esEnlaceCortoDeMaps, fueraDeYucatan, interpretarCoordenadasPegadas, textoCoordenada, urlVerEnMapa, validarPar } from "../lib/coordenadas.ts";
 
@@ -201,6 +202,17 @@ export function SucursalesPage({ apiBaseUrl, token, propertyId, role, orgSlug }:
                   </div>
                   <fieldset className="m-0 flex flex-col gap-3 rounded-card border border-border p-3">
                     <legend className="px-1 text-xs font-semibold text-foreground">Ubicación en el mapa</legend>
+                    <UbicacionSucursal
+                      apiBaseUrl={apiBaseUrl}
+                      token={token}
+                      propertyId={propertyId}
+                      idBase={b.propertyId}
+                      lat={validacion.errorLat || validacion.errorLng ? null : validacion.lat}
+                      lng={validacion.errorLat || validacion.errorLng ? null : validacion.lng}
+                      onUbicar={(lat, lng) => setDraft((d) => ({ ...d, lat: String(lat), lng: String(lng) }))}
+                      direccion={draft.address}
+                      onUsarDireccion={(texto) => setDraft((d) => ({ ...d, address: texto.slice(0, 500) }))}
+                    />
                     <p className="m-0 text-xs text-muted-foreground">
                       En Google Maps, mantén pulsado el punto exacto del local: abajo aparece el pin y arriba los números (por ejemplo 21.0280, -89.6100). Cópialos, o copia el enlace del mapa, y pégalos aquí.
                     </p>
