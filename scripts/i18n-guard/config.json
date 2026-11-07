@@ -2,10 +2,32 @@
   "alcance": [
     "packages/ui/src/i18n",
     "apps/web/src/main.tsx",
+    "packages/ui/src/components/VerticalShell.tsx",
+    "packages/ui/src/components/Sidebar.tsx",
+    "packages/ui/src/components/BottomNav.tsx",
+    "packages/ui/src/components/MobileAccountMenu.tsx",
+    "packages/ui/src/components/NotificationBell.tsx",
+    "packages/ui/src/components/CentroNotificaciones.tsx",
+    "packages/ui/src/components/ThemeSelector.tsx",
+    "apps/web/src/components/VerticalShellConectado.tsx",
+    "apps/web/src/lib/roles.ts",
+    "apps/web/src/superadmin/SuperAdminShell.tsx",
+    "apps/web/src/superadmin/rutas.ts",
+    "apps/web/src/verticals/citas/CitasShell.tsx",
+    "apps/web/src/verticals/despachos/DespachosShell.tsx",
+    "apps/web/src/verticals/hoteles/HotelesShell.tsx",
+    "apps/web/src/verticals/licitaciones/LicitacionesShell.tsx",
+    "apps/web/src/verticals/rentas/RentasShell.tsx",
+    "apps/web/src/verticals/restaurantes/RestaurantesShell.tsx",
+    "apps/web/src/superadmin/rutas-i18n.ts",
+    "packages/ui/src/components/SelectorIdioma.tsx",
+    "packages/ui/src/components/VerticalNoEncontrado.tsx",
     "apps/web/src/verticals/restaurantes/voz/IdiomasAgenteVoz.tsx"
   ],
   "excluir": [
     "packages/ui/src/i18n/mensajes"
   ],
-  "baseline": {}
+  "baseline": {
+    "apps/web/src/superadmin/rutas.ts": 59
+  }
 }
