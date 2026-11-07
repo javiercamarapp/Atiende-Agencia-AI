@@ -1,5 +1,5 @@
 // UNI-1 (marco y barra movil): en el proyecto movil, las 7 consolas (superadmin y las 6 verticales) alcanzan TODOS
-// sus destinos con la barra inferior (63 px, maximo 5 lugares) y la hoja "Más"; cada pantalla muestra el nombre de
+// sus destinos con la barra inferior (pildora de 64 px, maximo 6 lugares) y la hoja "Más"; cada pantalla muestra el nombre de
 // la pagina y tiene un solo <h1> accesible, sin desborde horizontal ni contenido tapado por la barra fija.
 // Las pruebas marcadas @oscuro corren tambien en movil-oscuro.
 import { expect, test } from "../helpers/fixtures.ts";
@@ -17,18 +17,18 @@ test.describe("marco y barra movil @movil", () => {
       await iniciarSesion(objetivo, objetivo === "superadmin" ? undefined : "owner");
       await afirmarPantallaSana(page, `${objetivo}: aterrizaje`);
 
-      // Barra: fija abajo, 63 px (62 de contenido + 1 de borde; el inset es 0 en el emulador), a lo ancho.
+      // Barra: pildora flotante de 64 px, a 10 px del borde inferior y 12 px de cada lado (el inset es 0 en el emulador).
       const barra = barraMovil(page);
       await expect(barra).toBeVisible();
       const caja = (await barra.boundingBox())!;
       const vista = page.viewportSize()!;
-      expect(Math.abs(caja.height - 63), `${objetivo}: alto de la barra ${caja.height}`).toBeLessThanOrEqual(1);
-      expect(Math.abs(caja.y + caja.height - vista.height), "la barra queda pegada al borde inferior").toBeLessThanOrEqual(1);
-      expect(caja.width).toBeGreaterThanOrEqual(vista.width - 1);
-      // «Preguntar» (decision de Omar 7-nov-2026) es solo-ds3: sin la bandera su <li hidden> no es un lugar de la barra.
-      const lugares = await barra.locator("li:not([hidden])").count();
-      expect(lugares, `${objetivo}: la barra tiene de 2 a 5 lugares`).toBeGreaterThanOrEqual(2);
-      expect(lugares).toBeLessThanOrEqual(5);
+      expect(Math.abs(caja.height - 64), `${objetivo}: alto de la barra ${caja.height}`).toBeLessThanOrEqual(1);
+      expect(Math.abs(vista.height - (caja.y + caja.height) - 10), "la barra flota a 10 px del borde inferior").toBeLessThanOrEqual(1);
+      expect(Math.abs(caja.width - (vista.width - 24)), "la barra deja 12 px a cada lado").toBeLessThanOrEqual(1);
+      // 4 destinos + «Preguntar» (decision de Omar 7-nov-2026, si hay acceso al Copiloto) + «Más».
+      const lugares = await barra.locator("li").filter({ visible: true }).count();
+      expect(lugares, `${objetivo}: la barra tiene de 2 a 6 lugares`).toBeGreaterThanOrEqual(2);
+      expect(lugares).toBeLessThanOrEqual(6);
       // Etiqueta de 12 px e icono de 22 px (Likida), y exactamente un destino activo con aria-current.
       const etiqueta = barra.locator("a span").first();
       expect(await etiqueta.evaluate((e) => getComputedStyle(e).fontSize)).toBe("12px");
