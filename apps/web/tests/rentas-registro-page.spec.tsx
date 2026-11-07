@@ -20,7 +20,7 @@ import { MemoryRouter } from "react-router-dom";
 import { RentasRegistroPage } from "../src/verticals/rentas/pages/Registro.tsx";
 import { OnboardingError } from "../src/verticals/rentas/lib/onboarding-client.ts";
 import type { RegistroTenantInput, RegistroTenantResultado } from "../src/verticals/rentas/lib/onboarding-client.ts";
-import { changeValue, click, flushMicrotasks, renderComponent, submitForm, type RenderedComponent } from "./test-utils/render.tsx";
+import { changeValue, click, esperarHasta, flushMicrotasks, renderComponent, submitForm, type RenderedComponent } from "./test-utils/render.tsx";
 
 const registrarTenantMock = vi.fn<(fetchImpl: typeof fetch, apiBaseUrl: string, input: RegistroTenantInput) => Promise<RegistroTenantResultado>>();
 
@@ -43,9 +43,9 @@ function byId<T extends HTMLElement>(root: HTMLElement, id: string): T {
   return el as T;
 }
 
-function renderPage(): RenderedComponent {
+function renderPage(ruta = "/rentas/registro"): RenderedComponent {
   return renderComponent(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[ruta]}>
       <RentasRegistroPage apiBaseUrl="https://api.test" />
     </MemoryRouter>,
   );
@@ -157,9 +157,60 @@ describe("RentasRegistroPage", () => {
     expect(root.textContent).toContain("Edificio Marina");
     expect(root.textContent).toContain("2");
     expect(root.textContent).toContain("unidades");
-    // Honestidad del mensaje post-registro (ver comentario de cabecera del
-    // componente): NUNCA promete un correo de verificación que no se manda.
+    // El registro ya encola el correo de verificación: la pantalla dice «Revisa tu correo» con el correo del admin
+    // y ya no manda a «contactar al equipo para activar a mano».
+    expect(root.textContent).toContain("Revisa tu correo");
     expect(root.textContent).toContain("ana@example.com");
+    expect(root.textContent).not.toContain("todavía no envía un correo de verificación");
+    expect([...root.querySelectorAll("button")].some((b) => b.textContent === "Reenviar correo")).toBe(true);
+  });
+
+  async function pantallaExito(ruta?: string) {
+    registrarTenantMock.mockResolvedValue({ organizationId: "org-1", propertyId: "prop-1", staffId: "staff-1", slug: "s", unidadIds: ["u-1"], requiereVerificacionCorreo: true });
+    rendered = renderPage(ruta);
+    const root = rendered.container;
+    llenarFormularioMinimo(root);
+    await submitForm(root.querySelector("form")!);
+    return root;
+  }
+  const boton = (root: HTMLElement, texto: string) => [...root.querySelectorAll("button")].find((b) => b.textContent === texto) as HTMLButtonElement;
+
+  it("«Reenviar correo» llama al reenvío público (sin sesión) con el correo del admin y la vertical, y muestra el aviso uniforme", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const root = await pantallaExito();
+      await click(boton(root, "Reenviar correo"));
+      await esperarHasta(() => root.querySelector('[role="status"]') !== null, "aviso de reenviado");
+      const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+      expect(url).toBe("https://api.test/auth/email-verification/reenviar");
+      expect(JSON.parse(init.body as string)).toEqual({ email: "ana@example.com", vertical: "rentas" });
+      expect(root.querySelector('[role="status"]')?.textContent).toContain("te enviamos un enlace nuevo");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("si el servidor responde 429, avisa que espere antes de pedir otro correo", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ message: "Demasiados intentos." }), { status: 429 })));
+    try {
+      const root = await pantallaExito();
+      await click(boton(root, "Reenviar correo"));
+      await esperarHasta(() => root.querySelector('[role="alert"]') !== null, "aviso de tope");
+      expect(root.querySelector('[role="alert"]')?.textContent).toContain("Espera 15 minutos");
+      expect(boton(root, "Reenviar correo").disabled).toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("con ?lang=en la pantalla de éxito sale en inglés (y el selector ES la regresa a español)", async () => {
+    const root = await pantallaExito("/rentas/registro?lang=en");
+    expect(root.textContent).toContain("Your account was created");
+    expect(root.textContent).toContain("Check your email");
+    expect(boton(root, "Resend email")).toBeTruthy();
+    await click(root.querySelector('button[aria-label="Español"]') as HTMLButtonElement);
+    expect(root.textContent).toContain("Revisa tu correo");
   });
 
   it("en error, muestra el mensaje real de OnboardingError en role=alert y reactiva el botón de submit (nunca se queda atorado en 'Creando cuenta…')", async () => {
