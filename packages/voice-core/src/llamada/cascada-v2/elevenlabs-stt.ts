@@ -53,6 +53,9 @@ const TEMPORIZADOR_REAL = {
   quitar: (id: unknown): void => clearTimeout(id as ReturnType<typeof setTimeout>),
 };
 
+/** Espera de la confirmacion del commit forzado antes de cerrar el turno con el parcial. */
+const COMMIT_FORZADO_MS = 1_000;
+
 /** Mensajes del servidor que solo informan y no cambian el turno. */
 const INFORMATIVOS = new Set(["session_started", "partial_transcript", "committed_transcript", "committed_transcript_with_timestamps", "committed_transcript_entities", "warning"]);
 
@@ -131,9 +134,9 @@ class SesionElevenLabsStt implements SesionStt {
       };
       this.socket.onmessage = crearLectorMensajes((m) => {
         if (m.tipo !== "texto") return;
-        let msg: { message_type?: unknown; text?: unknown };
+        let msg: { message_type?: unknown; text?: unknown; error?: unknown };
         try {
-          msg = JSON.parse(m.texto) as { message_type?: unknown; text?: unknown };
+          msg = JSON.parse(m.texto) as { message_type?: unknown; text?: unknown; error?: unknown };
         } catch {
           return;
         }
@@ -145,12 +148,15 @@ class SesionElevenLabsStt implements SesionStt {
           resolve();
           return;
         }
-        if (!INFORMATIVOS.has(tipo)) {
+        // Error = un tipo con campo `error` o con nombre de error/limite (auth_error, quota_exceeded, rate_limited...). Un tipo informativo NUEVO que no conocemos se ignora
+        // (tumbar la sesion por el pasaria todas las llamadas a Deepgram en silencio).
+        if (!INFORMATIVOS.has(tipo) && (typeof msg.error === "string" || /error|exceeded|limit|throttl|invalid|unaccepted|overflow|exhausted/i.test(tipo) || tipo === "")) {
           // Errores (auth_error, quota_exceeded, rate_limited, transcriber_error...): solo el TIPO, nunca el texto del proveedor.
           if (!this.lista) fallarApertura(`rechazo la sesion (${tipo || "desconocido"}).`);
           else this.avisarCaida(codigoCorto(tipo || "error"));
           return;
         }
+        if (!INFORMATIVOS.has(tipo)) return;
         const texto = typeof msg.text === "string" ? msg.text.trim() : "";
         if (tipo === "partial_transcript") this.alParcial(texto);
         else if (tipo === "committed_transcript") this.alConfirmado(texto);
@@ -185,8 +191,17 @@ class SesionElevenLabsStt implements SesionStt {
     this.quitarFinMax();
     this.tFinMax = this.t.poner(() => {
       this.tFinMax = null;
-      // Texto parcial congelado: el VAD no cerro (ruido de fondo constante). Se fuerza el commit; el `committed_transcript` cierra el turno.
+      // Texto parcial congelado: el VAD no cerro (ruido de fondo constante). Se fuerza el commit; el `committed_transcript` cierra el turno. Si el servidor no lo
+      // confirma en `COMMIT_FORZADO_MS`, se cierra con lo que hay (confirmado + parcial): el turno nunca queda abierto.
       this.enviar(new Uint8Array(0), true);
+      const parcialForzado = this.parcial;
+      this.tFinMax = this.t.poner(() => {
+        this.tFinMax = null;
+        if (this.parcial !== parcialForzado || this.parcial === "") return;
+        this.confirmado = this.unir(this.confirmado, this.parcial);
+        this.parcial = "";
+        this.cerrarTurno();
+      }, COMMIT_FORZADO_MS);
     }, this.o.config.finTurnoMaxMs);
   }
 

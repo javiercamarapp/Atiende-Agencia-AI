@@ -113,6 +113,16 @@ class SesionElevenLabsTts implements SesionTts {
       const control = new AbortController();
       const alAbortar = (): void => control.abort();
       senal.addEventListener("abort", alAbortar, { once: true });
+      // Tope al PRIMER trozo (conexion + cabeceras + primer audio): sin el, un servidor que acepta y no responde deja la llamada en silencio sin caer al respaldo.
+      let vencioPrimerByte = false;
+      let primerByte: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+        vencioPrimerByte = true;
+        control.abort();
+      }, this.o.config.primerByteTimeoutMs);
+      const quitarPrimerByte = (): void => {
+        if (primerByte !== null) clearTimeout(primerByte);
+        primerByte = null;
+      };
       try {
         const c = this.o.config;
         const url = `${this.base}/v1/text-to-speech/${encodeURIComponent(this.voz)}/stream?output_format=pcm_${c.hzSalida}`;
@@ -125,6 +135,7 @@ class SesionElevenLabsTts implements SesionTts {
             signal: control.signal,
           });
         } catch {
+          if (vencioPrimerByte) throw new Error("tts_el_timeout");
           if (senal.aborted) return;
           throw new Error("tts_el_red");
         }
@@ -138,6 +149,7 @@ class SesionElevenLabsTts implements SesionTts {
         }
         let suelto: number | null = null;
         for await (const trozo of trozos(res.body, c.fraseTimeoutMs, () => control.abort())) {
+          quitarPrimerByte();
           if (senal.aborted) return;
           let datos = trozo;
           if (suelto !== null) {
@@ -154,9 +166,11 @@ class SesionElevenLabsTts implements SesionTts {
           if (datos.byteLength > 0) yield datos;
         }
       } catch (err) {
+        if (vencioPrimerByte) throw new Error("tts_el_timeout");
         if (senal.aborted) return;
         throw err;
       } finally {
+        quitarPrimerByte();
         senal.removeEventListener("abort", alAbortar);
         control.abort();
       }

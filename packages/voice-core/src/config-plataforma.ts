@@ -105,6 +105,9 @@ export interface ConfigElevenLabs {
     readonly usdPorMilCaracteres: number;
     /** Tope de espera (ms) por trozo de audio de una frase. */
     readonly fraseTimeoutMs: number;
+    /** Tope (ms) desde que se pide la frase hasta el PRIMER trozo de audio (incluye conexion y cabeceras): vencido, la frase falla con `tts_el_timeout` y el
+     * respaldo (Aura-2) la repite. Menor que el plazo del LLM para que el cliente no oiga silencio. */
+    readonly primerByteTimeoutMs: number;
   };
 }
 
@@ -153,15 +156,23 @@ export interface ConfigCascadaV2 {
     readonly promocion: PromocionPrecio;
   };
   readonly llm: {
-    /** Cerebro PRECISO por omision (decision del dueno, 6-nov-2026: openai/gpt-6-luna; antes Sonnet 5.5 con esfuerzo bajo). */
+    /** Cerebro por omision del motor (decision de Javier, 13-oct): Sonnet 5.5 con esfuerzo BAJO. El de PM (GPT-6 Luna) va en `dosNiveles` y es opt-in. */
     readonly modelo: string;
-    /** Modelo RAPIDO de los turnos faciles (saludo y respuestas cortas sin pedido en juego); `modelo` es el PRECISO (todo lo demas). */
+    /** Modelo configurable para turnos faciles (el selector por turno lo usa si se le pasa). */
     readonly modeloFacil: string;
-    /** Modelo de la peticion de RESPALDO (hedge) cuando el primero no da su primer token a tiempo o falla antes de hablar. */
-    readonly modeloRespaldo: string;
-    /** Plazo (ms) al primer token: vencido sin texto ni herramientas, se lanza en paralelo la peticion de respaldo y gana la que hable primero. */
-    readonly plazoPrimerTokenMs: number;
-    /** Frases cortas de espera que se dicen (una por turno) al vencer el plazo, para que el cliente no oiga silencio. */
+    /** Cerebro de DOS NIVELES con plazo al primer token (decision del dueno de PM, 6-nov-2026). APAGADO por omision: el worker lo enciende con
+     * `VOZ_CEREBRO_DOS_NIVELES=1` y solo con el puerto LLM de OpenRouter (un puerto con estado, como el cerebro suelto, no admite peticiones duplicadas). */
+    readonly dosNiveles: {
+      /** Preciso: todo lo que no es cortesia. */
+      readonly modelo: string;
+      /** Rapido: saludo y cortesia sin pedido en juego. */
+      readonly modeloRapido: string;
+      /** Peticion de respaldo (hedge) si el primero no da su primer token a tiempo o falla antes de hablar. */
+      readonly modeloRespaldo: string;
+      /** Plazo (ms) al primer token. */
+      readonly plazoPrimerTokenMs: number;
+    };
+    /** Frases cortas de espera que se dicen (una por turno) al vencer el plazo del primer token (solo con el plazo encendido). */
     readonly frasesEspera: readonly string[];
     /** `reasoning.effort` de OpenRouter para los modelos Anthropic (Sonnet 5.5 tiene razonamiento obligatorio: `none` se rechaza). */
     readonly esfuerzo: "low" | "medium" | "high";
@@ -228,12 +239,12 @@ export const VOZ_PLATAFORMA: ConfigPlataformaVoz = Object.freeze({
     // ElevenLabs (lista del 6-nov-2026, PRUEBAS-STT-TTS-NOV.md): Scribe v2 Realtime 0.39 US$/h + keyterms 0.08 US$/h; eleven_v4_turbo 0.04 US$ por 1 000 caracteres (creditos del plan).
     elevenlabs: Object.freeze({
       stt: Object.freeze({ modelo: "scribe_v2_realtime", idioma: "es", vadSilencioS: 0.55, finTurnoMinMs: 400, finTurnoMaxMs: 3_000, keytermsMax: 50, usdPorHora: 0.39, usdPorHoraKeyterms: 0.08 }),
-      tts: Object.freeze({ modelo: "eleven_v4_turbo", voz: "9Godp7dNohUvXk6qp0gS", idioma: "es", hzSalida: 24_000, usdPorMilCaracteres: 0.04, fraseTimeoutMs: 8_000 }),
+      tts: Object.freeze({ modelo: "eleven_v4_turbo", voz: "9Godp7dNohUvXk6qp0gS", idioma: "es", hzSalida: 24_000, usdPorMilCaracteres: 0.04, fraseTimeoutMs: 8_000, primerByteTimeoutMs: 2_500 }),
     }),
-    // Cerebro de dos niveles (decision del dueno, 6-nov-2026): rapido google/gemini-3.5-flash-lite para turnos faciles, preciso openai/gpt-6-luna para el resto, y
-    // anthropic/claude-haiku-5.5 como peticion de respaldo si el primero no da su primer token en 2.5 s. Los tres tienen endpoint ZDR en OpenRouter
-    // (/api/v1/endpoints/zdr, leido el 6-nov-2026): gpt-6-luna solo en Azure, por eso `azure` entra a la lista.
-    llm: Object.freeze({ modelo: "openai/gpt-6-luna", modeloFacil: "google/gemini-3.5-flash-lite", modeloRespaldo: "anthropic/claude-haiku-5.5", plazoPrimerTokenMs: 2_500, frasesEspera: Object.freeze(["Mmm, permítame.", "Un segundito.", "Déjeme ver."]), esfuerzo: "low" as const, proveedoresZdr: Object.freeze(["google-vertex", "amazon-bedrock", "azure"]), topeSalidaTokens: 1_500, fraseRespaldo: "Disculpe, ¿me lo puede repetir, por favor?", fraseCorte: "Disculpe, se me cortó la respuesta. ¿Quiere que se la repita?", fuenteCosto: "openrouter-usage-cost" as const }),
+    // Cerebro de dos niveles de PM (decision del dueno, 6-nov-2026; opt-in con VOZ_CEREBRO_DOS_NIVELES=1): rapido google/gemini-3.5-flash-lite para turnos faciles,
+    // preciso openai/gpt-6-luna para el resto y anthropic/claude-haiku-5.5 como peticion de respaldo si el primero no da su primer token en 2.5 s. Los tres tienen
+    // endpoint ZDR en OpenRouter (/api/v1/endpoints/zdr, leido el 6-nov-2026): gpt-6-luna solo en Azure, por eso `azure` entra a la lista.
+    llm: Object.freeze({ modelo: "anthropic/claude-sonnet-5.5", modeloFacil: "anthropic/claude-haiku-5.5", dosNiveles: Object.freeze({ modelo: "openai/gpt-6-luna", modeloRapido: "google/gemini-3.5-flash-lite", modeloRespaldo: "anthropic/claude-haiku-5.5", plazoPrimerTokenMs: 2_500 }), frasesEspera: Object.freeze(["Mmm, permítame.", "Un segundito.", "Déjeme ver."]), esfuerzo: "low" as const, proveedoresZdr: Object.freeze(["google-vertex", "amazon-bedrock", "azure"]), topeSalidaTokens: 1_500, fraseRespaldo: "Disculpe, ¿me lo puede repetir, por favor?", fraseCorte: "Disculpe, se me cortó la respuesta. ¿Quiere que se la repita?", fuenteCosto: "openrouter-usage-cost" as const }),
     frase: Object.freeze({ minCaracteres: 12, maxCaracteres: 220 }),
     // Piso por minuto (SUPUESTO a reemplazar con la medicion del smoke): Deepgram STT ~4 800 (+1 300 de keyterms) + Aura-2 ~600 caracteres/min (~18 000) + LLM ~24 000 micro-USD
     // (Sonnet 5.5 con esfuerzo bajo; con ~10 000 se subestimaba).

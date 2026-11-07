@@ -32,6 +32,9 @@ export interface DepsPlataformaVoz extends CredencialesVoz {
   readonly llm: PuertoLlmVoz | null;
   /** Puerto del LLM EN STREAMING de la cascada v2 (honra el modelo y el esfuerzo por turno). Sin el, la cascada v2 queda sin configurar. */
   readonly llmV2?: PuertoLlmVoz | null;
+  /** Cerebro de dos niveles de la cascada v2 (`config.cascadaV2.llm.dosNiveles`: preciso, rapido y peticion de respaldo con plazo al primer token). Solo con un
+   * `llmV2` SIN estado (el puerto de OpenRouter): un puerto con estado no admite dos peticiones del mismo turno. Apagado por omision. */
+  readonly dosNiveles?: boolean;
   /** Ver `CascadaV2Opciones.confirmacionAntesDeCrear` (restaurantes: confirmar_resumen / crear_pedido). */
   readonly confirmacionAntesDeCrear?: { readonly confirmar: string; readonly crear: string; readonly cotizar?: string };
   readonly crearSocketDeepgram?: CrearSocketDeepgram;
@@ -110,6 +113,9 @@ export function crearEscalonesPlataforma(deps: DepsPlataformaVoz): EscalonLlamad
         deepgramApiKey: deps.deepgramApiKey ?? null,
         elevenlabsApiKey: deps.elevenlabsApiKey ?? null,
         llm: deps.llmV2,
+        ...(deps.dosNiveles === true
+          ? { modeloLlm: config.cascadaV2.llm.dosNiveles.modelo, modeloRapido: config.cascadaV2.llm.dosNiveles.modeloRapido, plazoLlm: { plazoMs: config.cascadaV2.llm.dosNiveles.plazoPrimerTokenMs, modeloRespaldo: config.cascadaV2.llm.dosNiveles.modeloRespaldo } }
+          : {}),
         ...(deps.fetchFn ? { fetchFn: deps.fetchFn } : {}),
         config,
         ...(deps.crearSocketDeepgram ? { crearSocket: deps.crearSocketDeepgram } : {}),
