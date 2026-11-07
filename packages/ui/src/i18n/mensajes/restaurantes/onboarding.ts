@@ -1,0 +1,32 @@
+import type { ModuloEs } from "../../tipos.ts";
+
+/** Primeros pasos (checklist de configuracion) y el aviso de la puerta de onboarding. Ingles: `en/restaurantes/onboarding.ts`. */
+export const restaurantesOnboarding = {
+  "restaurantes.onboarding.responsable.plataforma": "Plataforma",
+  "restaurantes.onboarding.responsable.dueno": "Dueño",
+  "restaurantes.onboarding.responsable.meta": "Meta (WhatsApp Business)",
+  "restaurantes.onboarding.responsable.distribuidor_pos": "Distribuidor del POS",
+  "restaurantes.onboarding.estado.hecho": "Listo",
+  "restaurantes.onboarding.estado.parcial": "Parcial",
+  "restaurantes.onboarding.estado.pendiente": "Pendiente",
+  "restaurantes.onboarding.estado.externo": "Depende de un tercero",
+  "restaurantes.onboarding.error.cargar": "No se pudo cargar el checklist.",
+  "restaurantes.onboarding.titulo": "Primeros pasos",
+  "restaurantes.onboarding.actualizar": "Actualizar",
+  "restaurantes.onboarding.revisando": "Revisando la configuración…",
+  "restaurantes.onboarding.listo": "Listo para operar",
+  "restaurantes.onboarding.faltan": "Faltan puntos obligatorios",
+  "restaurantes.onboarding.irPanel": "Ir al panel de todos modos",
+  "restaurantes.onboarding.puntosListos": "{hechos} de {total} puntos listos",
+  "restaurantes.onboarding.obligatoriosPendientes": " · {n} obligatorio(s) pendiente(s).",
+  "restaurantes.onboarding.punto": ".",
+  "restaurantes.onboarding.calculo": " El estado se calcula con los datos reales de su negocio.",
+  "restaurantes.onboarding.operaConPedidos": " Su negocio ya opera con pedidos: esto no bloquea el panel.",
+  "restaurantes.onboarding.obligatorio": "(obligatorio)",
+  "restaurantes.onboarding.faltaEn": "Falta en: {lista}",
+  "restaurantes.onboarding.loCierra": "Lo cierra: {responsable}",
+  "restaurantes.onboarding.irPantalla": "Ir a la pantalla",
+  "restaurantes.onboarding.puerta.titulo": "Faltan puntos obligatorios de configuración",
+  "restaurantes.onboarding.puerta.ver": "Ver primeros pasos",
+  "restaurantes.onboarding.puerta.pendientes": "{n} punto(s) obligatorio(s) pendiente(s) antes de operar con tranquilidad.",
+} as const satisfies ModuloEs;
