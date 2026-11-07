@@ -28,7 +28,7 @@ describe("login de restaurantes", () => {
     );
     await flushMicrotasks();
     const cta = [...rendered.container.querySelectorAll("a")].find((a) => a.getAttribute("href") === "/restaurantes/registro");
-    expect(cta?.textContent).toContain("Crea tu cuenta");
+    expect(cta?.textContent).toBe("Crea tu cuenta");
     expect(rendered.container.textContent).toContain("Pídele a tu restaurante que te dé de alta.");
   });
 });
