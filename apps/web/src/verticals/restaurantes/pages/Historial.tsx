@@ -296,8 +296,14 @@ export function HistorialPage({ apiBaseUrl, token, propertyId, role }: Restauran
             </option>
           ))}
         </Selector>
-        <Input id="restaurantes-historial-desde" aria-label="Desde" title="Desde" type="date" value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); setPeriodo("custom"); }} className="w-auto rounded-full" />
-        <Input id="restaurantes-historial-hasta" aria-label="Hasta" title="Hasta" type="date" value={dateTo} onChange={(e) => { setDateTo(e.target.value); setPeriodo("custom"); }} className="w-auto rounded-full" />
+        <span className="inline-flex items-center gap-1.5">
+          <span aria-hidden="true" className="text-xs text-muted-foreground">Desde</span>
+          <Input id="restaurantes-historial-desde" aria-label="Desde" type="date" value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); setPeriodo("custom"); }} className="w-auto rounded-full" />
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span aria-hidden="true" className="text-xs text-muted-foreground">Hasta</span>
+          <Input id="restaurantes-historial-hasta" aria-label="Hasta" type="date" value={dateTo} onChange={(e) => { setDateTo(e.target.value); setPeriodo("custom"); }} className="w-auto rounded-full" />
+        </span>
       </div>
 
       {error && <EstadoError mensaje={error} onReintentar={() => { generacionRef.current += 1; void load(true); }} />}
