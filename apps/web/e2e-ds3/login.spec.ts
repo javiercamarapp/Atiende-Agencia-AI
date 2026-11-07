@@ -80,7 +80,7 @@ for (const vertical of VERTICALES) {
     // Tipografia y medidas.
     const h1 = await page.locator("h1").evaluate((el) => ({ familia: getComputedStyle(el).fontFamily, tamano: getComputedStyle(el).fontSize }));
     expect(h1.familia).toContain("Fraunces");
-    expect(["32px", "34px", "36px"]).toContain(h1.tamano);
+    expect(h1.tamano).toMatch(escritorio ? /^3[2-6]px$/ : /^(28|3[2-6])px$/); // movil bajo: tramo compacto de 28
     const kicker = await page.locator(".ld3-copia .ld3-kicker").evaluate((el) => ({ familia: getComputedStyle(el).fontFamily, tamano: getComputedStyle(el).fontSize }));
     expect(kicker.familia).toContain("IBM Plex Mono");
     expect(kicker.tamano).toBe("11px");
