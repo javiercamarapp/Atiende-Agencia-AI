@@ -38,7 +38,7 @@ on conflict do nothing;
 
 -- Ajustes vigentes de la Org A (fixture directa, superusuario).
 insert into restaurantes.agent_runtime_settings (organization_id, whatsapp_model, whatsapp_temperature, voice_pace, voice_style, voice_background, voice_background_volume, updated_by)
-values ('00000000-0000-0000-0000-0000000d0a01', 'google/gemini-2.5-flash-lite', 0.30, 'pausado', 'calido', true, 10, '00000000-0000-0000-0000-0000000d0c01')
+values ('00000000-0000-0000-0000-0000000d0a01', 'deepseek/deepseek-v4.1-flash', 0.30, 'pausado', 'calido', true, 10, '00000000-0000-0000-0000-0000000d0c01')
 on conflict do nothing;
 
 \echo ''
@@ -103,7 +103,7 @@ set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000d0c01', true);
 with up as (
   insert into restaurantes.agent_runtime_settings (organization_id, whatsapp_model, whatsapp_temperature, voice_cascade_model, voice_temperature, voice_pace, voice_style, voice_background, voice_background_volume, updated_by, updated_at)
-  values ('00000000-0000-0000-0000-0000000d0a01', 'deepseek/deepseek-v4.1-flash', 0.50, 'google/gemini-3.8-flash', 0.40, 'agil', 'animado', false, 5, '00000000-0000-0000-0000-0000000d0c01', now())
+  values ('00000000-0000-0000-0000-0000000d0a01', 'deepseek/deepseek-v4.1-flash', 0.50, 'google/gemini-3.5-flash-lite', 0.40, 'agil', 'animado', false, 5, '00000000-0000-0000-0000-0000000d0c01', now())
   on conflict (organization_id) do update set
     whatsapp_model = excluded.whatsapp_model, whatsapp_temperature = excluded.whatsapp_temperature, voice_cascade_model = excluded.voice_cascade_model,
     voice_temperature = excluded.voice_temperature, voice_pace = excluded.voice_pace, voice_style = excluded.voice_style,
@@ -229,6 +229,22 @@ begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000d0c01', true);
 update restaurantes.agent_runtime_settings set voice_cascade_model = 'modelo-suelto', updated_by = '00000000-0000-0000-0000-0000000d0c01'
+where organization_id = '00000000-0000-0000-0000-0000000d0a01' returning 1 as should_fail;
+rollback;
+
+\echo '--- 21b. (migracion 104) modelo con formato valido pero FUERA de la lista cerrada (Sonnet 5.5, premium) en WhatsApp: RECHAZADO ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000d0c01', true);
+update restaurantes.agent_runtime_settings set whatsapp_model = 'anthropic/claude-sonnet-5.5', updated_by = '00000000-0000-0000-0000-0000000d0c01'
+where organization_id = '00000000-0000-0000-0000-0000000d0a01' returning 1 as should_fail;
+rollback;
+
+\echo '--- 21c. (migracion 104) modelo sin endpoint ZDR (Gemini 2.5 Flash-Lite) en la cascada de voz: RECHAZADO ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000d0c01', true);
+update restaurantes.agent_runtime_settings set voice_cascade_model = 'google/gemini-2.5-flash-lite', updated_by = '00000000-0000-0000-0000-0000000d0c01'
 where organization_id = '00000000-0000-0000-0000-0000000d0a01' returning 1 as should_fail;
 rollback;
 
