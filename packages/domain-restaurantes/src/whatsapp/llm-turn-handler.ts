@@ -57,6 +57,7 @@ import { confirmacionDePedido } from "./confirmacion-pedido.ts";
 import { normalizarFormatoWhatsApp } from "./formato-whatsapp.ts";
 import { afirmaCambioRegistrado, afirmaPedidoProgramado, afirmaPedidoRegistrado, normalizarParaClasificar, CAMBIO_AVISADO_SIN_REGISTRAR, CAMBIO_SIN_REGISTRAR_OFRECE_AVISO, corregirPromesaDeHorarioNocturno, porcentajePropinaDichoPorElCliente, afirmaHaberAvisado, afirmaSoloRegistroDePedido, branchAlreadyKnown, classifyHighRiskIntent, classifyHighRiskIntentInMessages, contextoDeCliente, esperaDetalleDeQueja, noEsDetalleDeQueja, QUEJA_DETALLE_RECIBIDO, QUEJA_PREGUNTA_DETALLE, quejaTraeDetalle, respuestaDeQuejaConDetalle, enforcePendingQuestion, enforceQuotedTotal, knownAmountsOfQuote, quitarAfirmacionDeAviso, quitarAfirmacionDePedidoRegistrado, quitarCortesiaNoRespaldada, quitarPromesaDeDinero, reemplazarFugaDePrompt, contieneFugaDePrompt, RESPUESTA_SIN_FUGA } from "./guards.ts";
 import { COPY_LLAMADA_NO_RECIBIDA, COPY_LLAMADA_REPETIDA, COPY_SI_REPETIDO_SIN_REGISTRAR, MARCA_SI_SIN_REGISTRAR, esAvisoDeLlamada } from "./prompt-pm-paquete-c.ts";
+import { decidirAntesDelModelo } from "./cerebro-v2/antes-del-modelo.ts";
 import { PM_AGENT_NAME_POR_OMISION, PM_COPY, buildPmSystemPrompt, saludoPorHora } from "./perfil-pm.ts";
 import { bloqueConocimientoPrompt, listarConocimientoVigente } from "../conocimiento/dominio.ts";
 import type { WhatsAppTurnHandler } from "./turn-handler.ts";
@@ -872,7 +873,12 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       const respondidos = messages.slice(0, messages.length - mensajesSinResponder(messages).length).filter((m) => m.role === "user").slice(-12);
       const motivosYaAtendidos = new Set(respondidos.map((m) => classifyHighRiskIntent(m.content, ctxRiesgo)?.intent).filter((i): i is NonNullable<typeof i> => i !== undefined));
       const paraRiesgo = pendientes.filter((m, i) => i === pendientes.length - 1 || !motivosYaAtendidos.has(classifyHighRiskIntent(m.content, ctxRiesgo)?.intent as never));
-      const riesgoClasificado = classifyHighRiskIntentInMessages(paraRiesgo.map((m) => m.content), ctxRiesgo);
+      // Cerebro v2: decision determinista del suelto (salud/alergia con aviso URGENTE, transferencia realizada) ANTES del clasificador de siempre; los intents que v2
+      // decide se quitan del clasificador de guards.ts para no avisar ni contestar dos veces.
+      const pedidoEnCursoV2 = !customer.isNew && customer.pedidoReciente != null && ["registrado", "preparando", "salio", "listo_para_recoger", "programado", "por_confirmar"].includes(customer.pedidoReciente.estado);
+      const decisionV2 = cerebroV2 && perfil === "taqueria_pm" ? decidirAntesDelModelo(pendientes.map((m) => m.content), { pedidoEnCurso: pedidoEnCursoV2 }) : null;
+      const riesgoClasificadoBase = classifyHighRiskIntentInMessages(paraRiesgo.map((m) => m.content), ctxRiesgo);
+      const riesgoClasificado = riesgoClasificadoBase && decisionV2?.sustituye.has(riesgoClasificadoBase.intent) ? null : riesgoClasificadoBase;
       // Queja en dos tiempos: tras la pregunta «¿qué faltó o qué llegó mal?» el mensaje del cliente ES el detalle. Un riesgo de mayor prioridad (salud, cobro, una persona...) manda sobre el detalle.
       const textoPendiente = pendientes.map((m) => m.content).join(" / ");
       const recibeDetalle =
@@ -886,6 +892,34 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         : riesgoClasificado && riesgoClasificado.motivo === "queja"
           ? { ...riesgoClasificado, reply: respuestaDeQuejaConDetalle(quejaSinDetalle ? QUEJA_PREGUNTA_DETALLE : riesgoClasificado.reply, riesgoClasificado.text) }
           : riesgoClasificado;
+      let prefijoRespuestaV2: string | null = null;
+      let bloquePromptV2 = "";
+      if (decisionV2 && decisionV2.avisos.length > 0) {
+        const nombreV2 = !customer.isNew && customer.name ? customer.name : "Cliente";
+        for (const avisoV2 of decisionV2.avisos) {
+          const r = await executeAgentToolSafely(
+            repo,
+            { organizationId, channel: "whatsapp", phone, lockedPropertyId: activeEntryBranch?.propertyId ?? null, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...modoCtx },
+            "escalar_a_humano",
+            { customer_name: nombreV2, motivo: avisoV2.motivo, resumen: avisoV2.resumen },
+          );
+          // Honestidad: sin el aviso registrado no se dice «ya avisé».
+          if (isToolErrorResult(r.result)) {
+            tele.resultado = "error_sistema";
+            tele.causaError = "herramienta";
+            return { reply: "Lamento el inconveniente: no pude avisar al equipo en este momento. Por favor inténtelo de nuevo en unos minutos.", orderId: null, propertyId };
+          }
+          mutoEnTurno = true;
+        }
+        if (decisionV2.respuestaFija) {
+          escalarMotivo = decisionV2.motivoToma;
+          tele.resultado = "escalado_alto_riesgo";
+          tele.motivoEscalacion = decisionV2.motivoToma;
+          return done({ reply: decisionV2.respuestaFija, orderId: null, propertyId });
+        }
+        prefijoRespuestaV2 = decisionV2.prefijoRespuesta;
+        bloquePromptV2 = decisionV2.bloquePrompt ?? "";
+      }
       if (riesgo) {
         const nombre = !customer.isNew && customer.name ? customer.name : "Cliente";
         // Autopiloto: con la bandera de la organizacion encendida, una cancelacion con pedido activo se resuelve con una solicitud de aprobacion (o la
@@ -943,7 +977,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       const productoNoManejadoBloque = perfil === "taqueria_pm" && !preview ? bloqueProductoNoManejado(mensajesSinResponder(messages).map((m) => m.content)) : "";
       // R21 (arreglo 2 R20): tras un aviso de falla del sistema el mensaje previo del cliente sigue pendiente (un solo bloque de falla; vive en falla-pendiente.ts).
       const fallaPrevia = perfil === "taqueria_pm" && !preview ? bloquePedidoPendienteTrasFalla(messages) : "";
-      const systemFinal = [systemPrompt, datosYaConsultadosBloque, cotizacionVigenteBloque, cantidadNoMultiploBloque, productoNoManejadoBloque, fallaPrevia, precargaActiva ? BLOQUE_CONTEXTO_PRECARGADO : ""].filter((b) => b !== "").join("\n\n");
+      const systemFinal = [systemPrompt, bloquePromptV2, datosYaConsultadosBloque, cotizacionVigenteBloque, cantidadNoMultiploBloque, productoNoManejadoBloque, fallaPrevia, precargaActiva ? BLOQUE_CONTEXTO_PRECARGADO : ""].filter((b) => b !== "").join("\n\n");
 
       // B03: toque a «Confirmar pedido». Es un «si» explicito, pero SOLO a la cotizacion vigente: el boton de un resumen viejo (el pedido cambio, vencio, ya se
       // creo o se esta creando) se responde aqui con texto fijo, sin modelo y sin crear nada. Si es vigente, el pedido se crea por el camino de siempre
@@ -1387,7 +1421,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             const vigente = await repo.readOrderFlow(organizationId, `wa:${phone}`);
             if (vigente?.state === "cotizado" && vigente.context?.quoteHash === cotizacionDelTurno) pedirConfirmacionEnTurno = { quoteHash: vigente.context.quoteHash, quotedAtMs: vigente.context.quotedAtMs };
           }
-          return done({ reply: replyFinal, orderId, propertyId });
+          return done({ reply: prefijoRespuestaV2 && !replyFinal.includes(prefijoRespuestaV2) ? `${prefijoRespuestaV2}\n\n${replyFinal}` : replyFinal, orderId, propertyId });
         }
 
         working.push({ role: "assistant", content: completion.text ?? "", toolCalls });
