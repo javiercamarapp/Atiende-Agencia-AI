@@ -22,8 +22,9 @@ export const MODULOS = {
 } as const;
 
 /**
- * Modulos de un area: el espanol se registra solo cuando se importa el archivo (`import "@atiende/ui/i18n/nav"` en quien lo
- * usa), asi viaja en el chunk perezoso de esa area y no en el de arranque. Aqui solo se declaran sus TIPOS.
+ * Modulos de un area: su espanol se registra solo cuando se importa su archivo (`import "@atiende/ui/i18n/<area>"` en quien lo
+ * usa), asi viaja en el chunk perezoso de esa area y no en el de arranque. Aqui solo se declaran sus TIPOS
+ * (`readonly <area>: typeof <area>` con `import type`). Cada archivo de area termina con `registrarModuloEs(<area>)`.
  */
 interface ModulosDeArea {
   readonly nav: typeof nav;
