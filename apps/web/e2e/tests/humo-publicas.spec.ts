@@ -13,6 +13,8 @@ test.describe("publicas @humo", () => {
     for (const v of VERTICALES) {
       await expect(page.locator(`a[href="/${v}/login"]`)).toBeVisible();
     }
+    // Alta autoservicio de restaurantes: CTA de registro.
+    await expect(page.locator('a[href="/restaurantes/registro"]')).toBeVisible();
     await afirmarUnSoloMain(page);
     vigilante.verificar();
   });
