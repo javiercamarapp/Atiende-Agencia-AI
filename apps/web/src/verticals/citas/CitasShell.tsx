@@ -91,7 +91,7 @@ export interface CitasShellProps {
  * de Likida (Negocio, Comunicación, Administrar) con "Resumen", "Agenda" y "Primeros pasos" como raíz sin título (agenda
  * operativa primero, como documenta README.md de este vertical). Mismos destinos y rutas que antes; ningún link se agrega ni se
  * quita. `to` construido con `orgSlug` porque `Sidebar` usa `NavLink` con rutas reales, no un callback de sección. */
-function buildSections(orgSlug: string, puedeCopiloto: boolean): SidebarSection[] {
+export function buildSections(orgSlug: string, puedeCopiloto: boolean): SidebarSection[] {
   const base = `/citas/${orgSlug}`;
   return [
     {
@@ -192,6 +192,10 @@ export function CitasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: Ci
       chat={crearChatConexionCitas(apiBaseUrl, session.token, propertyId)}
       copilotoHref={`/citas/${orgSlug}/copiloto`}
       ocultarChat={!COPILOTO_CITAS_ROLES.has(role)}
+      guia={{
+        cargar: () => import("./guia-citas.ts").then((m) => ({ contenido: m.GUIA_CITAS, esenciales: m.esencialesCitas(role) })),
+        primerosPasosHref: COPILOTO_CITAS_ROLES.has(role) ? `/citas/${orgSlug}/primeros-pasos` : undefined,
+      }}
     >
       {children({ apiBaseUrl, token: session.token, propertyId, orgSlug, orgId, role, staffFullName: session.fullName, staffEmail: session.email })}
     </VerticalShellConectado>

@@ -9,13 +9,14 @@
 // "Pregúntale a tus datos" del pie y el atajo; las notificaciones, con la pildora "Notificaciones" del pie). El shell es un LAYOUT (App.tsx lo monta una
 // sola vez para todas las rutas /superadmin/*), asi que el panel no se desmonta al navegar y conserva su
 // conversacion.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useLocation } from "react-router-dom";
 import { Bell, LayoutGrid, MessageCircle } from "lucide-react";
-import { VerticalShell, VerticalShellEstado } from "@atiende/ui";
+import { limpiarProgresoGuia, vaciarGuardadoGuia, VerticalShell, VerticalShellEstado } from "@atiende/ui";
 import type { BottomNavItem, SidebarPiePildora, SidebarSection } from "@atiende/ui";
 import { logout } from "../lib/auth-client.ts";
+import { servidorProgresoGuia } from "../lib/guia-progreso.ts";
 import { useNotifications } from "../lib/useNotifications.ts";
 import { clearSuperadminSession, readPersistedSuperadminSession } from "./lib/auth-client.ts";
 import type { LoginSession } from "./lib/auth-client.ts";
@@ -25,6 +26,12 @@ import { StepUpDialog } from "./components/StepUpDialog.tsx";
 import { RUTA_COPILOTO } from "./lib/copiloto-cliente.ts";
 import { COPILOTO, MOVIL_SUPERADMIN, PIE_SUPERADMIN, RESUMEN, SECCIONES } from "./rutas.ts";
 import { limpiarStepUp } from "./lib/stepup.ts";
+import { GuiaDiferida } from "../components/GuiaDiferida.tsx";
+
+/** ds3 «Guía» de la consola: clave local de la plataforma y nombre de la marca (no se traduce). */
+const ORG_PLATAFORMA = "plataforma";
+const MARCA_PLATAFORMA = "Atiende";
+const cargarGuiaSuperadmin = () => import("./guia-superadmin.ts").then((m) => ({ contenido: m.GUIA_SUPERADMIN, esenciales: m.ESENCIALES_SUPERADMIN }));
 
 export interface SuperAdminShellProps {
   readonly apiBaseUrl: string;
@@ -33,7 +40,7 @@ export interface SuperAdminShellProps {
 }
 
 // Resumen arriba (raiz, sin cabecera) + las secciones de Likida con paginas reales (rutas.ts, fuente unica).
-const SECTIONS: SidebarSection[] = [
+export const SECTIONS: SidebarSection[] = [
   { title: "Resumen", siempreAbierto: true, items: [{ ...RESUMEN }, { ...COPILOTO }] },
   ...SECCIONES.map((s) => ({ title: s.title, items: s.items.map((i) => ({ ...i })) })),
 ];
@@ -77,10 +84,13 @@ export function SuperAdminShell({ apiBaseUrl, onRequireLogin, children }: SuperA
   async function handleLogout() {
     if (!session) return;
     setLoggingOut(true);
+    // ds3 «Guía»: lo pendiente del progreso sale ANTES de revocar la sesion.
+    vaciarGuardadoGuia();
     try {
       await logout(fetch, apiBaseUrl, session.refreshToken);
     } finally {
       limpiarStepUp();
+      limpiarProgresoGuia(window.localStorage);
       clearSuperadminSession(window.localStorage);
       setSession(null);
       onRequireLogin();
@@ -92,6 +102,8 @@ export function SuperAdminShell({ apiBaseUrl, onRequireLogin, children }: SuperA
   // `session?.token ?? ""` deja montar el hook mientras la sesión resuelve/no
   // existe; useNotifications ya tolera un token vacío (ver su cabecera).
   const notif = useNotifications(apiBaseUrl, session?.token ?? "");
+  // ds3 «Guía»: puente del progreso con el servidor, memorizado (igual que VerticalShellConectado) para no recrearlo en cada render.
+  const servidorGuia = useMemo(() => (session ? servidorProgresoGuia(fetch, apiBaseUrl, session.token, "superadmin", null) : null), [apiBaseUrl, session]);
 
   if (!resuelto) return <VerticalShellEstado estado="cargando" mensaje="Cargando…" />;
   if (!session) return null; // onRequireLogin ya disparó la redirección
@@ -106,22 +118,36 @@ export function SuperAdminShell({ apiBaseUrl, onRequireLogin, children }: SuperA
   ];
 
   return (
-    <VerticalShell
-      vertical="superadmin"
-      sections={SECTIONS}
-      sidebarPie={pie}
-      mobileItems={MOBILE_ITEMS}
-      user={user}
-      onLogout={() => void handleLogout()}
-      loggingOut={loggingOut}
-      header={{ icon: <LayoutGrid className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: "Consola de Atiende", resumenTo: "/superadmin" }}
-      panelLateral={<CopilotoPanel abierto={copilotoAbierto && !enPaginaCopiloto} onCerrar={cerrarCopiloto} apiBaseUrl={apiBaseUrl} token={session.token} />}
-    >
-      <div className="grid min-w-0 gap-4">
-        <ImpersonacionBanner apiBaseUrl={apiBaseUrl} token={session.token} />
-        <StepUpDialog />
-        {children({ apiBaseUrl, token: session.token, staffFullName: session.fullName, staffEmail: session.email })}
-      </div>
-    </VerticalShell>
+    <>
+      <VerticalShell
+        vertical="superadmin"
+        sections={SECTIONS}
+        sidebarPie={pie}
+        mobileItems={MOBILE_ITEMS}
+        user={user}
+        onLogout={() => void handleLogout()}
+        loggingOut={loggingOut}
+        header={{ icon: <LayoutGrid className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: "Consola de Atiende", resumenTo: "/superadmin" }}
+        panelLateral={<CopilotoPanel abierto={copilotoAbierto && !enPaginaCopiloto} onCerrar={cerrarCopiloto} apiBaseUrl={apiBaseUrl} token={session.token} />}
+      >
+        <div className="grid min-w-0 gap-4">
+          <ImpersonacionBanner apiBaseUrl={apiBaseUrl} token={session.token} />
+          <StepUpDialog />
+          {children({ apiBaseUrl, token: session.token, staffFullName: session.fullName, staffEmail: session.email })}
+        </div>
+      </VerticalShell>
+      {/* ds3 «Guía»: el recorrido sale del mismo menu (SECTIONS); el progreso se guarda por persona con la pista «superadmin». */}
+      {/* Sin `rolEtiqueta`: la guía pone «Superadmin» desde su diccionario ES/EN. Contenido y componente se cargan solo con ds3. */}
+      <GuiaDiferida
+        sections={SECTIONS}
+        base="/superadmin"
+        pista="superadmin"
+        persona={session.email}
+        organizacion={ORG_PLATAFORMA}
+        organizacionNombre={MARCA_PLATAFORMA}
+        cargar={cargarGuiaSuperadmin}
+        servidor={servidorGuia}
+      />
+    </>
   );
 }
