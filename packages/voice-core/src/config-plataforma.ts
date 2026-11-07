@@ -93,7 +93,7 @@ export interface ConfigElevenLabs {
     readonly usdPorHora: number;
     readonly usdPorHoraKeyterms: number;
     /** Compuerta de voz de fondo (pide `include_timestamps`): descarta un segmento confirmado `dbBajoVoz` dB por debajo de la mediana de los segmentos aceptados del
-     * cliente Y con logprob medio por debajo de `logprobMax`, una vez aceptados `segmentosMin`. null = apagada. `filter_background_audio` NO se usa: medido el 6-nov-2026
+     * cliente Y con logprob medio por debajo de `logprobMax`, una vez aceptados `segmentosMin`. null = apagada (por omision; ver `COMPUERTA_FONDO_ELEVENLABS`). `filter_background_audio` NO se usa: medido el 6-nov-2026
      * con 100 clips, el WER pasa de 23.7 % a 24.0 % y el limpio de 8.9 % a 14.0 %. */
     readonly compuertaFondo: { readonly dbBajoVoz: number; readonly logprobMax: number; readonly segmentosMin: number } | null;
   };
@@ -204,6 +204,10 @@ export interface ConfigCascadaV2 {
   readonly precioMicroUsdPorMinuto: number;
 }
 
+/** Compuerta de voz de fondo de ElevenLabs para encenderla a mano (`compuertaFondo`). APAGADA por omision (revision #752 P1-4): pide `include_timestamps`, que cambia
+ * el protocolo de Scribe RT, y no hay una E2E que muestre beneficio; la alineacion de tiempos por sesion no esta confirmada con la API real. */
+export const COMPUERTA_FONDO_ELEVENLABS = Object.freeze({ dbBajoVoz: 12, logprobMax: -1.4, segmentosMin: 2 });
+
 export const VOZ_PLATAFORMA: ConfigPlataformaVoz = Object.freeze({
   escalera: ESCALERA_VOZ,
   gemini: Object.freeze({
@@ -247,7 +251,7 @@ export const VOZ_PLATAFORMA: ConfigPlataformaVoz = Object.freeze({
     // Cerebro (decision de Javier, 13-oct): Sonnet 5.5 en esfuerzo bajo por omision; Haiku 5.5 queda como modelo configurable para turnos faciles.
     // ElevenLabs (lista del 6-nov-2026, PRUEBAS-STT-TTS-NOV.md): Scribe v2 Realtime 0.39 US$/h + keyterms 0.08 US$/h; eleven_v4_turbo 0.04 US$ por 1 000 caracteres (creditos del plan).
     elevenlabs: Object.freeze({
-      stt: Object.freeze({ modelo: "scribe_v2_realtime", idioma: "es", vadSilencioS: 0.55, finTurnoMinMs: 400, finTurnoMaxMs: 3_000, keytermsMax: 50, usdPorHora: 0.39, usdPorHoraKeyterms: 0.08, compuertaFondo: Object.freeze({ dbBajoVoz: 12, logprobMax: -1.4, segmentosMin: 2 }) }),
+      stt: Object.freeze({ modelo: "scribe_v2_realtime", idioma: "es", vadSilencioS: 0.55, finTurnoMinMs: 400, finTurnoMaxMs: 3_000, keytermsMax: 50, usdPorHora: 0.39, usdPorHoraKeyterms: 0.08, compuertaFondo: null }),
       tts: Object.freeze({ modelo: "eleven_v4_turbo", voz: "9Godp7dNohUvXk6qp0gS", idioma: "es", hzSalida: 24_000, usdPorMilCaracteres: 0.04, fraseTimeoutMs: 8_000, primerByteTimeoutMs: 2_500 }),
     }),
     // Cerebro de dos niveles de PM (decision del dueno, 6-nov-2026; opt-in con VOZ_CEREBRO_DOS_NIVELES=1): rapido google/gemini-3.5-flash-lite para turnos faciles,

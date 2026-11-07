@@ -197,8 +197,8 @@ class SesionElevenLabsStt implements SesionStt {
         if (!INFORMATIVOS.has(tipo)) return;
         const texto = typeof msg.text === "string" ? msg.text.trim() : "";
         if (tipo === "partial_transcript") this.alParcial(texto);
-        else if (tipo === "committed_transcript") this.alConfirmado(texto);
-        else if (tipo === "committed_transcript_with_timestamps") this.alConfirmadoConTiempos(texto, (msg as { words?: unknown }).words);
+        else if (tipo === "committed_transcript") this.alCommitNormal(texto);
+        else if (tipo === "committed_transcript_with_timestamps") this.alCommitConTiempos(texto, (msg as { words?: unknown }).words);
       });
     });
   }
@@ -224,6 +224,30 @@ class SesionElevenLabsStt implements SesionStt {
         this.acumN = 0;
       }
     }
+  }
+
+  /** Con `include_timestamps` el servidor puede mandar el commit normal, la copia con tiempos o las dos, en cualquier orden (no esta documentado; revision #752 P1-4).
+   * Se empareja por conteo: la copia que llega sin su par cuenta como el commit (la llamada nunca queda sorda) y la otra, cuando llegue, no se suma dos veces. */
+  private commitsSinTiempos = 0;
+  private tiemposSinCommit = 0;
+
+  private alCommitNormal(texto: string): void {
+    if (this.o.config.compuertaFondo && this.tiemposSinCommit > 0) {
+      this.tiemposSinCommit -= 1;
+      return;
+    }
+    if (this.o.config.compuertaFondo) this.commitsSinTiempos += 1;
+    this.alConfirmado(texto);
+  }
+
+  private alCommitConTiempos(texto: string, words: unknown): void {
+    if (this.commitsSinTiempos > 0) this.commitsSinTiempos -= 1;
+    else {
+      // Llego la copia con tiempos sin el commit normal: ella ES el commit.
+      this.tiemposSinCommit += 1;
+      this.alConfirmado(texto);
+    }
+    this.alConfirmadoConTiempos(texto, words);
   }
 
   /** Segunda copia del commit, con tiempos y logprob: decide si el segmento era voz de fondo y, si lo era, lo quita del turno antes de que cierre. */
