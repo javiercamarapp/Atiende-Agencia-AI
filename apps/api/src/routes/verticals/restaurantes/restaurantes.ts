@@ -10,6 +10,7 @@ import { restaurantesAdminDataChatRoutes } from "./admin-data-chat.ts";
 import { restaurantesAdminCatalogRoutes } from "./admin-catalog.ts";
 import { restaurantesAdminPromotionsRoutes } from "./admin-promotions.ts";
 import { restaurantesAdminBranchesRoutes } from "./admin-branches.ts";
+import { restaurantesGeocodificarRoutes } from "./geocodificar.ts";
 import { restaurantesOperacionAndamiajeRoutes } from "./operacion-andamiaje.ts";
 import { restaurantesAdminOrdersRoutes } from "./admin-orders.ts";
 import { restaurantesAdminCustomersRoutes } from "./admin-customers.ts";
@@ -63,6 +64,8 @@ export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // domain-restaurantes/src/promotions.ts).
   app.route("/", restaurantesAdminPromotionsRoutes(deps));
   app.route("/", restaurantesAdminBranchesRoutes(deps));
+  // Pin de sucursal: geocodificacion del lado del servidor (proveedor por configuracion, sin llaves en el navegador).
+  app.route("/", restaurantesGeocodificarRoutes(deps));
   // Panel del operador (andamiaje, 501 honesto): ANTES de admin-orders/admin-customers/repartidor-orders (ver el comentario del archivo).
   app.route("/", restaurantesOperacionAndamiajeRoutes(deps));
   // «Agregados por validar» (migración 099): listar / aceptar / rechazar lo que el cliente pide agregar a un pedido ya enviado.
