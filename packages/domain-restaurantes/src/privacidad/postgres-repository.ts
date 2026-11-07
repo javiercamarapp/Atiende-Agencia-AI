@@ -20,6 +20,7 @@ import type {
   DataRightsRequestRow,
   DataRightsRequestsFiltro,
   DataRightsRequestsPage,
+  OpenDataRightsLookup,
   RegisterDataRightsOutcome,
   UpdateDataRightsStatusResult,
 } from "./data-rights.ts";
@@ -178,6 +179,27 @@ export class PostgresPrivacidadRepository implements PrivacidadRepository {
       isRecoverable: (err) => isMigrationPendingError(err, "restaurantes.system_resolve_data_rights_confirmation"),
       fallback: (err) => {
         advertirNoDisponible("resolveDataRightsConfirmationAsSystem", err);
+        return Promise.resolve({ available: false });
+      },
+    });
+  }
+
+  async findOpenDataRightsRequestAsSystem(organizationId: string, customerPhone: string): Promise<OpenDataRightsLookup> {
+    return runWithSavepointFallback<OpenDataRightsLookup>({
+      session: this.db,
+      savepointName: "sp_privacy_arco_find_open",
+      primary: async () => {
+        const { rows } = await this.db.query<{ out_id: string; out_right_type: DataRightType; out_status: DataRightStatus; out_response_due_at: string | null }>(
+          `select out_id, out_right_type, out_status, out_response_due_at::text as out_response_due_at from restaurantes.system_find_open_data_rights_request($1, $2);`,
+          [organizationId, customerPhone],
+        );
+        const row = rows[0];
+        if (!row) return { available: true, found: false };
+        return { available: true, found: true, id: row.out_id, rightType: row.out_right_type, status: row.out_status, responseDueAt: row.out_response_due_at };
+      },
+      isRecoverable: (err) => isMigrationPendingError(err, "restaurantes.system_find_open_data_rights_request"),
+      fallback: (err) => {
+        advertirNoDisponible("findOpenDataRightsRequestAsSystem", err);
         return Promise.resolve({ available: false });
       },
     });
