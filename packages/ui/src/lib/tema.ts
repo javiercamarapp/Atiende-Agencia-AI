@@ -29,9 +29,19 @@ export function sistemaEnOscuro(): boolean {
   return typeof window.matchMedia === "function" && window.matchMedia("(prefers-color-scheme: dark)").matches;
 }
 
+/**
+ * Pantallas de inicio de sesion (`/<vertical>/login`): siempre en claro, como el login de Rovaq AI (`color-scheme: light`). El
+ * script `/theme-boot.js` aplica la misma regla antes del primer pintado, asi que el login nunca destella de oscuro a claro.
+ */
+export const RUTA_SIEMPRE_CLARA = /\/login\/?$/;
+
+export function rutaSiempreClara(ruta: string = typeof window === "undefined" ? "" : window.location.pathname): boolean {
+  return RUTA_SIEMPRE_CLARA.test(ruta);
+}
+
 /** Aplica el tema: alterna `dark` en <html> y ajusta el color de la barra del navegador. Devuelve si quedo oscuro. */
 export function aplicarTema(tema: Tema): boolean {
-  const oscuro = tema === "oscuro" || (tema === "sistema" && sistemaEnOscuro());
+  const oscuro = !rutaSiempreClara() && (tema === "oscuro" || (tema === "sistema" && sistemaEnOscuro()));
   document.documentElement.classList.toggle("dark", oscuro);
   // El color de la barra del navegador solo sigue al tema con la bandera ds3 (con ella apagada se conserva el de index.html).
   if (document.documentElement.dataset.diseno === VALOR_DISENO) {
