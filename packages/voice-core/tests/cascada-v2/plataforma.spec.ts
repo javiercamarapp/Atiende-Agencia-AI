@@ -44,8 +44,9 @@ describe("escalera de plataforma con cascada v2", () => {
 });
 
 describe("configuracion de la cascada v2", () => {
-  it("el cerebro por omision es Sonnet 5.5 con esfuerzo bajo; Haiku 5.5 queda como modelo configurable", () => {
-    expect(VOZ_PLATAFORMA.cascadaV2.llm).toMatchObject({ modelo: "anthropic/claude-sonnet-5.5", modeloFacil: "anthropic/claude-haiku-5.5", esfuerzo: "low" });
+  it("cerebro de dos niveles (decision del dueno, 6-nov-2026): preciso GPT-6 Luna, rapido Gemini 3.5 Flash-Lite y Haiku 5.5 de respaldo con plazo de 2.5 s", () => {
+    expect(VOZ_PLATAFORMA.cascadaV2.llm).toMatchObject({ modelo: "openai/gpt-6-luna", modeloFacil: "google/gemini-3.5-flash-lite", modeloRespaldo: "anthropic/claude-haiku-5.5", plazoPrimerTokenMs: 2_500, esfuerzo: "low" });
+    expect(VOZ_PLATAFORMA.cascadaV2.llm.frasesEspera.length).toBeGreaterThan(0);
     expect(VOZ_PLATAFORMA.cascadaV2.llm.topeSalidaTokens).toBeGreaterThan(0);
     expect(VOZ_PLATAFORMA.cascadaV2.llm.topeSalidaTokens).toBeGreaterThanOrEqual(1_500); // piso como el gateway: con 400 el benchmark midio 5.3 % de respuestas cortadas
   });
@@ -55,8 +56,8 @@ describe("configuracion de la cascada v2", () => {
     expect(VOZ_PLATAFORMA.cascadaV2.deepgram.endpointingMs).toBeLessThanOrEqual(500);
     expect(VOZ_PLATAFORMA.cascadaV2.deepgramAura2).toMatchObject({ voz: "aura-2-estrella-es", hzSalida: 24_000 });
   });
-  it("retencion cero: el cerebro de voz solo admite proveedores ZDR de Vertex y Bedrock (decision de Javier, 14-oct-2026)", () => {
-    expect(VOZ_PLATAFORMA.cascadaV2.llm.proveedoresZdr).toEqual(["google-vertex", "amazon-bedrock"]);
+  it("retencion cero: el cerebro de voz solo admite proveedores ZDR (Vertex, Bedrock y Azure, que es el unico ZDR de GPT-6 Luna)", () => {
+    expect(VOZ_PLATAFORMA.cascadaV2.llm.proveedoresZdr).toEqual(["google-vertex", "amazon-bedrock", "azure"]);
     expect(Object.isFrozen(VOZ_PLATAFORMA.cascadaV2.llm.proveedoresZdr)).toBe(true);
   });
   it("el piso por minuto del escalon existe y la configuracion sigue congelada", () => {
