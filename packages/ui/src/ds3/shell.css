@@ -1,5 +1,5 @@
 /*
- * ds3 / shell de la app (lote 5): marco, sidebar, encabezado, cabecera de pagina y barra de alcance.
+ * ds3 / shell de la app (lote 5): hoja unica del shell. Cada PR del carril agrega su seccion numerada (1. marco, ...).
  *
  * Reglas de esta hoja:
  *  - TODO va bajo `html[data-diseno="ds3"]`: sin la bandera ninguna regla coincide y produccion queda igual.
@@ -48,6 +48,17 @@ html[data-diseno="ds3"] .ds3-no.ds3-no { display: none; }
     overscroll-behavior: contain;
     scrollbar-gutter: stable;
   }
+  /* Panel lateral del Copiloto de superadmin (Cmd+J): es un hijo flex mas del lienzo. Bajo el marco de 16 no lleva margen vertical
+     propio (el lienzo ya da el 16) y cerrado (ancho 0) cancela el gap con -16 px, asi el documento no hace scroll y el borde derecho
+     queda a 16. Abierto: el gap de 16 lo separa del marco y el padding del lienzo da el 16 al borde. */
+  html[data-diseno="ds3"] .ds3-shell.ds3-shell > .copiloto-panel-lateral {
+    top: 16px;
+    height: calc(100dvh - 32px);
+    margin-top: 0;
+    margin-bottom: 0;
+    margin-right: 0;
+  }
+  html[data-diseno="ds3"] .ds3-shell.ds3-shell > .copiloto-panel-lateral[data-abierto="false"] { margin-left: -16px; }
   html[data-diseno="ds3"] .ds3-sidebar.ds3-sidebar {
     top: 16px;
     height: calc(100dvh - 32px);
@@ -58,17 +69,18 @@ html[data-diseno="ds3"] .ds3-no.ds3-no { display: none; }
   }
 }
 
-/* Entrada de pagina: solo transform (sin fade), 5 px, 240 ms con el easing unico. */
+/* Entrada de pagina: solo transform (sin fade), 5 px, 250 ms con el easing unico. */
 @keyframes ds3-entrada {
   from { transform: translateY(5px); }
   to { transform: none; }
 }
 html[data-diseno="ds3"] .ds3-shell-pagina.ds3-shell-pagina {
-  animation: ds3-entrada var(--dur-slow, 240ms) cubic-bezier(0.22, 1, 0.36, 1);
+  animation: ds3-entrada 250ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-/* Modo de alto contraste (forced-colors): las tarjetas conservan su contorno aunque el sistema quite los fondos. */
-@media (forced-colors: active) {
-  html[data-diseno="ds3"] .ds3-shell-marco,
-  html[data-diseno="ds3"] .ds3-sidebar { border: 1px solid CanvasText; }
+/* Modo de alto contraste (forced-colors), solo escritorio (en movil el marco va a sangre, sin borde): las tarjetas conservan su
+   contorno con el color del sistema. Misma especificidad que las reglas del marco y despues de ellas, para ganarles. */
+@media (min-width: 768px) and (forced-colors: active) {
+  html[data-diseno="ds3"] .ds3-shell-marco.ds3-shell-marco,
+  html[data-diseno="ds3"] .ds3-sidebar.ds3-sidebar { border: 1px solid CanvasText; }
 }
