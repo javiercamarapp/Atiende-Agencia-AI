@@ -1,6 +1,6 @@
 /**
  * Catalogo completo ES/EN. Cada area vive en su propio modulo y se registra aqui con UNA linea en `MODULOS` (espanol, la fuente)
- * y otra en `en/index.ts` (`MODULOS_EN`, su traduccion): asi varios carriles (shell, recorrido guiado, chat de datos...) agregan
+ * y otra en `en/catalogo-en.ts` (`MODULOS_EN`, su traduccion): asi varios carriles (shell, recorrido guiado, chat de datos...) agregan
  * textos sin pisarse. `Clave` es la union de todas las claves: `t("nav.resumne")` no compila.
  *
  * Carga: el espanol de `MODULOS` va en el bundle de arranque y el de cada area (`ModulosDeArea`) con el chunk de quien lo
@@ -11,16 +11,18 @@
  * el agente le dice al consumidor final por WhatsApp o voz (eso sigue en espanol, lo decide el negocio, no la consola).
  */
 import type { Idioma, Mensaje, Traduccion } from "../tipos.ts";
-import { comun } from "./comun.ts";
+import type { comun } from "./comun.ts";
 import type { consola } from "./consola.ts";
 import type { nav } from "./nav.ts";
+import type { notif } from "./notif.ts";
 import type { rol } from "./rol.ts";
 import type { shell } from "./shell.ts";
 
-/** Modulos que van en el bundle de arranque (los usan componentes de cualquier pantalla). */
-export const MODULOS = {
-  comun,
-} as const;
+/**
+ * Modulos que van en el bundle de arranque. Vacio a proposito: la entrada esta en su tope de bundle, asi que TODO modulo es
+ * de area y viaja con el chunk de quien lo importa.
+ */
+export const MODULOS = {} as const;
 
 /**
  * Modulos de un area: su espanol se registra solo cuando se importa su archivo (`import "@atiende/ui/i18n/<area>"` en quien lo
@@ -28,10 +30,12 @@ export const MODULOS = {
  * (`readonly <area>: typeof <area>` con `import type`). Cada archivo de area termina con `registrarModuloEs(<area>)`.
  */
 interface ModulosDeArea {
+  readonly comun: typeof comun;
   readonly nav: typeof nav;
   readonly shell: typeof shell;
   readonly rol: typeof rol;
   readonly consola: typeof consola;
+  readonly notif: typeof notif;
 }
 
 type Modulos = typeof MODULOS & ModulosDeArea;
@@ -66,7 +70,7 @@ export function idiomaListo(idioma: Idioma): boolean {
 /** Descarga (una sola vez) el catalogo del idioma. El espanol ya esta. Un fallo de red deja reintentar en el siguiente cambio. */
 export function cargarIdioma(idioma: Idioma): Promise<void> {
   if (idioma === "es" || catalogoEn) return Promise.resolve();
-  cargaEn ??= import("./en/index.ts").then(
+  cargaEn ??= import("./en/catalogo-en.ts").then(
     (m) => {
       catalogoEn = juntar(m.MODULOS_EN);
     },

@@ -71,7 +71,7 @@ export function CopilotoCompositor({
   };
 
   return (
-    <form onSubmit={alEnviar} className="w-full max-w-xl bg-card border border-border rounded-3xl shadow-sm p-3 shrink-0" aria-label="Preguntar al Copiloto">
+    <form onSubmit={alEnviar} data-ds3="compositor" className="w-full max-w-xl bg-card border border-border rounded-3xl shadow-sm p-3 shrink-0" aria-label="Preguntar al Copiloto">
       <label htmlFor={inputId} className="sr-only">
         Tu pregunta
       </label>
@@ -84,10 +84,11 @@ export function CopilotoCompositor({
         onChange={(e) => onCambia(e.target.value)}
         onKeyDown={alTeclear}
         placeholder={placeholder}
+        data-ds3="texto"
         className="w-full resize-none bg-transparent px-2 py-1.5 text-sm outline-none placeholder:text-muted-foreground"
       />
-      <div className="flex items-center justify-between mt-1">
-        <div className="flex items-center gap-2">
+      <div data-ds3="compositor-barra" className="flex items-center justify-between mt-1">
+        <div data-ds3="compositor-inicio" className="flex items-center gap-2">
           {adjuntos && onAdjuntar ? (
             <>
               <input ref={selector} type="file" accept={adjuntos.accept} onChange={elegirArchivo} className="sr-only" tabIndex={-1} aria-hidden data-testid="copiloto-adjunto-input" />
@@ -97,6 +98,7 @@ export function CopilotoCompositor({
                 disabled={enviando}
                 aria-label="Adjuntar archivo"
                 title="Adjuntar archivo (CSV, Excel o PDF)"
+                data-ds3="adjuntar"
                 className="rounded-full shrink-0 w-8 h-8 inline-flex items-center justify-center border border-border text-muted-foreground hover:bg-muted disabled:opacity-50"
               >
                 <Paperclip className="w-4 h-4" aria-hidden />
@@ -109,13 +111,14 @@ export function CopilotoCompositor({
             disabled={enviando}
             aria-expanded={vacio ? categoriasVisibles : undefined}
             aria-controls={vacio ? categoriasId : undefined}
+            data-ds3="consulta"
             className="flex items-center gap-1.5 rounded-full bg-foreground text-background text-xs font-medium pl-3 pr-3.5 py-1.5 hover:opacity-90 disabled:opacity-50"
           >
             <Search className="w-3.5 h-3.5" aria-hidden />
             Consulta
           </button>
         </div>
-        <div className="flex items-center gap-2">
+        <div data-ds3="compositor-fin" className="flex items-center gap-2">
           {valor.length >= umbralContador ? (
             <span className="text-2xs font-mono text-muted-foreground" aria-live="polite">
               {valor.length}/{maxCaracteres}
@@ -126,6 +129,7 @@ export function CopilotoCompositor({
               type="button"
               onClick={onDetener}
               aria-label="Detener"
+              data-ds3="enviar"
               className="rounded-full shrink-0 w-8 h-8 inline-flex items-center justify-center bg-copiloto text-copiloto-foreground hover:opacity-90"
             >
               <Square className="w-3 h-3 fill-current" aria-hidden />
@@ -135,6 +139,7 @@ export function CopilotoCompositor({
               type="submit"
               disabled={vacio}
               aria-label="Enviar"
+              data-ds3="enviar"
               className="rounded-full shrink-0 w-8 h-8 inline-flex items-center justify-center bg-copiloto text-copiloto-foreground hover:opacity-90 disabled:opacity-50"
             >
               <ArrowUp className="w-4 h-4" aria-hidden />

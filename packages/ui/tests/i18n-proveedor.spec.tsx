@@ -6,7 +6,9 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { IdiomaProvider, cargarIdioma, useFormatos, useI18n, useT } from "../src/i18n/index";
+import { IdiomaProvider, cargarIdioma, useI18n, useT } from "../src/i18n/index";
+import { useFormatos } from "../src/i18n/useFormatos.ts";
+import "../src/i18n/mensajes/comun.ts";
 import { CLAVE_IDIOMA, guardarIdioma } from "../src/lib/idioma";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -42,6 +44,8 @@ beforeEach(() => {
   window.localStorage.clear();
   window.history.replaceState(null, "", "/");
   document.documentElement.lang = "es";
+  // El idioma solo cambia con el diseno ds3 (el unico con selector ES/EN).
+  document.documentElement.dataset.diseno = "ds3";
 });
 
 afterEach(() => {
@@ -102,6 +106,27 @@ describe("IdiomaProvider", () => {
     expect(window.localStorage.getItem(CLAVE_IDIOMA)).toBe("en");
     expect(persistir).toHaveBeenCalledWith("en");
     expect(c.textContent?.startsWith("Try again")).toBe(true);
+  });
+
+  it("sin ds3 todo queda en espanol aunque haya EN guardado; al encender ds3 cambia en caliente", async () => {
+    delete document.documentElement.dataset.diseno;
+    window.localStorage.setItem(CLAVE_IDIOMA, "en");
+    const c = montar(createElement(IdiomaProvider, null, createElement(Muestra)));
+    expect(c.textContent?.startsWith("Reintentar")).toBe(true);
+    expect(document.documentElement.lang).toBe("es");
+    await act(async () => {
+      document.documentElement.dataset.diseno = "ds3";
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(c.textContent?.startsWith("Try again")).toBe(true);
+    expect(document.documentElement.lang).toBe("en");
+  });
+
+  it("?lang= vale para la carga pero no se guarda sin un clic", () => {
+    window.history.replaceState(null, "", "/?lang=en");
+    const c = montar(createElement(IdiomaProvider, null, createElement(Muestra)));
+    expect(c.textContent?.startsWith("Try again")).toBe(true);
+    expect(window.localStorage.getItem(CLAVE_IDIOMA)).toBeNull();
   });
 
   it("idiomaInicial fija el idioma sin leer la preferencia", () => {

@@ -286,6 +286,9 @@ export interface BranchPolicy {
   readonly diasDomicilio?: readonly number[] | null;
   /** Insignia publica "Temporada". Por omision false. */
   readonly deTemporada?: boolean;
+  /** Migracion 105: sucursal solo de reporte (venta en mostrador via SoftRestaurant); los agentes y el pedido en linea nunca la ofrecen.
+   * La lee `listarSucursalesSoloVentaLocal` (no `findBranchPolicy`); aqui solo la usa el repositorio en memoria de pruebas. */
+  readonly soloVentaLocal?: boolean;
 }
 
 /** Perfil del agente de WhatsApp: `generico` es el de siempre (tutea, domicilio); `taqueria_pm` es el de

@@ -10,6 +10,9 @@ import {
   confirmarVerificacionCorreo,
   describirDispositivo,
   esVerticalCuenta,
+  CuentaError,
+  DemasiadosIntentosError,
+  reenviarVerificacionCorreoPublico,
   solicitarRestablecerContrasena,
   validarNuevaContrasena,
 } from "../src/shell/cuenta/cuenta-client.ts";
@@ -83,6 +86,22 @@ describe("acciones", () => {
     const malo = vi.fn(async () => json({ message: "El enlace es inválido, ya se usó o expiró." }, 400)) as unknown as typeof fetch;
     await expect(confirmarRestablecerContrasena(malo, API, TOKEN, PW_NUEVA)).rejects.toThrow("ya se usó o expiró");
     await expect(confirmarVerificacionCorreo(malo, API, TOKEN)).rejects.toThrow("ya se usó o expiró");
+  });
+
+  it("reenvio publico de verificacion: POST sin Authorization con correo y vertical; 429 -> DemasiadosIntentosError; otro error -> CuentaError", async () => {
+    const f = vi.fn(async () => json({ ok: true })) as unknown as typeof fetch;
+    await reenviarVerificacionCorreoPublico(f, API, "  ana@x.mx ", "rentas");
+    const [url, init] = (f as unknown as { mock: { calls: Array<[string, RequestInit]> } }).mock.calls[0]!;
+    expect(url).toBe(`${API}/auth/email-verification/reenviar`);
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body as string)).toEqual({ email: "ana@x.mx", vertical: "rentas" });
+    expect(JSON.stringify(init.headers)).not.toMatch(/authorization/i);
+    const tope = vi.fn(async () => json({ message: "Demasiados intentos." }, 429)) as unknown as typeof fetch;
+    await expect(reenviarVerificacionCorreoPublico(tope, API, "ana@x.mx", "rentas")).rejects.toBeInstanceOf(DemasiadosIntentosError);
+    const caido = vi.fn(async () => json({ message: "falla" }, 503)) as unknown as typeof fetch;
+    const err = await reenviarVerificacionCorreoPublico(caido, API, "ana@x.mx", "rentas").catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(CuentaError);
+    expect(err).not.toBeInstanceOf(DemasiadosIntentosError);
   });
 
   it("enviar verificacion: sent es honesto", async () => {

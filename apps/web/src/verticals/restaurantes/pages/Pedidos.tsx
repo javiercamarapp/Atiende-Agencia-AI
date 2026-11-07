@@ -650,7 +650,7 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
         <>
           <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-              <p className="font-mono text-eyebrow tabular-nums text-muted-foreground" data-testid="total-pedidos">
+              <p className="text-eyebrow tabular-nums text-muted-foreground" data-testid="total-pedidos">
                 {conteo} en total
               </p>
               <HerramientasPedidos

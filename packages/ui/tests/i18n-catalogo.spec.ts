@@ -3,7 +3,7 @@
 // textos en «ingles» que en realidad se quedaron en espanol.
 import { readdirSync } from "node:fs";
 import { beforeAll, describe, expect, it } from "vitest";
-import { MODULOS_EN } from "../src/i18n/mensajes/en/index.ts";
+import { MODULOS_EN } from "../src/i18n/mensajes/en/catalogo-en.ts";
 import type { Mensaje } from "../src/i18n/tipos.ts";
 
 type Mod = { es: Record<string, Mensaje>; en: Record<string, Mensaje> };

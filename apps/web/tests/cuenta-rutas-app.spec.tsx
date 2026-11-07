@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 //
 // PL-21: las rutas publicas del correo (`/<vertical>/restablecer-contrasena`, `/<vertical>/verificar-correo`) estan
-// montadas en las 6 verticales -- son las que arma la API (`apps/api/src/routes/auth-account.ts`, `enlace()`) -- y el
-// login de cada una ofrece "¿Olvidaste tu contraseña?". Se monta el App real (BrowserRouter sobre la URL de jsdom).
+// montadas en las 6 verticales -- son las que arma la API (`apps/api/src/routes/auth-account.ts`, `enlace()`). Desde el
+// 6-nov el login (el de Rovaq) es SOLO enlace por correo y Google: ya no ofrece contrasena ni "¿Olvidaste tu contraseña?".
+// Se monta el App real (BrowserRouter sobre la URL de jsdom).
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/App.tsx";
@@ -51,9 +52,13 @@ describe("App — rutas de cuenta en las 6 verticales", () => {
     expect(enlace?.getAttribute("href")).toBe(`/${v}/login`);
   });
 
-  it.each(VERTICALES_CUENTA)("login ofrece '¿Olvidaste tu contraseña?'", async (v) => {
+  it.each(VERTICALES_CUENTA)("login sin contrasena: solo enlace por correo y Google (sin '¿Olvidaste tu contraseña?')", async (v) => {
     rendered = await renderEn(`/${v}/login`);
-    expect([...rendered.container.querySelectorAll("button")].some((b) => b.textContent === "¿Olvidaste tu contraseña?")).toBe(true);
+    const botones = [...rendered.container.querySelectorAll("button")].map((b) => b.textContent ?? "");
+    expect(botones.some((t) => t === "¿Olvidaste tu contraseña?")).toBe(false);
+    expect(rendered.container.querySelector('input[type="password"]')).toBeNull();
+    expect(botones.some((t) => t.includes("Continuar con Google"))).toBe(true);
+    expect(botones.some((t) => t.includes("Continuar con correo"))).toBe(true);
   });
 
   it.each(VERTICALES_CUENTA)("seguridad sin sesion vuelve al login de la vertical (nunca renderiza la pagina sin sesion)", async (v) => {

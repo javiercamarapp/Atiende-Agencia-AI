@@ -6,13 +6,15 @@
 import type { SucursalCercana } from "./nearest-branch.ts";
 import type { RestaurantesRepository } from "./repository.ts";
 import type { Branch, ColoniaReferencia } from "./types.ts";
+import { sucursalesParaClientes } from "./solo-venta-local.ts";
 
 /** Sucursales de PM que NO reparten (Galerias y Playa/Chicxulub: decision de Javier, 7-oct-2026) aunque `acepta_domicilio` este en true en la base (hoy lo esta) y solo
  * las deje fuera estar inactivas. Se aplica al perfil `taqueria_pm`; reactivar Galerias no la convierte en sucursal de despacho. */
 export const SUCURSALES_QUE_NO_REPARTEN_PM: readonly string[] = ["galerias", "playa"];
 
 export async function sucursalesDeDespacho(repo: RestaurantesRepository, organizationId: string, excluirSlugs: readonly string[] = []): Promise<readonly Branch[]> {
-  const activas = (await repo.listBranchesForOrganizationAdmin(organizationId)).filter((b) => b.status === "active" && !excluirSlugs.includes(b.slug));
+  // Solo venta local (migracion 105): nunca despacha aunque `acepta_domicilio` siga en true.
+  const activas = (await sucursalesParaClientes(repo, organizationId)).filter((b) => !excluirSlugs.includes(b.slug));
   const despacho: Branch[] = [];
   for (const branch of activas) {
     const politica = await repo.findBranchPolicy(branch.propertyId);
