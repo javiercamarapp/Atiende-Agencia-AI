@@ -28,7 +28,8 @@ export { CABECERA_TURNO_LLAMADA, crearEjecutorTools, sanearArgumentos, transport
 export type { ContextoEjecucionTool, EjecutorTools, EjecutorToolsOpciones, RegistroToolsVoz, ResultadoTool, ToolDefinicion, ToolJsonSchema, TransporteHttpOpciones, TransporteTools } from "./llamada/ejecutor-tools.ts";
 export { ControladorLlamada, limpiarTextoAgente } from "./llamada/controlador.ts";
 export type { DecisionGuardiaCliente, DepsControlador, EventoKpiLlamada, GuardiaCliente, ResultadoLlamada, TurnoTranscrito } from "./llamada/controlador.ts";
-export type { AbrirSesionLlamada, AperturaLlamada, ComponenteSesionCosto, ManejadoresSesion, ToolCallPedida, VozSesionLlamada } from "./llamada/sesion.ts";
+export type { AbrirSesionLlamada, AperturaLlamada, ComponenteSesionCosto, ManejadoresSesion, ReglaCondicional, ToolCallPedida, VozSesionLlamada } from "./llamada/sesion.ts";
+export { TITULO_REGLAS_CONDICIONALES, instruccionConReglasFijas, normalizarParaReglas, reglasActivadas } from "./llamada/cascada-v2/reglas-condicionales.ts";
 export { GEMINI_LIVE_WS_URL, crearProveedorGeminiLlamada, declaracionesDeHerramientas, mensajeSetup, vertexLiveWsUrl, vertexModelPath } from "./llamada/gemini-live-sesion.ts";
 export type { CrearSocketLive, GeminiLiveSesionOpciones, OpcionesSocketLive, ProveedorGeminiLlamada, SocketLive, VertexLiveOpciones } from "./llamada/gemini-live-sesion.ts";
 export { ESCALERA_VOZ, VOZ_PLATAFORMA, costoDeUsoGeminiMicroUsd, costoDeepgramAura2MicroUsd, costoDeepgramMicroUsd, costoElevenLabsSttMicroUsd, costoElevenLabsTtsMicroUsd, costoEstimadoMicroUsd, costoHeygenMicroUsd, heygenUsdPorMillonCaracteres, precioPorMinutoMicroUsd } from "./config-plataforma.ts";
