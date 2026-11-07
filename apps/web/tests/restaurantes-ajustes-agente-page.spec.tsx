@@ -20,8 +20,8 @@ const CTX: RestaurantesShellContext = { apiBaseUrl: "https://api.test", token: "
 
 const MODELOS = [
   { id: "openai/gpt-6-luna", etiqueta: "GPT-6 Luna", nivel: "economico", descripcion: "El predeterminado de la plataforma.", aceptaTemperatura: false, predeterminado: true, costoWhatsappMicroUsdPorMensaje: 800, costoVozMicroUsdPorMinuto: 1850, precioVerificadoEn: "2026-10-01" },
-  { id: "google/gemini-2.5-flash-lite", etiqueta: "Gemini 2.5 Flash-Lite", nivel: "economico", descripcion: "El mas barato.", aceptaTemperatura: true, predeterminado: false, costoWhatsappMicroUsdPorMensaje: 760, costoVozMicroUsdPorMinuto: 1400, precioVerificadoEn: "2026-10-02" },
-  { id: "anthropic/claude-sonnet-5.5", etiqueta: "Claude Sonnet 5.5", nivel: "premium", descripcion: "El de mayor calidad.", aceptaTemperatura: false, predeterminado: false, costoWhatsappMicroUsdPorMensaje: 16000, costoVozMicroUsdPorMinuto: 29000, precioVerificadoEn: "2026-10-01" },
+  { id: "deepseek/deepseek-v4.1-flash", etiqueta: "DeepSeek V4.1 Flash", nivel: "economico", descripcion: "El mas barato.", aceptaTemperatura: true, predeterminado: false, costoWhatsappMicroUsdPorMensaje: 760, costoVozMicroUsdPorMinuto: 1400, precioVerificadoEn: "2026-10-02" },
+  { id: "anthropic/claude-haiku-5.5", etiqueta: "Claude Haiku 5.5", nivel: "economico", descripcion: "El respaldo de Luna.", aceptaTemperatura: false, predeterminado: false, costoWhatsappMicroUsdPorMensaje: 16000, costoVozMicroUsdPorMinuto: 29000, precioVerificadoEn: "2026-10-01" },
 ];
 
 const AJUSTES = { whatsappModelo: null, whatsappTemperatura: null, vozModeloCascada: null, vozTemperatura: null, vozRitmo: "normal", vozEstilo: "neutro", vozFondoActivo: false, vozFondoVolumen: 8 };
@@ -170,7 +170,7 @@ describe("AjustesAgentePage — guardar de verdad", () => {
   it("elegir un modelo que admite temperatura muestra el control; guardar manda el PUT completo y confirma", async () => {
     montar();
     await esperar();
-    elegirValor(q("#ajustes-modelo-whatsapp"), "google/gemini-2.5-flash-lite");
+    elegirValor(q("#ajustes-modelo-whatsapp"), "deepseek/deepseek-v4.1-flash");
     expect(q('[data-testid="costo-whatsapp"]')?.textContent).toMatch(/≈ US\$0\.76 por 1,000 mensajes/);
     expect(q('[data-testid="sin-temperatura-whatsapp"]')).toBeNull();
     click(radio("ajustes-temperatura-whatsapp", "0.4"));
@@ -182,21 +182,21 @@ describe("AjustesAgentePage — guardar de verdad", () => {
     });
     const put = llamadas("PUT", "/admin/agente/ajustes");
     expect(put).toHaveLength(1);
-    expect(JSON.parse(String((put[0]![1] as RequestInit).body))).toEqual({ ...AJUSTES, whatsappModelo: "google/gemini-2.5-flash-lite", whatsappTemperatura: 0.4 });
+    expect(JSON.parse(String((put[0]![1] as RequestInit).body))).toEqual({ ...AJUSTES, whatsappModelo: "deepseek/deepseek-v4.1-flash", whatsappTemperatura: 0.4 });
     expect(txt()).toContain("Ajustes guardados");
     expect(boton("Guardar ajustes")!.disabled).toBe(true);
   });
 
   it("cambiar a un modelo sin temperatura la reinicia a automatica (nunca manda una combinacion que el servidor rechaza)", async () => {
-    montar({ ajustes: { status: 200, body: vista({}, { whatsappModelo: "google/gemini-2.5-flash-lite", whatsappTemperatura: 0.4 }) } });
+    montar({ ajustes: { status: 200, body: vista({}, { whatsappModelo: "deepseek/deepseek-v4.1-flash", whatsappTemperatura: 0.4 }) } });
     await esperar();
-    elegirValor(q("#ajustes-modelo-whatsapp"), "anthropic/claude-sonnet-5.5");
+    elegirValor(q("#ajustes-modelo-whatsapp"), "anthropic/claude-haiku-5.5");
     await act(async () => {
       click(boton("Guardar ajustes")!);
       await flushMicrotasks();
       await flushMicrotasks();
     });
-    expect(JSON.parse(String((llamadas("PUT", "/admin/agente/ajustes")[0]![1] as RequestInit).body))).toMatchObject({ whatsappModelo: "anthropic/claude-sonnet-5.5", whatsappTemperatura: null });
+    expect(JSON.parse(String((llamadas("PUT", "/admin/agente/ajustes")[0]![1] as RequestInit).body))).toMatchObject({ whatsappModelo: "anthropic/claude-haiku-5.5", whatsappTemperatura: null });
   });
 
   it("voz: ritmo, estilo, temperatura, cascada y fondo con volumen viajan en el mismo PUT", async () => {
@@ -205,7 +205,7 @@ describe("AjustesAgentePage — guardar de verdad", () => {
     click(radio("ajustes-ritmo", "pausado"));
     click(radio("ajustes-estilo", "calido"));
     click(radio("ajustes-temperatura-voz", "0.2"));
-    elegirValor(q("#ajustes-modelo-cascada"), "anthropic/claude-sonnet-5.5");
+    elegirValor(q("#ajustes-modelo-cascada"), "anthropic/claude-haiku-5.5");
     expect(q('[data-testid="costo-cascada"]')?.textContent).toMatch(/US\$29\.00 por 1,000 minutos/);
     click(q('button[role="switch"]')!);
     click(radio("ajustes-fondo-volumen", "12"));
@@ -219,7 +219,7 @@ describe("AjustesAgentePage — guardar de verdad", () => {
       vozRitmo: "pausado",
       vozEstilo: "calido",
       vozTemperatura: 0.2,
-      vozModeloCascada: "anthropic/claude-sonnet-5.5",
+      vozModeloCascada: "anthropic/claude-haiku-5.5",
       vozFondoActivo: true,
       vozFondoVolumen: 12,
     });
@@ -238,7 +238,7 @@ describe("AjustesAgentePage — guardar de verdad", () => {
   it("el servidor rechaza (400): se ve el mensaje y los cambios siguen sin guardar", async () => {
     montar({ putAjustes: () => ({ status: 400, body: { error: { message: "whatsappModelo: no esta en la lista de modelos permitidos." } } }) });
     await esperar();
-    elegirValor(q("#ajustes-modelo-whatsapp"), "google/gemini-2.5-flash-lite");
+    elegirValor(q("#ajustes-modelo-whatsapp"), "deepseek/deepseek-v4.1-flash");
     await act(async () => {
       click(boton("Guardar ajustes")!);
       await flushMicrotasks();
