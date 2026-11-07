@@ -1,0 +1,1792 @@
+[
+{
+"q": "1 kg de arrachera y un kilo de poc-chuc",
+"m": "arrachera",
+"w": "1 kg",
+"seg2": "un kilo de poc-chuc",
+"meat2": "poc-chuc",
+"w2": "1 kg"
+},
+{
+"q": "kilo y medio de costilla y una una cerveza",
+"m": "costilla",
+"w": "1.5 kg",
+"seg2": "una cerveza"
+},
+{
+"q": "medio kilo de pechuga de pollo y también 1 kg de costilla",
+"m": "pechuga de pollo",
+"w": "500 g",
+"seg2": "1 kg de costilla",
+"meat2": "costilla",
+"w2": "1 kg"
+},
+{
+"q": "un cuarto de kilo de poc-chuc y tres cuartos de kilo de arrachera",
+"m": "poc-chuc",
+"w": "250 g",
+"seg2": "tres cuartos de kilo de arrachera",
+"meat2": "arrachera",
+"w2": "750 g"
+},
+{
+"q": "500g de bistec encebollado y dos quesadillas",
+"m": "bistec encebollado",
+"w": "500 g",
+"seg2": "dos quesadillas"
+},
+{
+"q": "1/4 kilo de pastor y también un kilo y medio de de arrachera",
+"m": "pastor",
+"w": "250 g",
+"seg2": "un kilo y medio de de arrachera",
+"meat2": "arrachera",
+"w2": "1.5 kg"
+},
+{
+"q": "un kilo y medio de de bistec encebollado y una una light",
+"m": "bistec encebollado",
+"w": "1.5 kg",
+"seg2": "una light"
+},
+{
+"q": "un kilo y medio de de costilla y una una orden de papas",
+"m": "costilla",
+"w": "1.5 kg",
+"seg2": "una orden de papas"
+},
+{
+"q": "500g de pechuga de pollo y un agua de jamaica",
+"m": "pechuga de pollo",
+"w": "500 g",
+"seg2": "un agua de jamaica"
+},
+{
+"q": "2kg de bistec y una kilo y medio de poc-chuc",
+"m": "bistec",
+"w": "2 kg",
+"seg2": "kilo y medio de poc-chuc",
+"meat2": "poc-chuc",
+"w2": "1.5 kg"
+},
+{
+"q": "kilo y medio de arrachera, dos tacos de pastor",
+"m": "arrachera",
+"w": "1.5 kg",
+"seg2": "dos tacos de pastor"
+},
+{
+"q": "2kg de bistec encebollado y kilo y medio de costilla",
+"m": "bistec encebollado",
+"w": "2 kg",
+"seg2": "kilo y medio de costilla",
+"meat2": "costilla",
+"w2": "1.5 kg"
+},
+{
+"q": "kilo y medio de pastor y también dos quesadillas",
+"m": "pastor",
+"w": "1.5 kg",
+"seg2": "dos quesadillas"
+},
+{
+"q": "2 kilos de poc-chuc, dos tacos de pastor",
+"m": "poc-chuc",
+"w": "2 kg",
+"seg2": "dos tacos de pastor"
+},
+{
+"q": "dos kilos de poc-chuc y también una caguama",
+"m": "poc-chuc",
+"w": "2 kg",
+"seg2": "una caguama"
+},
+{
+"q": "un cuarto de kilo de pechuga de pollo y también una caguama",
+"m": "pechuga de pollo",
+"w": "250 g",
+"seg2": "una caguama"
+},
+{
+"q": "500g de bistec encebollado, un kilo y medio de poc-chuc",
+"m": "bistec encebollado",
+"w": "500 g",
+"seg2": "un kilo y medio de poc-chuc",
+"meat2": "poc-chuc",
+"w2": "1.5 kg"
+},
+{
+"q": "1/2 kilo de poc-chuc, una gringa de bistec",
+"m": "poc-chuc",
+"w": "500 g",
+"seg2": "una gringa de bistec"
+},
+{
+"q": "kilo y medio de pechuga de pollo y también dos quesadillas",
+"m": "pechuga de pollo",
+"w": "1.5 kg",
+"seg2": "dos quesadillas"
+},
+{
+"q": "2 kilos de chuleta, una sol",
+"m": "chuleta",
+"w": "2 kg",
+"seg2": "una sol"
+},
+{
+"q": "un kilo de poc-chuc y una 1/4 kilo de costilla",
+"m": "poc-chuc",
+"w": "1 kg",
+"seg2": "1/4 kilo de costilla",
+"meat2": "costilla",
+"w2": "250 g"
+},
+{
+"q": "1/2 kilo de pechuga de pollo, dos cocas",
+"m": "pechuga de pollo",
+"w": "500 g",
+"seg2": "dos cocas"
+},
+{
+"q": "un cuarto de kilo de pastor, una coca",
+"m": "pastor",
+"w": "250 g",
+"seg2": "una coca"
+},
+{
+"q": "tres cuartos de kilo de bistec encebollado y medio kilo de pechuga de pollo",
+"m": "bistec encebollado",
+"w": "750 g",
+"seg2": "medio kilo de pechuga de pollo",
+"meat2": "pechuga de pollo",
+"w2": "500 g"
+},
+{
+"q": "un kilo de chuleta y también un kilo y medio de arrachera",
+"m": "chuleta",
+"w": "1 kg",
+"seg2": "un kilo y medio de arrachera",
+"meat2": "arrachera",
+"w2": "1.5 kg"
+},
+{
+"q": "dos kilos de bistec y también una gringa de bistec",
+"m": "bistec",
+"w": "2 kg",
+"seg2": "una gringa de bistec"
+},
+{
+"q": "2 kilos de bistec y también una gringa de bistec",
+"m": "bistec",
+"w": "2 kg",
+"seg2": "una gringa de bistec"
+},
+{
+"q": "tres cuartos de kilo de pastor y una una light",
+"m": "pastor",
+"w": "750 g",
+"seg2": "una light"
+},
+{
+"q": "medio kilo de bistec y dos cocas",
+"m": "bistec",
+"w": "500 g",
+"seg2": "dos cocas"
+},
+{
+"q": "tres cuartos de kilo de bistec y una dos quesadillas",
+"m": "bistec",
+"w": "750 g",
+"seg2": "dos quesadillas"
+},
+{
+"q": "medio kilo de chuleta y también dos quesadillas",
+"m": "chuleta",
+"w": "500 g",
+"seg2": "dos quesadillas"
+},
+{
+"q": "500g de poc-chuc y medio kilo de pastor",
+"m": "poc-chuc",
+"w": "500 g",
+"seg2": "medio kilo de pastor",
+"meat2": "pastor",
+"w2": "500 g"
+},
+{
+"q": "un kilo de arrachera, dos cocas",
+"m": "arrachera",
+"w": "1 kg",
+"seg2": "dos cocas"
+},
+{
+"q": "dos kilos de bistec encebollado y dos quesadillas",
+"m": "bistec encebollado",
+"w": "2 kg",
+"seg2": "dos quesadillas"
+},
+{
+"q": "kilo y medio de arrachera, un cuarto de kilo de chuleta",
+"m": "arrachera",
+"w": "1.5 kg",
+"seg2": "un cuarto de kilo de chuleta",
+"meat2": "chuleta",
+"w2": "250 g"
+},
+{
+"q": "500g de arrachera y una dos tacos de pastor",
+"m": "arrachera",
+"w": "500 g",
+"seg2": "dos tacos de pastor"
+},
+{
+"q": "kilo y medio de pechuga de pollo y una dos cocas",
+"m": "pechuga de pollo",
+"w": "1.5 kg",
+"seg2": "dos cocas"
+},
+{
+"q": "1/2 kilo de poc-chuc y también una cerveza",
+"m": "poc-chuc",
+"w": "500 g",
+"seg2": "una cerveza"
+},
+{
+"q": "dos kilos de pechuga de pollo y también una cerveza",
+"m": "pechuga de pollo",
+"w": "2 kg",
+"seg2": "una cerveza"
+},
+{
+"q": "tres cuartos de kilo de chuleta y una kilo y medio de arrachera",
+"m": "chuleta",
+"w": "750 g",
+"seg2": "kilo y medio de arrachera",
+"meat2": "arrachera",
+"w2": "1.5 kg"
+},
+{
+"q": "tres cuartos de kilo de arrachera y una un kilo y medio de de pastor",
+"m": "arrachera",
+"w": "750 g",
+"seg2": "un kilo y medio de de pastor",
+"meat2": "pastor",
+"w2": "1.5 kg"
+},
+{
+"q": "kilo y medio de pechuga de pollo y una heineken",
+"m": "pechuga de pollo",
+"w": "1.5 kg",
+"seg2": "una heineken"
+},
+{
+"q": "un kilo y medio de de bistec, una gringa de bistec",
+"m": "bistec",
+"w": "1.5 kg",
+"seg2": "una gringa de bistec"
+},
+{
+"q": "un kilo y medio de de pastor y dos kilos de poc-chuc",
+"m": "pastor",
+"w": "1.5 kg",
+"seg2": "dos kilos de poc-chuc",
+"meat2": "poc-chuc",
+"w2": "2 kg"
+},
+{
+"q": "tres cuartos de kilo de chuleta, kilo y medio de bistec encebollado",
+"m": "chuleta",
+"w": "750 g",
+"seg2": "kilo y medio de bistec encebollado",
+"meat2": "bistec encebollado",
+"w2": "1.5 kg"
+},
+{
+"q": "kilo y medio de pechuga de pollo y una dos tacos de pastor",
+"m": "pechuga de pollo",
+"w": "1.5 kg",
+"seg2": "dos tacos de pastor"
+},
+{
+"q": "1/2 kilo de bistec encebollado y también 1/2 kilo de pechuga de pollo",
+"m": "bistec encebollado",
+"w": "500 g",
+"seg2": "1/2 kilo de pechuga de pollo",
+"meat2": "pechuga de pollo",
+"w2": "500 g"
+},
+{
+"q": "1/4 kilo de bistec encebollado y también una coca",
+"m": "bistec encebollado",
+"w": "250 g",
+"seg2": "una coca"
+},
+{
+"q": "un kilo de bistec encebollado, un kilo y medio de de pechuga de pollo",
+"m": "bistec encebollado",
+"w": "1 kg",
+"seg2": "un kilo y medio de de pechuga de pollo",
+"meat2": "pechuga de pollo",
+"w2": "1.5 kg"
+},
+{
+"q": "1/4 kilo de bistec y medio kilo de bistec encebollado",
+"m": "bistec",
+"w": "250 g",
+"seg2": "medio kilo de bistec encebollado",
+"meat2": "bistec encebollado",
+"w2": "500 g"
+},
+{
+"q": "dos kilos de bistec encebollado, 1/2 kilo de poc-chuc",
+"m": "bistec encebollado",
+"w": "2 kg",
+"seg2": "1/2 kilo de poc-chuc",
+"meat2": "poc-chuc",
+"w2": "500 g"
+},
+{
+"q": "1 kg de chuleta, una sol",
+"m": "chuleta",
+"w": "1 kg",
+"seg2": "una sol"
+},
+{
+"q": "1/4 kilo de chuleta y kilo y medio de bistec encebollado",
+"m": "chuleta",
+"w": "250 g",
+"seg2": "kilo y medio de bistec encebollado",
+"meat2": "bistec encebollado",
+"w2": "1.5 kg"
+},
+{
+"q": "2kg de bistec y una orden de papas",
+"m": "bistec",
+"w": "2 kg",
+"seg2": "una orden de papas"
+},
+{
+"q": "tres cuartos de kilo de bistec encebollado y una un kilo y medio de pastor",
+"m": "bistec encebollado",
+"w": "750 g",
+"seg2": "un kilo y medio de pastor",
+"meat2": "pastor",
+"w2": "1.5 kg"
+},
+{
+"q": "tres cuartos de kilo de bistec, dos cocas",
+"m": "bistec",
+"w": "750 g",
+"seg2": "dos cocas"
+},
+{
+"q": "un kilo de pechuga de pollo y también un kilo y medio de de poc-chuc",
+"m": "pechuga de pollo",
+"w": "1 kg",
+"seg2": "un kilo y medio de de poc-chuc",
+"meat2": "poc-chuc",
+"w2": "1.5 kg"
+},
+{
+"q": "medio kilo de chuleta y una un cuarto de kilo de arrachera",
+"m": "chuleta",
+"w": "500 g",
+"seg2": "un cuarto de kilo de arrachera",
+"meat2": "arrachera",
+"w2": "250 g"
+},
+{
+"q": "medio kilo de arrachera, una cerveza",
+"m": "arrachera",
+"w": "500 g",
+"seg2": "una cerveza"
+},
+{
+"q": "1 kg de pechuga de pollo y una dos quesadillas",
+"m": "pechuga de pollo",
+"w": "1 kg",
+"seg2": "dos quesadillas"
+},
+{
+"q": "2kg de chuleta y también dos kilos de pastor",
+"m": "chuleta",
+"w": "2 kg",
+"seg2": "dos kilos de pastor",
+"meat2": "pastor",
+"w2": "2 kg"
+},
+{
+"q": "un kilo y medio de pechuga de pollo, una caguama",
+"m": "pechuga de pollo",
+"w": "1.5 kg",
+"seg2": "una caguama"
+},
+{
+"q": "kilo y medio de bistec, un kilo y medio de de chuleta",
+"m": "bistec",
+"w": "1.5 kg",
+"seg2": "un kilo y medio de de chuleta",
+"meat2": "chuleta",
+"w2": "1.5 kg"
+},
+{
+"q": "tres cuartos de kilo de costilla, una sol",
+"m": "costilla",
+"w": "750 g",
+"seg2": "una sol"
+},
+{
+"q": "dos kilos de costilla, dos kilos de pechuga de pollo",
+"m": "costilla",
+"w": "2 kg",
+"seg2": "dos kilos de pechuga de pollo",
+"meat2": "pechuga de pollo",
+"w2": "2 kg"
+},
+{
+"q": "1 kg de chuleta y un agua de jamaica",
+"m": "chuleta",
+"w": "1 kg",
+"seg2": "un agua de jamaica"
+},
+{
+"q": "1 kg de bistec y también un agua de jamaica",
+"m": "bistec",
+"w": "1 kg",
+"seg2": "un agua de jamaica"
+},
+{
+"q": "1/4 kilo de poc-chuc y tres cuartos de kilo de chuleta",
+"m": "poc-chuc",
+"w": "250 g",
+"seg2": "tres cuartos de kilo de chuleta",
+"meat2": "chuleta",
+"w2": "750 g"
+},
+{
+"q": "kilo y medio de bistec, una heineken",
+"m": "bistec",
+"w": "1.5 kg",
+"seg2": "una heineken"
+},
+{
+"q": "dos kilos de bistec, dos quesadillas",
+"m": "bistec",
+"w": "2 kg",
+"seg2": "dos quesadillas"
+},
+{
+"q": "2 kilos de bistec, un kilo y medio de de bistec encebollado",
+"m": "bistec",
+"w": "2 kg",
+"seg2": "un kilo y medio de de bistec encebollado",
+"meat2": "bistec encebollado",
+"w2": "1.5 kg"
+},
+{
+"q": "2kg de poc-chuc y una caguama",
+"m": "poc-chuc",
+"w": "2 kg",
+"seg2": "una caguama"
+},
+{
+"q": "500g de bistec, 500g de poc-chuc",
+"m": "bistec",
+"w": "500 g",
+"seg2": "500g de poc-chuc",
+"meat2": "poc-chuc",
+"w2": "500 g"
+},
+{
+"q": "medio kilo de pechuga de pollo y también una light",
+"m": "pechuga de pollo",
+"w": "500 g",
+"seg2": "una light"
+},
+{
+"q": "1/2 kilo de pastor, 500g de bistec",
+"m": "pastor",
+"w": "500 g",
+"seg2": "500g de bistec",
+"meat2": "bistec",
+"w2": "500 g"
+},
+{
+"q": "medio kilo de bistec encebollado, una heineken",
+"m": "bistec encebollado",
+"w": "500 g",
+"seg2": "una heineken"
+},
+{
+"q": "kilo y medio de arrachera y también una coca",
+"m": "arrachera",
+"w": "1.5 kg",
+"seg2": "una coca"
+},
+{
+"q": "1/2 kilo de costilla y una 500g de bistec",
+"m": "costilla",
+"w": "500 g",
+"seg2": "500g de bistec",
+"meat2": "bistec",
+"w2": "500 g"
+},
+{
+"q": "tres cuartos de kilo de costilla y una una coca",
+"m": "costilla",
+"w": "750 g",
+"seg2": "una coca"
+},
+{
+"q": "1 kg de pechuga de pollo y también 500g de costilla",
+"m": "pechuga de pollo",
+"w": "1 kg",
+"seg2": "500g de costilla",
+"meat2": "costilla",
+"w2": "500 g"
+},
+{
+"q": "1/4 kilo de costilla y una una caguama",
+"m": "costilla",
+"w": "250 g",
+"seg2": "una caguama"
+},
+{
+"q": "un kilo de chuleta y dos kilos de costilla",
+"m": "chuleta",
+"w": "1 kg",
+"seg2": "dos kilos de costilla",
+"meat2": "costilla",
+"w2": "2 kg"
+},
+{
+"q": "kilo y medio de pastor y también una sol",
+"m": "pastor",
+"w": "1.5 kg",
+"seg2": "una sol"
+},
+{
+"q": "un cuarto de kilo de pechuga de pollo y una 1/2 kilo de costilla",
+"m": "pechuga de pollo",
+"w": "250 g",
+"seg2": "1/2 kilo de costilla",
+"meat2": "costilla",
+"w2": "500 g"
+},
+{
+"q": "1/2 kilo de poc-chuc y también 1/4 kilo de chuleta",
+"m": "poc-chuc",
+"w": "500 g",
+"seg2": "1/4 kilo de chuleta",
+"meat2": "chuleta",
+"w2": "250 g"
+},
+{
+"q": "un kilo de arrachera y una 2 kilos de chuleta",
+"m": "arrachera",
+"w": "1 kg",
+"seg2": "2 kilos de chuleta",
+"meat2": "chuleta",
+"w2": "2 kg"
+},
+{
+"q": "dos kilos de pechuga de pollo y una un kilo y medio de costilla",
+"m": "pechuga de pollo",
+"w": "2 kg",
+"seg2": "un kilo y medio de costilla",
+"meat2": "costilla",
+"w2": "1.5 kg"
+},
+{
+"q": "un kilo y medio de poc-chuc y una light",
+"m": "poc-chuc",
+"w": "1.5 kg",
+"seg2": "una light"
+},
+{
+"q": "un kilo y medio de poc-chuc y una 2 kilos de arrachera",
+"m": "poc-chuc",
+"w": "1.5 kg",
+"seg2": "2 kilos de arrachera",
+"meat2": "arrachera",
+"w2": "2 kg"
+},
+{
+"q": "un cuarto de kilo de arrachera y también 2 kilos de pechuga de pollo",
+"m": "arrachera",
+"w": "250 g",
+"seg2": "2 kilos de pechuga de pollo",
+"meat2": "pechuga de pollo",
+"w2": "2 kg"
+},
+{
+"q": "1/2 kilo de pechuga de pollo y una una sol",
+"m": "pechuga de pollo",
+"w": "500 g",
+"seg2": "una sol"
+},
+{
+"q": "un cuarto de kilo de pastor y medio kilo de chuleta",
+"m": "pastor",
+"w": "250 g",
+"seg2": "medio kilo de chuleta",
+"meat2": "chuleta",
+"w2": "500 g"
+},
+{
+"q": "1/2 kilo de poc-chuc y una kilo y medio de pastor",
+"m": "poc-chuc",
+"w": "500 g",
+"seg2": "kilo y medio de pastor",
+"meat2": "pastor",
+"w2": "1.5 kg"
+},
+{
+"q": "1/4 kilo de poc-chuc, una coca",
+"m": "poc-chuc",
+"w": "250 g",
+"seg2": "una coca"
+},
+{
+"q": "500g de pechuga de pollo y una dos quesadillas",
+"m": "pechuga de pollo",
+"w": "500 g",
+"seg2": "dos quesadillas"
+},
+{
+"q": "un kilo y medio de pastor, una caguama",
+"m": "pastor",
+"w": "1.5 kg",
+"seg2": "una caguama"
+},
+{
+"q": "1/2 kilo de arrachera, una heineken",
+"m": "arrachera",
+"w": "500 g",
+"seg2": "una heineken"
+},
+{
+"q": "1 kg de arrachera, una gringa de bistec",
+"m": "arrachera",
+"w": "1 kg",
+"seg2": "una gringa de bistec"
+},
+{
+"q": "kilo y medio de costilla y medio kilo de arrachera",
+"m": "costilla",
+"w": "1.5 kg",
+"seg2": "medio kilo de arrachera",
+"meat2": "arrachera",
+"w2": "500 g"
+},
+{
+"q": "tres cuartos de kilo de poc-chuc y también dos kilos de pastor",
+"m": "poc-chuc",
+"w": "750 g",
+"seg2": "dos kilos de pastor",
+"meat2": "pastor",
+"w2": "2 kg"
+},
+{
+"q": "medio kilo de bistec, un agua de jamaica",
+"m": "bistec",
+"w": "500 g",
+"seg2": "un agua de jamaica"
+},
+{
+"q": "tres cuartos de kilo de pechuga de pollo y una dos quesadillas",
+"m": "pechuga de pollo",
+"w": "750 g",
+"seg2": "dos quesadillas"
+},
+{
+"q": "2kg de arrachera y una una gringa de bistec",
+"m": "arrachera",
+"w": "2 kg",
+"seg2": "una gringa de bistec"
+},
+{
+"q": "dos kilos de pechuga de pollo y una sol",
+"m": "pechuga de pollo",
+"w": "2 kg",
+"seg2": "una sol"
+},
+{
+"q": "kilo y medio de bistec y tres cuartos de kilo de pastor",
+"m": "bistec",
+"w": "1.5 kg",
+"seg2": "tres cuartos de kilo de pastor",
+"meat2": "pastor",
+"w2": "750 g"
+},
+{
+"q": "un kilo y medio de de arrachera y una coca",
+"m": "arrachera",
+"w": "1.5 kg",
+"seg2": "una coca"
+},
+{
+"q": "2 kilos de arrachera y una gringa de bistec",
+"m": "arrachera",
+"w": "2 kg",
+"seg2": "una gringa de bistec"
+},
+{
+"q": "1/2 kilo de pastor y medio kilo de arrachera",
+"m": "pastor",
+"w": "500 g",
+"seg2": "medio kilo de arrachera",
+"meat2": "arrachera",
+"w2": "500 g"
+},
+{
+"q": "un kilo y medio de costilla, 1/2 kilo de arrachera",
+"m": "costilla",
+"w": "1.5 kg",
+"seg2": "1/2 kilo de arrachera",
+"meat2": "arrachera",
+"w2": "500 g"
+},
+{
+"q": "2 kilos de poc-chuc y una una gringa de bistec",
+"m": "poc-chuc",
+"w": "2 kg",
+"seg2": "una gringa de bistec"
+},
+{
+"q": "un cuarto de kilo de bistec encebollado y una una heineken",
+"m": "bistec encebollado",
+"w": "250 g",
+"seg2": "una heineken"
+},
+{
+"q": "kilo y medio de bistec, una coca",
+"m": "bistec",
+"w": "1.5 kg",
+"seg2": "una coca"
+},
+{
+"q": "un cuarto de kilo de bistec, una orden de papas",
+"m": "bistec",
+"w": "250 g",
+"seg2": "una orden de papas"
+},
+{
+"q": "kilo y medio de chuleta y también 1/4 kilo de poc-chuc",
+"m": "chuleta",
+"w": "1.5 kg",
+"seg2": "1/4 kilo de poc-chuc",
+"meat2": "poc-chuc",
+"w2": "250 g"
+},
+{
+"q": "un kilo y medio de poc-chuc y también una light",
+"m": "poc-chuc",
+"w": "1.5 kg",
+"seg2": "una light"
+},
+{
+"q": "tres cuartos de kilo de arrachera y también dos kilos de pastor",
+"m": "arrachera",
+"w": "750 g",
+"seg2": "dos kilos de pastor",
+"meat2": "pastor",
+"w2": "2 kg"
+},
+{
+"q": "1/2 kilo de pechuga de pollo, un kilo y medio de de bistec",
+"m": "pechuga de pollo",
+"w": "500 g",
+"seg2": "un kilo y medio de de bistec",
+"meat2": "bistec",
+"w2": "1.5 kg"
+},
+{
+"q": "un kilo y medio de de pechuga de pollo, medio kilo de arrachera",
+"m": "pechuga de pollo",
+"w": "1.5 kg",
+"seg2": "medio kilo de arrachera",
+"meat2": "arrachera",
+"w2": "500 g"
+},
+{
+"q": "2kg de bistec y también 2 kilos de poc-chuc",
+"m": "bistec",
+"w": "2 kg",
+"seg2": "2 kilos de poc-chuc",
+"meat2": "poc-chuc",
+"w2": "2 kg"
+},
+{
+"q": "dos kilos de costilla y también kilo y medio de chuleta",
+"m": "costilla",
+"w": "2 kg",
+"seg2": "kilo y medio de chuleta",
+"meat2": "chuleta",
+"w2": "1.5 kg"
+},
+{
+"q": "kilo y medio de arrachera y también dos quesadillas",
+"m": "arrachera",
+"w": "1.5 kg",
+"seg2": "dos quesadillas"
+},
+{
+"q": "un kilo y medio de de arrachera y una un kilo y medio de de costilla",
+"m": "arrachera",
+"w": "1.5 kg",
+"seg2": "un kilo y medio de de costilla",
+"meat2": "costilla",
+"w2": "1.5 kg"
+},
+{
+"q": "un cuarto de kilo de poc-chuc y también una orden de papas",
+"m": "poc-chuc",
+"w": "250 g",
+"seg2": "una orden de papas"
+},
+{
+"q": "un kilo de bistec y una una caguama",
+"m": "bistec",
+"w": "1 kg",
+"seg2": "una caguama"
+},
+{
+"q": "1/4 kilo de pechuga de pollo y una una heineken",
+"m": "pechuga de pollo",
+"w": "250 g",
+"seg2": "una heineken"
+},
+{
+"q": "500g de pastor, una light",
+"m": "pastor",
+"w": "500 g",
+"seg2": "una light"
+},
+{
+"q": "un kilo y medio de de costilla y una un kilo de bistec encebollado",
+"m": "costilla",
+"w": "1.5 kg",
+"seg2": "un kilo de bistec encebollado",
+"meat2": "bistec encebollado",
+"w2": "1 kg"
+},
+{
+"q": "kilo y medio de pastor y una heineken",
+"m": "pastor",
+"w": "1.5 kg",
+"seg2": "una heineken"
+},
+{
+"q": "un kilo y medio de bistec y dos tacos de pastor",
+"m": "bistec",
+"w": "1.5 kg",
+"seg2": "dos tacos de pastor"
+},
+{
+"q": "tres cuartos de kilo de bistec y un agua de jamaica",
+"m": "bistec",
+"w": "750 g",
+"seg2": "un agua de jamaica"
+},
+{
+"q": "2kg de pastor, medio kilo de chuleta",
+"m": "pastor",
+"w": "2 kg",
+"seg2": "medio kilo de chuleta",
+"meat2": "chuleta",
+"w2": "500 g"
+},
+{
+"q": "1/2 kilo de arrachera, 500g de pastor",
+"m": "arrachera",
+"w": "500 g",
+"seg2": "500g de pastor",
+"meat2": "pastor",
+"w2": "500 g"
+},
+{
+"q": "tres cuartos de kilo de chuleta y una tres cuartos de kilo de pechuga de pollo",
+"m": "chuleta",
+"w": "750 g",
+"seg2": "tres cuartos de kilo de pechuga de pollo",
+"meat2": "pechuga de pollo",
+"w2": "750 g"
+},
+{
+"q": "2 kilos de costilla, 1/4 kilo de chuleta",
+"m": "costilla",
+"w": "2 kg",
+"seg2": "1/4 kilo de chuleta",
+"meat2": "chuleta",
+"w2": "250 g"
+},
+{
+"q": "1 kg de bistec y una light",
+"m": "bistec",
+"w": "1 kg",
+"seg2": "una light"
+},
+{
+"q": "medio kilo de bistec encebollado y una kilo y medio de arrachera",
+"m": "bistec encebollado",
+"w": "500 g",
+"seg2": "kilo y medio de arrachera",
+"meat2": "arrachera",
+"w2": "1.5 kg"
+},
+{
+"q": "un kilo y medio de de pastor y tres cuartos de kilo de bistec encebollado",
+"m": "pastor",
+"w": "1.5 kg",
+"seg2": "tres cuartos de kilo de bistec encebollado",
+"meat2": "bistec encebollado",
+"w2": "750 g"
+},
+{
+"q": "un kilo y medio de de poc-chuc y un kilo y medio de pechuga de pollo",
+"m": "poc-chuc",
+"w": "1.5 kg",
+"seg2": "un kilo y medio de pechuga de pollo",
+"meat2": "pechuga de pollo",
+"w2": "1.5 kg"
+},
+{
+"q": "kilo y medio de poc-chuc y una coca",
+"m": "poc-chuc",
+"w": "1.5 kg",
+"seg2": "una coca"
+},
+{
+"q": "un kilo y medio de pechuga de pollo y también tres cuartos de kilo de bistec encebollado",
+"m": "pechuga de pollo",
+"w": "1.5 kg",
+"seg2": "tres cuartos de kilo de bistec encebollado",
+"meat2": "bistec encebollado",
+"w2": "750 g"
+},
+{
+"q": "2 kilos de pastor y también una orden de papas",
+"m": "pastor",
+"w": "2 kg",
+"seg2": "una orden de papas"
+},
+{
+"q": "medio kilo de arrachera y dos cocas",
+"m": "arrachera",
+"w": "500 g",
+"seg2": "dos cocas"
+},
+{
+"q": "1 kg de pastor y kilo y medio de arrachera",
+"m": "pastor",
+"w": "1 kg",
+"seg2": "kilo y medio de arrachera",
+"meat2": "arrachera",
+"w2": "1.5 kg"
+},
+{
+"q": "500g de arrachera, dos cocas",
+"m": "arrachera",
+"w": "500 g",
+"seg2": "dos cocas"
+},
+{
+"q": "un cuarto de kilo de pechuga de pollo y un kilo y medio de arrachera",
+"m": "pechuga de pollo",
+"w": "250 g",
+"seg2": "un kilo y medio de arrachera",
+"meat2": "arrachera",
+"w2": "1.5 kg"
+},
+{
+"q": "kilo y medio de pechuga de pollo y una dos quesadillas",
+"m": "pechuga de pollo",
+"w": "1.5 kg",
+"seg2": "dos quesadillas"
+},
+{
+"q": "2 kilos de poc-chuc, un agua de jamaica",
+"m": "poc-chuc",
+"w": "2 kg",
+"seg2": "un agua de jamaica"
+},
+{
+"q": "1 kg de pastor, un cuarto de kilo de bistec encebollado",
+"m": "pastor",
+"w": "1 kg",
+"seg2": "un cuarto de kilo de bistec encebollado",
+"meat2": "bistec encebollado",
+"w2": "250 g"
+},
+{
+"q": "500g de poc-chuc y 2 kilos de pechuga de pollo",
+"m": "poc-chuc",
+"w": "500 g",
+"seg2": "2 kilos de pechuga de pollo",
+"meat2": "pechuga de pollo",
+"w2": "2 kg"
+},
+{
+"q": "un kilo y medio de de pastor y 2 kilos de arrachera",
+"m": "pastor",
+"w": "1.5 kg",
+"seg2": "2 kilos de arrachera",
+"meat2": "arrachera",
+"w2": "2 kg"
+},
+{
+"q": "1 kg de costilla, una caguama",
+"m": "costilla",
+"w": "1 kg",
+"seg2": "una caguama"
+},
+{
+"q": "1 kg de pastor y tres cuartos de kilo de pechuga de pollo",
+"m": "pastor",
+"w": "1 kg",
+"seg2": "tres cuartos de kilo de pechuga de pollo",
+"meat2": "pechuga de pollo",
+"w2": "750 g"
+},
+{
+"q": "un kilo y medio de de chuleta, 1 kg de arrachera",
+"m": "chuleta",
+"w": "1.5 kg",
+"seg2": "1 kg de arrachera",
+"meat2": "arrachera",
+"w2": "1 kg"
+},
+{
+"q": "1 kg de costilla y dos quesadillas",
+"m": "costilla",
+"w": "1 kg",
+"seg2": "dos quesadillas"
+},
+{
+"q": "un kilo de costilla y dos quesadillas",
+"m": "costilla",
+"w": "1 kg",
+"seg2": "dos quesadillas"
+},
+{
+"q": "un kilo y medio de bistec encebollado y una 1 kg de chuleta",
+"m": "bistec encebollado",
+"w": "1.5 kg",
+"seg2": "1 kg de chuleta",
+"meat2": "chuleta",
+"w2": "1 kg"
+},
+{
+"q": "un kilo y medio de de costilla y dos tacos de pastor",
+"m": "costilla",
+"w": "1.5 kg",
+"seg2": "dos tacos de pastor"
+},
+{
+"q": "2 kilos de arrachera y también una caguama",
+"m": "arrachera",
+"w": "2 kg",
+"seg2": "una caguama"
+},
+{
+"q": "un cuarto de kilo de bistec y una kilo y medio de bistec encebollado",
+"m": "bistec",
+"w": "250 g",
+"seg2": "kilo y medio de bistec encebollado",
+"meat2": "bistec encebollado",
+"w2": "1.5 kg"
+},
+{
+"q": "un kilo y medio de de pastor, una sol",
+"m": "pastor",
+"w": "1.5 kg",
+"seg2": "una sol"
+},
+{
+"q": "kilo y medio de costilla y una kilo y medio de pastor",
+"m": "costilla",
+"w": "1.5 kg",
+"seg2": "kilo y medio de pastor",
+"meat2": "pastor",
+"w2": "1.5 kg"
+},
+{
+"q": "1/2 kilo de arrachera y una una cerveza",
+"m": "arrachera",
+"w": "500 g",
+"seg2": "una cerveza"
+},
+{
+"q": "1/2 kilo de bistec encebollado, un cuarto de kilo de poc-chuc",
+"m": "bistec encebollado",
+"w": "500 g",
+"seg2": "un cuarto de kilo de poc-chuc",
+"meat2": "poc-chuc",
+"w2": "250 g"
+},
+{
+"q": "un kilo de pechuga de pollo y también una caguama",
+"m": "pechuga de pollo",
+"w": "1 kg",
+"seg2": "una caguama"
+},
+{
+"q": "dos kilos de pastor y medio kilo de bistec encebollado",
+"m": "pastor",
+"w": "2 kg",
+"seg2": "medio kilo de bistec encebollado",
+"meat2": "bistec encebollado",
+"w2": "500 g"
+},
+{
+"q": "un cuarto de kilo de pechuga de pollo, dos quesadillas",
+"m": "pechuga de pollo",
+"w": "250 g",
+"seg2": "dos quesadillas"
+},
+{
+"q": "2kg de costilla y una orden de papas",
+"m": "costilla",
+"w": "2 kg",
+"seg2": "una orden de papas"
+},
+{
+"q": "medio kilo de arrachera y una una orden de papas",
+"m": "arrachera",
+"w": "500 g",
+"seg2": "una orden de papas"
+},
+{
+"q": "dos kilos de bistec, 1 kg de costilla",
+"m": "bistec",
+"w": "2 kg",
+"seg2": "1 kg de costilla",
+"meat2": "costilla",
+"w2": "1 kg"
+},
+{
+"q": "2 kilos de bistec encebollado, un kilo de bistec",
+"m": "bistec encebollado",
+"w": "2 kg",
+"seg2": "un kilo de bistec",
+"meat2": "bistec",
+"w2": "1 kg"
+},
+{
+"q": "un cuarto de kilo de bistec encebollado y también una sol",
+"m": "bistec encebollado",
+"w": "250 g",
+"seg2": "una sol"
+},
+{
+"q": "kilo y medio de costilla y una dos tacos de pastor",
+"m": "costilla",
+"w": "1.5 kg",
+"seg2": "dos tacos de pastor"
+},
+{
+"q": "un kilo y medio de de costilla y 1/2 kilo de bistec encebollado",
+"m": "costilla",
+"w": "1.5 kg",
+"seg2": "1/2 kilo de bistec encebollado",
+"meat2": "bistec encebollado",
+"w2": "500 g"
+},
+{
+"q": "medio kilo de chuleta y una 1/2 kilo de pastor",
+"m": "chuleta",
+"w": "500 g",
+"seg2": "1/2 kilo de pastor",
+"meat2": "pastor",
+"w2": "500 g"
+},
+{
+"q": "1/2 kilo de bistec y una un kilo de pastor",
+"m": "bistec",
+"w": "500 g",
+"seg2": "un kilo de pastor",
+"meat2": "pastor",
+"w2": "1 kg"
+},
+{
+"q": "dos kilos de chuleta, dos tacos de pastor",
+"m": "chuleta",
+"w": "2 kg",
+"seg2": "dos tacos de pastor"
+},
+{
+"q": "un kilo de costilla y un agua de jamaica",
+"m": "costilla",
+"w": "1 kg",
+"seg2": "un agua de jamaica"
+},
+{
+"q": "2 kilos de bistec encebollado y una 1 kg de arrachera",
+"m": "bistec encebollado",
+"w": "2 kg",
+"seg2": "1 kg de arrachera",
+"meat2": "arrachera",
+"w2": "1 kg"
+},
+{
+"q": "2kg de arrachera y 1/4 kilo de poc-chuc",
+"m": "arrachera",
+"w": "2 kg",
+"seg2": "1/4 kilo de poc-chuc",
+"meat2": "poc-chuc",
+"w2": "250 g"
+},
+{
+"q": "un cuarto de kilo de bistec, una light",
+"m": "bistec",
+"w": "250 g",
+"seg2": "una light"
+},
+{
+"q": "un kilo y medio de chuleta y también una gringa de bistec",
+"m": "chuleta",
+"w": "1.5 kg",
+"seg2": "una gringa de bistec"
+},
+{
+"q": "2 kilos de poc-chuc, medio kilo de pechuga de pollo",
+"m": "poc-chuc",
+"w": "2 kg",
+"seg2": "medio kilo de pechuga de pollo",
+"meat2": "pechuga de pollo",
+"w2": "500 g"
+},
+{
+"q": "500g de costilla, 1 kg de bistec",
+"m": "costilla",
+"w": "500 g",
+"seg2": "1 kg de bistec",
+"meat2": "bistec",
+"w2": "1 kg"
+},
+{
+"q": "medio kilo de pechuga de pollo y también una sol",
+"m": "pechuga de pollo",
+"w": "500 g",
+"seg2": "una sol"
+},
+{
+"q": "1 kg de bistec y una dos cocas",
+"m": "bistec",
+"w": "1 kg",
+"seg2": "dos cocas"
+},
+{
+"q": "medio kilo de pechuga de pollo, una sol",
+"m": "pechuga de pollo",
+"w": "500 g",
+"seg2": "una sol"
+},
+{
+"q": "1/2 kilo de pechuga de pollo y una una orden de papas",
+"m": "pechuga de pollo",
+"w": "500 g",
+"seg2": "una orden de papas"
+},
+{
+"q": "un cuarto de kilo de poc-chuc y también dos quesadillas",
+"m": "poc-chuc",
+"w": "250 g",
+"seg2": "dos quesadillas"
+},
+{
+"q": "1 kg de chuleta y también 500g de arrachera",
+"m": "chuleta",
+"w": "1 kg",
+"seg2": "500g de arrachera",
+"meat2": "arrachera",
+"w2": "500 g"
+},
+{
+"q": "dos kilos de pastor y una 1/2 kilo de bistec",
+"m": "pastor",
+"w": "2 kg",
+"seg2": "1/2 kilo de bistec",
+"meat2": "bistec",
+"w2": "500 g"
+},
+{
+"q": "tres cuartos de kilo de bistec encebollado y también 2kg de poc-chuc",
+"m": "bistec encebollado",
+"w": "750 g",
+"seg2": "2kg de poc-chuc",
+"meat2": "poc-chuc",
+"w2": "2 kg"
+},
+{
+"q": "1 kg de costilla y también un kilo de bistec",
+"m": "costilla",
+"w": "1 kg",
+"seg2": "un kilo de bistec",
+"meat2": "bistec",
+"w2": "1 kg"
+},
+{
+"q": "tres cuartos de kilo de arrachera y una 1 kg de bistec encebollado",
+"m": "arrachera",
+"w": "750 g",
+"seg2": "1 kg de bistec encebollado",
+"meat2": "bistec encebollado",
+"w2": "1 kg"
+},
+{
+"q": "1/4 kilo de costilla, dos cocas",
+"m": "costilla",
+"w": "250 g",
+"seg2": "dos cocas"
+},
+{
+"q": "un cuarto de kilo de poc-chuc y 1/2 kilo de costilla",
+"m": "poc-chuc",
+"w": "250 g",
+"seg2": "1/2 kilo de costilla",
+"meat2": "costilla",
+"w2": "500 g"
+},
+{
+"q": "2 kilos de pechuga de pollo y una gringa de bistec",
+"m": "pechuga de pollo",
+"w": "2 kg",
+"seg2": "una gringa de bistec"
+},
+{
+"q": "un kilo y medio de de poc-chuc y también kilo y medio de pechuga de pollo",
+"m": "poc-chuc",
+"w": "1.5 kg",
+"seg2": "kilo y medio de pechuga de pollo",
+"meat2": "pechuga de pollo",
+"w2": "1.5 kg"
+},
+{
+"q": "kilo y medio de bistec y una cerveza",
+"m": "bistec",
+"w": "1.5 kg",
+"seg2": "una cerveza"
+},
+{
+"q": "medio kilo de arrachera y una una gringa de bistec",
+"m": "arrachera",
+"w": "500 g",
+"seg2": "una gringa de bistec"
+},
+{
+"q": "1 kg de bistec, 1 kg de pechuga de pollo",
+"m": "bistec",
+"w": "1 kg",
+"seg2": "1 kg de pechuga de pollo",
+"meat2": "pechuga de pollo",
+"w2": "1 kg"
+},
+{
+"q": "kilo y medio de pastor y una una cerveza",
+"m": "pastor",
+"w": "1.5 kg",
+"seg2": "una cerveza"
+},
+{
+"q": "un kilo y medio de de costilla y una heineken",
+"m": "costilla",
+"w": "1.5 kg",
+"seg2": "una heineken"
+},
+{
+"q": "kilo y medio de bistec y dos cocas",
+"m": "bistec",
+"w": "1.5 kg",
+"seg2": "dos cocas"
+},
+{
+"q": "2 kilos de arrachera y una un kilo de chuleta",
+"m": "arrachera",
+"w": "2 kg",
+"seg2": "un kilo de chuleta",
+"meat2": "chuleta",
+"w2": "1 kg"
+},
+{
+"q": "dos kilos de arrachera y una 500g de chuleta",
+"m": "arrachera",
+"w": "2 kg",
+"seg2": "500g de chuleta",
+"meat2": "chuleta",
+"w2": "500 g"
+},
+{
+"q": "kilo y medio de bistec y también una orden de papas",
+"m": "bistec",
+"w": "1.5 kg",
+"seg2": "una orden de papas"
+},
+{
+"q": "2kg de chuleta y también una light",
+"m": "chuleta",
+"w": "2 kg",
+"seg2": "una light"
+},
+{
+"q": "kilo y medio de arrachera y dos tacos de pastor",
+"m": "arrachera",
+"w": "1.5 kg",
+"seg2": "dos tacos de pastor"
+},
+{
+"q": "tres cuartos de kilo de pastor y un agua de jamaica",
+"m": "pastor",
+"w": "750 g",
+"seg2": "un agua de jamaica"
+},
+{
+"q": "2 kilos de chuleta, un kilo y medio de de arrachera",
+"m": "chuleta",
+"w": "2 kg",
+"seg2": "un kilo y medio de de arrachera",
+"meat2": "arrachera",
+"w2": "1.5 kg"
+},
+{
+"q": "500g de bistec, una gringa de bistec",
+"m": "bistec",
+"w": "500 g",
+"seg2": "una gringa de bistec"
+},
+{
+"q": "medio kilo de pechuga de pollo y una una cerveza",
+"m": "pechuga de pollo",
+"w": "500 g",
+"seg2": "una cerveza"
+},
+{
+"q": "un kilo y medio de poc-chuc y una dos tacos de pastor",
+"m": "poc-chuc",
+"w": "1.5 kg",
+"seg2": "dos tacos de pastor"
+},
+{
+"q": "1/2 kilo de arrachera y también 2kg de costilla",
+"m": "arrachera",
+"w": "500 g",
+"seg2": "2kg de costilla",
+"meat2": "costilla",
+"w2": "2 kg"
+},
+{
+"q": "1/2 kilo de bistec encebollado y también un kilo y medio de de pastor",
+"m": "bistec encebollado",
+"w": "500 g",
+"seg2": "un kilo y medio de de pastor",
+"meat2": "pastor",
+"w2": "1.5 kg"
+},
+{
+"q": "un kilo y medio de costilla, medio kilo de poc-chuc",
+"m": "costilla",
+"w": "1.5 kg",
+"seg2": "medio kilo de poc-chuc",
+"meat2": "poc-chuc",
+"w2": "500 g"
+},
+{
+"q": "medio kilo de chuleta y 1/2 kilo de bistec",
+"m": "chuleta",
+"w": "500 g",
+"seg2": "1/2 kilo de bistec",
+"meat2": "bistec",
+"w2": "500 g"
+},
+{
+"q": "un kilo y medio de de arrachera y una una caguama",
+"m": "arrachera",
+"w": "1.5 kg",
+"seg2": "una caguama"
+},
+{
+"q": "un kilo y medio de chuleta y una gringa de bistec",
+"m": "chuleta",
+"w": "1.5 kg",
+"seg2": "una gringa de bistec"
+},
+{
+"q": "kilo y medio de bistec y también una gringa de bistec",
+"m": "bistec",
+"w": "1.5 kg",
+"seg2": "una gringa de bistec"
+},
+{
+"q": "2 kilos de poc-chuc, kilo y medio de costilla",
+"m": "poc-chuc",
+"w": "2 kg",
+"seg2": "kilo y medio de costilla",
+"meat2": "costilla",
+"w2": "1.5 kg"
+},
+{
+"q": "kilo y medio de pastor y también 500g de chuleta",
+"m": "pastor",
+"w": "1.5 kg",
+"seg2": "500g de chuleta",
+"meat2": "chuleta",
+"w2": "500 g"
+},
+{
+"q": "dos kilos de bistec y una cerveza",
+"m": "bistec",
+"w": "2 kg",
+"seg2": "una cerveza"
+},
+{
+"q": "medio kilo de bistec encebollado y 1/2 kilo de pechuga de pollo",
+"m": "bistec encebollado",
+"w": "500 g",
+"seg2": "1/2 kilo de pechuga de pollo",
+"meat2": "pechuga de pollo",
+"w2": "500 g"
+},
+{
+"q": "kilo y medio de pastor, kilo y medio de costilla",
+"m": "pastor",
+"w": "1.5 kg",
+"seg2": "kilo y medio de costilla",
+"meat2": "costilla",
+"w2": "1.5 kg"
+},
+{
+"q": "un kilo y medio de bistec encebollado y también un agua de jamaica",
+"m": "bistec encebollado",
+"w": "1.5 kg",
+"seg2": "un agua de jamaica"
+},
+{
+"q": "un kilo de bistec y también 1/4 kilo de pastor",
+"m": "bistec",
+"w": "1 kg",
+"seg2": "1/4 kilo de pastor",
+"meat2": "pastor",
+"w2": "250 g"
+},
+{
+"q": "un cuarto de kilo de pechuga de pollo y también dos tacos de pastor",
+"m": "pechuga de pollo",
+"w": "250 g",
+"seg2": "dos tacos de pastor"
+},
+{
+"q": "1/4 kilo de bistec, una light",
+"m": "bistec",
+"w": "250 g",
+"seg2": "una light"
+},
+{
+"q": "2 kilos de pechuga de pollo y un kilo y medio de poc-chuc",
+"m": "pechuga de pollo",
+"w": "2 kg",
+"seg2": "un kilo y medio de poc-chuc",
+"meat2": "poc-chuc",
+"w2": "1.5 kg"
+},
+{
+"q": "un kilo de arrachera y una una caguama",
+"m": "arrachera",
+"w": "1 kg",
+"seg2": "una caguama"
+},
+{
+"q": "kilo y medio de pechuga de pollo y una una sol",
+"m": "pechuga de pollo",
+"w": "1.5 kg",
+"seg2": "una sol"
+},
+{
+"q": "500g de chuleta y también un kilo de poc-chuc",
+"m": "chuleta",
+"w": "500 g",
+"seg2": "un kilo de poc-chuc",
+"meat2": "poc-chuc",
+"w2": "1 kg"
+},
+{
+"q": "un kilo y medio de pastor y 2 kilos de bistec",
+"m": "pastor",
+"w": "1.5 kg",
+"seg2": "2 kilos de bistec",
+"meat2": "bistec",
+"w2": "2 kg"
+},
+{
+"q": "2kg de chuleta y dos cocas",
+"m": "chuleta",
+"w": "2 kg",
+"seg2": "dos cocas"
+},
+{
+"q": "1/4 kilo de pechuga de pollo y una sol",
+"m": "pechuga de pollo",
+"w": "250 g",
+"seg2": "una sol"
+},
+{
+"q": "un kilo y medio de de poc-chuc y una una coca",
+"m": "poc-chuc",
+"w": "1.5 kg",
+"seg2": "una coca"
+},
+{
+"q": "kilo y medio de pechuga de pollo, dos quesadillas",
+"m": "pechuga de pollo",
+"w": "1.5 kg",
+"seg2": "dos quesadillas"
+},
+{
+"q": "1/2 kilo de pastor y una dos cocas",
+"m": "pastor",
+"w": "500 g",
+"seg2": "dos cocas"
+},
+{
+"q": "un kilo y medio de costilla y 1/2 kilo de pastor",
+"m": "costilla",
+"w": "1.5 kg",
+"seg2": "1/2 kilo de pastor",
+"meat2": "pastor",
+"w2": "500 g"
+},
+{
+"q": "un kilo y medio de pastor y también kilo y medio de pechuga de pollo",
+"m": "pastor",
+"w": "1.5 kg",
+"seg2": "kilo y medio de pechuga de pollo",
+"meat2": "pechuga de pollo",
+"w2": "1.5 kg"
+},
+{
+"q": "500g de bistec, una light",
+"m": "bistec",
+"w": "500 g",
+"seg2": "una light"
+},
+{
+"q": "un cuarto de kilo de bistec encebollado, kilo y medio de costilla",
+"m": "bistec encebollado",
+"w": "250 g",
+"seg2": "kilo y medio de costilla",
+"meat2": "costilla",
+"w2": "1.5 kg"
+},
+{
+"q": "un cuarto de kilo de costilla y una una coca",
+"m": "costilla",
+"w": "250 g",
+"seg2": "una coca"
+},
+{
+"q": "1/4 kilo de bistec encebollado y un agua de jamaica",
+"m": "bistec encebollado",
+"w": "250 g",
+"seg2": "un agua de jamaica"
+},
+{
+"q": "dos kilos de pechuga de pollo, un cuarto de kilo de bistec encebollado",
+"m": "pechuga de pollo",
+"w": "2 kg",
+"seg2": "un cuarto de kilo de bistec encebollado",
+"meat2": "bistec encebollado",
+"w2": "250 g"
+},
+{
+"q": "un kilo de chuleta y también dos cocas",
+"m": "chuleta",
+"w": "1 kg",
+"seg2": "dos cocas"
+},
+{
+"q": "500g de bistec, dos kilos de arrachera",
+"m": "bistec",
+"w": "500 g",
+"seg2": "dos kilos de arrachera",
+"meat2": "arrachera",
+"w2": "2 kg"
+},
+{
+"q": "tres cuartos de kilo de pastor y también dos quesadillas",
+"m": "pastor",
+"w": "750 g",
+"seg2": "dos quesadillas"
+},
+{
+"q": "1 kg de pastor y también una light",
+"m": "pastor",
+"w": "1 kg",
+"seg2": "una light"
+},
+{
+"q": "1/4 kilo de bistec encebollado, dos kilos de pastor",
+"m": "bistec encebollado",
+"w": "250 g",
+"seg2": "dos kilos de pastor",
+"meat2": "pastor",
+"w2": "2 kg"
+},
+{
+"q": "un kilo y medio de de chuleta y también una orden de papas",
+"m": "chuleta",
+"w": "1.5 kg",
+"seg2": "una orden de papas"
+},
+{
+"q": "500g de costilla, una heineken",
+"m": "costilla",
+"w": "500 g",
+"seg2": "una heineken"
+},
+{
+"q": "dos kilos de chuleta y dos quesadillas",
+"m": "chuleta",
+"w": "2 kg",
+"seg2": "dos quesadillas"
+},
+{
+"q": "2 kilos de chuleta y una dos quesadillas",
+"m": "chuleta",
+"w": "2 kg",
+"seg2": "dos quesadillas"
+},
+{
+"q": "2 kilos de chuleta y también un kilo y medio de pastor",
+"m": "chuleta",
+"w": "2 kg",
+"seg2": "un kilo y medio de pastor",
+"meat2": "pastor",
+"w2": "1.5 kg"
+},
+{
+"q": "un kilo y medio de poc-chuc y una dos cocas",
+"m": "poc-chuc",
+"w": "1.5 kg",
+"seg2": "dos cocas"
+},
+{
+"q": "un kilo y medio de de arrachera y también una caguama",
+"m": "arrachera",
+"w": "1.5 kg",
+"seg2": "una caguama"
+},
+{
+"q": "kilo y medio de poc-chuc, una light",
+"m": "poc-chuc",
+"w": "1.5 kg",
+"seg2": "una light"
+},
+{
+"q": "kilo y medio de poc-chuc y también kilo y medio de chuleta",
+"m": "poc-chuc",
+"w": "1.5 kg",
+"seg2": "kilo y medio de chuleta",
+"meat2": "chuleta",
+"w2": "1.5 kg"
+}
+]
