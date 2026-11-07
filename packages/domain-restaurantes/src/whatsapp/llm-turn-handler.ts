@@ -582,6 +582,8 @@ function toLlmHistory(messages: readonly ConversationMessage[]): LlmMessage[] {
 /** 30 s de funcion menos el margen de cierre menos ~6 s para la ultima llamada al LLM que arranque antes del tope. */
 /** R11-05a: tope de herramientas que se EJECUTAN por respuesta del modelo (las demas reciben un resultado de error para mantener el protocolo). */
 export const MAX_HERRAMIENTAS_POR_RESPUESTA = 8;
+/** Cerebro v2: retraso por omision del hedging Luna -> Haiku (ms) cuando WHATSAPP_LLM_HEDGE_MS no esta definida. */
+export const HEDGE_CEREBRO_V2_MS = 4_000;
 /** R11-10: piso del tope de tiempo de una llamada al proveedor, para que una llamada legitima y rapida no se corte por un presupuesto casi agotado. */
 export const PISO_TOPE_LLAMADA_LLM_MS = 500;
 /** PM-R21: tope duro de vueltas con hedging por turno (cada una duplica la llamada al modelo; el costo del perdedor se liquida al estimado). */
@@ -1244,7 +1246,9 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             if (tele.llamadasLlm.length >= 12) return;
             tele.llamadasLlm.push({ pata, resultado, ms: Math.max(0, Math.round(ms)), modelo: idModeloDeListaCerrada(modelo ?? MODELO_PREDETERMINADO_ID), ...(resultado === "error" ? { causa: clasificarCausaError(error) } : {}) });
           };
-          const hedgeMs = hedgeLlmDespuesMs();
+          // Cerebro v2: con ZDR la unica ruta de Luna es Azure (cola larga: p90 5-10 s por llamada en C3) y el turno tiene ~18 s; sin la variable de entorno el
+          // alterno (Haiku 5.5, ZDR) se lanza en paralelo a los HEDGE_CEREBRO_V2_MS. La variable de entorno sigue mandando (0/off la apaga tambien aqui).
+          const hedgeMs = process.env.WHATSAPP_LLM_HEDGE_MS !== undefined ? hedgeLlmDespuesMs() : cerebroV2 ? HEDGE_CEREBRO_V2_MS : null;
           for (;;) {
             const modeloActual = esRolPorDefecto && modeloRespaldo !== null ? modeloRespaldo : modeloElegido;
             // Un solo respaldo por turno: con el alterno ya en uso (o un modelo no economico) la llamada lleva todo el presupuesto restante. Con 10 a 16 s restantes el segundo

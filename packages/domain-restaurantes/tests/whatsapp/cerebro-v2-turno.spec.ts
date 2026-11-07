@@ -98,3 +98,28 @@ describe("cerebro v2: promesa de un producto que no esta en el menu", () => {
     expect(r.reply).toMatch(/Por el momento no tenemos tacos de camar[oó]n en el men[uú]/i);
   });
 });
+
+describe("cerebro v2: hedging Luna -> Haiku por omision", () => {
+  it("si Luna tarda, Haiku (ZDR) contesta en paralelo sin variable de entorno", async () => {
+    const previo = process.env.WHATSAPP_LLM_HEDGE_MS;
+    delete process.env.WHATSAPP_LLM_HEDGE_MS;
+    try {
+      const repo = new InMemoryRestaurantesRepository();
+      const organizationId = randomUUID();
+      repo.seedOrganization({ id: organizationId, slug: "org-h", name: "Org H" });
+      const gateway = new LlmGateway({ breaker: new CircuitBreaker(new InMemoryCircuitBreakerStore()), budgetStore: new InMemoryBudgetLedgerStore(), budgetLimits: { maxRunUsd: 10, maxTenantDailyUsd: 100 } });
+      const lenta = new FakeLlmProvider({ id: "luna-zdr", model: "openai/gpt-6-luna", script: async (req) => { await new Promise((r, j) => { const t = setTimeout(r, 8000); req.signal?.addEventListener("abort", () => { clearTimeout(t); j(new Error("abortada")); }); }); return { text: "responde luna", model: "openai/gpt-6-luna", tokensIn: 1, tokensOut: 1, costUsd: 0 }; } });
+      const haiku = new FakeLlmProvider({ id: "haiku-zdr", model: "anthropic/claude-haiku-5.5", script: () => ({ text: "responde haiku", model: "anthropic/claude-haiku-5.5", tokensIn: 1, tokensOut: 1, costUsd: 0 }) });
+      gateway.registerLadder("default", [lenta]);
+      gateway.registerLadder("escalated", [lenta]);
+      gateway.registerZdrLadder("default", [lenta, haiku], [haiku]);
+      const h = createLlmWhatsAppTurnHandler(repo, gateway, { defaultRole: "default", escalatedRole: "escalated", leerCerebroV2: async () => true });
+      const t0 = Date.now();
+      const r = await turno(h, organizationId);
+      expect(r.reply).toMatch(/responde haiku/);
+      expect(Date.now() - t0).toBeLessThan(7500);
+    } finally {
+      if (previo !== undefined) process.env.WHATSAPP_LLM_HEDGE_MS = previo;
+    }
+  }, 15_000);
+});
