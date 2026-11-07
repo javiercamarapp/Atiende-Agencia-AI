@@ -64,6 +64,16 @@ describe("ElevenLabs Scribe v2 Realtime (STT)", () => {
     expect(socket.headers).toEqual({ "xi-api-key": LLAVE });
   });
 
+  it("keyterms dentro de los limites de Scribe RT (50 terminos de hasta 20 caracteres): uno fuera de limite haria fallar la sesion entera", async () => {
+    const { keytermsElevenLabs } = await import("../../src/index.ts");
+    const k = keytermsElevenLabs(["Orden de tacos de cochinita pibil (orden de 5)", "Panuchos", "Salbutes de pavo", "Queso relleno", "Gringa de pastor con queso", "Panuchos"], 50);
+    expect(k).toEqual(["cochinita pibil", "Panuchos", "Salbutes de pavo", "Queso relleno", "pastor con queso"]);
+    expect(k.every((t) => t.length <= 20)).toBe(true);
+    expect(keytermsElevenLabs(Array.from({ length: 80 }, (_, i) => `Platillo ${i}`), 200)).toHaveLength(50);
+    const url = new URL(urlSttElevenLabs(C.stt, { hzEntrada: 16_000, vocabulario: ["Orden de tacos de cochinita pibil"] }));
+    expect(url.searchParams.getAll("keyterms")).toEqual(["cochinita pibil"]);
+  });
+
   it("una tasa que ElevenLabs no admite falla al abrir (la escalera o el respaldo deciden)", () => {
     expect(() => urlSttElevenLabs(C.stt, { hzEntrada: 11_025 })).toThrow(VozProveedorError);
   });
