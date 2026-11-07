@@ -12,6 +12,7 @@
  */
 import type { Idioma, Mensaje, Traduccion } from "../tipos.ts";
 import type { comun } from "./comun.ts";
+import type { mapeoClientes } from "./mapeoClientes.ts";
 
 /**
  * Modulos que van en el bundle de arranque. Vacio a proposito: la entrada esta en su tope de bundle, asi que TODO modulo es
@@ -27,6 +28,7 @@ export const MODULOS = {} as const;
  */
 interface ModulosDeArea {
   readonly comun: typeof comun;
+  readonly mapeoClientes: typeof mapeoClientes;
 }
 
 type Modulos = typeof MODULOS & ModulosDeArea;

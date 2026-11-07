@@ -4,7 +4,9 @@
  */
 import type { ModulosTraducidos } from "../index.ts";
 import { comunEn } from "./comun.ts";
+import { mapeoClientesEn } from "./mapeoClientes.ts";
 
 export const MODULOS_EN = {
   comun: comunEn,
+  mapeoClientes: mapeoClientesEn,
 } as const satisfies ModulosTraducidos;
