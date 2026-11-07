@@ -312,14 +312,13 @@ export const DEFAULT_ROUTE: LlmRouteConfig = ECONOMICO;
 /**
  * Cerebro v2 (bandera por organizacion, migracion 190): modelos con endpoint de RETENCION CERO verificado en https://openrouter.ai/api/v1/endpoints/zdr
  * (6-nov-2026) dentro de los proveedores de EE.UU. permitidos. Las llamadas con `zdrEstricto` solo usan escalones de esta lista y siempre con `provider.zdr: true`.
- * Gemini 2.5 Flash-Lite y Muse Spark NO tienen endpoint ZDR: quedan fuera de la escalera v2.
+ * Gemini 2.5 Flash-Lite y Muse Spark NO tienen endpoint ZDR: quedan fuera de la escalera v2. Claude Sonnet 5.5 (premium) y Gemini 3.8 Flash (gama media,
+ * solo reportes) tampoco entran aunque tengan endpoint ZDR: la decision del dueno es solo modelos baratos (Luna, Haiku 5.5 y el rapido de voz).
  */
 export const MODELOS_CON_ZDR_VERIFICADO: ReadonlySet<string> = new Set([
   "openai/gpt-6-luna", // Azure (us)
   "anthropic/claude-haiku-5.5", // Google Vertex (us/global) y Amazon Bedrock (us-east-1)
   "google/gemini-3.5-flash-lite", // Google Vertex (us/global)
-  "google/gemini-3.8-flash",
-  "anthropic/claude-sonnet-5.5",
   ...Object.entries(VERIFIED_MODEL_HOSTS).filter(([, v]) => v.zdr && v.hosts.length > 0).map(([m]) => m),
 ]);
 
