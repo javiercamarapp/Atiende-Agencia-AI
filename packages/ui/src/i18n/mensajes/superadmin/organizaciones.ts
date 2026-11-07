@@ -1,0 +1,33 @@
+import type { ModuloEs } from "../../tipos.ts";
+
+/** Organizaciones / Clientes (SA-L-20) y el dialogo de Entrar (impersonacion de solo lectura). Ingles: `en/superadmin/organizaciones.ts`. */
+export const superadminOrganizaciones = {
+  "superadmin.organizaciones.descripcion": "Clientes de las 6 verticales de Atiende: uso, costo de IA, margen y avance de onboarding.",
+  "superadmin.organizaciones.odometro": "ORGANIZACIONES",
+  "superadmin.organizaciones.tabs": "Secciones de Organizaciones",
+  "superadmin.organizaciones.tab.clientes": "Clientes",
+  "superadmin.organizaciones.tab.gestion": "Gestión",
+  "superadmin.organizaciones.col.operaciones": "Operaciones 30 d",
+  "superadmin.organizaciones.col.costoIa": "Costo IA 30 d",
+  "superadmin.organizaciones.col.margen": "Margen",
+  "superadmin.organizaciones.col.onboarding": "Onboarding",
+  "superadmin.organizaciones.col.acciones": "Acciones",
+  "superadmin.organizaciones.sinMedir": "({n} sin medir)",
+  "superadmin.organizaciones.ficha": "Ficha",
+  "superadmin.organizaciones.srDe": "de {nombre}",
+  "superadmin.organizaciones.metricasNoDisponibles": "Las métricas por organización todavía no están disponibles en este despliegue.",
+  "superadmin.organizaciones.listaCompleta": "La lista sigue completa; las columnas de uso, costo y onboarding quedan en “—”.",
+  "superadmin.organizaciones.margenNoDisponibleAun": "El margen todavía no está disponible.",
+  "superadmin.organizaciones.margenNoDisponible": "Margen no disponible: {mensaje}",
+  "superadmin.organizaciones.todas": "Todas las organizaciones",
+  "superadmin.organizaciones.vacio": "Todavía no hay organizaciones dadas de alta en ninguna vertical.",
+  "superadmin.organizaciones.top": "Top por costo de IA",
+  "superadmin.organizaciones.top.sinMetricas": "Sin dato: las métricas por organización no están disponibles aún.",
+  "superadmin.organizaciones.top.sinCosto": "Ninguna organización registra costo de IA en los últimos 30 días.",
+  "superadmin.organizaciones.top.nota": "Últimos 30 días, por organización.",
+  "superadmin.organizaciones.entrar.error": "No se pudo abrir la sesión de impersonación.",
+  "superadmin.organizaciones.entrar.abierta": "Sesión de solo lectura abierta en {nombre} (15 minutos).",
+  "superadmin.organizaciones.entrar.descripcion": "Abre una sesión de solo lectura de 15 minutos en esta organización. Queda en la bitácora de impersonación con tu motivo.",
+  "superadmin.organizaciones.entrar.confirmar": "Abrir sesión",
+  "superadmin.organizaciones.entrar.placeholder": "Ej. Revisar por qué el cliente no recibe sus mensajes de WhatsApp.",
+} as const satisfies ModuloEs;
