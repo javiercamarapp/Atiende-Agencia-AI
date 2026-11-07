@@ -32,6 +32,7 @@ import { restaurantesAdminConfigRoutes } from "./admin-config.ts";
 import { restaurantesAdminModeloPmRoutes } from "./admin-modelo-pm.ts";
 import { restaurantesAdminConocimientoRoutes } from "./admin-conocimiento.ts";
 import { restaurantesAdminOnboardingRoutes } from "./admin-onboarding.ts";
+import { restaurantesAdminPrimerValorRoutes } from "./admin-primer-valor.ts";
 import { restaurantesResumenConfigRoutes } from "./resumen-config.ts";
 import { restaurantesAdminAgregadosRoutes } from "./admin-agregados.ts";
 import { restaurantesAjustesAgenteRoutes, restaurantesAjustesLlamadaInternoRoutes } from "./ajustes-agente.ts";
@@ -105,6 +106,7 @@ export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", restaurantesAdminConocimientoRoutes(deps));
   // R-33: checklist de onboarding calculado con datos reales (solo lectura, owner/admin).
   app.route("/", restaurantesAdminOnboardingRoutes(deps));
+  app.route("/", restaurantesAdminPrimerValorRoutes(deps));
   // Voz propia (migración 025): config por sucursal, preview, conversaciones (panel) y registrador
   // de sistema del servicio de voz — ver el comentario de cabecera de voz-admin.ts/voz-interno.ts.
   app.route("/", restaurantesVozAdminRoutes(deps));
