@@ -49,6 +49,7 @@ export const ESCRITURAS_PERSONALES_DEL_CHAT: readonly string[] = [
 /** Rutas que, ademas del rol, exigen un segundo factor reciente (D-30, x-step-up-token, alcance despachos_sensitive). */
 export const RUTAS_CON_STEP_UP: readonly string[] = [
   "POST /cierre-mensual/periodos/:periodoId/cerrar",
+  "GET /cierre-mensual/periodos/:periodoId/artefactos/:artefactoId/descargar",
   "POST /portal-cliente/enlaces",
   "POST /portal-cliente/enlaces/:enlaceId/revocar",
   "POST /contabilidad-electronica/paquete",
@@ -85,12 +86,22 @@ export const MATRIZ_GUARDAS: Readonly<Record<string, AccesoRuta>> = {
   "GET /cfdi/:invoiceId": TODOS,
   "PUT /cfdi/:invoiceId/estado-sat": ESCRIBE,
   "GET /cfdi": TODOS,
+  // piloto.ts (paridad3 D-31 / D-P3-21)
+  "GET /automatizacion": TODOS,
+  "PUT /automatizacion": ESCRIBE,
+  "GET /solicitudes-documentos": TODOS,
+  "POST /solicitudes-documentos": ESCRIBE,
+  "POST /solicitudes-documentos/renglones/:renglonId/no-aplica": ESCRIBE,
+  "POST /solicitudes-documentos/renglones/:renglonId/reabrir": ESCRIBE,
+  "POST /solicitudes-documentos/renglones/:renglonId/vincular": ESCRIBE,
   // cierre-mensual.ts
   "POST /cierre-mensual/periodos": ESCRIBE,
   "GET /cierre-mensual/periodos": TODOS,
   "GET /cierre-mensual/periodos/:periodoId": TODOS,
   "POST /cierre-mensual/periodos/:periodoId/tareas/:tareaId/completar": ESCRIBE,
   "POST /cierre-mensual/periodos/:periodoId/auto-check": ESCRIBE,
+  "GET /cierre-mensual/periodos/:periodoId/validaciones": TODOS,
+  "GET /cierre-mensual/periodos/:periodoId/artefactos/:artefactoId/descargar": ESCRIBE,
   "POST /cierre-mensual/periodos/:periodoId/cerrar": SOLO_ADMIN,
   "GET /cierre-mensual/periodos/:periodoId/reporte": TODOS,
   "POST /cierre-mensual/validaciones/balance": TODOS,

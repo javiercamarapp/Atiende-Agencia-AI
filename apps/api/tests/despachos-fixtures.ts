@@ -9,7 +9,7 @@ import { hashPassword, InMemoryCoreRepository, InMemoryAuthzAuditRepository, InM
 import { InMemoryRestaurantesRepository, acknowledgeOnlyTurnHandler } from "@atiende/domain-restaurantes";
 import { InMemoryHotelesRepository, InMemoryPaymentsPort, acknowledgeOnlyTurnHandler as hotelesAcknowledgeOnlyTurnHandler } from "@atiende/domain-hoteles";
 import { DualPacCfdiPort, FakeFinkokAdapter, FakeSwSapienAdapter } from "@atiende/mcp-cfdi";
-import { InMemoryCarteraRepository, InMemoryConciliacionPersistidaRepository, InMemoryDespachosRepository, InMemoryLibroRepository, InMemoryPagosProvisionalesRepository } from "@atiende/domain-despachos";
+import { InMemoryCarteraRepository, InMemoryConciliacionPersistidaRepository, InMemoryDespachosRepository, InMemoryPilotoRepository, InMemoryLibroRepository, InMemoryPagosProvisionalesRepository } from "@atiende/domain-despachos";
 import { InMemoryAuditSink } from "@atiende/core-authz";
 import type { DespachosRole } from "@atiende/domain-despachos";
 import { acknowledgeOnlyTurnHandler as acknowledgeOnlyCitasTurnHandler, createDefaultConversationGuard, createCalendarSyncPortResolver, RealCalComPort, RealCalDavPort, createGoogleCalendarPortResolver, InMemoryCitasRepository } from "@atiende/domain-citas";
@@ -43,6 +43,8 @@ export interface DespachosTestContext {
   readonly despachosRepo: InMemoryDespachosRepository;
   /** D-21 -- doble en memoria de la cartera (misma instancia que resuelve `deps.carteraRepo(...)`). */
   readonly carteraRepo: InMemoryCarteraRepository;
+  /** paridad3 -- doble en memoria del piloto de cierre/entrega (misma instancia que resuelve `deps.pilotoRepo(...)`). */
+  readonly pilotoRepo: InMemoryPilotoRepository;
   /** D-24 -- doble en memoria del libro contable (misma instancia que resuelve `deps.libroRepo(...)`). */
   readonly libroRepo: InMemoryLibroRepository;
   /** D-35 -- doble en memoria de la conciliacion persistida (misma instancia que resuelve `deps.conciliacionRepo(...)`). */
@@ -77,6 +79,7 @@ export async function buildDespachosTestContext(buildApp: BuildAppFn): Promise<D
   const engine = new InMemoryTenancyEngine();
   const despachosRepo = new InMemoryDespachosRepository();
   const carteraRepo = new InMemoryCarteraRepository();
+  const pilotoRepo = new InMemoryPilotoRepository();
   const libroRepo = new InMemoryLibroRepository();
   const conciliacionRepo = new InMemoryConciliacionPersistidaRepository(despachosRepo);
   const pagosRepo = new InMemoryPagosProvisionalesRepository();
@@ -93,6 +96,8 @@ export async function buildDespachosTestContext(buildApp: BuildAppFn): Promise<D
   despachosRepo.seedOrganization({ id: organizationId, slug: "despacho-de-prueba", name: "Despacho de Prueba SC" });
   despachosRepo.seedDespachosProperty({ id: propertyId, organizationId, name: "Sede principal" });
   carteraRepo.sembrarCliente(organizationId, "Sede principal", undefined, propertyId);
+  pilotoRepo.sembrarCliente({ organizationId, propertyId, razonSocial: "Sede principal" });
+  pilotoRepo.verificarCerrado = async (pid, periodoId) => (await despachosRepo.findPeriodoCierre(pid, periodoId))?.status === "closed";
 
   async function seedStaff(role: DespachosRole, label: string) {
     const id = randomUUID();
@@ -122,6 +127,7 @@ export async function buildDespachosTestContext(buildApp: BuildAppFn): Promise<D
     hotelesTurnHandler: hotelesAcknowledgeOnlyTurnHandler(new InMemoryHotelesRepository()),
     despachosRepo: (_db) => despachosRepo,
     carteraRepo: (_db) => carteraRepo,
+    pilotoRepo: (_db) => pilotoRepo,
     libroRepo: (_db) => libroRepo,
     conciliacionRepo: (_db) => conciliacionRepo,
     pagosProvisionalesRepo: (_db) => pagosRepo,
@@ -182,6 +188,7 @@ export async function buildDespachosTestContext(buildApp: BuildAppFn): Promise<D
     deps,
     despachosRepo,
     carteraRepo,
+    pilotoRepo,
     libroRepo,
     conciliacionRepo,
     pagosRepo,

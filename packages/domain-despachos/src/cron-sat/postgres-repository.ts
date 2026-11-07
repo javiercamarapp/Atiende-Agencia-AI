@@ -3,7 +3,7 @@ import type { TenantDbSession } from "@atiende/core-tenancy";
 import type { EstadoSatCfdi } from "../cfdi/modelo-cfdi.ts";
 import type { NivelEscalamiento } from "../vencimientos/engine.ts";
 import { CronSatNoDisponibleError } from "./types.ts";
-import type { CfdiPendienteEstatusSat, ClienteFichaSistema, CronSatRepository, EfosAfectadoSistema, RegistroEstatusSat, VencimientoPorEscalar } from "./types.ts";
+import type { CfdiPendienteEstatusSat, ClienteFichaSistema, CronSatRepository, DetalleEstatusSat, EfosAfectadoSistema, RegistroEstatusSat, VencimientoPorEscalar } from "./types.ts";
 
 const FN_PREFIX = "despachos.system_";
 
@@ -36,20 +36,42 @@ export class PostgresCronSatRepository implements CronSatRepository {
     });
   }
 
-  listarCfdiPendientesEstatusSat(limite: number, reintentoDias: number): Promise<readonly CfdiPendienteEstatusSat[] | null> {
-    return this.lectura<{ out_invoice_id: string; out_organization_id: string; out_property_id: string; out_folio_fiscal: string; out_rfc_emisor: string; out_rfc_receptor: string; out_total: string | number; out_estado_sat: EstadoSatCfdi }, readonly CfdiPendienteEstatusSat[]>(
-      "sp_cron_cfdi_pendientes_sat",
-      "select * from despachos.system_cfdi_pendientes_estatus_sat($1, $2);",
-      [limite, reintentoDias],
-      (rows) => rows.map((r) => ({ invoiceId: r.out_invoice_id, organizationId: r.out_organization_id, propertyId: r.out_property_id, folioFiscal: r.out_folio_fiscal, rfcEmisor: r.out_rfc_emisor, rfcReceptor: r.out_rfc_receptor, total: Number(r.out_total), estadoSat: r.out_estado_sat })),
+  async listarCfdiPendientesEstatusSat(limite: number, reintentoDias: number, ventanaEjercicios = 2, porProperty = 15): Promise<readonly CfdiPendienteEstatusSat[] | null> {
+    type Fila = { out_invoice_id: string; out_organization_id: string; out_property_id: string; out_folio_fiscal: string; out_rfc_emisor: string; out_rfc_receptor: string; out_total: string | number; out_estado_sat: EstadoSatCfdi; out_prioridad?: number };
+    const mapear = (rows: Fila[]): readonly CfdiPendienteEstatusSat[] =>
+      rows.map((r) => ({ invoiceId: r.out_invoice_id, organizationId: r.out_organization_id, propertyId: r.out_property_id, folioFiscal: r.out_folio_fiscal, rfcEmisor: r.out_rfc_emisor, rfcReceptor: r.out_rfc_receptor, total: Number(r.out_total), estadoSat: r.out_estado_sat, ...(r.out_prioridad === undefined ? {} : { prioridad: Number(r.out_prioridad) }) }));
+    // Migracion 027: barrido priorizado con tope por cliente. Sin ella (42883) cae a la funcion de 022 (mas antiguos primero).
+    const priorizado = await this.lectura<Fila, readonly CfdiPendienteEstatusSat[]>(
+      "sp_cron_cfdi_pendientes_sat_v2",
+      "select * from despachos.system_cfdi_pendientes_estatus_sat($1, $2, $3, $4);",
+      [limite, reintentoDias, ventanaEjercicios, porProperty],
+      mapear,
     );
+    if (priorizado !== null) return priorizado;
+    return this.lectura<Fila, readonly CfdiPendienteEstatusSat[]>("sp_cron_cfdi_pendientes_sat", "select * from despachos.system_cfdi_pendientes_estatus_sat($1, $2);", [limite, reintentoDias], mapear);
   }
 
-  registrarEstatusSatSistema(invoiceId: string, estado: EstadoSatCfdi): Promise<RegistroEstatusSat> {
-    return this.escritura("sp_cron_cfdi_registrar_sat", async () => {
-      const { rows } = await this.db.query<{ out_organization_id: string; out_property_id: string; out_estado_anterior: EstadoSatCfdi; out_estado_nuevo: EstadoSatCfdi; out_cambio_a_cancelado: boolean }>("select * from despachos.system_cfdi_registrar_estatus_sat($1, $2);", [invoiceId, estado]);
-      const r = rows[0]!;
-      return { organizationId: r.out_organization_id, propertyId: r.out_property_id, estadoAnterior: r.out_estado_anterior, estadoNuevo: r.out_estado_nuevo, cambioACancelado: r.out_cambio_a_cancelado };
+  registrarEstatusSatSistema(invoiceId: string, estado: EstadoSatCfdi, detalle?: DetalleEstatusSat): Promise<RegistroEstatusSat> {
+    const registrarAnterior = (): Promise<RegistroEstatusSat> =>
+      this.escritura("sp_cron_cfdi_registrar_sat", async () => {
+        const { rows } = await this.db.query<{ out_organization_id: string; out_property_id: string; out_estado_anterior: EstadoSatCfdi; out_estado_nuevo: EstadoSatCfdi; out_cambio_a_cancelado: boolean }>("select * from despachos.system_cfdi_registrar_estatus_sat($1, $2);", [invoiceId, estado]);
+        const r = rows[0]!;
+        return { organizationId: r.out_organization_id, propertyId: r.out_property_id, estadoAnterior: r.out_estado_anterior, estadoNuevo: r.out_estado_nuevo, cambioACancelado: r.out_cambio_a_cancelado, cancelacionEnProcesoNueva: false };
+      });
+    // Migracion 027: guarda tambien el detalle de cancelacion. Sin ella (42883) registra solo el estado, como antes.
+    return runWithSavepointFallback<RegistroEstatusSat>({
+      session: this.db,
+      savepointName: "sp_cron_cfdi_registrar_sat_v2",
+      primary: async () => {
+        const { rows } = await this.db.query<{ out_organization_id: string; out_property_id: string; out_estado_anterior: EstadoSatCfdi; out_estado_nuevo: EstadoSatCfdi; out_cambio_a_cancelado: boolean; out_cancelacion_en_proceso_nueva: boolean }>(
+          "select * from despachos.system_cfdi_registrar_estatus_sat($1, $2, $3, $4, $5, $6);",
+          [invoiceId, estado, detalle?.esCancelable ?? null, detalle?.estatusCancelacion ?? null, detalle?.codigoEstatus ?? null, detalle?.validacionEfos ?? null],
+        );
+        const r = rows[0]!;
+        return { organizationId: r.out_organization_id, propertyId: r.out_property_id, estadoAnterior: r.out_estado_anterior, estadoNuevo: r.out_estado_nuevo, cambioACancelado: r.out_cambio_a_cancelado, cancelacionEnProcesoNueva: r.out_cancelacion_en_proceso_nueva === true };
+      },
+      isRecoverable: (err) => isMigrationPendingError(err, FN_PREFIX),
+      fallback: registrarAnterior,
     });
   }
 

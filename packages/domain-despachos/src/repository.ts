@@ -103,6 +103,11 @@ export interface DespachosRepository {
   /** D-22: captura el estado del CFDI ante el SAT. Lanza `InvoiceNoEncontradoError` (no existe en esa property),
    * `EstadoSatInvalidoError` (un cancelado no cambia) o `EstadoSatNoDisponibleError` (base sin la migración 018). */
   registrarEstadoSatInvoice(propertyId: string, invoiceId: string, estado: EstadoSatCfdi): Promise<void>;
+  /**
+   * Igual que `registrarEstadoSatInvoice` pero guarda ademas el detalle de cancelacion del SAT (027) y devuelve si la cancelacion «En proceso»
+   * aparece por primera vez. Sin la migracion 027 cae a `registrarEstadoSatInvoice` (solo el estado) y devuelve `false`.
+   */
+  registrarDetalleSatInvoice(propertyId: string, invoiceId: string, estado: EstadoSatCfdi, detalle: DetalleCancelacionSat): Promise<{ readonly cancelacionEnProcesoNueva: boolean }>;
   findInvoice(propertyId: string, invoiceId: string): Promise<InvoiceRecord | null>;
   /** Batch de `findInvoice` -- hallazgo de auditoría (rubro 10, "performance y
    * escalabilidad", severidad MEDIA: "cobranza de despachos con 1+2N queries
@@ -344,6 +349,14 @@ export interface OrganizationNotificationRecipient {
 /** Fila de `despachos.messaging_outbox` reclamada para despacho real (ver
  * `email-dispatch.ts` y `despachos.claim_email_outbox_batch`, migración 005). Mismo
  * shape que `EmailOutboxJobRow` de domain-citas/domain-licitaciones. */
+/** Detalle de cancelacion que devuelve la consulta publica del SAT (paridad3 D-P3-19). */
+export interface DetalleCancelacionSat {
+  readonly esCancelable: string | null;
+  readonly estatusCancelacion: string | null;
+  readonly codigoEstatus: string | null;
+  readonly validacionEfos: string | null;
+}
+
 export interface EmailOutboxJobRow {
   readonly id: string;
   readonly organizationId: string;

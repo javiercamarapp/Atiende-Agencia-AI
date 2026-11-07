@@ -222,6 +222,11 @@ function serializeInvoice(invoice: InvoiceRecord, impuestos?: readonly ImpuestoC
     },
     estadoSat: invoice.estadoSat ?? "pendiente",
     estadoSatVerificadoEn: invoice.estadoSatVerificadoEn ?? null,
+    // paridad3 D-P3-19 (migracion 027): lo que el SAT responde sobre la cancelacion. `null` = aun no consultado o base sin migrar.
+    esCancelable: invoice.esCancelable ?? null,
+    estatusCancelacion: invoice.estatusCancelacion ?? null,
+    codigoEstatus: invoice.codigoEstatus ?? null,
+    validacionEfos: invoice.validacionEfos ?? null,
     ...(impuestos ? { impuestos } : {}),
   };
 }

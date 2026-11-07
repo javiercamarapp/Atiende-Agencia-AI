@@ -144,6 +144,26 @@ export function tonoEstadoSat(estado: EstadoSatCfdi | null | undefined): "succes
   return "neutral";
 }
 
+/** Estatus de cancelacion que devuelve el SAT -> texto y tono. «En proceso» = el receptor tiene 72 h para aceptar o rechazar. `null` = sin dato. */
+export function formatEstatusCancelacion(estatus: string | null | undefined): { readonly texto: string; readonly tono: "warning" | "danger" | "neutral" | "success" } | null {
+  const e = (estatus ?? "").trim();
+  if (e === "") return null;
+  if (/^en proceso/i.test(e)) return { texto: "Cancelación en proceso", tono: "warning" };
+  if (/plazo vencido/i.test(e)) return { texto: "Plazo vencido", tono: "neutral" };
+  if (/rechaz/i.test(e)) return { texto: "Cancelación rechazada", tono: "success" };
+  if (/cancelado/i.test(e)) return { texto: e, tono: "danger" };
+  return { texto: e, tono: "neutral" };
+}
+
+/** `ValidacionEFOS` del SAT: 200 = el emisor no figura en la lista 69-B; 100 = figura. Cualquier otro valor se muestra tal cual. */
+export function formatValidacionEfos(codigo: string | null | undefined): string | null {
+  const c = (codigo ?? "").trim();
+  if (c === "") return null;
+  if (c === "200") return "El emisor no figura en la lista 69-B";
+  if (c === "100") return "El emisor figura en la lista 69-B";
+  return `Código ${c}`;
+}
+
 /** Metodo de pago del CFDI (c_MetodoPago): PUE = pago en una sola exhibicion, PPD = pago en parcialidades o diferido. */
 export function formatMetodoPago(codigo: string | null | undefined): string {
   if (!codigo) return "—";
