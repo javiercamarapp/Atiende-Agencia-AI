@@ -1,0 +1,33 @@
+import type { ModuloEs } from "../../tipos.ts";
+
+/** Servicios de citas: lista con alta y ficha con edicion. Ingles: `en/citas/servicios.ts`. */
+export const citasServicios = {
+  "citas.servicios.errorLista": "No se pudieron cargar los servicios.",
+  "citas.servicios.errorCrear": "No se pudo crear el servicio.",
+  "citas.servicios.titulo": "Servicios",
+  "citas.servicios.nuevo": "Nuevo servicio",
+  "citas.servicios.nombre": "Nombre",
+  "citas.servicios.nombrePlaceholder": "Nombre (ej. Consulta general)",
+  "citas.servicios.duracionMin": "Duración (min)",
+  "citas.servicios.precioOpcional": "Precio (opcional)",
+  "citas.servicios.creando": "Creando…",
+  "citas.servicios.crear": "Crear servicio",
+  "citas.servicios.cargandoLista": "Cargando servicios…",
+  "citas.servicios.vacio": "Este negocio todavía no tiene servicios activos.",
+  "citas.servicios.minutos": "{min} min",
+  "citas.servicios.errorFicha": "No se pudo cargar el servicio.",
+  "citas.servicios.errorGuardar": "No se pudo guardar el servicio.",
+  "citas.servicios.volver": "Volver a servicios",
+  "citas.servicios.cargandoFicha": "Cargando servicio…",
+  "citas.servicios.editar": "Editar servicio",
+  "citas.servicios.duracion": "Duración",
+  "citas.servicios.colchonAntes": "Colchón antes",
+  "citas.servicios.colchonDespues": "Colchón después",
+  "citas.servicios.precio": "Precio",
+  "citas.servicios.estado": "Estado",
+  "citas.servicios.activo": "Activo",
+  "citas.servicios.inactivo": "Inactivo",
+  "citas.servicios.precioVacio": "Precio (vacío = sin precio fijo)",
+  "citas.servicios.guardando": "Guardando…",
+  "citas.servicios.guardarCambios": "Guardar cambios",
+} as const satisfies ModuloEs;
