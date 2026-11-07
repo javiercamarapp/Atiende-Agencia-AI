@@ -1602,7 +1602,10 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
       // Tope: UNA sola vez por turno. Si ya hubo una cotizacion en ESTE turno (la que disparo el aviso), la re-cotizacion no lo repite: evita ciclos de recotizacion si el modelo insiste en la hora cotizada.
       const yaCotizadoEnEsteTurno = flow.turn !== null && previo?.quotedTurn === flow.turn;
       const avisoHora = !yaCotizadoEnEsteTurno && "contradiceAlCliente" in horaYDireccion && horaYDireccion.contradiceAlCliente ? { hora_distinta_a_la_del_cliente: true, aviso_hora: avisoHoraDistinta(horaYDireccion.contradiceAlCliente) } : {};
-      const conCanonico = (r: object, texto: string | undefined = canonico): object => (texto ? { ...r, ...avisoHora, resumen_canonico: texto, instruccion_resumen: INSTRUCCION_RESUMEN_CANONICO } : { ...r, ...avisoHora });
+      // C3 PED-18 (cerebro v2, maquina de cierre ON): sin forma de pago el resumen no es el final (le falta el pago y a veces la direccion completa); devolverlo hacia que el modelo
+      // (o `componerRespuestaConResumen`) lo pegara antes de preguntar el pago y el cliente lo corrigiera. El flujo lo sigue guardando: solo no se le ofrece al modelo todavia.
+      const resumenOfrecible = !ctx.cerebroV2 || pagoCotizado.quotedPago !== undefined;
+      const conCanonico = (r: object, texto: string | undefined = canonico): object => (texto && resumenOfrecible ? { ...r, ...avisoHora, resumen_canonico: texto, instruccion_resumen: INSTRUCCION_RESUMEN_CANONICO } : { ...r, ...avisoHora });
       if (
         previo &&
         (snap.state === "cotizado" || snap.state === "confirmado") &&

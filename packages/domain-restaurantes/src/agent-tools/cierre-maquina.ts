@@ -363,9 +363,17 @@ export function terminaEnPreguntaDeConfirmacion(texto: string | undefined): bool
   return !PREGUNTA_DE_PROPINA_O_PAGO.test(q) && PREGUNTA_DE_CONFIRMACION.test(q);
 }
 
+/**
+ * C3 PED-14 (maquina de cierre ON): el asistente AFIRMA haber cambiado algo («Actualizo la dirección…», «agregué…») sin pegar el resumen del servidor. El total puede no moverse, pero lo que
+ * el cliente confirmaria (la direccion, una nota) ya no es lo que el servidor guardo: ese mensaje no es el resumen para confirmar; hay que re-cotizar y mostrar el resumen nuevo.
+ */
+const AFIRMA_CAMBIO_SIN_RESUMEN = /\b(?:actualiz[oe]|actualic[eé]|corrij[oa]|correg[ií]|cambi[eé]|modific[oa]|modifiqu[eé]|agrego|agregu[eé]|quito|quit[eé]|anot[eé])(?![a-záéíóúñ])/i;
+const ES_RESUMEN_DEL_SERVIDOR = /resumen de su pedido/i;
+
 /** El mensaje del asistente ES el resumen vigente: trae el total de la cotizacion y termina pidiendo la confirmacion. */
 export function esResumenParaConfirmar(total: number | undefined, mensajeAsistente: string | undefined): boolean {
   if (!mensajeAsistente || typeof total !== "number") return false;
+  if (!ES_RESUMEN_DEL_SERVIDOR.test(mensajeAsistente) && AFIRMA_CAMBIO_SIN_RESUMEN.test(sinMarcadores(mensajeAsistente))) return false;
   const trae = resumenMostradoEnHistorial(total, [{ role: "assistant", content: mensajeAsistente }]);
   return trae === true && terminaEnPreguntaDeConfirmacion(mensajeAsistente);
 }
@@ -760,6 +768,27 @@ const COMO_MOSTRAR = (canonico: string | undefined): string =>
     ? ` Muéstrele AHORA este resumen, copiado tal cual, y espere su respuesta en el mensaje siguiente:\n${canonico}`
     : " Muéstrele ahora el resumen completo (renglones, entrega, pago y total a pagar), pregúntele si está correcto y espere su sí en el mensaje siguiente.";
 
+const PIDE_EL_SI = /\bresponda\b[^.\n]{0,30}\bs[ií](?![a-záéíóúñ])/i;
+const CIFRAS = (t: string): number[] => Array.from(t.matchAll(/\$\s?(\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?/g), (m) => Number(m[1]!.replace(/,/g, "")));
+
+/**
+ * C3 PED-05 (maquina de cierre ON): historial «resumen vigente -> cliente (sin rechazo) -> asistente que solo pide el sí a ESE resumen». El recordatorio no afirma cambios, toda cifra que
+ * menciona ya estaba en el resumen y el resumen trae el total vigente. Sin esto el «sí» se rechazaba como «resumen no mostrado» y el cliente recibía el resumen otra vez. Pura.
+ */
+function recordatorioDelResumenAnterior(ctx: OrderFlowContext, historial: readonly MensajeHistorial[]): boolean {
+  const asistentes = historial.map((m, i) => ({ m, i })).filter(({ m }) => m.role === "assistant");
+  const ultimo = asistentes.at(-1);
+  const anterior = asistentes.at(-2);
+  if (!ultimo || !anterior) return false;
+  const recordatorio = sinMarcadores(ultimo.m.content);
+  if (!esResumenParaConfirmar(ctx.quotedTotal, anterior.m.content)) return false;
+  if (!(PIDE_EL_SI.test(recordatorio) || terminaEnPreguntaDeConfirmacion(recordatorio)) || AFIRMA_CAMBIO_SIN_RESUMEN.test(recordatorio)) return false;
+  const cifrasDelResumen = new Set(CIFRAS(anterior.m.content));
+  if (CIFRAS(recordatorio).some((c) => !cifrasDelResumen.has(c))) return false;
+  const enMedio = historial.slice(anterior.i + 1, ultimo.i).filter((m) => m.role === "user");
+  return enMedio.every((m) => clasificarRespuestaCierre(m.content, { despuesDelResumen: true, datosCotizados: datosDeCierreDeContexto(ctx), total: ctx.quotedTotal }) !== "no");
+}
+
 /** ¿Puede confirmarse el resumen con lo que el cliente vio y dijo? Pura: no escribe nada. El llamador persiste `marcarAmbiguo`. */
 export function decidirConfirmacion(e: EntradaDecision): DecisionConfirmacion {
   const ultimoAsistente = ultimoDe(e.historial, "assistant");
@@ -774,6 +803,10 @@ export function decidirConfirmacion(e: EntradaDecision): DecisionConfirmacion {
   if (salidaNoVisto && !esResumenParaConfirmar(e.ctx.quotedTotal, ultimoAsistente)) {
     const totalVisto = resumenMostradoEnHistorial(e.ctx.quotedTotal, [{ role: "assistant", content: ultimoAsistente ?? "" }]) === true;
     if (clasificarRespuestaCierre(ultimoCliente, { despuesDelResumen: totalVisto, datosCotizados: datosDeCierreDeContexto(e.ctx), total: e.ctx.quotedTotal }) === "si") return { ok: true };
+  }
+  if (!esResumenParaConfirmar(e.ctx.quotedTotal, ultimoAsistente) && recordatorioDelResumenAnterior(e.ctx, e.historial)) {
+    // C3 PED-05 (ON): entre el resumen y este «sí» el asistente solo pidio confirmar ESE resumen (sin cambiar nada ni dar otra cifra): el «sí» responde al resumen anterior.
+    if (clasificarRespuestaCierre(ultimoCliente, { despuesDelResumen: true, datosCotizados: datosDeCierreDeContexto(e.ctx), total: e.ctx.quotedTotal }) === "si") return { ok: true };
   }
   if (!esResumenParaConfirmar(e.ctx.quotedTotal, ultimoAsistente)) {
     // El cliente contesto un dato de pago / propina antes de ver el resumen: el servidor lo adopta para que el resumen que se le muestre ya lo lleve.
