@@ -308,5 +308,20 @@ export {
   traducirErrorAltaPropiedad,
 } from "./alta-propiedad-repository.ts";
 export type { AltaPropiedadCodigo, AltaPropiedadInput, AltaPropiedadRepository, PropiedadActivada, PropiedadCreada } from "./alta-propiedad-repository.ts";
+export {
+  InMemoryRegistroAutoservicioRepository,
+  PostgresRegistroAutoservicioRepository,
+  RegistroAutoservicioError,
+  RegistroAutoservicioNoDisponibleError,
+  traducirErrorRegistroAutoservicio,
+} from "./registro-autoservicio-repository.ts";
+export type {
+  MetodoRegistro,
+  OrganizacionRegistradaMem,
+  RegistroAutoservicioCodigo,
+  RegistroAutoservicioRepository,
+  RegistroCompletado,
+  SolicitudRegistroInput,
+} from "./registro-autoservicio-repository.ts";
 export { hayOnboardingEvento, registrarOnboardingEvento } from "./onboarding-evento.ts";
 export type { OnboardingEventoInput, ResultadoRegistroEvento, TipoOnboardingEvento } from "./onboarding-evento.ts";

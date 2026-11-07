@@ -121,6 +121,8 @@ const HotelesCatalogoPage = cargaPerezosa(() => import("./verticals/hoteles/page
 const PedidosFnbPage = cargaPerezosa(() => import("./verticals/hoteles/pages/PedidosFnb.tsx"), "PedidosFnbPage");
 const RentasLoginPage = cargaPerezosa(() => import("./verticals/rentas/pages/Login.tsx"), "RentasLoginPage");
 const RentasRegistroPage = cargaPerezosa(() => import("./verticals/rentas/pages/Registro.tsx"), "RentasRegistroPage");
+const RestaurantesRegistroPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Registro.tsx"), "RestaurantesRegistroPage");
+const RestaurantesRegistroConfirmarPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/RegistroConfirmar.tsx"), "RestaurantesRegistroConfirmarPage");
 const RentasShell = cargaPerezosa(() => import("./verticals/rentas/RentasShell.tsx"), "RentasShell");
 const RentasDashboardPage = cargaPerezosa(() => import("./verticals/rentas/pages/Dashboard.tsx"), "RentasDashboardPage");
 const RentasCalendarioPage = cargaPerezosa(() => import("./verticals/rentas/pages/Calendario.tsx"), "CalendarioPage");
@@ -1067,6 +1069,8 @@ export function App() {
         {/* PL-21: enlaces del correo de restaurantes (restablecer contraseña / verificar correo): públicos, sin shell ni sesión. */}
         <Route path="/restaurantes/restablecer-contrasena" element={<RestablecerContrasenaPage apiBaseUrl={API_BASE_URL} vertical="restaurantes" />} />
         <Route path="/restaurantes/verificar-correo" element={<VerificarCorreoPage apiBaseUrl={API_BASE_URL} vertical="restaurantes" />} />
+        <Route path="/restaurantes/registro" element={<RestaurantesRegistroPage apiBaseUrl={API_BASE_URL} />} />
+        <Route path="/restaurantes/registro/confirmar" element={<RestaurantesRegistroConfirmarPage apiBaseUrl={API_BASE_URL} />} />
         <Route path="/restaurantes/:orgSlug" element={<RestaurantesDashboardRoute />} />
         <Route path="/restaurantes/:orgSlug/productos" element={<RestaurantesProductosRoute />} />
         <Route path="/restaurantes/:orgSlug/sucursales" element={<RestaurantesSucursalesRoute />} />
