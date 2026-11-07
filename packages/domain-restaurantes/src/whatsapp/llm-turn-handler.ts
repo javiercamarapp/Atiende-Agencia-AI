@@ -38,18 +38,21 @@ import type { AgregadosHook } from "../agregados/tipos.ts";
 import { asistentePidioConfirmarResumen, bloqueCotizacionVigente, QUOTE_TTL_MS, resumenMostradoEnHistorial } from "../agent-tools/order-flow.ts";
 import { cierreMaquinaActiva, clasificarRespuestaCierre, componerRespuestaConResumen, corregirHoraDeRecogidaEnRespuesta, estadoDeCierre } from "../agent-tools/cierre-maquina.ts";
 import { MENSAJE_PEDIDO_GRANDE_PENDIENTE, executeAgentToolSafely, toolDefinitionsForChannel } from "../agent-tools/registry.ts";
+import type { AgentToolOutcome } from "../agent-tools/registry.ts";
 import { planCierreDeterminista } from "../agent-tools/cierre-determinista.ts";
+import { loteAdmiteResumenSinVuelta, type LlamadaDelLote } from "./cerebro-v2/resumen-sin-vuelta.ts";
 import { bloqueCantidadNoMultiplo, bloqueProductoNoManejado } from "../unidades-pm.ts";
 import { bloquePedidoPendienteTrasFalla } from "./falla-pendiente.ts";
 import { CONTADOR_AGENTE_UMBRAL, COPY_ESCALACION_CONTADOR, contarAgente, pideRepetir } from "./contadores-agente.ts";
 import { bloqueDatosYaConsultados } from "./datos-ya-consultados.ts";
-import { BLOQUE_CONTEXTO_PRECARGADO, intercambioPrecargado, precargarBusquedas, resultadoClientePrecargado } from "./contexto-precargado.ts";
+import { BLOQUE_CONTEXTO_PRECARGADO, BLOQUE_CONTEXTO_PRECARGADO_V2, PRECARGA_V2_TOPE_MS, coloniaDelMensaje, firmaDeLecturaPrecargable, intercambioPrecargado, mensajeParaPrecargaV2, mensajeSinColonia, precargarBusquedas, resultadoClientePrecargado } from "./contexto-precargado.ts";
 import type { ConversationMessage, RestaurantesRepository } from "../repository.ts";
 import type { PedidoParaComanda, ResultadoEncolarPedido } from "../softrestaurant/outbox-service.ts";
 import { aperturaConExcepciones, estaAbiertoAhora, evaluarUltimoPedido, fraseUltimoPedido, horaLegible, tieneUltimoPedidoPorTipo } from "../horarios.ts";
 import { evaluarDomicilioSucursal } from "../domicilio-sucursal.ts";
 import { MOTIVOS_ESCALACION_DESACTIVABLES } from "../types.ts";
-import type { Branch, BranchSummary, CanalPedido, CustomerLookupResult, Order, PerfilAgenteWhatsApp, WhatsAppAgentConfigInput } from "../types.ts";
+import type { Branch, BranchSummary, CanalPedido, CustomerLookupResult, KnownZone, Order, PerfilAgenteWhatsApp, WhatsAppAgentConfigInput } from "../types.ts";
+import { matchKnownZone } from "../reglas-pedido.ts";
 import { FUNCION_MAX_MS, MARGEN_CIERRE_TURNO_MS, mensajesSinResponder } from "./inbound.ts";
 import { latestDeliveryPin, latestSharedLocation } from "./location.ts";
 import { PEDIDO_GRANDE_TOTAL_MXN, evaluarPedidoGrande, pesoTotalKg, resumenPedidoGrande } from "../pedido-grande.ts";
@@ -700,7 +703,9 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
     motivoEscalacion: string | null;
     motivoEscaladaDeRol: "fallo_crear_pedido" | null;
     /** Solo con `contextoPrecargado` encendido: que llamadas hizo el servidor antes de la primera vuelta. */
-    precargado: { cliente: boolean; productos: number } | null;
+    precargado: { cliente: boolean; productos: number; sucursal?: boolean } | null;
+    /** Cerebro v2: el resumen de cotizar_pedido salio del servidor sin otra llamada al modelo (ver `resumenSinVuelta`). */
+    resumenDelServidor: boolean;
   }
 
   async function ejecutarTurno(
@@ -992,12 +997,14 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       // R19 (G4 / T7-012): «4 tacos de bistec» / «3 gringas» no son ordenes exactas; el servidor le fija al modelo que explique y ofrezca las opciones con precio. Solo los mensajes sin responder.
       const cantidadNoMultiploBloque = perfil === "taqueria_pm" && !preview ? bloqueCantidadNoMultiplo(mensajesSinResponder(messages).map((m) => m.content)) : "";
       // R11 A (bandera apagada por omision): contexto precargado + llamadas en lote. Solo PM, nunca en preview.
-      const precargaActiva = options.contextoPrecargado === true && perfil === "taqueria_pm" && !preview;
+      // Cerebro v2 (decision B): encendida siempre, con la sucursal de la colonia nombrada y el memo de lecturas (ver contexto-precargado.ts: por que la R11 A no quito vueltas en C3).
+      const precargaV2 = cerebroV2 && perfil === "taqueria_pm" && !preview;
+      const precargaActiva = (options.contextoPrecargado === true || precargaV2) && perfil === "taqueria_pm" && !preview;
       // R21 (T7-008): un producto que el menu no tiene (chistorra, longaniza, salchichas...) se rechaza con la alternativa correcta, no con un platillo inventado.
       const productoNoManejadoBloque = perfil === "taqueria_pm" && !preview ? bloqueProductoNoManejado(mensajesSinResponder(messages).map((m) => m.content)) : "";
       // R21 (arreglo 2 R20): tras un aviso de falla del sistema el mensaje previo del cliente sigue pendiente (un solo bloque de falla; vive en falla-pendiente.ts).
       const fallaPrevia = perfil === "taqueria_pm" && !preview ? bloquePedidoPendienteTrasFalla(messages) : "";
-      const systemFinal = [systemPrompt, cerebroV2 && perfil === "taqueria_pm" ? PM_POLICY_RULES_V2 : "", bloquePromptV2, datosYaConsultadosBloque, cotizacionVigenteBloque, cantidadNoMultiploBloque, productoNoManejadoBloque, fallaPrevia, precargaActiva ? BLOQUE_CONTEXTO_PRECARGADO : ""].filter((b) => b !== "").join("\n\n");
+      const systemFinal = [systemPrompt, cerebroV2 && perfil === "taqueria_pm" ? PM_POLICY_RULES_V2 : "", bloquePromptV2, datosYaConsultadosBloque, cotizacionVigenteBloque, cantidadNoMultiploBloque, productoNoManejadoBloque, fallaPrevia, precargaActiva ? (precargaV2 ? BLOQUE_CONTEXTO_PRECARGADO_V2 : BLOQUE_CONTEXTO_PRECARGADO) : ""].filter((b) => b !== "").join("\n\n");
 
       // B03: toque a «Confirmar pedido». Es un «si» explicito, pero SOLO a la cotizacion vigente: el boton de un resumen viejo (el pedido cambio, vencio, ya se
       // creo o se esta creando) se responde aqui con texto fijo, sin modelo y sin crear nada. Si es vigente, el pedido se crea por el camino de siempre
@@ -1172,25 +1179,77 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
 
       // R11 A: consultas de LECTURA que el servidor hace antes de la primera vuelta y le entrega al modelo como llamadas ya hechas (un intercambio efimero al final del
       // historial del turno; nunca se persiste). Mismas herramientas y mismas guardas que las llamadas del modelo. Nada de esto crea ni cambia estado.
+      // Cerebro v2: lecturas precargadas por firma (herramienta + argumentos equivalentes). Si el modelo las vuelve a pedir igual, recibe el MISMO resultado sin ir a la base.
+      const lecturasPrecargadas = new Map<string, unknown>();
+      let zonasConocidas: readonly KnownZone[] = [];
+      const zonaDeColonia = (colonia: string): KnownZone | null => (zonasConocidas.length > 0 ? matchKnownZone(zonasConocidas, colonia) : null);
       if (precargaActiva && llamadasDeterministas === null) {
         const precargados: Array<{ tool: string; args: Record<string, unknown>; result: unknown; latenciaMs: number }> = [];
         const clientePrecargado = resultadoClientePrecargado(customer);
         if (clientePrecargado) precargados.push({ tool: "buscar_cliente", args: {}, result: clientePrecargado, latenciaMs: 0 });
         let productosPrecargados = 0;
+        let sucursalPrecargada = false;
         const textoDelCliente = pendientes.at(-1)?.content;
-        // Sin sucursal de entrada no se sabe cual es hasta buscar_sucursal_cercana (cruce colonia/pin de #556): ahi no se precarga producto alguno.
-        if (activeEntryBranch && textoDelCliente) {
-          const consultas = await precargarBusquedas(textoDelCliente, async (query) => {
+        const hastaMs = Date.now() + PRECARGA_V2_TOPE_MS;
+        // Sucursal donde se buscan los productos: la de entrada o, con cerebro v2, la que asigna buscar_sucursal_cercana a la colonia que nombra el cliente.
+        let sucursalProductos: { readonly slug: string; readonly propertyId: string | null } | null = activeEntryBranch ? { slug: activeEntryBranch.slug, propertyId: activeEntryBranch.propertyId } : null;
+        let textoProductos = textoDelCliente;
+        // Cerebro v2: colonia CONOCIDA con señal de domicilio en el mensaje -> buscar_sucursal_cercana con esa colonia, por la MISMA herramienta y contexto que la del modelo.
+        // Con un pin compartido no se precarga (cruce colonia/pin de #556: lo resuelve la herramienta cuando el modelo la llama). Solo se entrega un resultado claro
+        // (asignada sin otro chat, o fuera de zona); «sugerida» / «no reconocida» siguen por el modelo y sus contadores.
+        if (precargaV2 && textoDelCliente && !sharedLocation) {
+          try {
+            // En SAVEPOINT: una lectura fallida no debe dejar abortada la transaccion del turno.
+            zonasConocidas = await repo.runWithRowSavepoint(() => repo.listKnownZones(organizationId));
+          } catch {
+            zonasConocidas = [];
+          }
+          const zona = coloniaDelMensaje(textoDelCliente, zonasConocidas, branches.map((b) => b.name));
+          if (zona) {
             const inicio = Date.now();
-            const r = await executeAgentToolSafely(
-              repo,
-              { organizationId, channel: "whatsapp", phone, entryPropertyId: activeEntryBranch.propertyId, sourceEventId: messageId ?? null },
-              "buscar_producto",
-              { query, branch_slug: activeEntryBranch.slug },
-            );
-            return { result: r.result, latenciaMs: Date.now() - inicio, error: isToolErrorResult(r.result) };
-          });
-          for (const c of consultas) precargados.push({ tool: "buscar_producto", args: { query: c.query, branch_slug: activeEntryBranch.slug }, result: c.result, latenciaMs: c.latenciaMs });
+            const args = { colonia: zona.name };
+            const r = await executeAgentToolSafely(repo, { organizationId, channel: "whatsapp", phone, cerebroV2: true, flow: { key: `wa:${phone}`, turn: userTurn }, sharedLocation, ubicacionEntrega, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null }, "buscar_sucursal_cercana", args);
+            const res = r.result as { estado?: unknown; branch_slug?: unknown; atiende_otra_sucursal?: unknown } | null;
+            const claro = !isToolErrorResult(r.result) && (res?.estado === "asignada" || res?.estado === "fuera_de_zona");
+            if (claro) {
+              precargados.push({ tool: "buscar_sucursal_cercana", args, result: r.result, latenciaMs: Date.now() - inicio });
+              lecturasPrecargadas.set(`buscar_sucursal_cercana|${zona.id}`, r.result);
+              sucursalPrecargada = true;
+              // Mismos efectos que tras la llamada del modelo (ver el loop): el boton de ubicacion una vez por pedido y el contador de colonia no reconocida en cero.
+              if (!pedirUbicacionEnTurno && (await contar(repo, organizationId, phone, "ubicacion_solicitada", "incrementar")) === 1) pedirUbicacionEnTurno = true;
+              await contar(repo, organizationId, phone, "colonia_no_reconocida", "reiniciar");
+              // Productos: en la sucursal asignada; si el domicilio es de otro chat o queda fuera de zona, no se busca nada (el modelo explica primero).
+              sucursalProductos = res?.estado === "asignada" && typeof res.branch_slug === "string" && res.atiende_otra_sucursal === undefined ? { slug: res.branch_slug, propertyId: null } : null;
+              textoProductos = mensajeSinColonia(textoDelCliente, zona);
+            }
+          }
+        }
+        // Sin sucursal (ni de entrada ni asignada) no se sabe donde buscar: ahi no se precarga producto alguno.
+        if (sucursalProductos && textoProductos) {
+          const destino = sucursalProductos;
+          const consultas = await precargarBusquedas(
+            precargaV2 ? mensajeParaPrecargaV2(textoProductos) : textoProductos,
+            async (query) => {
+              const inicio = Date.now();
+              const r = await executeAgentToolSafely(
+                repo,
+                { organizationId, channel: "whatsapp", phone, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...(precargaV2 ? { cerebroV2: true } : {}) },
+                "buscar_producto",
+                { query, branch_slug: destino.slug },
+              );
+              return { result: r.result, latenciaMs: Date.now() - inicio, error: isToolErrorResult(r.result) };
+            },
+            precargaV2 ? hastaMs : Number.POSITIVE_INFINITY,
+            precargaV2,
+          );
+          for (const c of consultas) {
+            const args = { query: c.query, branch_slug: destino.slug };
+            precargados.push({ tool: "buscar_producto", args, result: c.result, latenciaMs: c.latenciaMs });
+            if (precargaV2) {
+              const firma = firmaDeLecturaPrecargable("buscar_producto", args, zonaDeColonia);
+              if (firma) lecturasPrecargadas.set(firma, c.result);
+            }
+          }
           productosPrecargados = consultas.length;
         }
         const intercambio = intercambioPrecargado(precargados);
@@ -1198,14 +1257,18 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           working.push(...intercambio.mensajes);
           for (const l of intercambio.llamadas) tele.tools.push({ tool: l.tool, latenciaMs: l.latenciaMs, resultado: "ok", vuelta: 0, codigoRegla: null });
         }
-        tele.precargado = { cliente: clientePrecargado !== null, productos: productosPrecargados };
+        tele.precargado = { cliente: clientePrecargado !== null, productos: productosPrecargados, ...(sucursalPrecargada ? { sucursal: true } : {}) };
       }
 
       // PM-R19: tras un respaldo, el resto del turno sigue con el modelo alterno (el primario ya demostro estar atascado).
       let modeloRespaldo: string | null = null;
+      // Cerebro v2 (decision B): texto que el servidor ya tiene listo para el cliente (el resumen canonico de cotizar_pedido con todos los datos); la vuelta siguiente lo
+      // usa en lugar de llamar al modelo y pasa por las mismas guardas del texto final.
+      let textoDelServidor: string | null = null;
       for (let turn = 0; turn < maxToolUseTurns; turn++) {
+        const eraTextoDelServidor = textoDelServidor !== null;
         // Con llamadas deterministas ya preparadas (el intento real fallo por tope/proveedor), la causa real queda en la telemetria: no se pisa con la del reloj.
-        if (Date.now() >= deadline) {
+        if (!eraTextoDelServidor && Date.now() >= deadline) {
           if (llamadasDeterministas === null) {
             tele.resultado = "presupuesto_agotado";
             tele.causaError = "tope_turno";
@@ -1215,12 +1278,16 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         }
         const role = huboFalloDeHerramienta ? options.escalatedRole : options.defaultRole;
         if (huboFalloDeHerramienta) tele.motivoEscaladaDeRol = "fallo_crear_pedido";
-        tele.vueltas += 1;
+        if (!eraTextoDelServidor) tele.vueltas += 1;
         if (!tele.rolesUsados.includes(role)) tele.rolesUsados.push(role);
 
         let completion: { text: string; toolCalls?: LlmToolCall[]; model?: string; providerId?: string };
         const eraCierreDeterminista = llamadasDeterministas !== null;
-        if (llamadasDeterministas !== null) {
+        if (textoDelServidor !== null) {
+          completion = { text: textoDelServidor, toolCalls: [] };
+          textoDelServidor = null;
+          tele.resumenDelServidor = true;
+        } else if (llamadasDeterministas !== null) {
           completion = { text: "", toolCalls: llamadasDeterministas };
           llamadasDeterministas = null;
         } else try {
@@ -1324,7 +1391,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         }
 
         // Las llamadas del cierre determinista las arma el servidor: ningun modelo respondio, la telemetria de modelo conserva lo del intento real.
-        if (!eraCierreDeterminista) tele.modeloRespondioLlm = idModeloDeListaCerrada(completion.model, completion.providerId);
+        if (!eraCierreDeterminista && !eraTextoDelServidor) tele.modeloRespondioLlm = idModeloDeListaCerrada(completion.model, completion.providerId);
         const toolCalls = completion.toolCalls ?? [];
         if (toolCalls.length === 0) {
           let base = reemplazarFugaDePrompt(completion.text ?? "", TOOLS.map((t) => t.name)) || confirmacionDelTurno() || (perfil === "taqueria_pm" ? PM_COPY.repetirPedido : "¿Me puede repetir su pedido?");
@@ -1465,6 +1532,8 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         }
 
         working.push({ role: "assistant", content: completion.text ?? "", toolCalls });
+        // Cerebro v2: las herramientas de ESTA respuesta, para decidir si el resumen sale del servidor sin otra vuelta (ver resumen-sin-vuelta.ts).
+        const loteDeVuelta: LlamadaDelLote[] = [];
 
         for (const [indice, call] of toolCalls.entries()) {
           let input: Record<string, unknown> = {};
@@ -1497,8 +1566,11 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             const pct = porcentajePropinaDichoPorElCliente([...messages].reverse().find((m) => m.role === "user")?.content);
             if (pct !== null) input = { ...input, propina_porcentaje: pct };
           }
+          // Cerebro v2: la misma lectura que el servidor precargo en este turno (mismos argumentos equivalentes) devuelve el MISMO resultado sin otra consulta a la base.
+          const firmaPrecargada = result === undefined && lecturasPrecargadas.size > 0 ? firmaDeLecturaPrecargable(call.name, input, zonaDeColonia) : null;
+          const memo = firmaPrecargada !== null && lecturasPrecargadas.has(firmaPrecargada) ? { result: lecturasPrecargadas.get(firmaPrecargada) } : null;
           if (result === undefined) {
-            const executed = await executeAgentToolSafely(repo, { organizationId, channel: "whatsapp", phone, ...(cerebroV2 ? { cerebroV2: true } : {}), conversacionReciente: messages.flatMap((m) => (m.role === "user" || m.role === "assistant") && typeof m.content === "string" ? [{ role: m.role, content: m.content }] : []).slice(-30), flow: { key: `wa:${phone}`, turn: userTurn }, sharedLocation, ubicacionEntrega, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...(options.autopiloto?.pedidoGrande ? { pedidoGrande: options.autopiloto.pedidoGrande } : {}), ...(options.agregados ? { agregados: options.agregados } : {}), ...(options.menuPdfBaseUrl ? { menuPdfBaseUrl: options.menuPdfBaseUrl } : {}), ...modoCtx }, call.name, input);
+            const executed: AgentToolOutcome = memo ? { result: memo.result, orderId: null, propertyId: null } : await executeAgentToolSafely(repo, { organizationId, channel: "whatsapp", phone, ...(cerebroV2 ? { cerebroV2: true } : {}), conversacionReciente: messages.flatMap((m) => (m.role === "user" || m.role === "assistant") && typeof m.content === "string" ? [{ role: m.role, content: m.content }] : []).slice(-30), flow: { key: `wa:${phone}`, turn: userTurn }, sharedLocation, ubicacionEntrega, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...(options.autopiloto?.pedidoGrande ? { pedidoGrande: options.autopiloto.pedidoGrande } : {}), ...(options.agregados ? { agregados: options.agregados } : {}), ...(options.menuPdfBaseUrl ? { menuPdfBaseUrl: options.menuPdfBaseUrl } : {}), ...modoCtx }, call.name, input);
             result = executed.result;
             fallaSistema = executed.fallaSistema === true;
             codigoDeRechazo = executed.rechazoDelFlujo ?? null;
@@ -1652,7 +1724,22 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           if (call.name === "crear_pedido" && isToolErrorResult(result) && (fallaSistema || argumentosInvalidos)) {
             huboFalloDeHerramienta = true;
           }
+          loteDeVuelta.push({ name: call.name, input, result, error: isToolErrorResult(result) || argumentosInvalidos });
           working.push({ role: "tool", toolCallId: call.id, content: JSON.stringify(result) });
+        }
+        // Cerebro v2 (decision B): la respuesta fue lecturas + cotizar_pedido con todos los datos del cierre y nada que explicar antes del resumen. La vuelta siguiente solo
+        // copiaria `resumen_canonico` tal cual (lo exige la instruccion de la herramienta): el servidor lo entrega y se ahorra esa llamada al modelo. La cotizacion debe
+        // ser la VIGENTE de este turno en el estado fresco del flujo y el plan de cierre debe estar completo (nombre, pago y, a domicilio, direccion y colonia).
+        if (
+          cerebroV2 && perfil === "taqueria_pm" && !preview && !eraCierreDeterminista && cierreMaquinaActiva() &&
+          orderId === null && escalarMotivo === null && cotizacionDelTurno !== null && resumenCanonicoDelTurno !== null &&
+          loteDeVuelta.length === toolCalls.length && loteAdmiteResumenSinVuelta(loteDeVuelta, pendientes.map((m) => m.content))
+        ) {
+          const fresco = await repo.readOrderFlow(organizationId, `wa:${phone}`).catch(() => null);
+          const plan = fresco?.state === "cotizado" && fresco.context?.quoteHash === cotizacionDelTurno
+            ? planCierreDeterminista(fresco, { ahoraMs: now().getTime(), nombreDeLaFicha: customer.isNew ? null : customer.name, hayUbicacionCompartida: sharedLocation !== null && sharedLocation !== undefined })
+            : null;
+          if (plan?.ok && fresco?.context?.resumenCanonico === resumenCanonicoDelTurno.texto) textoDelServidor = resumenCanonicoDelTurno.texto;
         }
         // PM R18: el pedido se creo por el cierre determinista: el cliente recibe la confirmacion del SERVIDOR (renglones, total y hora reales) sin otra llamada al modelo (que acaba de fallar o de agotar el tiempo).
         if (eraCierreDeterminista && !cierreAdelantado) {
@@ -1691,7 +1778,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
     async handleInboundMessage(entrada) {
       const inicio = Date.now();
       const correlationId = randomUUID();
-      const tele: Telemetria = { vueltas: 0, rolesUsados: [], tools: [], resultado: "ok", causaError: null, cierreMaquina: cierreMaquinaActiva(), cierreCortado: false, reintentosLlm: 0, reintentoLlmRecuperado: false, modeloRespaldoLlm: null, modeloRespondioLlm: null, llamadasLlm: [], hedgeLlmLanzado: false, hedgesLlm: 0, hedgeLlmGanador: null, motivoEscalacion: null, motivoEscaladaDeRol: null, precargado: null };
+      const tele: Telemetria = { vueltas: 0, rolesUsados: [], tools: [], resultado: "ok", causaError: null, cierreMaquina: cierreMaquinaActiva(), cierreCortado: false, reintentosLlm: 0, reintentoLlmRecuperado: false, modeloRespaldoLlm: null, modeloRespondioLlm: null, llamadasLlm: [], hedgeLlmLanzado: false, hedgesLlm: 0, hedgeLlmGanador: null, motivoEscalacion: null, motivoEscaladaDeRol: null, precargado: null, resumenDelServidor: false };
       let salida: Salida | null = null;
       try {
         const turno = await ejecutarTurno(entrada, tele);
@@ -1736,6 +1823,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             motivoEscalacion: tele.motivoEscalacion,
             motivoEscaladaDeRol: tele.motivoEscaladaDeRol,
             ...(tele.precargado ? { precargado: tele.precargado } : {}),
+            ...(tele.resumenDelServidor ? { resumenDelServidor: true } : {}),
             telefonoHash,
           });
         }
