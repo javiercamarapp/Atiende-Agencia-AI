@@ -20,6 +20,11 @@ const PESTANAS: ReadonlyArray<{ readonly id: string; readonly es: RegExp; readon
   { id: "estado-resultados", es: /Estado de resultados operativo|Capturar costos|Ajustes del CFO/, en: /Operating P&L|CFO settings/ },
   { id: "clientes", es: /Base de clientes|Recompra por cohorte|Clientes nuevos por semana/, en: /Customer base|Repurchase by cohort/ },
   { id: "platillos", es: /Más y menos vendidos|Mix por categoría|Agotados hoy/, en: /Best and worst sellers|Mix by category/ },
+  { id: "sucursales", es: /Ranking de ventas netas|Mostrar en la tabla|Sin sucursales en esta selección/, en: /Net sales ranking|Show in the table|No branches in this selection/ },
+  { id: "analisis-clientes", es: /Segmentos RFM|Reactivación priorizada|Intervalo de recompra/, en: /RFM segments|Prioritized win-back|Repurchase interval/ },
+  { id: "patrones", es: /Venta por día de la semana|Canal por hora|Sin patrones todavía/, en: /Sales by day of the week|Channel by hour|No patterns yet/ },
+  { id: "operacion", es: /Tiempos de entrega por sucursal|Embudo del agente|Sin operación en este periodo/, en: /Delivery times by branch|Agent funnel|No operations this period/ },
+  { id: "softrestaurant", es: /Comandas que enviamos a SoftRestaurant|Importar reporte de SoftRestaurant/, en: /Tickets we send to SoftRestaurant|Import SoftRestaurant report/ },
 ];
 
 test.beforeEach(async ({ page }) => {

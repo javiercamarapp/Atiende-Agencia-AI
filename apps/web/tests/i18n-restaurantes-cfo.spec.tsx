@@ -24,13 +24,18 @@ const RANGO = "desde=2026-09-21&hasta=2026-09-27&comparar=periodo_anterior";
 const CLAVE_CRUDA = /\brestaurantes\.[a-zA-Z]+\.[A-Za-z0-9.]+/;
 /** Los ids de `useId` dependen de la profundidad del arbol (el proveedor agrega un nivel): se normalizan antes de comparar. */
 const sinIdsDeReact = (html: string): string => html.replace(/([-:])r[0-9][0-9a-z]*:?/g, "$1rID");
-const PESTANAS = ["resumen", "ventas", "estado-resultados", "clientes", "platillos"] as const;
+const PESTANAS = ["resumen", "ventas", "estado-resultados", "clientes", "platillos", "sucursales", "analisis-clientes", "patrones", "operacion", "softrestaurant"] as const;
 const LISTO: Readonly<Record<(typeof PESTANAS)[number], string>> = {
   resumen: "[data-testid=hallazgo], [data-testid=kpis]",
   ventas: "[data-testid=ventas-estadisticas]",
   "estado-resultados": "[data-testid=cfo-pyl] table",
   clientes: "[data-testid=clientes-resumen], [data-testid=clientes-aviso-mostrador]",
   platillos: "[data-testid=platillos-sin-margen], [data-testid=cfo-platillos] [role=status]",
+  sucursales: "[data-testid=cfo-tabla-sucursales], [data-testid=cfo-sucursales] [role=status]",
+  "analisis-clientes": "[data-testid=analisis-periodo]",
+  patrones: "[data-testid=patrones-frecuencia], [data-testid=cfo-patrones] [role=status]",
+  operacion: "[data-testid=costo-agente], [data-testid=cfo-operacion] [role=status]",
+  softrestaurant: "[data-testid=sr-bloque-importar]",
 };
 
 beforeAll(async () => {
@@ -61,7 +66,8 @@ function arbol(pestana: string, idioma?: "es" | "en"): ReactElement {
 
 async function montar(pestana: (typeof PESTANAS)[number], idioma?: "es" | "en"): Promise<HTMLElement> {
   rendered = renderComponent(arbol(pestana, idioma));
-  await esperarHasta(() => rendered!.container.querySelector(LISTO[pestana]) !== null, `pestana ${pestana}`);
+  // Lista: su marca de contenido y ningun estado de carga pendiente (SoftRestaurant carga tres bloques por separado).
+  await esperarHasta(() => rendered!.container.querySelector(LISTO[pestana]) !== null && rendered!.container.querySelector('[aria-busy="true"]') === null, `pestana ${pestana}`);
   await act(async () => {
     await Promise.resolve();
   });
@@ -80,8 +86,8 @@ describe("CFO ES/EN", () => {
   it.each(PESTANAS)("%s: en ingles no quedan frases fijas del CFO en espanol ni claves crudas", async (pestana) => {
     const c = await montar(pestana, "en");
     const texto = c.textContent ?? "";
-    for (const en of ["Your sales, branches and P&L in one place", "Compare with", "Overview", "Sales", "Profit & loss", "Customers", "Dishes", "By branch"]) expect(texto, en).toContain(en);
-    for (const es of ["Tus ventas, sucursales", "Comparar contra", "Estado de resultados", "Platillos", "Cargando", "Por sucursal", "Este tablero organiza"]) expect(texto, es).not.toContain(es);
+    for (const en of ["Your sales, branches and P&L in one place", "Compare with", "Overview", "Sales", "Profit & loss", "Customers", "Dishes", "Customer analysis", "Patterns", "Operations & agent", "By branch"]) expect(texto, en).toContain(en);
+    for (const es of ["Tus ventas, sucursales", "Comparar contra", "Estado de resultados", "Platillos", "Análisis de clientes", "Patrones", "Operación y agente", "Cargando", "Por sucursal", "Este tablero organiza", "Ver pedidos"]) expect(texto.match(new RegExp(`.{0,60}${es}.{0,40}`))?.[0] ?? "", es).toBe("");
     expect(c.innerHTML).not.toMatch(CLAVE_CRUDA);
     expect(c.querySelector("nav")?.getAttribute("aria-label")).toBe("CFO sections");
   });
