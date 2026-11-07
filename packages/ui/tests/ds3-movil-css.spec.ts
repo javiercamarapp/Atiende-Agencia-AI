@@ -1,6 +1,6 @@
 // ds3 / lote 5.3 (movil < 768): valores de referencia en la hoja REAL `src/ds3/shell.css`. Solo AÑADE.
 import { describe, expect, it } from "vitest";
-import { valorCss } from "./ds3-shell-css-utils";
+import { valorCss } from "./ds3-shell-css-utils.ts";
 
 const MOVIL = "max-width: 767.98px";
 
