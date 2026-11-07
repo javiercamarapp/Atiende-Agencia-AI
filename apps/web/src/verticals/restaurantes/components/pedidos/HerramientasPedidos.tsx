@@ -23,7 +23,7 @@ export interface HerramientasPedidosProps {
 export function HerramientasPedidos(p: HerramientasPedidosProps) {
   return (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-      <span role="status" aria-live="polite" data-testid="indicador-actualizacion" className="inline-flex items-center gap-1.5 font-mono text-eyebrow tabular-nums text-muted-foreground">
+      <span role="status" aria-live="polite" data-testid="indicador-actualizacion" className="inline-flex items-center gap-1.5 text-eyebrow tabular-nums text-muted-foreground">
         <RefreshCw className={`h-3 w-3 ${p.consultando ? "animate-spin" : ""}`} strokeWidth={1.75} aria-hidden="true" />
         {p.estadoActualizacion}
       </span>
