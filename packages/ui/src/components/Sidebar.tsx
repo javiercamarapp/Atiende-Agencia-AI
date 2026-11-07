@@ -178,11 +178,10 @@ function PildoraPie({ pildora, colapsado }: { pildora: SidebarPiePildora; colaps
       {indicador ? <span data-testid="pildora-indicador" aria-hidden="true" className={cn("size-1.5 shrink-0 rounded-full bg-destructive", conContador && "ds3-no")} /> : null}
       <span className={cn("ds3-etiqueta min-w-0 flex-1 truncate", colapsado ? "hidden" : "hidden lg:block")}>{label}</span>
       {Icono ? null : <span aria-hidden="true">→</span>}
-      {/* ds3: contador numerico (99+ como tope visual); el nombre accesible ya dice que hay avisos sin leer. */}
+      {/* ds3: contador numerico (99+ como tope visual), pintado por CSS desde data-contador: la fila no gana texto (su nombre y su
+          contenido siguen siendo los de siempre) y el nombre accesible ya dice que hay avisos sin leer. */}
       {conContador ? (
-        <span hidden aria-hidden="true" data-testid="pildora-contador" className="ds3-solo ds3-contador">
-          {contador > 99 ? "99+" : contador}
-        </span>
+        <span hidden aria-hidden="true" data-testid="pildora-contador" data-contador={contador > 99 ? "99+" : String(contador)} className="ds3-solo ds3-contador" />
       ) : null}
     </>
   );

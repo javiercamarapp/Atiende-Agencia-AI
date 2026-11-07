@@ -83,7 +83,9 @@ describe("ds3 — sidebar: piezas nuevas ocultas sin la bandera", () => {
     const contador = q('[data-testid="pildora-contador"]')!;
     expect(contador.hidden).toBe(true);
     expect(contador.classList.contains("ds3-solo")).toBe(true);
-    expect(contador.textContent).toBe("7");
+    expect(contador.getAttribute("data-contador")).toBe("7");
+    // El numero lo pinta la hoja (::before): la fila no gana texto (los e2e de notificaciones leen su textContent).
+    expect(contador.textContent).toBe("");
     const punto = q('[data-testid="pildora-indicador"]')!;
     expect(punto.classList.contains("ds3-no")).toBe(true);
     expect(punto.hidden).toBe(false);
@@ -92,7 +94,7 @@ describe("ds3 — sidebar: piezas nuevas ocultas sin la bandera", () => {
 
   it("mas de 99 pendientes se muestran como 99+; sin conteo no hay contador", () => {
     rendered = renderSidebar({ pie: [{ label: "Notificaciones", to: "/n", icon: Bell, indicador: true, contador: 250 }] });
-    expect(q('[data-testid="pildora-contador"]')!.textContent).toBe("99+");
+    expect(q('[data-testid="pildora-contador"]')!.getAttribute("data-contador")).toBe("99+");
     rendered.unmount();
     rendered = renderSidebar({ pie: [{ label: "Notificaciones", to: "/n", icon: Bell, indicador: false, contador: 0 }] });
     expect(q('[data-testid="pildora-contador"]')).toBeNull();
