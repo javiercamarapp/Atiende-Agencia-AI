@@ -2,6 +2,8 @@
 // apps/api/.../restaurantes/admin-softrestaurant.ts. Los tipos replican la forma del servidor (apps/web no depende de los
 // paquetes de dominio, mismo criterio que orders-client.ts). Las funciones puras (texto para el POS, mascara de telefono,
 // antiguedad, etiqueta de estado) viven aqui para poder probarlas sin pintar nada.
+import { etiquetasTraducidas } from "@atiende/ui";
+import { restaurantesComun } from "@atiende/ui/i18n/restaurantes/comun";
 import { horaEsMx } from "../../../lib/formato-fecha.ts";
 import { fetchJson, sendJson } from "./admin-client.ts";
 
@@ -131,14 +133,12 @@ export async function fetchEstadosComandaPorPedido(
 
 export const ESTADOS_FILTRO_POR_DEFECTO: readonly EstadoComandaWire[] = ["captura_manual", "fallida", "pendiente", "enviada"];
 
-export const ETIQUETA_ESTADO_COMANDA: Readonly<Record<EstadoComandaWire, string>> = {
-  captura_manual: "Capturar a mano",
-  fallida: "Falló",
-  pendiente: "Pendiente",
-  enviada: "Enviando al POS",
-  confirmada: "En POS",
-  capturada_manual: "Capturada a mano",
-};
+/** Etiqueta en el idioma activo (i18n): cada lectura traduce; en espanol, los textos de siempre. */
+export const ETIQUETA_ESTADO_COMANDA: Readonly<Record<EstadoComandaWire, string>> = etiquetasTraducidas<EstadoComandaWire>(
+  ["captura_manual", "fallida", "pendiente", "enviada", "confirmada", "capturada_manual"],
+  (e) => `restaurantes.comanda.${e}` as const,
+  restaurantesComun,
+);
 
 export const TONO_ESTADO_COMANDA: Readonly<Record<EstadoComandaWire, "neutral" | "info" | "success" | "warning" | "danger">> = {
   captura_manual: "warning",
@@ -151,10 +151,11 @@ export const TONO_ESTADO_COMANDA: Readonly<Record<EstadoComandaWire, "neutral" |
 
 /** Insignia de la comanda dentro de Pedidos: confirmada y capturada a mano = "En POS". */
 export function etiquetaInsigniaPedido(estado: EstadoComandaWire): string {
-  if (estado === "confirmada" || estado === "capturada_manual") return "En POS";
-  if (estado === "captura_manual") return "Capturar a mano";
-  if (estado === "fallida") return "Falló";
-  return "Enviando al POS";
+  if (estado === "confirmada" || estado === "capturada_manual") return ETIQUETA_ESTADO_COMANDA.confirmada;
+  if (estado === "captura_manual") return ETIQUETA_ESTADO_COMANDA.captura_manual;
+  if (estado === "fallida") return ETIQUETA_ESTADO_COMANDA.fallida;
+  return ETIQUETA_ESTADO_COMANDA.enviada;
+
 }
 
 /** Solo los ultimos 4 digitos ("******1234"); para pantalla, nunca para copiar. */

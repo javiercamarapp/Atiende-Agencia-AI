@@ -4,7 +4,9 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { AlertTriangle, Bike, CheckCircle2, Clock, Eye, History, MapPin, Printer, ShoppingCart, Store, Truck, X } from "lucide-react";
-import { Button, Checkbox, Selector, StatusBadge, cn, statusTone } from "@atiende/ui";
+import { Button, Checkbox, Selector, StatusBadge, cn, statusTone, useT } from "@atiende/ui";
+import { restaurantesComun } from "@atiende/ui/i18n/restaurantes/comun";
+import { restaurantesPedidos } from "@atiende/ui/i18n/restaurantes/pedidos";
 import { fechaCortaHoraEsMx, hora24EsMx } from "../../../../lib/formato-fecha.ts";
 import { idCortoPedido, nextStatusesForCanal, ORDER_STATUS_LABELS } from "../../lib/orders-client.ts";
 import type { OrderStatus, OrderSummary, RepartidorSugerido } from "../../lib/orders-client.ts";
@@ -49,6 +51,7 @@ export interface FilaPedidoProps {
 }
 
 export function FilaPedido(props: FilaPedidoProps) {
+  const t = useT(restaurantesComun, restaurantesPedidos);
   const { order, vista, seleccionado, ahoraMs, repartidores, sugerido, comandaEstado, ocupado } = props;
   const [asignando, setAsignando] = useState(false);
   const [elegido, setElegido] = useState("");
@@ -58,7 +61,7 @@ export function FilaPedido(props: FilaPedidoProps) {
   const marcas = proximos.filter((s) => s !== "en_camino" && s !== "cancelado" && s !== "problema");
   const repartidor = order.assignedRepartidorId ? repartidores?.find((r) => r.id === order.assignedRepartidorId) : undefined;
   const demorado = esDemorado(order, ahoraMs);
-  const etiquetaConfirmar = order.status === "preparando" ? "Confirmar envío" : "Asignar";
+  const etiquetaConfirmar = t(order.status === "preparando" ? "restaurantes.pedidos.fila.confirmarEnvio" : "restaurantes.pedidos.fila.asignar");
 
   const alAsignar = (): void => {
     setElegido(order.assignedRepartidorId ?? sugerido?.repartidorId ?? "");
@@ -71,10 +74,10 @@ export function FilaPedido(props: FilaPedidoProps) {
   const detener = (e: { stopPropagation: () => void }): void => e.stopPropagation();
 
   const chips: React.ReactNode[] = [];
-  if (order.canal) chips.push(<StatusBadge key="canal" tone="neutral" dot={false} className="text-2xs" data-testid={`canal-${order.id}`}>{order.canal === "recoger" ? "Recoger" : "Domicilio"}</StatusBadge>);
+  if (order.canal) chips.push(<StatusBadge key="canal" tone="neutral" dot={false} className="text-2xs" data-testid={`canal-${order.id}`}>{t(order.canal === "recoger" ? "restaurantes.canal.recoger" : "restaurantes.canal.domicilio")}</StatusBadge>);
   if (comandaEstado) {
     chips.push(
-      <Link key="pos" to={`/restaurantes/${props.orgSlug}/comandas-pos`} onClick={detener} className="no-underline" title={`Comanda al POS: ${ETIQUETA_ESTADO_COMANDA[comandaEstado]}. Ver la cola.`} data-testid={`comanda-pos-${order.id}`}>
+      <Link key="pos" to={`/restaurantes/${props.orgSlug}/comandas-pos`} onClick={detener} className="no-underline" title={t("restaurantes.pedidos.fila.comandaPos", { estado: ETIQUETA_ESTADO_COMANDA[comandaEstado] })} data-testid={`comanda-pos-${order.id}`}>
         <StatusBadge tone={TONO_ESTADO_COMANDA[comandaEstado]} dot={false} className="text-2xs">{etiquetaInsigniaPedido(comandaEstado)}</StatusBadge>
       </Link>,
     );
@@ -100,14 +103,14 @@ export function FilaPedido(props: FilaPedidoProps) {
             <ShoppingCart className="h-5 w-5 text-primary" strokeWidth={1.75} aria-hidden="true" />
           </div>
           <div className="min-w-0 space-y-0.5">
-            <button type="button" onClick={(e) => { detener(e); props.onAbrir(order); }} className="block max-w-full truncate rounded text-left text-ui font-medium text-foreground" aria-label={`Abrir el pedido de ${order.customerName}`}>
+            <button type="button" onClick={(e) => { detener(e); props.onAbrir(order); }} className="block max-w-full truncate rounded text-left text-ui font-medium text-foreground" aria-label={t("restaurantes.pedidos.fila.abrir", { cliente: order.customerName })}>
               {order.customerName}
             </button>
             <p className="font-mono text-eyebrow uppercase tracking-[0.06em] text-muted-foreground">
-              Pedido #{idCortoPedido(order.id)}
+              {t("restaurantes.pedidos.fila.pedido", { id: idCortoPedido(order.id) })}
               {order.orderNumber != null && (
                 <>
-                  {" "}· Venta <span className="tabular-nums">{String(order.orderNumber).padStart(4, "0")}</span>
+                  {" "}· {t("restaurantes.pedidos.fila.venta")} <span className="tabular-nums">{String(order.orderNumber).padStart(4, "0")}</span>
                 </>
               )}
             </p>
@@ -135,7 +138,7 @@ export function FilaPedido(props: FilaPedidoProps) {
           {chips}
           {order.horaRecogida && (
             <span className="text-eyebrow text-muted-foreground" data-testid={`recoger-${order.id}`}>
-              Recoge a las {hora24EsMx(order.horaRecogida)}
+              {t("restaurantes.pedidos.fila.recogeA", { hora: hora24EsMx(order.horaRecogida) })}
             </span>
           )}
         </div>
@@ -151,26 +154,25 @@ export function FilaPedido(props: FilaPedidoProps) {
         <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 sm:ml-[52px]">
           <span className="inline-flex items-center gap-1.5 text-xs text-foreground">
             <Bike className="h-3.5 w-3.5 text-primary" strokeWidth={1.75} aria-hidden="true" />
-            {repartidor?.fullName || repartidor?.email || "Repartidor"}
+            {repartidor?.fullName || repartidor?.email || t("restaurantes.repartidor")}
           </span>
           {order.estimatedDeliveryAt && (
             <span className={cn("inline-flex items-center gap-1.5 text-xs", demorado ? "font-medium text-destructive" : "text-muted-foreground")} data-testid={`eta-${order.id}`}>
               <Clock className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
-              {demorado ? "Demorado — debía llegar " : "Llega "}
-              {hora24EsMx(order.estimatedDeliveryAt)}
+              {t(demorado ? "restaurantes.pedidos.fila.demorado" : "restaurantes.pedidos.fila.llega", { hora: hora24EsMx(order.estimatedDeliveryAt) })}
             </span>
           )}
           <div className="ml-auto flex flex-wrap items-center gap-1.5" onClick={detener}>
             {proximos.includes("problema") && (
               <Button type="button" size="sm" variant="outline" className={cn(BOTON_PILDORA, "pedido-incidencia-boton")} disabled={ocupado} onClick={() => props.onIncidencia(order)}>
                 <AlertTriangle className="h-3 w-3" aria-hidden="true" />
-                Incidencia
+                {t("restaurantes.pedidos.fila.incidencia")}
               </Button>
             )}
             {proximos.includes("entregado") && (
               <Button type="button" size="sm" variant="outline" className={BOTON_PILDORA} loading={ocupado} disabled={ocupado} onClick={() => props.onMarcar(order, "entregado")}>
                 {!ocupado && <CheckCircle2 className="h-3 w-3" aria-hidden="true" />}
-                Marcar entregado
+                {t("restaurantes.pedidos.fila.marcarEntregado")}
               </Button>
             )}
             <AccionesTicket {...props} />
@@ -184,10 +186,10 @@ export function FilaPedido(props: FilaPedidoProps) {
             <div className="flex flex-wrap items-center gap-2">
               <Selector
                 id={`repartidor-${order.id}`}
-                aria-label="Elegir repartidor"
+                aria-label={t("restaurantes.pedidos.fila.elegirRepartidor")}
                 size="sm"
                 value={elegido}
-                placeholder={repartidores && repartidores.length === 0 ? "Sin repartidores registrados" : "Elegir repartidor"}
+                placeholder={t(repartidores && repartidores.length === 0 ? "restaurantes.pedidos.fila.sinRepartidores" : "restaurantes.pedidos.fila.elegirRepartidor")}
                 disabled={ocupado || !repartidores || repartidores.length === 0}
                 onValueChange={setElegido}
                 wrapperClassName="w-full max-w-[220px]"
@@ -203,40 +205,40 @@ export function FilaPedido(props: FilaPedidoProps) {
                 {etiquetaConfirmar}
               </Button>
               <Button type="button" size="sm" variant="ghost" className="h-8 rounded-full px-2 text-xs" disabled={ocupado} onClick={() => setAsignando(false)}>
-                Cancelar
+                {t("restaurantes.cancelar")}
               </Button>
               {sugerido && !order.assignedRepartidorId && (
                 <span className="text-eyebrow text-muted-foreground" data-testid={`sugerido-${order.id}`}>
-                  Sugerido: {sugerido.nombre}
+                  {t("restaurantes.pedidos.fila.sugerido", { nombre: sugerido.nombre })}
                 </span>
               )}
             </div>
           ) : (
             <div className="flex flex-wrap items-center gap-1.5">
               {proximos.includes("listo_para_recoger") && (
-                <Checkbox checked={!props.sinAviso} onChange={(e) => props.onSinAviso(!e.target.checked)} label="Avisar al cliente por WhatsApp cuando esté listo" wrapperClassName="text-eyebrow" />
+                <Checkbox checked={!props.sinAviso} onChange={(e) => props.onSinAviso(!e.target.checked)} label={t("restaurantes.pedidos.fila.avisarListo")} wrapperClassName="text-eyebrow" />
               )}
               {marcas.map((s) => (
                 <Button key={s} type="button" size="sm" variant="outline" className={BOTON_PILDORA} loading={ocupado} disabled={ocupado} onClick={() => props.onMarcar(order, s)}>
-                  Marcar {ORDER_STATUS_LABELS[s]}
+                  {t("restaurantes.pedidos.fila.marcar", { estado: ORDER_STATUS_LABELS[s] })}
                 </Button>
               ))}
               {puedeDespachar && (
                 <Button type="button" size="sm" variant="outline" className={BOTON_PILDORA} disabled={ocupado} onClick={alAsignar}>
                   <Bike className="h-3 w-3" strokeWidth={1.75} aria-hidden="true" />
-                  Asignar repartidor
+                  {t("restaurantes.pedidos.fila.asignarRepartidor")}
                 </Button>
               )}
               {proximos.includes("problema") && (
                 <Button type="button" size="sm" variant="outline" className={cn(BOTON_PILDORA, "pedido-incidencia-boton")} disabled={ocupado} onClick={() => props.onIncidencia(order)}>
                   <AlertTriangle className="h-3 w-3" aria-hidden="true" />
-                  Incidencia
+                  {t("restaurantes.pedidos.fila.incidencia")}
                 </Button>
               )}
               {proximos.includes("cancelado") && (
                 <Button type="button" size="sm" variant="danger" className={BOTON_PILDORA} disabled={ocupado} onClick={() => props.onCancelar(order)}>
                   <X className="h-3 w-3" aria-hidden="true" />
-                  Cancelar pedido
+                  {t("restaurantes.pedidos.fila.cancelarPedido")}
                 </Button>
               )}
               <AccionesTicket {...props} />
@@ -250,15 +252,18 @@ export function FilaPedido(props: FilaPedidoProps) {
 
 /** Funciones del monorepo que el original no tiene, compactas como botones de icono: ticket de cocina, vista previa e historial del pedido. */
 function AccionesTicket({ order, impreso, onImprimir, onVistaPrevia, onHistorial }: FilaPedidoProps) {
+  const t = useT(restaurantesComun, restaurantesPedidos);
+  const imprimir = t(impreso ? "restaurantes.pedidos.fila.reimprimirTicket" : "restaurantes.pedidos.fila.imprimirTicket");
   return (
     <span className="inline-flex items-center gap-0.5">
-      <Button type="button" size="sm" variant="ghost" className={BOTON_ICONO} aria-label={impreso ? "Reimprimir ticket" : "Imprimir ticket"} title={impreso ? "Reimprimir ticket" : "Imprimir ticket"} onClick={() => onImprimir(order)}>
+      <Button type="button" size="sm" variant="ghost" className={BOTON_ICONO} aria-label={imprimir} title={imprimir} onClick={() => onImprimir(order)}>
         <Printer className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
       </Button>
-      <Button type="button" size="sm" variant="ghost" className={BOTON_ICONO} aria-label="Vista previa" title="Vista previa del ticket" onClick={() => onVistaPrevia(order)}>
+      <Button type="button" size="sm" variant="ghost" className={BOTON_ICONO} aria-label={t("restaurantes.pedidos.fila.vistaPrevia")} title={t("restaurantes.pedidos.fila.vistaPreviaTicket")} onClick={() => onVistaPrevia(order)}>
         <Eye className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
       </Button>
-      <Button type="button" size="sm" variant="ghost" className={BOTON_ICONO} aria-label="Historial" title="Historial del pedido" onClick={() => onHistorial(order)}>
+      <Button type="button" size="sm" variant="ghost" className={BOTON_ICONO} aria-label={t("restaurantes.historial")} title={t("restaurantes.pedidos.fila.historialPedido")}
+ onClick={() => onHistorial(order)}>
         <History className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
       </Button>
     </span>
