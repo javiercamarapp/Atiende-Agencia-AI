@@ -377,7 +377,7 @@ describe("asentimientos mientras el agente piensa (tras la frase de espera)", ()
 
   it("apagada (por omision) un «si» mientras piensa corta el turno como siempre", async () => {
     const lento = compuerta();
-    const llm = llmFalso([async (p) => (await lento.promesa, { texto: "" }), escribe(["Bien."])]);
+    const llm = llmFalso([async () => (await lento.promesa, { texto: "" }), escribe(["Bien."])]);
     const stt = new SttFalso();
     const prov = crearProveedorCascadaV2({ deepgramApiKey: null, llm, stt, tts: new TtsFalso() });
     await prov.abrirSesion({ instruccion: "i", voiceId: "Kore", herramientas: [] }, manejadoresFalsos().h);
