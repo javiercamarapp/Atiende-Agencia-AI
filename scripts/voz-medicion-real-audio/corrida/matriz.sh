@@ -11,7 +11,7 @@ bloque() { # <ruido> <rep> <etiqueta> [krisp]
     local sha; sha=$(git -C "$M" rev-parse --short HEAD)
     [ "$sha" != "${SHA_ESPERADO:-$sha}" ] && { echo "ALTO_SHA cambio la cabeza del worktree: $sha (esperado $SHA_ESPERADO)"; exit 5; }
     [ -n "$(git -C "$M" status --porcelain --untracked-files=no)" ] && { echo "ALTO_SHA el worktree tiene cambios sin commit"; exit 5; }
-    echo "=== $(date '+%F %T') bloque $e rep$r intento $intento sha=$sha carga_max=${CARGA_MAX:-8}"
+    echo "=== $(date '+%F %T') bloque $e rep$r intento $intento sha=$sha carga_max=${CARGA_MAX:-10}"
     if [ -n "$k" ]; then VOZ_RUIDO_KRISP=$k SCRIPT=e2e-livekit.ts VOZA_RUIDO=$c bash "$D/correr-el.sh" "$r" "$F" "$e"; else SCRIPT=e2e-livekit.ts VOZA_RUIDO=$c bash "$D/correr-el.sh" "$r" "$F" "$e"; fi
     local rc=$?
     [ $rc -eq 4 ] && { echo "ALTO_PRESUPUESTO $e rep$r"; exit 4; }
