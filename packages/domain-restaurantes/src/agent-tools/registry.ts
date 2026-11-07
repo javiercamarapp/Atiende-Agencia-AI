@@ -82,6 +82,7 @@ import {
   clasificarRespuestaCierre,
   datosDeCierreDeContexto,
   datosDeCierreDeEntrada,
+  datosDelMensaje,
   billeteExplicitoDelMensaje,
   HABLA_DE_PAGO,
   normalizar,
@@ -1097,12 +1098,29 @@ export async function invokeAgentTool(repo: RestaurantesRepository, ctx: AgentTo
   const input = await conHoraDeRecogidaRelativa(repo, ctx, name, entrada);
   await exigirMinimoDeRecogida(repo, ctx, name, input);
   await exigirAclararOrdenesOPiezas(repo, ctx, name, input);
+  exigirPagoDichoPorElCliente(ctx, name, input);
   if (!ctx.flow || (name !== "cotizar_pedido" && name !== "confirmar_resumen" && name !== "crear_pedido" && name !== "repetir_pedido")) {
     return dispatchTool(repo, ctx, name, input);
   }
   return runWithOrderFlow(repo, ctx, ctx.flow, name, input, opts);
 }
 
+
+/** C3 PED-22 (a): mensaje cuando el modelo registra una forma de pago que el cliente no dijo. */
+export const PAGO_NO_DICHO_POR_EL_CLIENTE =
+  "NO se creó el pedido: el cliente todavía no ha dicho cómo va a pagar (o dijo otra forma de pago) y no se puede suponer. Pregúntele «¿Pagará en efectivo o con tarjeta?» y espere su respuesta; si es efectivo a domicilio, pregunte también con cuánto paga. Después vuelva a crear el pedido con la forma de pago que él dijo.";
+
+/**
+ * C3 PED-22 (a), solo cerebro v2: el pedido se creaba con «tarjeta» aunque el cliente nunca dijo la forma de pago (el modelo la inventaba y el resumen ni la mostraba). `crear_pedido`
+ * de WhatsApp exige que ALGUN mensaje del cliente de la conversacion reciente diga ESA forma de pago (tarjeta/terminal o efectivo/billete). Sin historial no se juzga.
+ */
+function exigirPagoDichoPorElCliente(ctx: AgentToolContext, name: string, input: Record<string, unknown>): void {
+  if (name !== "crear_pedido" || !ctx.cerebroV2 || ctx.channel !== "whatsapp" || ctx.modo === "preview" || !ctx.conversacionReciente) return;
+  const pago = input.payment_method;
+  if (pago !== "efectivo" && pago !== "tarjeta") return; // sin forma de pago la validacion del pedido ya la pide
+  const dicha = ctx.conversacionReciente.some((m) => m.role === "user" && datosDelMensaje(m.content).pago === pago);
+  if (!dicha) throw new OrderValidationError(PAGO_NO_DICHO_POR_EL_CLIENTE);
+}
 
 /** Zona horaria de la sucursal por su slug (la de plataforma si no hay dato o la base no tiene la migracion de zona). `null` = la sucursal no existe: otra regla se encarga del error. */
 async function zonaDeSucursal(repo: RestaurantesRepository, ctx: AgentToolContext, slug: unknown): Promise<string | null> {

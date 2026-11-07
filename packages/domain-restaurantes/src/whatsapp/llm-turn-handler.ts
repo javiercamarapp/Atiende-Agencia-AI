@@ -60,6 +60,8 @@ import { COPY_LLAMADA_NO_RECIBIDA, COPY_LLAMADA_REPETIDA, COPY_SI_REPETIDO_SIN_R
 import { decidirAntesDelModelo, respuestaFinalV2 } from "./cerebro-v2/antes-del-modelo.ts";
 import { enforcePromoPolicy, stripUnpromptedTip } from "./cerebro-v2/politicas-pm.ts";
 import { PM_POLICY_RULES_V2, adaptarPromptPmV2 } from "./cerebro-v2/prompt-v2.ts";
+import { cambioSoloDeFormaDePago } from "./cerebro-v2/pago.ts";
+import { normalizePhone } from "../phone.ts";
 import { consultasDeMenuParaPromesa, corregirPromesaSinBuscar, promesaDeProductoSinBuscar } from "./cerebro-v2/texto-final.ts";
 import { buscarEnCatalogo } from "./cerebro-v2/busqueda.ts";
 import { PM_AGENT_NAME_POR_OMISION, PM_COPY, buildPmSystemPrompt, saludoPorHora } from "./perfil-pm.ts";
@@ -635,6 +637,9 @@ export function prefijoEstableActivo(env: Readonly<Record<string, string | undef
   return v === "1" || v === "true" || v === "on" || v === "si";
 }
 
+/** C3 PED-22: el cambio de forma de pago solo toca un pedido creado en las ultimas 3 horas (el mismo pedido de la conversacion, no uno de otro dia). */
+const VENTANA_CAMBIO_DE_PAGO_MS = 3 * 60 * 60 * 1000;
+
 /** R21: interruptor de entorno del cierre del «si» en una sola vuelta del modelo. Encendido salvo `0`, `false`, `off` o `no`. */
 export function cierreUnaVueltaActivo(env: Readonly<Record<string, string | undefined>> = process.env): boolean {
   const v = (env.WHATSAPP_CIERRE_UNA_VUELTA ?? "").trim().toLowerCase();
@@ -881,6 +886,34 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       const respondidos = messages.slice(0, messages.length - mensajesSinResponder(messages).length).filter((m) => m.role === "user").slice(-12);
       const motivosYaAtendidos = new Set(respondidos.map((m) => classifyHighRiskIntent(m.content, ctxRiesgo)?.intent).filter((i): i is NonNullable<typeof i> => i !== undefined));
       const paraRiesgo = pendientes.filter((m, i) => i === pendientes.length - 1 || !motivosYaAtendidos.has(classifyHighRiskIntent(m.content, ctxRiesgo)?.intent as never));
+      // C3 PED-22 (b), solo cerebro v2: «Perdón, yo pago en efectivo, no con tarjeta» sobre un pedido ya creado y aun no despachado se escalaba como cancelacion_modificacion. Cambiar
+      // solo COMO se cobra no toca lo que prepara cocina: el servidor actualiza la forma de pago del pedido (con una linea en sus notas para la sucursal) y se lo confirma al cliente,
+      // sin modelo y sin escalar. Con un carrito en curso, sin pedido reciente modificable o sin la funcion en el repositorio, sigue el camino de siempre.
+      if (cerebroV2 && perfil === "taqueria_pm" && !preview && !carritoEnCurso && pendientes.length > 0 && repo.actualizarFormaDePagoPedido) {
+        const cambios = pendientes.map((m) => cambioSoloDeFormaDePago(m.content));
+        const cambio = cambios.every((c) => c !== null) ? cambios.at(-1)! : null;
+        const efectivoCon = cambio?.pago === "efectivo" ? (cambios.findLast((c) => c?.efectivoCon !== undefined)?.efectivoCon ?? null) : null;
+        const reciente = cambio ? await repo.findLatestOrderByPhone(organizationId, normalizePhone(phone), new Date(now().getTime() - VENTANA_CAMBIO_DE_PAGO_MS).toISOString()).catch(() => null) : null;
+        if (cambio && reciente && (reciente.status === "pending" || reciente.status === "programado" || reciente.status === "por_aprobar")) {
+          const domicilio = !/Canal: recoger en sucursal\./.test(reciente.notes ?? "");
+          const conBillete = efectivoCon !== null && efectivoCon >= reciente.total ? efectivoCon : null;
+          const nota = `Cambio de forma de pago pedido por el cliente por WhatsApp: ahora ${cambio.pago}${cambio.pago === "efectivo" ? (domicilio ? "; ya NO lleva terminal" : "") : domicilio ? "; llevar terminal" : ""}${conBillete !== null ? `; paga con $${conBillete.toFixed(2)} (cambio: $${(Math.round((conBillete - reciente.total) * 100) / 100).toFixed(2)})` : ""}.`;
+          const actualizado = reciente.paymentMethod === cambio.pago && conBillete === null ? reciente : await repo.actualizarFormaDePagoPedido(organizationId, reciente.id, cambio.pago, nota);
+          if (actualizado) {
+            if (actualizado !== reciente) mutoEnTurno = true;
+            tele.resultado = "ok";
+            const reply =
+              cambio.pago === "tarjeta"
+                ? `Listo, su pedido queda para pagar con tarjeta${domicilio ? "; el repartidor lleva terminal" : " en la sucursal"}.`
+                : conBillete !== null
+                  ? `Listo, su pedido queda para pagar en efectivo con $${conBillete}; ${domicilio ? "el repartidor lleva" : "le tenemos"} su cambio de $${Math.round((conBillete - reciente.total) * 100) / 100}.`
+                  : domicilio
+                    ? "Listo, su pedido queda para pagar en efectivo. ¿Con cuánto paga, para que el repartidor lleve su cambio?"
+                    : "Listo, su pedido queda para pagar en efectivo en la sucursal.";
+            return done({ reply, orderId: null, propertyId: actualizado.propertyId ?? propertyId });
+          }
+        }
+      }
       // Cerebro v2: decision determinista del suelto (salud/alergia con aviso URGENTE, transferencia realizada) ANTES del clasificador de siempre; los intents que v2
       // decide se quitan del clasificador de guards.ts para no avisar ni contestar dos veces.
       const pedidoEnCursoV2 = !customer.isNew && customer.pedidoReciente != null && ["registrado", "preparando", "salio", "listo_para_recoger", "programado", "por_confirmar"].includes(customer.pedidoReciente.estado);

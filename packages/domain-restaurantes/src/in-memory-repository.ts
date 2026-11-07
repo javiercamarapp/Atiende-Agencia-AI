@@ -2034,6 +2034,16 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     return updated;
   }
 
+  async actualizarFormaDePagoPedido(organizationId: string, orderId: string, paymentMethod: "efectivo" | "tarjeta", notaPago: string): Promise<Order | null> {
+    // Misma guarda de estado que el UPDATE de Postgres (solo pedidos aun no despachados).
+    const index = this.orders.findIndex((o) => o.id === orderId && o.organizationId === organizationId && (o.status === "pending" || o.status === "programado" || o.status === "por_aprobar"));
+    if (index === -1) return null;
+    const existing = this.orders[index]!;
+    const updated: Order = { ...existing, paymentMethod, notes: existing.notes ? `${existing.notes}\n${notaPago}` : notaPago };
+    this.orders[index] = updated;
+    return updated;
+  }
+
   // ---- Fase 8 — superficie real del rol "repartidor" (ver repository.ts para el
   // contrato completo de cada método; mismo criterio de scoping que el adaptador de
   // Postgres, ver postgres-repository.ts). ----

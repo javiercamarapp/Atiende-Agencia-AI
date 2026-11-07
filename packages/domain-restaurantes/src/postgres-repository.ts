@@ -2575,6 +2575,20 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     return run();
   }
 
+  async actualizarFormaDePagoPedido(organizationId: string, orderId: string, paymentMethod: "efectivo" | "tarjeta", notaPago: string): Promise<Order | null> {
+    // C3 PED-22: solo la forma de pago (CHECK de siempre: efectivo/tarjeta) y una linea mas en las notas; la guarda de estado va en el WHERE (sin TOCTOU, como updateOrderStatus).
+    // Columnas que ya existen desde la migracion 001: sin SQL nuevo ni fallback de base sin migrar.
+    const { rows } = await this.db.query<OrderRow>(
+      `update restaurantes.orders
+       set payment_method = $3,
+           notes = case when coalesce(notes, '') = '' then $4 else notes || E'\\n' || $4 end
+       where id = $1 and organization_id = $2 and status in ('pending', 'programado', 'por_aprobar')
+       returning ${ORDER_COLUMNS};`,
+      [orderId, organizationId, paymentMethod, notaPago],
+    );
+    return rows[0] ? mapOrder(rows[0]) : null;
+  }
+
   // ---- Fase 8 — superficie real del rol "repartidor" (ver repository.ts para el
   // contrato completo de cada método). ----
 
