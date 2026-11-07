@@ -33,4 +33,6 @@ export {
   esVersionGraphValida,
   redactarSecretos,
 } from "./providers/meta-graph-reader.ts";
+export { EmbeddedSignupError, MetaEmbeddedSignupClient } from "./providers/meta-embedded-signup.ts";
+export type { ConexionEmbeddedSignup, MetaEmbeddedSignupClientOptions, NumeroWaba, PasoEmbeddedSignup } from "./providers/meta-embedded-signup.ts";
 export type { MetaAppSuscrita, MetaGraphReadErrorInfo, MetaGraphWhatsAppReaderOptions, MetaNumero, MetaPlantilla, MetaWaba } from "./providers/meta-graph-reader.ts";
