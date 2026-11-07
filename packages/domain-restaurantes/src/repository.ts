@@ -123,6 +123,16 @@ export interface NewOrderRecord {
   readonly programadoPara?: string | null;
 }
 
+/** Fila de `restaurantes.avisos_del_telefono` (migracion 193), con los nombres de columna del suelto (FilaAviso / FilaAvisoAlergia). */
+export interface AvisoDelTelefono {
+  readonly id: string;
+  readonly property_id: string | null;
+  readonly reason: string | null;
+  readonly message: string | null;
+  readonly resolved: boolean;
+  readonly created_at: string;
+}
+
 export interface ConversationMessage {
   readonly role: "user" | "assistant";
   readonly content: string;
@@ -137,6 +147,18 @@ export interface ConversationMessage {
   readonly at?: string;
   /** Persona del panel que contesto (`autor: "humano"`). */
   readonly staffId?: string;
+  /** Cerebro v2 (bloque 4): las herramientas del turno que leen las guardas de sesion del suelto (cotizar/crear/estado), con el resultado recortado. Solo en el
+   * mensaje del asistente; metadato del hilo (no se manda al modelo ni se muestra). Ver whatsapp/cerebro-v2/hilo-herramientas.ts. */
+  readonly herramientas?: readonly HerramientaDelHilo[];
+}
+
+/** Una llamada de herramienta guardada en el hilo (cerebro v2): `argumentos` y `resultado` son JSON (el resultado, recortado). */
+export interface HerramientaDelHilo {
+  readonly id: string;
+  readonly nombre: string;
+  readonly argumentos: string;
+  readonly resultado: string;
+  readonly at: string;
 }
 
 // ---- KPIs de admin (Fase 3, ver diseño §2) ----
@@ -277,6 +299,10 @@ export interface RestaurantesRepository {
   createOrderIdempotent(order: NewOrderRecord, dedupeFingerprint: string, idempotencyKey: string | null): Promise<Order>;
 
   createCallbackRequest(input: CallbackRequestInput): Promise<CallbackRequest>;
+  /** Cerebro v2 (migracion 193): avisos al equipo (callback_requests) de ESTE telefono en las ultimas `horas` (1..48), del mas reciente al mas viejo, a lo
+   * mas 20. Lo leen la guarda de alergia de crear_pedido y el dedupe por categoria. `null` = no disponible (base sin la 193 o sin el metodo): el llamador
+   * degrada a lo que sabe el hilo, nunca falla. Opcional: los dobles de prueba que no lo implementan se comportan como base sin migrar. */
+  listarAvisosDelTelefono?(organizationId: string, phone: string, horas: number): Promise<readonly AvisoDelTelefono[] | null>;
 
   consumeRateLimit(scope: string, actorHash: string, maxRequests: number, windowSeconds: number): Promise<boolean>;
 
@@ -503,6 +529,10 @@ export interface RestaurantesRepository {
   /** `incidentNote` (opcional): nota libre de la incidencia; solo se guarda cuando `toStatus === "problema"`
    * (columna `incident_note`, migracion 008: no requiere SQL nuevo). */
   updateOrderStatus(organizationId: string, orderId: string, fromStatus: OrderStatus, toStatus: OrderStatus, incidentNote?: string | null): Promise<Order | null>;
+  /** C3 PED-22 (cerebro v2): el cliente cambia SOLO la forma de pago de un pedido aun no despachado (`pending`, `programado` o `por_aprobar`). Actualiza `payment_method` y AGREGA
+   * `notaPago` a las notas del pedido (rastro visible para la sucursal en el panel y la comanda; no se borra nada). Sin SQL nuevo (columnas de siempre). `null` si el pedido no existe,
+   * no es de la organizacion o ya no esta en esos estados. Opcional: un repositorio que no lo implemente deja el cambio al camino de siempre (aviso a la sucursal). */
+  actualizarFormaDePagoPedido?(organizationId: string, orderId: string, paymentMethod: "efectivo" | "tarjeta", notaPago: string): Promise<Order | null>;
 
   findCustomerById(organizationId: string, customerId: string): Promise<Customer | null>;
   listCustomers(organizationId: string, filter: CustomerListFilter): Promise<CustomerListPage>;

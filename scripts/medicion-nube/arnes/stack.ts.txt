@@ -4,6 +4,7 @@ import { createHmac, randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import pg from "pg";
+import { AsyncLocalStorage } from "node:async_hooks";
 
 export const ORG_ID = "f838fd2c-967e-46fd-af8d-e0229b15748d";
 export const PROP = { T1: "998f5840-0e2e-4e22-9285-988637cb4d42", T2: "c558908d-d48a-431a-bfc4-0dd422b6ad45", T3: "13e6655b-c04b-466d-bcf1-e9b1e1a66754", T7: "42996ff1-4285-4e53-9a11-71c7b1cc0392" } as const;
@@ -51,7 +52,14 @@ export const telemetriaTurnos: { ts: string; resultado: string; latenciaTotalMs:
     return (w as any)(chunk, ...a);
   }) as any;
 }
-const nowMs = () => (active ? base + (RealDate.now() - since) : RealDate.now());
+/** C3: reloj POR CONVERSACION (AsyncLocalStorage). El banco C3 trae un reloj distinto por escenario (80 relojes): con el reloj global solo correria
+ *  una conversacion a la vez. `conRelojPropio(iso, fn)` fija el reloj del contexto async; `say` lo manda a la API en la cabecera `x-qa-reloj` y el
+ *  servidor del arnes reabre el mismo contexto para la peticion. Sin contexto (todas las demas suites) se usa el reloj global de siempre. */
+export const relojPorConversacion = new AsyncLocalStorage<{ base: number; since: number }>();
+export function conRelojPropio<T>(iso: string, fn: () => Promise<T>): Promise<T> { return relojPorConversacion.run({ base: RealDate.parse(relojArnes(iso)), since: RealDate.now() }, fn); }
+/** Cabecera con el reloj del contexto (vacia fuera de un contexto C3). */
+export function cabeceraReloj(): Record<string, string> { const st = relojPorConversacion.getStore(); return st ? { "x-qa-reloj": `${st.base}:${st.since}` } : {}; }
+const nowMs = () => { const st = relojPorConversacion.getStore(); if (st) return st.base + (RealDate.now() - st.since); return active ? base + (RealDate.now() - since) : RealDate.now(); };
 // @ts-expect-error parche de Date para controlar la hora de Merida en las pruebas
 globalThis.Date = class extends RealDate {
   constructor(...a: unknown[]) { if (a.length === 0) super(nowMs()); else super(...(a as [number])); }
@@ -144,7 +152,11 @@ export async function startStack(): Promise<Stack> {
   const deps = { ...prod, whatsAppDispatcher: new WhatsAppOutboundDispatcher({ graphClient: new MetaGraphWhatsAppClient({ accessToken: "qa-graph-token-local", baseUrl: graphUrl }) }) };
   const app = buildApp(deps as never);
   const hits: { path: string; status: number }[] = [];
-  const server = await serveFetchHandler(async (r) => { const res = await app.fetch(r); hits.push({ path: new URL(r.url).pathname, status: res.status }); return res; });
+  const server = await serveFetchHandler(async (r) => {
+    const rel = /^(\d+):(\d+)$/.exec(r.headers.get("x-qa-reloj") ?? ""); // C3: reloj por conversacion (ver relojPorConversacion)
+    const res = rel ? await relojPorConversacion.run({ base: Number(rel[1]), since: Number(rel[2]) }, () => app.fetch(r)) : await app.fetch(r);
+    hits.push({ path: new URL(r.url).pathname, status: res.status }); return res;
+  });
   const pool = new pg.Pool({ connectionString: DB_URL, max: 4 });
   // R11: el reloj falso mas temprano (ya desplazado) debe quedar DESPUES del now() real de Postgres; si no, toda hora programada se rechaza.
   try {
@@ -158,7 +170,7 @@ export async function startStack(): Promise<Stack> {
   const post = async (rawBody: string, sig: string) => {
     const bytes = new TextEncoder().encode(rawBody);
     const t0 = RealDate.now();
-    const r = await fetch(`${server.baseUrl}/v1/restaurantes/whatsapp/webhook`, { method: "POST", headers: { "content-type": "application/json", "content-length": String(bytes.byteLength), "x-hub-signature-256": sig }, body: bytes });
+    const r = await fetch(`${server.baseUrl}/v1/restaurantes/whatsapp/webhook`, { method: "POST", headers: { "content-type": "application/json", "content-length": String(bytes.byteLength), "x-hub-signature-256": sig, ...cabeceraReloj() }, body: bytes });
     return { status: r.status, raw: await r.text(), ms: RealDate.now() - t0 };
   };
   const sign = (raw: string) => `sha256=${createHmac("sha256", APP_SECRET).update(raw).digest("hex")}`;

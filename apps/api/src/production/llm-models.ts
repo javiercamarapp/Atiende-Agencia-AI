@@ -385,6 +385,39 @@ export const DEFAULT_ROLE_ROUTES: Readonly<Record<string, LlmRouteConfig>> = Obj
 /** Rol sin actividad declarada (no deberia existir; un test lo impide para los roles de produccion): la ruta de chat barata. */
 export const DEFAULT_ROUTE: LlmRouteConfig = ruta(LUNA_LOW, FLASH_LITE_35, HAIKU_55);
 
+/**
+ * Cerebro v2 (bandera por organizacion, migracion 190): modelos con endpoint de RETENCION CERO verificado en https://openrouter.ai/api/v1/endpoints/zdr
+ * (6-nov-2026) dentro de los proveedores de EE.UU. permitidos. Las llamadas con `zdrEstricto` solo usan escalones de esta lista y siempre con `provider.zdr: true`.
+ * Gemini 2.5 Flash-Lite y Muse Spark NO tienen endpoint ZDR: quedan fuera de la escalera v2. Claude Sonnet 5.5 (premium) y Gemini 3.8 Flash (gama media,
+ * solo reportes) tampoco entran aunque tengan endpoint ZDR: la decision del dueno es solo modelos baratos (Luna, Haiku 5.5 y el rapido de voz).
+ */
+export const MODELOS_CON_ZDR_VERIFICADO: ReadonlySet<string> = new Set([
+  "openai/gpt-6-luna", // Azure (us)
+  "anthropic/claude-haiku-5.5", // Google Vertex (us/global) y Amazon Bedrock (us-east-1)
+  "google/gemini-3.5-flash-lite", // Google Vertex (us/global)
+  // Gemini 3.8 Flash tiene endpoint ZDR desde #750 (solo reportes): fuera del cerebro v2 por decision del dueno (gama media, no del agente).
+  ...Object.entries(VERIFIED_MODEL_HOSTS).filter(([m, v]) => v.zdr && v.hosts.length > 0 && m !== GEMINI_38_FLASH.model).map(([m]) => m),
+]);
+
+/** Escalera v2 del agente de WhatsApp de restaurantes: Luna -> Haiku 5.5, ambas con ZDR. */
+export const CEREBRO_V2_WHATSAPP_ROUTE: LlmRouteConfig = { models: [LUNA_LOW, HAIKU_55], routing: { allowFallbacks: true, zdr: true } };
+/** Escalado v2 (decision del 6-nov, BARRIDO-MODELOS-NOV: en la prueba de recuperacion tras fallo forzado de crear_pedido Luna recupero 14/20 pedidos y
+ *  gpt-6.1-terra 0/20): Luna -> Haiku 5.5, sin Terra. */
+export const CEREBRO_V2_ESCALADO_ROUTE: LlmRouteConfig = { models: [LUNA_LOW, HAIKU_55], routing: { allowFallbacks: true, zdr: true } };
+/** Alternativas ZDR elegibles por `preferredModel` dentro del cerebro v2 (el rapido de voz y Haiku de primario). */
+export const CEREBRO_V2_ALTERNATIVAS: readonly LlmRungConfig[] = [FLASH_LITE_35, HAIKU_55, LUNA_LOW];
+
+/**
+ * Escalera ZDR de un rol para el cerebro v2: la ruta vigente del rol (defaults o LLM_MODELS_JSON) SIN los escalones que no tienen endpoint ZDR, con Haiku 5.5
+ * al final si no estaba (el respaldo decidido). Asi el escalado conserva la decision vigente del monorrepo y solo se le quita lo que no cumple retencion cero.
+ * El rol por defecto del agente usa `CEREBRO_V2_WHATSAPP_ROUTE` tal cual.
+ */
+export function rutaZdrCerebroV2(route: LlmRouteConfig): LlmRouteConfig {
+  const conZdr = route.models.filter((r) => MODELOS_CON_ZDR_VERIFICADO.has(r.model));
+  const models = conZdr.some((r) => r.model === HAIKU_55.model) ? conZdr : [...conZdr, HAIKU_55];
+  return { ...route, models, routing: { ...(route.routing ?? {}), zdr: true } };
+}
+
 /** Retadores SOLO para el arnes de evals (MOD-07/08). Apagados: nada en produccion los lee. */
 export const EVAL_CHALLENGERS: readonly (LlmRungConfig & { readonly enabled: false; readonly note: string })[] = [
   { model: "z-ai/glm-5.3-flash", enabled: false, note: "Retador de evals; no esta en el registro ZDR de `VERIFIED_MODEL_HOSTS`: no se puede usar en produccion." },

@@ -1,0 +1,112 @@
+[
+ {
+  "nombre": "Temozón Norte",
+  "lat": 21.056,
+  "lng": -89.596
+ },
+ {
+  "nombre": "Altabrisa",
+  "lat": 21.024,
+  "lng": -89.575
+ },
+ {
+  "nombre": "Montebello",
+  "lat": 21.042,
+  "lng": -89.595
+ },
+ {
+  "nombre": "Francisco de Montejo",
+  "lat": 21.0302,
+  "lng": -89.6471
+ },
+ {
+  "nombre": "Pensiones",
+  "lat": 20.9952,
+  "lng": -89.6477
+ },
+ {
+  "nombre": "Residencial Pensiones",
+  "lat": 20.9952,
+  "lng": -89.6477
+ },
+ {
+  "nombre": "Cholul",
+  "lat": 21.047,
+  "lng": -89.55
+ },
+ {
+  "nombre": "Chuburná",
+  "lat": 21.045,
+  "lng": -89.685
+ },
+ {
+  "nombre": "Caucel",
+  "lat": 20.993,
+  "lng": -89.71
+ },
+ {
+  "nombre": "García Ginerés",
+  "lat": 20.978,
+  "lng": -89.63
+ },
+ {
+  "nombre": "Centro",
+  "lat": 20.9675,
+  "lng": -89.6237
+ },
+ {
+  "nombre": "Itzimná",
+  "lat": 21,
+  "lng": -89.6055
+ },
+ {
+  "nombre": "Xcumpich",
+  "lat": 21.0555,
+  "lng": -89.6215
+ },
+ {
+  "nombre": "Cordemex",
+  "lat": 21.0165,
+  "lng": -89.6355
+ },
+ {
+  "nombre": "Las Américas",
+  "lat": 21.0025,
+  "lng": -89.6655
+ },
+ {
+  "nombre": "Emiliano Zapata Norte",
+  "lat": 21.0093,
+  "lng": -89.6136
+ },
+ {
+  "nombre": "San Ramón Norte",
+  "lat": 21.0325,
+  "lng": -89.6027
+ },
+ {
+  "nombre": "Vista Alegre",
+  "lat": 21.0265,
+  "lng": -89.5725
+ },
+ {
+  "nombre": "Kanasín",
+  "lat": 20.934,
+  "lng": -89.558
+ },
+ {
+  "nombre": "Umán",
+  "lat": 20.885,
+  "lng": -89.748
+ },
+ {
+  "nombre": "Progreso",
+  "lat": 21.282,
+  "lng": -89.664
+ },
+ {
+  "nombre": "Chicxulub Puerto",
+  "lat": 21.296,
+  "lng": -89.602
+ }
+]

@@ -60,7 +60,7 @@ export interface Viaje {
 }
 
 /** Arma un viaje nuevo (mundo PM limpio). `conHandoff` siembra la conversacion en la bandeja para que el gate funcione. */
-export async function nuevoViaje(opts: { readonly phone?: string } = {}): Promise<Viaje> {
+export async function nuevoViaje(opts: { readonly phone?: string; readonly cerebroV2?: boolean } = {}): Promise<Viaje> {
   const world = await buildInMemoryPmWorld(planPm());
   const t7 = world.propertyBySlug.get("garcia-lavin")!;
   // Numero de WhatsApp de la sucursal (en produccion lo da el alta del canal de Meta; aqui un id ficticio del arnes).
@@ -96,7 +96,12 @@ export async function nuevoViaje(opts: { readonly phone?: string } = {}): Promis
     }),
   ]);
   gateway.registerLadder("escalated", [new FakeLlmProvider({ id: "guion-caro", script: (req) => (requests.push(req), aResultado(cola.shift() ?? { texto: "¿Algo más?" }, n++)) })]);
-  const handler = createLlmWhatsAppTurnHandler(world.repo, gateway, { defaultRole: "default", escalatedRole: "escalated" });
+  // Cerebro v2 exige ZDR estricto: el mismo guion por la escalera ZDR.
+  if (opts.cerebroV2) {
+    gateway.registerZdrLadder("default", [new FakeLlmProvider({ id: "guion-zdr", script: (req) => (requests.push(req), aResultado(cola.shift() ?? { texto: "¿Algo más en lo que le pueda ayudar?" }, n++)) })]);
+    gateway.registerZdrLadder("escalated", [new FakeLlmProvider({ id: "guion-zdr-caro", script: (req) => (requests.push(req), aResultado(cola.shift() ?? { texto: "¿Algo más?" }, n++)) })]);
+  }
+  const handler = createLlmWhatsAppTurnHandler(world.repo, gateway, { defaultRole: "default", escalatedRole: "escalated", ...(opts.cerebroV2 ? { leerCerebroV2: async () => true } : {}) });
   let seq = 0;
   return {
     world,

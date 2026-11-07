@@ -67,9 +67,17 @@ export function modeloAgentePorId(id: string | null | undefined): ModeloAgente |
 export const MODELO_ALTERNO_TOPE_ID = "anthropic/claude-haiku-5.5";
 export const MODELO_ALTERNO_SEGUNDO_TOPE_ID = "openai/gpt-6-luna";
 
-export function modeloAlternoParaTope(primarioId: string | null | undefined): string {
+export function modeloAlternoParaTope(primarioId: string | null | undefined, cerebroV2 = false): string {
+  // Cerebro v2 (bandera por organizacion): la escalera es Luna -> Haiku 5.5 (ambos con ZDR); con Haiku de primario el alterno es Luna.
+  if (cerebroV2) return primarioId === MODELO_RESPALDO_CEREBRO_V2_ID ? MODELO_PRINCIPAL_CEREBRO_V2_ID : MODELO_RESPALDO_CEREBRO_V2_ID;
   return primarioId === MODELO_ALTERNO_TOPE_ID ? MODELO_ALTERNO_SEGUNDO_TOPE_ID : MODELO_ALTERNO_TOPE_ID;
 }
+
+/** Cerebro v2: modelo principal y respaldo del agente de WhatsApp (decision del dueno, 6-nov-2026). Ambos se piden con enrutamiento ZDR. */
+export const MODELO_PRINCIPAL_CEREBRO_V2_ID = "openai/gpt-6-luna";
+export const MODELO_RESPALDO_CEREBRO_V2_ID = "anthropic/claude-haiku-5.5";
+/** Cerebro v2 de VOZ: modelo rapido del turno de voz (Gemini 3.5 Flash-Lite), el preciso (Luna) y el respaldo (Haiku 5.5). */
+export const MODELO_VOZ_RAPIDO_CEREBRO_V2_ID = "google/gemini-3.5-flash-lite";
 
 /**
  * El respaldo por tope de tiempo solo se activa cuando el modelo que se atasco es un modelo ECONOMICO de la lista (hoy todos lo son): el tope del primer

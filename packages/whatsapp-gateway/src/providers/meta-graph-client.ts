@@ -242,6 +242,29 @@ export class MetaGraphWhatsAppClient implements WhatsAppGraphClient {
     }
   }
 
+  /**
+   * Marca como LEIDO el mensaje del cliente y muestra «escribiendo...» (Cloud API: `status: "read"` + `typing_indicator`; Meta lo quita al enviar la
+   * respuesta o a los ~25 s). Lo usa el turno asincrono del webhook de restaurantes: el 200 a Meta sale antes del turno y el cliente debe ver que se le
+   * atiende. Best-effort para quien llama: lanza ante cualquier fallo (sin el token ni el cuerpo de Meta en el mensaje) y quien llama lo ignora.
+   * Tope de 3 s: nunca debe comerse el tiempo del turno.
+   */
+  async marcarLeidoYEscribiendo(a: { readonly phoneNumberId: string; readonly messageId: string }): Promise<void> {
+    if (!a.phoneNumberId || !a.messageId) throw new WhatsAppInvalidPayloadError("indicador de escritura incompleto: faltan phoneNumberId/messageId");
+    const url = `${this.baseUrl}/${this.apiVersion}/${a.phoneNumberId}/messages`;
+    let response: Response;
+    try {
+      response = await this.fetchImpl(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${this.accessToken}` },
+        body: JSON.stringify({ messaging_product: "whatsapp", status: "read", message_id: a.messageId, typing_indicator: { type: "text" } }),
+        signal: AbortSignal.timeout(3_000),
+      });
+    } catch {
+      throw new WhatsAppSendError("fallo de red al marcar leido / escribiendo", true, { proveedor: true });
+    }
+    if (!response.ok) throw new WhatsAppSendError(`Graph API respondió ${response.status} al marcar leido / escribiendo`, response.status === 429 || response.status >= 500, { proveedor: false, httpStatus: response.status });
+  }
+
   /** POST a Graph API; devuelve el id del mensaje o lanza `WhatsAppSendError` clasificado (reintentable o no). */
   private async post(url: string, body: Record<string, unknown>): Promise<string> {
     let response: Response;

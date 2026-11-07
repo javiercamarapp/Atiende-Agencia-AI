@@ -96,6 +96,7 @@ import { fotoConfigAgente } from "./whatsapp/agent-config-editor.ts";
 import { leerHorarioPersistido } from "./horarios.ts";
 import type {
   ChannelStatsRow,
+  AvisoDelTelefono,
   ConversationMessage,
   CustomerOverviewRow,
   EmailOutboxJobRow,
@@ -1083,6 +1084,24 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     }
   }
 
+  async listarAvisosDelTelefono(organizationId: string, phone: string, horas: number): Promise<readonly AvisoDelTelefono[] | null> {
+    // Migracion 193 (funcion de SOLO SISTEMA: la sesion del agente no ve callback_requests por RLS). Dentro de la transaccion del turno: SAVEPOINT;
+    // sin la 193 (42883) -> null y el llamador decide con el hilo.
+    return runWithSavepointFallback<readonly AvisoDelTelefono[] | null>({
+      session: this.db,
+      savepointName: "sp_restaurantes_avisos_del_telefono",
+      primary: async () => {
+        const { rows } = await this.db.query<{ id: string; property_id: string | null; reason: string | null; message: string | null; resolved: boolean; created_at: string | Date }>(
+          `select id, property_id, reason, message, resolved, created_at from restaurantes.avisos_del_telefono($1, $2, $3);`,
+          [organizationId, phone, Math.min(48, Math.max(1, Math.trunc(horas)))],
+        );
+        return rows.map((r) => ({ ...r, created_at: r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at) }));
+      },
+      isRecoverable: (err) => (err as { code?: string } | null)?.code === "42883",
+      fallback: async () => null,
+    });
+  }
+
   async createCallbackRequest(input: CallbackRequestInput): Promise<CallbackRequest> {
     // Avisos del AGENTE (voz y WhatsApp): idempotentes por evento y por motivo (migracion 047, `callback_registrar_agente`). Corre dentro
     // de la transaccion unica del request/turno: contra una base SIN migrar la funcion no existe (42883) y el respaldo al INSERT de
@@ -1106,7 +1125,8 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       if (agente) {
         // Notificacion in-app (`restaurantes.callback.pendiente`) solo cuando el aviso es NUEVO: un reenvio o una nota agregada no vuelven a avisar.
         if (agente.registro === "nuevo") {
-          await emitirNotificacion(this.db, { evento: eventoDeCallback(input.reason), organizationId: input.organizationId, propertyId: input.propertyId ?? null, clave: agente.id, entidadTipo: "callback_request", entidadId: agente.id });
+          // Cerebro v2: un aviso URGENTE (alergia, emergencia) sube la severidad del catalogo a `critica` para ESTA emision.
+          await emitirNotificacion(this.db, { evento: eventoDeCallback(input.reason), organizationId: input.organizationId, propertyId: input.propertyId ?? null, clave: agente.id, entidadTipo: "callback_request", entidadId: agente.id, ...(input.urgente ? { severidad: "critica" as const } : {}) });
         }
         return agente;
       }
@@ -2590,6 +2610,20 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       });
     }
     return run();
+  }
+
+  async actualizarFormaDePagoPedido(organizationId: string, orderId: string, paymentMethod: "efectivo" | "tarjeta", notaPago: string): Promise<Order | null> {
+    // C3 PED-22: solo la forma de pago (CHECK de siempre: efectivo/tarjeta) y una linea mas en las notas; la guarda de estado va en el WHERE (sin TOCTOU, como updateOrderStatus).
+    // Columnas que ya existen desde la migracion 001: sin SQL nuevo ni fallback de base sin migrar.
+    const { rows } = await this.db.query<OrderRow>(
+      `update restaurantes.orders
+       set payment_method = $3,
+           notes = case when coalesce(notes, '') = '' then $4 else notes || E'\\n' || $4 end
+       where id = $1 and organization_id = $2 and status in ('pending', 'programado', 'por_aprobar')
+       returning ${ORDER_COLUMNS};`,
+      [orderId, organizationId, paymentMethod, notaPago],
+    );
+    return rows[0] ? mapOrder(rows[0]) : null;
   }
 
   // ---- Fase 8 — superficie real del rol "repartidor" (ver repository.ts para el

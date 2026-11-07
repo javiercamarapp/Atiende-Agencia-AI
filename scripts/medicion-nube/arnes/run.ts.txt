@@ -33,6 +33,8 @@ const results: any[] = [];
 
 const usoAntes = await usoRealOpenRouter();
 const s = await startStack();
+// C3 (banco ciego 3): veredicto determinista propio, sin juez LLM; corre aparte y termina aqui (suites-c3.ts).
+if (suiteNames.includes("c3")) { const { correrC3 } = await import("./suites-c3.ts"); await correrC3(s, { conc, filtro, res: RES }); await s.stop(); process.exit(0); }
 const props = Object.fromEntries(Object.entries(PROP).map(([k, v]) => [v, k]));
 const priceMap = new Map<string, number>();
 for (const r of (await s.pool.query(`select property_id, product_id, price::float p from restaurantes.branch_products`)).rows) priceMap.set(`${r.property_id}:${r.product_id}`, r.p);

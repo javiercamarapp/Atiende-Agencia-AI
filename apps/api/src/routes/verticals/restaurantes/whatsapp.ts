@@ -11,7 +11,7 @@
 // sub-Hono ANTES/SIN heredar ningún middleware global de body-parsing, y este archivo
 // nunca importa ni usa `c.req.json()`.
 import { Hono } from "hono";
-import { FUNCION_MAX_MS, esperaEfectivaMs, extractMetaInboundMessages, procesarEstadosEntrega, liberarTurnoTrasFalloDeFaseB, extractMetaPhoneNumberId, extractMetaEchoes, registrarEcoDeApp, registrarMotivoNotaDeVoz, LIMITE_NOTAS_POR_ORGANIZACION_DIA, handleInboundWhatsAppMessage, recibirMensajeConEspera, resolveAgentConfig, responderTrasEspera, splitMetaPayloadByChannel, verifyMetaSignature, revocarMarketingPorTelefono } from "@atiende/domain-restaurantes";
+import { FUNCION_ASINCRONA_MAX_MS, FUNCION_MAX_MS, LEASE_TURNO_ASINCRONO_SEGUNDOS, esperaEfectivaMs, extractMetaInboundMessages, procesarEstadosEntrega, liberarTurnoTrasFalloDeFaseB, extractMetaPhoneNumberId, extractMetaEchoes, registrarEcoDeApp, registrarMotivoNotaDeVoz, LIMITE_NOTAS_POR_ORGANIZACION_DIA, handleInboundWhatsAppMessage, recibirMensajeConEspera, resolveAgentConfig, responderTrasEspera, splitMetaPayloadByChannel, verifyMetaSignature, revocarMarketingPorTelefono } from "@atiende/domain-restaurantes";
 import { rateLimit } from "@atiende/core-ratelimit";
 import { extractMetaStatuses } from "@atiende/whatsapp-gateway";
 import type { EventoEntregaFallida } from "@atiende/domain-restaurantes";
@@ -20,9 +20,13 @@ import { constantTimeEqual, requestActor } from "../../../http-security.ts";
 import { triggerRestaurantesWhatsAppDispatchInline } from "../../internal/whatsapp-dispatch.ts";
 import { triggerRestaurantesEmailDispatchInline } from "./email-dispatch.ts";
 import type { AppDeps } from "../../../deps.ts";
+import { silencioRafagaAsincronaMs, waitUntilDeVercel } from "../../../en-segundo-plano.ts";
+import { barrerTurnosHuerfanosWhatsApp } from "./whatsapp-turnos-huerfanos.ts";
 import { ALTA_CONFIRMADA_TEXTO, BAJA_CONFIRMADA_TEXTO, esPalabraBaja, procesarBajaOAlta } from "../../../supresion/index.ts";
 
 const MAX_BODY_BYTES = 256 * 1024;
+/** El webhook solo barre un turno huerfano si a su funcion le quedan al menos esto (un turno del agente + cierre). */
+const MARGEN_BARRIDO_EN_WEBHOOK_MS = 25_000;
 
 /** Dia calendario (America/Merida) para la clave de dedupe de la notificacion de tope. */
 const diaMerida = (): string => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Merida", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
@@ -98,7 +102,13 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
     // PM-C5 (espera de rafagas): los mensajes de un telefono con `replyDebounceSeconds` > 0 se reciben en una transaccion que SE CONFIRMA, el
     // webhook espera SIN transaccion abierta y recien entonces responde todo junto en otra transaccion. Con la espera apagada (lo normal)
     // este arreglo queda vacio y el camino es exactamente el de antes.
-    const diferidos: Array<{ organizationId: string; messageId: string; phone: string; phoneNumberId: string; propertyId: string | null; esperaSegundos: number; recibidoEnMs?: number }> = [];
+    //
+    // TURNO ASINCRONO (cerebro v2 o `WHATSAPP_TURNO_ASINCRONO`): TODO mensaje de esa organizacion va por este camino diferido aunque la espera sea 0, y su
+    // fase B corre DESPUES del 200 a Meta (`waitUntil` de Vercel) con la vida extendida de la funcion (FUNCION_ASINCRONA_MAX_MS): el turno de Luna por Azure
+    // ZDR (2-5 vueltas de 3-6 s) ya no se corta a los 18 s. Sin contexto de Vercel (local, arnes de medicion) la fase B se espera antes de responder, con el
+    // mismo presupuesto extendido, para que el arnes lea la respuesta en la misma peticion.
+    type Diferido = { organizationId: string; messageId: string; phone: string; phoneNumberId: string; propertyId: string | null; esperaSegundos: number; asincrono: boolean; recibidoEnMs?: number };
+    const diferidos: Diferido[] = [];
 
     // Webhook público/de sistema, sin authMiddleware/dbSession -- abre su propia
     // sesión de sistema (`userId: null`), igual que public.ts/voice-tools.ts.
@@ -119,6 +129,16 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
       // Coexistencia: un eco de la app que no se pudo guardar pide reintento de Meta (el wamid vuelve a reclamarse sin duplicar).
       let ecoFallo = false;
       const channelCache = new Map<string, Awaited<ReturnType<typeof repo.resolveWhatsAppChannel>>>();
+      // Una lectura de la bandera por organizacion y POST (en savepoint: un error de Postgres no aborta el lote; ante la duda, el camino de siempre).
+      const asincronoPorOrg = new Map<string, boolean>();
+      const esAsincrono = async (organizationId: string): Promise<boolean> => {
+        if (!deps.turnoAsincrono) return false;
+        if (!asincronoPorOrg.has(organizationId)) {
+          const leer = deps.turnoAsincrono;
+          asincronoPorOrg.set(organizationId, await repo.runWithRowSavepoint(() => leer(db, organizationId)).catch(() => false));
+        }
+        return asincronoPorOrg.get(organizationId) === true;
+      };
       for (const batch of splitMetaPayloadByChannel(payload)) {
         if (!batch.phoneNumberId) continue;
         const incomingMessages = extractMetaInboundMessages(batch.payload);
@@ -193,10 +213,26 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
           const esperaSegundos = await repo
             .runWithRowSavepoint(async () => (await resolveAgentConfig(repo, organizationId, channel?.propertyId ?? null)).replyDebounceSeconds ?? 0)
             .catch(() => 0);
-          if (esperaSegundos > 0) {
-            const recepcion = await recibirMensajeConEspera(repo, { organizationId, messageId: message.id, phone: `+${message.from}`, body: message.body, ...(transcripcion ? { transcripcion } : {}), ...(message.botonId ? { botonId: message.botonId } : {}) });
+          const asincrono = await esAsincrono(organizationId);
+          if (esperaSegundos > 0 || asincrono) {
+            const recepcion = await recibirMensajeConEspera(repo, {
+              organizationId,
+              messageId: message.id,
+              phone: `+${message.from}`,
+              body: message.body,
+              ...(transcripcion ? { transcripcion } : {}),
+              ...(message.botonId ? { botonId: message.botonId } : {}),
+              // El turno de responder debe seguir tomado mientras la funcion larga pueda estar viva.
+              ...(asincrono ? { leaseSegundos: LEASE_TURNO_ASINCRONO_SEGUNDOS } : {}),
+            });
             if (recepcion.estado === "responder") {
-              diferidos.push({ organizationId, messageId: message.id, phone: `+${message.from}`, phoneNumberId: phoneNumberIdOfBatch, propertyId: channel?.propertyId ?? null, esperaSegundos, ...(message.recibidoEnMs !== undefined ? { recibidoEnMs: message.recibidoEnMs } : {}) });
+              // Asincrono: la conversacion guarda desde ya la sucursal de entrada. Si el PRIMER turno muere, el barredor de turnos huerfanos (migracion 192)
+              // saca de aqui el numero emisor de la sucursal; sin esto solo tendria el numero por defecto de la organizacion. Best-effort en savepoint.
+              if (asincrono && channel?.propertyId) {
+                const propertyId = channel.propertyId;
+                await repo.runWithRowSavepoint(() => repo.whatsappAppendTurn(organizationId, `+${message.from}`, [], null, null, propertyId)).catch(() => undefined);
+              }
+              diferidos.push({ organizationId, messageId: message.id, phone: `+${message.from}`, phoneNumberId: phoneNumberIdOfBatch, propertyId: channel?.propertyId ?? null, esperaSegundos, asincrono, ...(message.recibidoEnMs !== undefined ? { recibidoEnMs: message.recibidoEnMs } : {}) });
             } else if (recepcion.estado === "fallo") {
               hadRetryableFailure = true;
             }
@@ -258,17 +294,45 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
     let hadRetryableFailure = fase1.hadRetryableFailure;
 
     // Fase 2 de la espera de rafagas: despues de la espera (sin transaccion abierta) se responde, en una transaccion nueva, TODO lo que
-    // llego a cada telefono durante ella.
-    if (diferidos.length > 0) {
+    // llego a cada telefono durante ella. Devuelve true si algun mensaje quedo para reintento.
+    const faseB = async (lista: readonly Diferido[], turnoAsincrono: boolean): Promise<boolean> => {
       const esperar = deps.esperarRafaga ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
-      // La espera se recorta para que la fase B (turnos del LLM) todavia quepa en la vida de la funcion; sin tiempo, se responde de inmediato.
-      const esperaMs = esperaEfectivaMs(Math.max(...diferidos.map((d) => d.esperaSegundos)), (deps.relojMs ?? Date.now)() - inicioMs);
-      if (esperaMs > 0) await esperar(esperaMs);
+      // La espera se recorta para que la fase B (turnos del LLM) todavia quepa en la vida de la funcion; sin tiempo, se responde de inmediato. En modo
+      // asincrono se recorta igual (contra los 30 s de siempre): los 30 s extra de la funcion son para el turno, no para esperar mas.
+      const esperaMs = esperaEfectivaMs(Math.max(...lista.map((d) => d.esperaSegundos)), (deps.relojMs ?? Date.now)() - inicioMs);
+      if (esperaMs > 0 && turnoAsincrono) {
+        // Espera DESLIZANTE (solo asincrono): el 200 a Meta ya salio, asi que la espera solo junta la rafaga. Se espera una ventana de silencio corta y se
+        // repite solo si en ella llego otro mensaje de estos telefonos (la fase A de ese mensaje ya lo agrego al historial), sin pasar de la espera configurada.
+        // Un mensaje que llegue despues de cerrar la ventana lo contesta la pasada siguiente de `responderTrasEspera` (MAX_PASADAS_RAFAGA).
+        const silencio = deps.silencioRafagaMs ?? silencioRafagaAsincronaMs();
+        const contarMensajes = () =>
+          deps.engine
+            .withAppSession({ userId: null }, async (db) => {
+              const repo = deps.restaurantesRepo(db);
+              let n = 0;
+              for (const d of lista) n += (await repo.whatsappAppendTurn(d.organizationId, d.phone, [], null, null, null)).filter((m) => m.role === "user").length;
+              return n;
+            })
+            .catch(() => null);
+        let previo = await contarMensajes();
+        let acumulado = 0;
+        while (acumulado < esperaMs) {
+          const ventana = Math.min(silencio, esperaMs - acumulado);
+          await esperar(ventana);
+          acumulado += ventana;
+          if (previo === null) break; // sin poder leer el historial no se alarga la espera
+          const ahora = await contarMensajes();
+          if (ahora === null || ahora === previo) break;
+          previo = ahora;
+        }
+      } else if (esperaMs > 0) {
+        await esperar(esperaMs);
+      }
       try {
-        const reintento = await deps.engine.withAppSession({ userId: null }, async (db) => {
+        return await deps.engine.withAppSession({ userId: null }, async (db) => {
           const repo = deps.restaurantesRepo(db);
           let hayReintento = false;
-          for (const d of diferidos) {
+          for (const d of lista) {
             const outcome = await responderTrasEspera(repo, deps.turnHandler, {
               organizationId: d.organizationId,
               messageId: d.messageId,
@@ -277,8 +341,9 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
               propertyId: d.propertyId,
               ...(deps.privacidadRepo ? { privacy: deps.privacidadRepo(db) } : {}),
               handoffGate: deps.handoffGate?.(db),
-              finFuncionMs: inicioMs + FUNCION_MAX_MS,
+              finFuncionMs: inicioMs + (turnoAsincrono ? FUNCION_ASINCRONA_MAX_MS : FUNCION_MAX_MS),
               reloj: deps.relojMs ?? Date.now,
+              ...(turnoAsincrono ? { turnoAsincrono: true } : {}),
               ...(d.recibidoEnMs !== undefined ? { recibidoEnMs: d.recibidoEnMs } : {}),
             });
             if (outcome.retryable) hayReintento = true;
@@ -287,19 +352,46 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
           await triggerRestaurantesEmailDispatchInline(deps, db, repo);
           return hayReintento;
         });
-        if (reintento) hadRetryableFailure = true;
       } catch {
         // La transaccion de la fase B no pudo confirmar (su `failed` se revirtio con ella): se suelta el turno que confirmo la fase A para que
-        // Meta reintente y los mensajes siguientes no se absorban sin respuesta.
-        hadRetryableFailure = true;
+        // Meta reintente (o, en modo asincrono, el barredor de turnos huerfanos lo retome) y los mensajes siguientes no se absorban sin respuesta.
         try {
           await deps.engine.withAppSession({ userId: null }, async (db) => {
             const repo = deps.restaurantesRepo(db);
-            for (const d of diferidos) await liberarTurnoTrasFalloDeFaseB(repo, { organizationId: d.organizationId, messageId: d.messageId, phone: d.phone });
+            for (const d of lista) await liberarTurnoTrasFalloDeFaseB(repo, { organizationId: d.organizationId, messageId: d.messageId, phone: d.phone });
           });
         } catch {
-          // Sin base no se puede liberar: manda el vencimiento del lease (45 s).
+          // Sin base no se puede liberar: manda el vencimiento del lease (45 s; 90 s en modo asincrono).
         }
+        return true;
+      }
+    };
+
+    const sincronos = diferidos.filter((d) => !d.asincrono);
+    const asincronos = diferidos.filter((d) => d.asincrono);
+    if (sincronos.length > 0 && (await faseB(sincronos, false))) hadRetryableFailure = true;
+    if (asincronos.length > 0) {
+      const enSegundoPlano = deps.enSegundoPlano ?? waitUntilDeVercel();
+      const tarea = (async () => {
+        // «Escribiendo» + leido al tomar el turno: el cliente ve que se le atiende aunque el turno tarde. Sin await: nunca retrasa ni rompe el turno.
+        if (deps.escribiendoWhatsApp) {
+          for (const d of asincronos) void deps.escribiendoWhatsApp({ phoneNumberId: d.phoneNumberId, messageId: d.messageId }).catch(() => undefined);
+        }
+        const reintento = await faseB(asincronos, true);
+        // Con tiempo de sobra en la funcion, se recoge UN turno huerfano de esta organizacion (una funcion anterior que murio tras su 200): sin cron,
+        // en horas con trafico el huerfano se contesta en segundos. Solo en segundo plano (nunca retrasa la respuesta del arnes local) y best-effort.
+        if (enSegundoPlano && (deps.relojMs ?? Date.now)() - inicioMs <= FUNCION_ASINCRONA_MAX_MS - MARGEN_BARRIDO_EN_WEBHOOK_MS) {
+          await barrerTurnosHuerfanosWhatsApp(deps, { inicioMs, organizationId: asincronos[0]!.organizationId, limite: 1 }).catch(() => undefined);
+        }
+        return reintento;
+      })();
+      if (enSegundoPlano) {
+        // Meta ya tiene su 200 (sin reintento): un fallo aqui deja el mensaje `failed` / con el lease vencido y lo retoma el barredor
+        // `/internal/restaurantes/whatsapp/turnos-huerfanos`. La promesa nunca rechaza (faseB atrapa todo), pero se blinda igual.
+        enSegundoPlano(tarea.catch(() => true));
+      } else if (await tarea) {
+        // Sin Vercel (local / arnes): mismo contrato que el camino sincrono, Meta (o el arnes) ve el 500 y reintenta.
+        hadRetryableFailure = true;
       }
     }
 

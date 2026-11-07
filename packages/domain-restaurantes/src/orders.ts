@@ -3,6 +3,7 @@
 // re-cotiza server-side contra el catálogo real de la sucursal — nunca se confía en
 // un total mandado por el cliente/LLM (guardia anti-alucinación de precio, ver
 // product-search.ts::resolveOrderItemsAgainstProducts).
+import { buscarEnCatalogo } from "./whatsapp/cerebro-v2/busqueda.ts";
 import { descripcionSeguraDeError } from "./log-seguro.ts";
 import { createHash } from "node:crypto";
 import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
@@ -85,9 +86,17 @@ export function assertDobleSalsaAplica(products: readonly ProductoEncontrado[], 
 /** Búsqueda real de productos disponibles en una sucursal — port literal de
  * buscarProductosCore, incluyendo el fix real del 4-sep-2026 (match contra name,
  * description, categoría Y search_keywords, no solo name). */
-export async function searchProducts(repo: RestaurantesRepository, args: { readonly propertyId: string; readonly query: string }): Promise<ProductoEncontrado[]> {
+export async function searchProducts(repo: RestaurantesRepository, args: { readonly propertyId: string; readonly query: string; readonly cerebroV2?: boolean }): Promise<ProductoEncontrado[]> {
   let tokens = tokenizeForProductSearch(args.query);
   const catalog = await repo.listAvailableProductsForBranch(args.propertyId);
+  // Cerebro v2: la busqueda medida del suelto (cero cero / sin alcohol, platillo vs pieza, relevancia, varias partes) ordena el MISMO catalogo de la sucursal; los
+  // datos de cada renglon (precio, paquete, no_domicilio) siguen saliendo del catalogo del monorrepo. Si no encuentra nada, sigue la busqueda de siempre.
+  if (args.cerebroV2) {
+    const porId = new Map(catalog.map((p) => [p.id, p] as const));
+    const v2 = buscarEnCatalogo(args.query, catalog.map((p) => ({ id: p.id, name: p.name, category: p.categoryName ?? null, description: p.description ?? null, price: Number(p.price), searchKeywords: p.searchKeywords ?? null })), { conExtras: false });
+    const elegidos = v2.flatMap((r) => { const p = porId.get(r.id); return p ? [p] : []; });
+    if (elegidos.length > 0) return elegidos.slice(0, 8).map((p) => toProductoEncontrado(p));
+  }
   const buscar = (ts: readonly string[]) => catalog.filter((p) => matchesProductSearch(ts, { name: p.name, description: p.description, categoryName: p.categoryName, searchKeywords: p.searchKeywords }));
   let encontrados = buscar(tokens);
   // R8 (T7-032/045/064/031/005/061): "torta de bistek sin queso", "frijol sin tostada", "pastor planchado", "flautas de pollo doradas", "1/4 de pollo bien picada" daban lista vacia
@@ -632,6 +641,11 @@ export async function createOrder(
      * `por_aprobar`): no sale el aviso "nuevo pedido" ni el correo de confirmacion (todavia no esta confirmado) y el pedido devuelto lleva ese estado. Si lanza,
      * la transaccion (o el SAVEPOINT de la herramienta) revierte tambien el pedido: nunca queda un pedido grande en `pending` rumbo a cocina. */
     readonly retener?: (order: Order, prepared: PreparedOrder) => Promise<boolean>;
+    /** Turno asincrono de WhatsApp (cerebro v2): id del mensaje de Meta que disparo el turno. Con el, la llave de idempotencia y la huella salen de
+     * (mensaje, sucursal, renglones canonicos del catalogo: producto, cantidad y tortilla), NO del texto libre: un turno re-ejecutado para el mismo mensaje
+     * (reintento de Meta o barredor de turnos huerfanos) devuelve el MISMO pedido aunque el modelo redacte distinto las notas o la direccion. Una llave
+     * explicita del payload (voz) manda sobre esta. Ausente = la huella por contenido de siempre. */
+    readonly idempotenciaDeMensaje?: string;
   } = {},
 ): Promise<Order> {
   const prepared = await prepareCreateOrder(repo, rawInput);
@@ -702,7 +716,20 @@ export async function createOrder(
       ...(payload.programadoPara ? { programado_para: payload.programadoPara } : {}),
     }),
   );
-  const idempotencyKey = payload.idempotencyKey ? sha256Hex(`${payload.organizationId}:${payload.idempotencyKey}`) : null;
+  // La huella de la llave por mensaje es la misma base canonica: misma llave => misma huella, asi create_order_idempotent devuelve el pedido existente
+  // en vez de rechazarlo como «misma llave, contenido distinto» (PT409) cuando solo cambiaron las notas.
+  const huellaDeMensaje =
+    options.idempotenciaDeMensaje && !payload.idempotencyKey
+      ? sha256Hex(
+          JSON.stringify({
+            organization_id: payload.organizationId,
+            mensaje: options.idempotenciaDeMensaje,
+            property_id: branch.propertyId,
+            items: itemsOrdenados.map((item) => [item.id, item.quantity, item.tortilla ?? null]).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))),
+          }),
+        )
+      : null;
+  const idempotencyKey = payload.idempotencyKey ? sha256Hex(`${payload.organizationId}:${payload.idempotencyKey}`) : huellaDeMensaje ? sha256Hex(`${payload.organizationId}:wa-mensaje:${huellaDeMensaje}`) : null;
 
   // create_order_idempotent (ver migrations/003) nunca lanza en el camino feliz de un
   // reintento: si ya existe un pedido con la misma idempotencyKey o el mismo
@@ -734,7 +761,7 @@ export async function createOrder(
       // Migracion 034: con valor, create_order_idempotent lo crea en `programado` (ya verificado arriba).
       programadoPara: payload.programadoPara ?? null,
     },
-    dedupeFingerprint,
+    huellaDeMensaje ?? dedupeFingerprint,
     idempotencyKey,
   );
 

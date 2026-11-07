@@ -1,4 +1,5 @@
 import { buildDemoAgents } from "../demo-agents/production.ts";
+import { turnoAsincronoDeEntorno } from "../en-segundo-plano.ts";
 // buildProductionDeps — ensambla el `AppDeps` real que consume el handler de Vercel
 // (`../../api/index.ts` en la raíz del repo). Ver `not-ready.ts` para el detalle
 // completo de qué NO es un adaptador de producción todavía y por qué.
@@ -57,7 +58,8 @@ import { PostgresAgentesRepository, PostgresHotelesRepository, PostgresReservasA
 import { buildGovernedHotelesTurnHandler } from "./hoteles-agentes-gobierno.ts";
 import { DualPacCfdiPort, FinkokAdapter, SwSapienAdapter } from "@atiende/mcp-cfdi";
 import type { ObservabilidadTurno, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
-import { GeminiLiveProvider, contextoPrecargadoDeEntorno, PostgresAgregadosRepository, crearHookAgregados, PostgresAutopilotoRepository, crearHooksAutopilotoTurnoPostgres, evaluarAlertasVozDelSistema, PostgresCierreRepository, PostgresConversacionesRepository, PostgresDemoRepository, PostgresHandoffAgentGate, PostgresPrivacidadRepository, PostgresRepartidorPerfilRepository, PostgresRestaurantesRepository, PostgresVozKpiRepository, PostgresVozLlamadaRepository, PostgresVozRepository, PostgresWhatsappKpiRepository, createLlmWhatsAppTurnHandler as createRestaurantesLlmWhatsAppTurnHandler, hashTelefonoParaLogs, PostgresAjustesAgenteRepository, temperaturaEfectivaWhatsapp, normalizarBaseMenuPdf } from "@atiende/domain-restaurantes";
+import type { RestaurantesRepository, WhatsAppLlmAgentOptions } from "@atiende/domain-restaurantes";
+import { GeminiLiveProvider, contextoPrecargadoDeEntorno, PostgresAgregadosRepository, crearHookAgregados, PostgresAutopilotoRepository, crearHooksAutopilotoTurnoPostgres, evaluarAlertasVozDelSistema, PostgresCierreRepository, PostgresConversacionesRepository, PostgresDemoRepository, PostgresHandoffAgentGate, PostgresPrivacidadRepository, PostgresRepartidorPerfilRepository, PostgresRestaurantesRepository, PostgresVozKpiRepository, PostgresVozLlamadaRepository, PostgresVozRepository, PostgresWhatsappKpiRepository, createLlmWhatsAppTurnHandler as createRestaurantesLlmWhatsAppTurnHandler, hashTelefonoParaLogs, PostgresAjustesAgenteRepository, leerCerebroV2, temperaturaEfectivaWhatsapp, normalizarBaseMenuPdf } from "@atiende/domain-restaurantes";
 import { PostgresCfoRepository as PostgresCfoRestaurantesRepository } from "@atiende/domain-restaurantes/cfo/postgres";
 import type { GoogleOAuthPlatformConfig, ResolveCalendarPort, ResolveCalendarSyncPort, WhatsAppTurnHandler as CitasWhatsAppTurnHandler } from "@atiende/domain-citas";
 import {
@@ -138,6 +140,7 @@ import { createPlatformSwitchGuard } from "../platform-switches.ts";
 import { crearDespachadorAlertas, configAlertasDesdeEnv } from "../alertas/index.ts";
 import { notProductionReady } from "./not-ready.ts";
 import { conAjustesDeVoz, resolverAjustesVozPostgres } from "./voz-con-ajustes.ts";
+import { buildVozTurnoPuertos } from "./voz-turno-deps.ts";
 import { conBitacoraDeTurno } from "../agentes/corridas.ts";
 import { resolveRoleRoute } from "./llm-models.ts";
 import { buildProductionDataChat } from "../data-chat/deps.ts";
@@ -166,8 +169,15 @@ import {
 /** Handler de restaurantes sobre UNA sesion: tambien encola la comanda de SoftRestaurant de los pedidos
  * creados por WhatsApp (mismo helper y mismo cableado que voz/web en public.ts). Produccion no inyecta
  * puerto ni mapeo propios todavia, asi que usa los valores por omision del cableado. */
-export function buildRestaurantesTurnHandlerForSession(db: TenantDbSession, gateway: NonNullable<AppDeps["llmGateway"]>, softRestaurantDeps: SoftRestaurantDeps = {}, observabilidad?: ObservabilidadTurno): WhatsAppTurnHandler {
-  const repo = new PostgresRestaurantesRepository(db);
+export function buildRestaurantesTurnHandlerForSession(
+  db: TenantDbSession,
+  gateway: NonNullable<AppDeps["llmGateway"]>,
+  softRestaurantDeps: SoftRestaurantDeps = {},
+  observabilidad?: ObservabilidadTurno,
+  // Turno de voz (voz-turno.ts): repositorio adaptado a la llamada y opciones que pisan las de WhatsApp (modelo de voz, cerebro v2). Ausente = WhatsApp de siempre.
+  canal: { readonly repo?: RestaurantesRepository; readonly opciones?: Partial<WhatsAppLlmAgentOptions> } = {},
+): WhatsAppTurnHandler {
+  const repo = canal.repo ?? new PostgresRestaurantesRepository(db);
   return createRestaurantesLlmWhatsAppTurnHandler(repo, gateway, {
     defaultRole: RESTAURANTES_WHATSAPP_AGENT_ROLE,
     escalatedRole: RESTAURANTES_WHATSAPP_AGENT_ESCALATED_ROLE,
@@ -187,6 +197,9 @@ export function buildRestaurantesTurnHandlerForSession(db: TenantDbSession, gate
       const lectura = await new PostgresAjustesAgenteRepository(db).leer(organizationId);
       return lectura.configurados ? { modelo: lectura.valor.whatsappModelo, temperatura: temperaturaEfectivaWhatsapp(lectura.valor) } : null;
     },
+    // Cerebro v2 (migracion 190, bandera por organizacion): sin la columna o sin fila = apagado (SAVEPOINT).
+    leerCerebroV2: (organizationId) => leerCerebroV2(db, organizationId),
+    ...canal.opciones,
   });
 }
 
@@ -364,7 +377,8 @@ export function buildProductionDeps(): AppDeps {
   // arriba: la ruta que lo consume (routes/internal/whatsapp-dispatch.ts) responde
   // 503 explícito en vez de fingir un envío. Ningún token real de Meta se usa en
   // tests/CI — este constructor solo corre en producción real.
-  const whatsAppDispatcher = env.whatsappAccessToken ? new WhatsAppOutboundDispatcher({ graphClient: new MetaGraphWhatsAppClient({ accessToken: env.whatsappAccessToken, approvedTemplates: env.whatsappApprovedTemplates, ...(env.whatsappGraphApiVersion ? { apiVersion: env.whatsappGraphApiVersion } : {}) }) }) : undefined;
+  const whatsAppGraphClient = env.whatsappAccessToken ? new MetaGraphWhatsAppClient({ accessToken: env.whatsappAccessToken, approvedTemplates: env.whatsappApprovedTemplates, ...(env.whatsappGraphApiVersion ? { apiVersion: env.whatsappGraphApiVersion } : {}) }) : undefined;
+  const whatsAppDispatcher = whatsAppGraphClient ? new WhatsAppOutboundDispatcher({ graphClient: whatsAppGraphClient }) : undefined;
 
   // Vigilancia de salud de Meta (token por vencer, timeouts del agente): el lector del token existe solo con WHATSAPP_ACCESS_TOKEN; sin el no se llama a Meta.
   const saludMeta: SaludMetaDeps = {
@@ -424,6 +438,8 @@ export function buildProductionDeps(): AppDeps {
     // La vista previa aplica los ajustes de la organizacion (temperatura, ritmo/estilo, conocimiento automatico) sin tocar las rutas de voz.
     voiceProvider: conAjustesDeVoz(new GeminiLiveProvider({ apiKey: env.geminiApiKey ?? null }), resolverAjustesVozPostgres(engine)),
     dataChat: buildProductionDataChat(llmGateway, engine),
+    // Turno de voz del cerebro v2 (POST /v1/restaurantes/voz/turno, migracion 191): sin gateway LLM la ruta responde 503 con fin (apagado honesto).
+    ...(llmGateway ? { vozTurno: buildVozTurnoPuertos(engine, llmGateway, buildRestaurantesTurnHandlerForSession) } : {}),
     turnHandler: llmGateway
       ? conBitacoraDeTurno(buildRealRestaurantesTurnHandler(engine, llmGateway, observabilidadTurnosRestaurantes(env.whatsappAppSecret)), { deps: depsBitacora, agente: RESTAURANTES_WHATSAPP_AGENT_ROLE, vertical: "restaurantes" })
       : notProductionReady<WhatsAppTurnHandler>("turnHandler (falta configurar OPENROUTER_API_KEY)"),
@@ -658,6 +674,11 @@ export function buildProductionDeps(): AppDeps {
     resumenDiarioLlmGateway,
     superadminCopiloto: buildProductionSuperadminCopiloto(superadminCopilotoLlmGateway),
     whatsAppDispatcher,
+    // Turno asincrono del webhook de WhatsApp de restaurantes: organizaciones con cerebro v2 (lectura con SAVEPOINT; sin la 190 = apagada) o todas con
+    // `WHATSAPP_TURNO_ASINCRONO`. El webhook acusa a Meta tras la fase A y corre el turno con `waitUntil` (60 s de vida; ver vercel.json).
+    turnoAsincrono: async (db, organizationId) => turnoAsincronoDeEntorno() || (await leerCerebroV2(db, organizationId)),
+    // «Escribiendo» + leido al tomar un turno asincrono; sin token de Meta no hay (el webhook lo omite).
+    ...(whatsAppGraphClient ? { escribiendoWhatsApp: (a: { readonly phoneNumberId: string; readonly messageId: string }) => whatsAppGraphClient.marcarLeidoYEscribiendo(a) } : {}),
     saludMeta,
     notasDeVoz,
     // Suscripción SaaS propia de Atiende (auditoría de 22 rubros, hallazgo P1
