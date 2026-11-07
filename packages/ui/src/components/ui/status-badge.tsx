@@ -12,15 +12,15 @@ export const STATUS_TONES = ["neutral", "info", "success", "warning", "danger"] 
 export type StatusTone = (typeof STATUS_TONES)[number];
 
 const statusBadgeVariants = cva(
-  "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium",
+  "ds3-status inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium",
   {
     variants: {
       tone: {
-        neutral: "bg-canvas text-muted-foreground",
-        info: "bg-info-tint text-info",
-        success: "bg-success-tint text-success",
-        warning: "bg-warning-tint text-warning",
-        danger: "bg-destructive-tint text-destructive",
+        neutral: "ds3-status-neutral bg-canvas text-muted-foreground",
+        info: "ds3-status-info bg-info-tint text-info",
+        success: "ds3-status-success bg-success-tint text-success",
+        warning: "ds3-status-warning bg-warning-tint text-warning",
+        danger: "ds3-status-danger bg-destructive-tint text-destructive",
       },
     },
     defaultVariants: { tone: "neutral" },
@@ -36,7 +36,7 @@ export interface StatusBadgeProps extends Omit<React.HTMLAttributes<HTMLSpanElem
 export function StatusBadge({ tone = "neutral", dot = true, className, children, ...props }: StatusBadgeProps) {
   return (
     <span data-tone={tone} className={cn(statusBadgeVariants({ tone }), className)} {...props}>
-      {dot && <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-current" />}
+      {dot && <span aria-hidden="true" className="ds3-status-punto size-1.5 shrink-0 rounded-full bg-current" />}
       {children}
     </span>
   );

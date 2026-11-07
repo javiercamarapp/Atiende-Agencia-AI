@@ -1,4 +1,5 @@
 import { cn } from "../lib/utils";
+import { CargandoLogo } from "./CargandoLogo";
 import { Card } from "./ui/card";
 
 type IconType = React.ComponentType<{ className?: string; strokeWidth?: number | string }>;
@@ -24,6 +25,8 @@ export interface StatCardProps {
   deltaNota?: string;
   /** Razón por la que no hay cifra real todavía (ej. "Pendiente de credenciales del PMS"). Si se pasa, la tarjeta ignora `value`/`nota`/`delta` y muestra "—" con esta explicación. */
   sinDato?: string;
+  /** Carga en curso: la cifra se sustituye por el logo que respira (CargandoLogo linea) SIN cambiar el alto de la tarjeta. */
+  cargando?: boolean;
   /**
    * `neutra` = la tarjeta de la consola de Likida tal cual (`admin/ui/kit.tsx` StatCard): chip de icono de 28 px con
    * esquina `rounded-lg`, en el acento de Atiende (`bg-primary`) donde Likida usa tinta negra. Sin ella (`marca`) el chip es
@@ -41,29 +44,31 @@ export type StatCardVariante = "marca" | "neutra";
  * Atiende, etiqueta gris, cifra grande) y, debajo, un pie tras divisor punteado.
  * Con la disciplina de "nunca inventar una cifra": sin dato real muestra "—" y dice por que.
  */
-export function StatCard({ icon: Icon, label, value, nota, delta, deltaNota = "vs periodo anterior", sinDato, variante = "marca", className }: StatCardProps) {
+export function StatCard({ icon: Icon, label, value, nota, delta, deltaNota = "vs periodo anterior", sinDato, cargando = false, variante = "marca", className }: StatCardProps) {
   const mostrarSinDato = Boolean(sinDato);
+  // CargandoLogo es un div role=status: no puede vivir dentro de un <p>.
+  const Valor = cargando ? "div" : "p";
   const pie = pieDe({ mostrarSinDato, sinDato, delta, deltaNota, nota });
   return (
-    <Card className={cn("flex h-full min-w-0 flex-col p-2", className)}>
-      <div className="min-w-0 rounded-xl border border-line2 bg-canvas px-3 py-2">
+    <Card className={cn("ds3-stat flex h-full min-w-0 flex-col p-2", className)} aria-busy={cargando || undefined}>
+      <div className="ds3-stat-inner min-w-0 rounded-xl border border-line2 bg-canvas px-3 py-2">
         <div className="flex min-w-0 items-center gap-2.5">
-          <div data-testid="stat-card-chip" className={cn("flex size-7 shrink-0 items-center justify-center bg-primary text-primary-foreground", variante === "neutra" ? "rounded-lg" : "rounded-full")}>
+          <div data-testid="stat-card-chip" className={cn("ds3-stat-chip flex size-7 shrink-0 items-center justify-center bg-primary text-primary-foreground", variante === "neutra" ? "rounded-lg" : "rounded-full")}>
             <Icon className="size-[15px]" strokeWidth={1.75} />
           </div>
-          <span className="line-clamp-2 min-w-0 flex-1 text-ui text-muted-foreground">{label}</span>
+          <span className="ds3-stat-label line-clamp-2 min-w-0 flex-1 text-ui text-muted-foreground">{label}</span>
         </div>
-        <p
-          className={cn("mt-0.5 min-w-0 truncate font-display text-xl font-semibold leading-tight tabular-nums", mostrarSinDato ? "text-faint" : "text-foreground")}
-          title={mostrarSinDato ? undefined : value}
+        <Valor
+          className={cn("ds3-stat-valor mt-0.5 min-w-0 truncate font-display text-xl font-semibold leading-tight tabular-nums", mostrarSinDato ? "text-faint" : "text-foreground", cargando && "flex min-h-7 items-center")}
+          title={mostrarSinDato || cargando ? undefined : value}
           aria-label={mostrarSinDato ? `${label}: sin dato` : undefined}
         >
-          {mostrarSinDato ? "—" : value}
-        </p>
+          {cargando ? <CargandoLogo tamano="linea" etiqueta={`Cargando ${label}`} /> : mostrarSinDato ? "—" : value}
+        </Valor>
       </div>
       {/* El espaciador alinea los pies en una fila de tarjetas parejas aunque una etiqueta envuelva a dos lineas. */}
       <div className="grow" />
-      {pie && <div className="mx-1.5 mt-1.5 border-t border-dashed border-line2 pt-1.5 text-xs">{pie}</div>}
+      {pie && <div aria-hidden={cargando || undefined} className={cn("ds3-stat-pie mx-1.5 mt-1.5 border-t border-dashed border-line2 pt-1.5 text-xs", cargando && "invisible")}>{pie}</div>}
     </Card>
   );
 }
