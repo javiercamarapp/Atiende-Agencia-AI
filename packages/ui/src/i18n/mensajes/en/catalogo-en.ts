@@ -4,9 +4,19 @@
  */
 import type { ModulosTraducidos } from "../index.ts";
 import { comunEn } from "./comun.ts";
-import { resumenGeneralEn } from "./resumen-general.ts";
+import { consolaEn } from "./consola.ts";
+import { generalEn } from "./general.ts";
+import { navEn } from "./nav.ts";
+import { notifEn } from "./notif.ts";
+import { rolEn } from "./rol.ts";
+import { shellEn } from "./shell.ts";
 
 export const MODULOS_EN = {
   comun: comunEn,
-  resumenGeneral: resumenGeneralEn,
+  nav: navEn,
+  shell: shellEn,
+  rol: rolEn,
+  consola: consolaEn,
+  notif: notifEn,
+  general: generalEn,
 } as const satisfies ModulosTraducidos;

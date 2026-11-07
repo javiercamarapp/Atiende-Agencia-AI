@@ -12,7 +12,12 @@
  */
 import type { Idioma, Mensaje, Traduccion } from "../tipos.ts";
 import type { comun } from "./comun.ts";
-import type { resumenGeneral } from "./resumen-general.ts";
+import type { consola } from "./consola.ts";
+import type { nav } from "./nav.ts";
+import type { notif } from "./notif.ts";
+import type { rol } from "./rol.ts";
+import type { shell } from "./shell.ts";
+import type { general } from "./general.ts";
 
 /**
  * Modulos que van en el bundle de arranque. Vacio a proposito: la entrada esta en su tope de bundle, asi que TODO modulo es
@@ -28,7 +33,12 @@ export const MODULOS = {} as const;
  */
 interface ModulosDeArea {
   readonly comun: typeof comun;
-  readonly resumenGeneral: typeof resumenGeneral;
+  readonly nav: typeof nav;
+  readonly shell: typeof shell;
+  readonly rol: typeof rol;
+  readonly consola: typeof consola;
+  readonly notif: typeof notif;
+  readonly general: typeof general;
 }
 
 type Modulos = typeof MODULOS & ModulosDeArea;

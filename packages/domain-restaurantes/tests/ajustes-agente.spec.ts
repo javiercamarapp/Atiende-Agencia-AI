@@ -11,6 +11,7 @@ import {
   ajustesDeLlamada,
   costoEstimadoModelo,
   esModeloAgentePermitido,
+  esModeloVozZdr,
   modeloAgentePorId,
   temperaturaEfectivaWhatsapp,
   validarAjustesAgente,
@@ -32,16 +33,31 @@ describe("lista permitida de modelos", () => {
     expect(modeloAgentePorId(null)).toBeNull();
   });
 
-  it("la temperatura se ofrece solo donde los endpoints permitidos la aceptan (evidencia OpenRouter 4-oct-2026)", () => {
+  it("la temperatura se ofrece solo donde los endpoints ZDR permitidos la aceptan (evidencia OpenRouter 6-nov-2026)", () => {
     const acepta = Object.fromEntries(MODELOS_AGENTE.map((m) => [m.id, m.aceptaTemperatura]));
     expect(acepta).toEqual({
       "openai/gpt-6-luna": false,
+      "anthropic/claude-haiku-5.5": false,
       "deepseek/deepseek-v4.1-flash": true,
-      "google/gemini-2.5-flash-lite": true,
-      "meta/muse-spark-1.3": true,
-      "google/gemini-3.8-flash": true,
-      "anthropic/claude-sonnet-5.5": false,
+      "google/gemini-3.5-flash-lite": false,
     });
+  });
+
+  it("voz: solo los modelos con endpoint ZDR en Vertex/Bedrock/Azure sirven para la cascada (DeepSeek V4.1 Flash solo WhatsApp)", () => {
+    expect(Object.fromEntries(MODELOS_AGENTE.map((m) => [m.id, m.vozZdr]))).toEqual({
+      "openai/gpt-6-luna": true,
+      "anthropic/claude-haiku-5.5": true,
+      "deepseek/deepseek-v4.1-flash": false,
+      "google/gemini-3.5-flash-lite": true,
+    });
+    expect(esModeloVozZdr("deepseek/deepseek-v4.1-flash")).toBe(false);
+    expect(esModeloVozZdr("anthropic/claude-sonnet-5.5")).toBe(false);
+    expect(esModeloVozZdr("openai/gpt-6-luna")).toBe(true);
+  });
+
+  it("modelos por actividad: la lista no ofrece premium ni modelos sin retencion cero", () => {
+    for (const id of ["anthropic/claude-sonnet-5.5", "google/gemini-2.5-flash-lite", "meta/muse-spark-1.3", "google/gemini-3.8-flash"]) expect(esModeloAgentePermitido(id), id).toBe(false);
+    expect(MODELOS_AGENTE.every((m) => m.nivel === "economico")).toBe(true);
   });
 });
 
@@ -52,11 +68,11 @@ describe("costo estimado por modelo (micro-USD enteros, hacia arriba, con la tab
     expect(c).toMatchObject({ microUsdPorUnidad: 800, microUsdPorMil: 800_000, verificadoEn: "2026-10-01" });
   });
 
-  it("un minuto de cascada con Claude Sonnet 5.5 cuesta mas que con Gemini 2.5 Flash-Lite", () => {
-    const caro = costoEstimadoModelo("anthropic/claude-sonnet-5.5", "voz_cascada_minuto").microUsdPorUnidad!;
-    const barato = costoEstimadoModelo("google/gemini-2.5-flash-lite", "voz_cascada_minuto").microUsdPorUnidad!;
-    expect(caro).toBe(Math.ceil(12000 * 2 + 500 * 10));
-    expect(caro).toBeGreaterThan(barato * 10);
+  it("un minuto de cascada con Gemini 3.5 Flash-Lite cuesta mas que con Luna (12,000 in * 0.3 + 500 out * 2.5)", () => {
+    const flashLite = costoEstimadoModelo("google/gemini-3.5-flash-lite", "voz_cascada_minuto").microUsdPorUnidad!;
+    const luna = costoEstimadoModelo("openai/gpt-6-luna", "voz_cascada_minuto").microUsdPorUnidad!;
+    expect(flashLite).toBe(Math.ceil(12000 * 0.3 + 500 * 2.5));
+    expect(flashLite).toBeGreaterThan(luna);
   });
 
   it("todo modelo de la lista tiene precio de lista; uno desconocido da null (nunca inventa)", () => {
@@ -68,8 +84,8 @@ describe("costo estimado por modelo (micro-USD enteros, hacia arriba, con la tab
 describe("validarAjustesAgente (el PUT reemplaza todo: cada campo es obligatorio)", () => {
   it("acepta los ajustes por omision y los de un modelo con temperatura", () => {
     expect(validarAjustesAgente(COMPLETOS)).toEqual(COMPLETOS);
-    const ok = validarAjustesAgente({ ...COMPLETOS, whatsappModelo: "google/gemini-3.8-flash", whatsappTemperatura: 0.3, vozTemperatura: 0.6, vozRitmo: "pausado", vozEstilo: "calido", vozFondoActivo: true, vozFondoVolumen: 12 });
-    expect(ok).toMatchObject({ whatsappModelo: "google/gemini-3.8-flash", whatsappTemperatura: 0.3, vozFondoVolumen: 12 });
+    const ok = validarAjustesAgente({ ...COMPLETOS, whatsappModelo: "deepseek/deepseek-v4.1-flash", whatsappTemperatura: 0.3, vozTemperatura: 0.6, vozRitmo: "pausado", vozEstilo: "calido", vozFondoActivo: true, vozFondoVolumen: 12 });
+    expect(ok).toMatchObject({ whatsappModelo: "deepseek/deepseek-v4.1-flash", whatsappTemperatura: 0.3, vozFondoVolumen: 12 });
   });
 
   it("rechaza un campo faltante: un cliente desactualizado no borra lo que no conoce", () => {
@@ -95,24 +111,24 @@ describe("validarAjustesAgente (el PUT reemplaza todo: cada campo es obligatorio
 
   it("pide temperatura a un modelo que no la admite: se rechaza con un mensaje claro (el predeterminado Luna tampoco la admite)", () => {
     expect(() => validarAjustesAgente({ ...COMPLETOS, whatsappTemperatura: 0.2 })).toThrow(/GPT-6 Luna no admite temperatura/);
-    expect(() => validarAjustesAgente({ ...COMPLETOS, whatsappModelo: "anthropic/claude-sonnet-5.5", whatsappTemperatura: 0.2 })).toThrow(/Claude Sonnet 5.5 no admite temperatura/);
+    expect(() => validarAjustesAgente({ ...COMPLETOS, whatsappModelo: "anthropic/claude-haiku-5.5", whatsappTemperatura: 0.2 })).toThrow(/Claude Haiku 5.5 no admite temperatura/);
     expect(validarAjustesAgente({ ...COMPLETOS, whatsappModelo: "deepseek/deepseek-v4.1-flash", whatsappTemperatura: 0 }).whatsappTemperatura).toBe(0);
   });
 });
 
 describe("temperatura efectiva y ajustes de llamada", () => {
   it("WhatsApp: la elegida si el modelo la admite; si no, 0 como siempre", () => {
-    expect(temperaturaEfectivaWhatsapp({ whatsappModelo: "google/gemini-2.5-flash-lite", whatsappTemperatura: 0.4 })).toBe(0.4);
+    expect(temperaturaEfectivaWhatsapp({ whatsappModelo: "deepseek/deepseek-v4.1-flash", whatsappTemperatura: 0.4 })).toBe(0.4);
     expect(temperaturaEfectivaWhatsapp({ whatsappModelo: null, whatsappTemperatura: 0.4 })).toBe(0); // fila escrita directo: Luna no la admite
-    expect(temperaturaEfectivaWhatsapp({ whatsappModelo: "google/gemini-2.5-flash-lite", whatsappTemperatura: null })).toBe(0);
+    expect(temperaturaEfectivaWhatsapp({ whatsappModelo: "deepseek/deepseek-v4.1-flash", whatsappTemperatura: null })).toBe(0);
   });
 
   it("el fondo solo cuenta activo con la bandera y volumen > 0; apagado manda volumen 0", () => {
     expect(ajustesDeLlamada(COMPLETOS).fondo).toEqual({ activo: false, volumen: 0, preset: "cocina-taqueria" });
     expect(ajustesDeLlamada({ ...COMPLETOS, vozFondoActivo: true, vozFondoVolumen: 0 }).fondo).toEqual({ activo: false, volumen: 0, preset: "cocina-taqueria" });
-    expect(ajustesDeLlamada({ ...COMPLETOS, vozFondoActivo: true, vozFondoVolumen: 9, vozModeloCascada: "google/gemini-3.8-flash", vozTemperatura: 0.3 })).toMatchObject({
+    expect(ajustesDeLlamada({ ...COMPLETOS, vozFondoActivo: true, vozFondoVolumen: 9, vozModeloCascada: "deepseek/deepseek-v4.1-flash", vozTemperatura: 0.3 })).toMatchObject({
       fondo: { activo: true, volumen: 9 },
-      modeloCascada: "google/gemini-3.8-flash",
+      modeloCascada: "deepseek/deepseek-v4.1-flash",
       temperatura: 0.3,
     });
   });
