@@ -75,9 +75,11 @@ python3 scripts/medicion-nube/agregar-c3.py <OUT_BASE>/<ETQ>     # (lo corre sol
 ```
 
 Mecanica que cambia respecto al origen (decisiones del puerto):
-- **Numero de la organizacion** (`arnes/prep-canales-c3.sql`): el cliente escribe a `5550009999`, que esta en `whatsapp_channel_config` y NO en
-  `whatsapp_branch_channel`; `resolveWhatsAppChannel` devuelve `propertyId: null`, el agente no tiene "sucursal de este chat" y elige por la direccion
-  (`buscar_sucursal_cercana`), como el banco espera. Las demas suites siguen usando los numeros por sucursal de `prep-canales.sql`.
+- **Numero POR SUCURSAL** (desde el 2026-11-06, decision del dueno de PM: cada sucursal tiene su propio WhatsApp): cada escenario escribe al numero
+  de la sucursal `sucursal_chat` (lo fija `c3-conciliar.py`; reglas R1-R5 y la lista de casos cruzados en `_port.numeros_por_sucursal` y en
+  `C3-CONCILIACION.md`). Los numeros salen de `whatsapp_branch_channel` (`prep-canales.sql` + `arnes/prep-canales-c3.sql`). Si el domicilio lo cubre otra
+  sucursal, el agente toma el pedido para la que lo cubre (no rechaza), asi que `esperado.sucursal` no cambia. `QA_C3_NUMERO=org` reproduce el banco
+  anterior: todos escriben al numero de la organizacion `5550009999` (en `whatsapp_channel_config` y NO en `whatsapp_branch_channel`, sin "sucursal de este chat").
 - **Reloj por conversacion** (`stack.ts`: `conRelojPropio`/`cabeceraReloj`, AsyncLocalStorage + cabecera `x-qa-reloj`): cada escenario corre con su
   propio `reloj` (desplazado 7*k dias como todo el arnes), lo que permite `CONC=2` con 80 relojes distintos. Sin contexto, el reloj global de siempre.
 - **Clientes existentes**: los pedidos previos se crean por la ruta de herramientas de voz en la sucursal que asigna la herramienta a la direccion

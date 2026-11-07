@@ -59,6 +59,14 @@ def main():
         print(f"sin los escenarios IMPOSIBLES en el destino ({len(set(r['escenario'] for r in imp))}; ver C3-CONCILIACION.md): {k2}/{n2} = {pct(k2/n2 if n2 else None)} (Wilson {pct(lo2)} - {pct(hi2)})")
     print(f"turnos con falla de proveedor (telemetria): {prov_turnos} de {len(tel)} turnos")
     print(f"USD gastado (delta uso llave): {usd}{'  CORTADA POR TOPE' if os.path.exists(base + '/CORTADA') else ''}")
+    # Tokens del agente (core.llm_usage_daily de cada copia efimera; ver correr-c3-local.sh). El cliente simulado no entra.
+    tk = [0, 0, 0, 0]
+    for f in glob.glob(f"{base}/rep*/tokens.txt"):
+        try: tk = [a + int(b) for a, b in zip(tk, open(f).read().split())]
+        except Exception: pass
+    if tk[3]:
+        nconv = max(1, len(res))
+        print(f"tokens agente: entrada={tk[0]} salida={tk[1]} llamadas={tk[3]} | por conversacion: entrada={tk[0]//nconv} salida={tk[1]//nconv} | costo estimado gateway={tk[2]/1e6:.4f} USD")
     print(f"latencia por turno (webhook, ms): p50={percentil(ms, .5)} p95={percentil(ms, .95)} n={len(ms)} | telemetria latenciaTotalMs p50={percentil(tl, .5)} p95={percentil(tl, .95)}")
     modelos = collections.Counter(m for r in res for m in (r.get("modelos") or []))
     if modelos: print(f"modelos que respondieron: {dict(modelos)}")

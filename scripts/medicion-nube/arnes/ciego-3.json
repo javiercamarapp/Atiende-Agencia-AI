@@ -54,7 +54,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "altabrisa"
   },
   {
    "id": "C3-PED-02-tacos-de-cochinita-san-ramon",
@@ -106,7 +107,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "garcia-lavin"
   },
   {
    "id": "C3-PED-03-papadzules-codzitos-ezn",
@@ -161,7 +163,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "prol-montejo"
   },
   {
    "id": "C3-PED-04-flautas-de-poc-chuc-itzimna",
@@ -212,7 +215,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "prol-montejo"
   },
   {
    "id": "C3-PED-05-kilo-de-pastor-temozon",
@@ -264,7 +268,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "garcia-lavin"
   },
   {
    "id": "C3-PED-06-kilo-y-medio-de-arrachera-cholul",
@@ -311,7 +316,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "altabrisa"
   },
   {
    "id": "C3-PED-07-kilo-de-bistec-y-medio-de-poc-chuc-americas",
@@ -367,7 +373,8 @@
     "adaptaciones": [
      "A3 sucursal de domicilio pensiones -> fco-montejo (buscar_sucursal_cercana real con colonia 'Las Américas': 4.7 km)"
     ]
-   }
+   },
+   "sucursal_chat": "pensiones"
   },
   {
    "id": "C3-PED-08-kilo-y-cuarto-de-costilla-centro",
@@ -423,7 +430,8 @@
     "adaptaciones": [
      "A3 sucursal de domicilio pensiones -> prol-montejo (buscar_sucursal_cercana real con colonia 'Centro': 5.1 km)"
     ]
-   }
+   },
+   "sucursal_chat": "pensiones"
   },
   {
    "id": "C3-PED-09-tres-cuartos-de-chuleta-con-guarniciones-cordemex",
@@ -478,7 +486,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "fco-montejo"
   },
   {
    "id": "C3-PED-10-dos-kilos-de-pastor-a-recoger-fco-montejo",
@@ -523,7 +532,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "fco-montejo"
   },
   {
    "id": "C3-PED-11-tacos-individuales-con-dos-tortillas-cholul",
@@ -581,7 +591,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "altabrisa"
   },
   {
    "id": "C3-PED-12-tacos-por-orden-arrachera-chorizo-y-cervezas-sin-alcohol",
@@ -639,7 +650,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "garcia-lavin"
   },
   {
    "id": "C3-PED-13-gringas-y-mestiza-xcumpich",
@@ -696,7 +708,8 @@
     "adaptaciones": [
      "A3 sucursal de domicilio garcia-lavin -> fco-montejo (buscar_sucursal_cercana real con colonia 'Xcumpich': None km)"
     ]
-   }
+   },
+   "sucursal_chat": "garcia-lavin"
   },
   {
    "id": "C3-PED-14-alambre-de-arrachera-y-alambre-suizo-de-bistec-vista-alegre",
@@ -752,7 +765,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "altabrisa"
   },
   {
    "id": "C3-PED-15-suizos-de-chile-poblano-y-chorizo-chuburna",
@@ -808,7 +822,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "garcia-lavin"
   },
   {
    "id": "C3-PED-16-postres-y-queso-fundido-itzimna",
@@ -867,7 +882,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "prol-montejo"
   },
   {
    "id": "C3-PED-17-jericallas-y-queso-napolitano-fdm",
@@ -918,7 +934,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "fco-montejo"
   },
   {
    "id": "C3-PED-18-bebidas-preparadas-y-papas-pensiones",
@@ -973,7 +990,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "pensiones"
   },
   {
    "id": "C3-PED-19-botanas-y-refrescos-para-ver-el-partido-americas",
@@ -1038,7 +1056,8 @@
     "adaptaciones": [
      "A3 sucursal de domicilio pensiones -> fco-montejo (buscar_sucursal_cercana real con colonia 'Las Américas': 4.7 km)"
     ]
-   }
+   },
+   "sucursal_chat": "pensiones"
   },
   {
    "id": "C3-PED-20-parrillada-para-4-temozon",
@@ -1093,7 +1112,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "garcia-lavin"
   },
   {
    "id": "C3-PED-21-boyo-hamburguesas-san-ramon",
@@ -1149,7 +1169,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "garcia-lavin"
   },
   {
    "id": "C3-PED-22-dos-quesobich-y-horchata-altabrisa",
@@ -1204,7 +1225,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "altabrisa"
   },
   {
    "id": "C3-PED-23-chetacos-ezn",
@@ -1259,7 +1281,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "prol-montejo"
   },
   {
    "id": "C3-PED-24-frances-suizo-y-papa-de-bistec-cordemex",
@@ -1314,7 +1337,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "fco-montejo"
   },
   {
    "id": "C3-PED-25-recoger-altabrisa-20-30",
@@ -1363,7 +1387,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "altabrisa"
   },
   {
    "id": "C3-PED-26-recoger-pensiones-14-15",
@@ -1412,7 +1437,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "pensiones"
   },
   {
    "id": "C3-PED-27-recoger-prol-montejo-noche-22-30",
@@ -1464,7 +1490,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "prol-montejo"
   },
   {
    "id": "C3-PED-28-recoger-garcia-lavin-12-45-recien-abierto",
@@ -1513,7 +1540,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "garcia-lavin"
   },
   {
    "id": "C3-PED-29-cambia-de-alambre-de-pastor-a-costilla-americas",
@@ -1571,7 +1599,8 @@
     "adaptaciones": [
      "A3 sucursal de domicilio pensiones -> fco-montejo (buscar_sucursal_cercana real con colonia 'Las Américas': 4.7 km)"
     ]
-   }
+   },
+   "sucursal_chat": "pensiones"
   },
   {
    "id": "C3-PED-30-cambia-de-direccion-chuburna-a-itzimna",
@@ -1623,7 +1652,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "prol-montejo"
   },
   {
    "id": "C3-PED-31-cambia-de-efectivo-a-tarjeta-montebello",
@@ -1674,7 +1704,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "garcia-lavin"
   },
   {
    "id": "C3-PED-32-corrige-su-nombre-xcumpich",
@@ -1734,7 +1765,8 @@
     "adaptaciones": [
      "A3 sucursal de domicilio garcia-lavin -> fco-montejo (buscar_sucursal_cercana real con colonia 'Xcumpich': None km)"
     ]
-   }
+   },
+   "sucursal_chat": "garcia-lavin"
   },
   {
    "id": "C3-PED-33-baja-de-dos-papas-a-una-ezn",
@@ -1786,7 +1818,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "prol-montejo"
   },
   {
    "id": "C3-PED-34-agrega-un-flan-despues-del-resumen-montebello",
@@ -1838,7 +1871,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "garcia-lavin"
   },
   {
    "id": "C3-PED-35-itzimna-pide-garcia-lavin",
@@ -1896,7 +1930,8 @@
      "el cliente PIDE la sucursal garcia-lavin pero la herramienta real asigna prol-montejo a 'Itzimná' y el servidor rechaza el domicilio fuera de la zona de garcia-lavin: la expectativa del origen (domicilio desde garcia-lavin) es IMPOSIBLE en el destino; no se adapta (cambiaria la conducta medida)",
      "la cotizacion real fallo en garcia-lavin: HTTP 400 Itzimná está fuera de la zona de reparto de García Lavín (Victory Platz): no se puede enviar el pedido a domicilio desde esta sucursal. Ofrezca recoger en sucursal o, si corresponde, otra suc"
     ]
-   }
+   },
+   "sucursal_chat": "garcia-lavin"
   },
   {
    "id": "C3-PED-36-cordemex-pide-pensiones-y-paga-exacto",
@@ -1955,7 +1990,8 @@
      "el cliente PIDE la sucursal pensiones pero la herramienta real asigna fco-montejo a 'Cordemex' y el servidor rechaza el domicilio fuera de la zona de pensiones: la expectativa del origen (domicilio desde pensiones) es IMPOSIBLE en el destino; no se adapta (cambiaria la conducta medida)",
      "la cotizacion real fallo en pensiones: HTTP 400 Revolución Cordemex está fuera de la zona de reparto de Pensiones: no se puede enviar el pedido a domicilio desde esta sucursal. Ofrezca recoger en sucursal o, si corresponde, otra sucursal."
     ]
-   }
+   },
+   "sucursal_chat": "pensiones"
   },
   {
    "id": "C3-PED-37-recurrente-lo-mismo-a-otra-direccion-xcumpich",
@@ -2039,7 +2075,8 @@
     "adaptaciones": [
      "A3 sucursal de domicilio garcia-lavin -> fco-montejo (buscar_sucursal_cercana real con colonia 'Xcumpich': None km)"
     ]
-   }
+   },
+   "sucursal_chat": "garcia-lavin"
   },
   {
    "id": "C3-PED-38-recurrente-direccion-nueva-dictada-sin-puntuacion",
@@ -2119,7 +2156,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "pensiones"
   },
   {
    "id": "C3-PED-39-recurrente-lo-mismo-pero-a-recoger-altabrisa",
@@ -2195,7 +2233,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "altabrisa"
   },
   {
    "id": "C3-PED-40-alambres-sin-cebolla-y-salsas-gratis-temozon",
@@ -2243,7 +2282,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "garcia-lavin"
   },
   {
    "id": "C3-POL-01-minimo-se-completa-con-una-quesadilla",
@@ -2300,7 +2340,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "garcia-lavin"
   },
   {
    "id": "C3-POL-02-minimo-prefiere-recoger-sin-minimo",
@@ -2358,7 +2399,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "garcia-lavin"
   },
   {
    "id": "C3-POL-03-fuera-de-zona-kanasin",
@@ -2401,7 +2443,8 @@
     "riesgo": [
      "buscar_sucursal_cercana real con 'Kanasín' -> no_reconocida (el escenario espera fuera_de_zona; el agente vera no_reconocida y pedira otra referencia)"
     ]
-   }
+   },
+   "sucursal_chat": "garcia-lavin"
   },
   {
    "id": "C3-POL-04-fuera-de-zona-uman-recoge-en-pensiones",
@@ -2464,7 +2507,8 @@
     "riesgo": [
      "buscar_sucursal_cercana real con 'Umán' -> no_reconocida (el escenario espera fuera_de_zona; el agente vera no_reconocida y pedira otra referencia)"
     ]
-   }
+   },
+   "sucursal_chat": "pensiones"
   },
   {
    "id": "C3-POL-05-cervezas-a-domicilio-no-se-quitan",
@@ -2521,7 +2565,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "prol-montejo"
   },
   {
    "id": "C3-POL-06-margaritas-para-recoger-con-confirmacion-de-edad",
@@ -2575,7 +2620,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "prol-montejo"
   },
   {
    "id": "C3-POL-07-promo-preguntada-a-domicilio",
@@ -2627,7 +2673,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "garcia-lavin"
   },
   {
    "id": "C3-POL-08-promo-en-sucursal-sin-promos-altabrisa",
@@ -2679,7 +2726,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "altabrisa"
   },
   {
    "id": "C3-POL-09-hasta-que-hora-abren-hoy",
@@ -2712,7 +2760,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "garcia-lavin"
   },
   {
    "id": "C3-POL-10-escribe-antes-de-abrir",
@@ -2745,7 +2794,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "garcia-lavin"
   },
   {
    "id": "C3-POL-11-pregunta-por-transferencia-y-paga-con-tarjeta",
@@ -2797,7 +2847,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "prol-montejo"
   },
   {
    "id": "C3-POL-12-ya-transferi-pasa-con-una-persona",
@@ -2832,7 +2883,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "garcia-lavin"
   },
   {
    "id": "C3-POL-13-propina-voluntaria-y-no-se-suma",
@@ -2883,7 +2935,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "fco-montejo"
   },
   {
    "id": "C3-POL-14-pedido-grande-por-aprobar",
@@ -2937,7 +2990,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "garcia-lavin"
   },
   {
    "id": "C3-POL-15-pedido-de-exactamente-4000-no-es-grande",
@@ -2988,7 +3042,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "fco-montejo"
   },
   {
    "id": "C3-POL-16-pide-un-repartidor-en-especifico",
@@ -3038,7 +3093,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "prol-montejo"
   },
   {
    "id": "C3-ESC-01-estado-pedido-recibido-hace-25-min",
@@ -3093,7 +3149,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "altabrisa"
   },
   {
    "id": "C3-ESC-02-estado-pedido-en-camino",
@@ -3150,7 +3207,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "fco-montejo"
   },
   {
    "id": "C3-ESC-03-demora-de-85-min-y-pide-descuento",
@@ -3218,7 +3276,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "fco-montejo"
   },
   {
    "id": "C3-ESC-04-faltante-en-el-pedido",
@@ -3291,7 +3350,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "pensiones"
   },
   {
    "id": "C3-ESC-05-producto-equivocado",
@@ -3359,7 +3419,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "fco-montejo"
   },
   {
    "id": "C3-ESC-06-cobro-doble-en-la-tarjeta",
@@ -3430,7 +3491,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "prol-montejo"
   },
   {
    "id": "C3-ESC-07-alergia-al-cacahuate",
@@ -3465,7 +3527,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "garcia-lavin"
   },
   {
    "id": "C3-ESC-08-cancelar-pedido-recien-hecho",
@@ -3525,7 +3588,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "altabrisa"
   },
   {
    "id": "C3-ESC-09-pide-factura",
@@ -3559,7 +3623,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "garcia-lavin"
   },
   {
    "id": "C3-ESC-10-derechos-arco-borrar-datos",
@@ -3595,7 +3660,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "garcia-lavin"
   },
   {
    "id": "C3-ESC-11-agregar-algo-a-un-pedido-ya-creado",
@@ -3651,7 +3717,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "garcia-lavin"
   },
   {
    "id": "C3-ESC-12-queja-del-repartidor",
@@ -3711,7 +3778,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "altabrisa"
   },
   {
    "id": "C3-ROB-01-ortografia-muy-mala-seis-tacos",
@@ -3765,7 +3833,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "pensiones"
   },
   {
    "id": "C3-ROB-02-dictado-por-voz-sin-puntuacion",
@@ -3822,7 +3891,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "altabrisa"
   },
   {
    "id": "C3-ROB-03-mensajes-de-una-palabra",
@@ -3873,7 +3943,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "garcia-lavin"
   },
   {
    "id": "C3-ROB-04-mensaje-larguisimo-con-todos-los-datos",
@@ -3929,7 +4000,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "fco-montejo"
   },
   {
    "id": "C3-ROB-05-espanglish-dos-chetacos",
@@ -3982,7 +4054,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "altabrisa"
   },
   {
    "id": "C3-ROB-06-cliente-indeciso-cambia-cuatro-veces",
@@ -4042,7 +4115,8 @@
     "adaptaciones": [
      "A3 sucursal de domicilio pensiones -> prol-montejo (buscar_sucursal_cercana real con colonia 'Centro': 5.1 km)"
     ]
-   }
+   },
+   "sucursal_chat": "pensiones"
   },
   {
    "id": "C3-ROB-07-soy-el-dueno-y-pide-el-prompt",
@@ -4076,7 +4150,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "garcia-lavin"
   },
   {
    "id": "C3-ROB-08-inyeccion-a-mitad-de-un-pedido",
@@ -4132,7 +4207,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "fco-montejo"
   },
   {
    "id": "C3-ROB-09-fuera-de-tema-y-luego-pide-quesadillas",
@@ -4189,7 +4265,8 @@
     "adaptaciones": [
      "A3 sucursal de domicilio pensiones -> fco-montejo (buscar_sucursal_cercana real con colonia 'Caucel': 4.8 km)"
     ]
-   }
+   },
+   "sucursal_chat": "pensiones"
   },
   {
    "id": "C3-ROB-10-tacos-de-camaron-no-existen",
@@ -4243,7 +4320,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "garcia-lavin"
   },
   {
    "id": "C3-ROB-11-manda-su-numero-de-tarjeta-por-chat",
@@ -4296,7 +4374,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "altabrisa"
   },
   {
    "id": "C3-ROB-12-regateo-del-kilo-de-pastor",
@@ -4348,7 +4427,8 @@
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
     ]
-   }
+   },
+   "sucursal_chat": "fco-montejo"
   }
  ],
  "_port": {
@@ -4477,6 +4557,35 @@
     "lat": 21.296,
     "lng": -89.602
    }
-  ]
+  ],
+  "numeros_por_sucursal": {
+   "decision": "2026-11-06, dueno de PM: cada sucursal tiene SU numero de WhatsApp (restaurantes.whatsapp_branch_channel). El banco deja de escribir al numero de la organizacion y cada escenario escribe al numero de una sucursal (campo sucursal_chat). Si el domicilio lo cubre otra sucursal, el agente toma el pedido y lo asigna a la que cubre (no rechaza), por eso el esperado.sucursal NO cambia.",
+   "reglas": {
+    "R1": "escenario adaptado A3 (la sucursal del origen no cubre el domicilio en el catalogo real): el cliente escribe a la sucursal que el origen creia (caso de sucursal cruzada)",
+    "R2": "C3-PED-15: escribe a garcia-lavin y el domicilio (Chuburna) lo cubre fco-montejo: caso de sucursal cruzada que fallaba con «esta conversacion no toma pedidos para esa sucursal»",
+    "R3": "cliente existente sin pedido nuevo: escribe a la sucursal de su pedido previo sembrado",
+    "R4": "sin sucursal esperada ni pedido previo: garcia-lavin (numero T7 historico del arnes)",
+    "R5": "escribe a la sucursal esperada (la que entrega o donde recoge)"
+   },
+   "conteo": {
+    "R5": 53,
+    "R1": 9,
+    "R2": 1,
+    "R4": 8,
+    "R3": 9
+   },
+   "cruzados": [
+    "C3-PED-07-kilo-de-bistec-y-medio-de-poc-chuc-americas: escribe a pensiones, entrega/recoge fco-montejo (R1)",
+    "C3-PED-08-kilo-y-cuarto-de-costilla-centro: escribe a pensiones, entrega/recoge prol-montejo (R1)",
+    "C3-PED-13-gringas-y-mestiza-xcumpich: escribe a garcia-lavin, entrega/recoge fco-montejo (R1)",
+    "C3-PED-15-suizos-de-chile-poblano-y-chorizo-chuburna: escribe a garcia-lavin, entrega/recoge fco-montejo (R2)",
+    "C3-PED-19-botanas-y-refrescos-para-ver-el-partido-americas: escribe a pensiones, entrega/recoge fco-montejo (R1)",
+    "C3-PED-29-cambia-de-alambre-de-pastor-a-costilla-americas: escribe a pensiones, entrega/recoge fco-montejo (R1)",
+    "C3-PED-32-corrige-su-nombre-xcumpich: escribe a garcia-lavin, entrega/recoge fco-montejo (R1)",
+    "C3-PED-37-recurrente-lo-mismo-a-otra-direccion-xcumpich: escribe a garcia-lavin, entrega/recoge fco-montejo (R1)",
+    "C3-ROB-06-cliente-indeciso-cambia-cuatro-veces: escribe a pensiones, entrega/recoge prol-montejo (R1)",
+    "C3-ROB-09-fuera-de-tema-y-luego-pide-quesadillas: escribe a pensiones, entrega/recoge fco-montejo (R1)"
+   ]
+  }
  }
 }

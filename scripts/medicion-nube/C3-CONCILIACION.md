@@ -12,6 +12,20 @@ Generado por `c3-conciliar.py` (sin red ni LLM). Fuente: `arnes/ciego-3.fuente.j
 - `garcia-lavin` (García Lavín (Victory Platz)): status=active coords=si
 - `altabrisa` (Victory Altabrisa): status=active coords=si
 
+## Numero de WhatsApp por escenario (sucursal_chat)
+
+Cada escenario escribe al numero de UNA sucursal (decision del dueno, 2026-11-06). Reglas y conteo: {'R5': 53, 'R1': 9, 'R2': 1, 'R4': 8, 'R3': 9}. Sucursal cruzada (escribe a una, entrega otra):
+- C3-PED-07-kilo-de-bistec-y-medio-de-poc-chuc-americas: escribe a pensiones, entrega/recoge fco-montejo (R1)
+- C3-PED-08-kilo-y-cuarto-de-costilla-centro: escribe a pensiones, entrega/recoge prol-montejo (R1)
+- C3-PED-13-gringas-y-mestiza-xcumpich: escribe a garcia-lavin, entrega/recoge fco-montejo (R1)
+- C3-PED-15-suizos-de-chile-poblano-y-chorizo-chuburna: escribe a garcia-lavin, entrega/recoge fco-montejo (R2)
+- C3-PED-19-botanas-y-refrescos-para-ver-el-partido-americas: escribe a pensiones, entrega/recoge fco-montejo (R1)
+- C3-PED-29-cambia-de-alambre-de-pastor-a-costilla-americas: escribe a pensiones, entrega/recoge fco-montejo (R1)
+- C3-PED-32-corrige-su-nombre-xcumpich: escribe a garcia-lavin, entrega/recoge fco-montejo (R1)
+- C3-PED-37-recurrente-lo-mismo-a-otra-direccion-xcumpich: escribe a garcia-lavin, entrega/recoge fco-montejo (R1)
+- C3-ROB-06-cliente-indeciso-cambia-cuatro-veces: escribe a pensiones, entrega/recoge prol-montejo (R1)
+- C3-ROB-09-fuera-de-tema-y-luego-pide-quesadillas: escribe a pensiones, entrega/recoge fco-montejo (R1)
+
 ## Escenarios con adaptaciones o riesgos (13 de 80; 9 adaptaciones, 6 riesgos)
 
 - **C3-PED-07-kilo-de-bistec-y-medio-de-poc-chuc-americas**

@@ -133,6 +133,20 @@ def main():
         if ad or riesgo: detalle.append((e["id"], ad, riesgo))
         for a in ad: adaptaciones_global.append(f"{e['id']}: {a}")
 
+    # Numeros por sucursal (decision del dueno de PM, 2026-11-06): cada sucursal tiene SU numero de WhatsApp; cada escenario escribe al numero de
+    # una sucursal (`sucursal_chat`). El esperado.sucursal NO cambia: con un domicilio de otra sucursal el agente toma el pedido para la que lo cubre.
+    origen = {e["id"]: e for e in banco["escenarios"]}
+    cruzados, conteo = [], {}
+    for e in salida["escenarios"]:
+        esp = e["esperado"].get("sucursal"); fu = origen[e["id"]]["esperado"].get("sucursal")
+        sem = (seco_esc.get(e["id"]) or {}).get("semilla") or ""
+        if e["id"].startswith("C3-PED-15-"): chat, regla = "garcia-lavin", "R2"
+        elif esp and fu and fu != esp: chat, regla = fu, "R1"
+        elif esp: chat, regla = esp, "R5"
+        elif sem: chat, regla = sem.split()[0], "R3"
+        else: chat, regla = "garcia-lavin", "R4"
+        e["sucursal_chat"] = chat; conteo[regla] = conteo.get(regla, 0) + 1
+        if esp and chat != esp: cruzados.append(f"{e['id']}: escribe a {chat}, entrega/recoge {esp} ({regla})")
     salida["_port"] = {
         "nota": "Banco C3 PORTADO al arnes de scripts/medicion-nube (API real + Postgres efimero + catalogo real-dump). Generado por c3-conciliar.py; "
                 "el original es ciego-3.fuente.json. Cada adaptacion es de catalogo/nombre/sucursal, nunca de la conducta medida.",
@@ -140,7 +154,16 @@ def main():
         "adaptaciones": adaptaciones_global,
         # coordenadas de las 22 colonias del fixture de origen (menu-pm.json): solo para la comprobacion zona_8km, igual que verificar.mjs
         "colonias": colonias,
+        "numeros_por_sucursal": {
+            "decision": "2026-11-06, dueno de PM: cada sucursal tiene SU numero de WhatsApp (restaurantes.whatsapp_branch_channel). El banco deja de escribir al numero de la organizacion y cada escenario escribe al numero de una sucursal (campo sucursal_chat). Si el domicilio lo cubre otra sucursal, el agente toma el pedido y lo asigna a la que cubre (no rechaza), por eso el esperado.sucursal NO cambia.",
+            "reglas": {"R1": "escenario adaptado A3 (la sucursal del origen no cubre el domicilio en el catalogo real): el cliente escribe a la sucursal que el origen creia (caso de sucursal cruzada)", "R2": "C3-PED-15: escribe a garcia-lavin y el domicilio (Chuburna) lo cubre fco-montejo: caso de sucursal cruzada que fallaba con «esta conversacion no toma pedidos para esa sucursal»", "R3": "cliente existente sin pedido nuevo: escribe a la sucursal de su pedido previo sembrado", "R4": "sin sucursal esperada ni pedido previo: garcia-lavin (numero T7 historico del arnes)", "R5": "escribe a la sucursal esperada (la que entrega o donde recoge)"},
+            "conteo": conteo, "cruzados": cruzados,
+        },
     }
+    lineas.append("## Numero de WhatsApp por escenario (sucursal_chat)\n")
+    lineas.append(f"Cada escenario escribe al numero de UNA sucursal (decision del dueno, 2026-11-06). Reglas y conteo: {conteo}. Sucursal cruzada (escribe a una, entrega otra):")
+    for c in cruzados: lineas.append(f"- {c}")
+    lineas.append("")
     lineas.append(f"## Escenarios con adaptaciones o riesgos ({len(detalle)} de {len(E)}; {adapt_total} adaptaciones, {riesgo_total} riesgos)\n")
     for i, ad, rg in detalle:
         lineas.append(f"- **{i}**")

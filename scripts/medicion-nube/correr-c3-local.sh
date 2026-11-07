@@ -83,6 +83,8 @@ for REP in $(seq 1 "$REPS"); do
     cd "$REPO" && npx vite-node -c "$W/qa/vite-node.config.ts" "$W/qa/run.ts" c3 "$CONC" ${FILTRO:+"$FILTRO"} 2>&1 \
       | grep -v "^voz restaurantes" \
       | awk -v tel="$R/telemetria-turnos.jsonl" '/^\{"ts"/ { if (index($0, "\"evento\":\"whatsapp_turno\"")) { print >> tel; fflush(tel) } next } { print; fflush() }' > "$R/log.txt" )
+  # Tokens del agente (lo que el gateway registra en core.llm_usage_daily de la copia efimera; el cliente simulado no pasa por ahi).
+  [ "$SECO" != 1 ] && psql -h localhost -p 55491 -U postgres -d pmreal -tA -F' ' -c "select coalesce(sum(tokens_in),0), coalesce(sum(tokens_out),0), coalesce(sum(cost_micro_usd),0), coalesce(sum(call_count),0) from core.llm_usage_daily" > "$R/tokens.txt" 2>/dev/null
   pg_ctl -D "$W/pgdata" -m fast stop >/dev/null 2>&1
   grep -h "^RESUMEN\|^SECO listo" "$R/log.txt" | sed "s/^/[rep$REP] /"
   [ "$SECO" = 1 ] && [ -f "$R/c3-seco.json" ] && cp "$R/c3-seco.json" "$OUT/c3-seco.json"

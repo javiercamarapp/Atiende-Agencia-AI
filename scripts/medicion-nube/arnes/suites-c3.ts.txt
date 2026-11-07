@@ -2,8 +2,9 @@
 // catalogo real-dump + Meta simulado). Veredicto DETERMINISTA, sin juez LLM (puerto de lib/verificar.mjs sobre el estado de la BD). Ver ../README.md (seccion C3) y ../C3-CONCILIACION.md.
 //
 // Diferencias de mecanica respecto al arnes de origen (todas documentadas en README.md, seccion C3):
-//  - El cliente escribe al numero de WhatsApp de la ORGANIZACION (whatsapp_channel_config sin mapeo de sucursal, prep-canales-c3.sql): el agente no
-//    tiene "sucursal de este chat" y elige la sucursal por la direccion (buscar_sucursal_cercana), como en el banco original.
+//  - NUMEROS POR SUCURSAL (decision del dueno de PM, 2026-11-06): cada sucursal tiene SU numero de WhatsApp (whatsapp_branch_channel, prep-canales-c3.sql) y
+//    cada escenario escribe al numero de la sucursal `sucursal_chat` (lo fija c3-conciliar.py; reglas en `_port.numeros_por_sucursal`). Si el domicilio lo
+//    cubre otra sucursal, el agente debe tomar el pedido para la que lo cubre (esperado.sucursal no cambia). Antes escribia al numero de la ORGANIZACION.
 //  - Reloj POR CONVERSACION (AsyncLocalStorage, stack.ts `conRelojPropio`) con el desplazamiento de 7*k dias del arnes (mismo dia y hora local).
 //  - Pedidos previos (`cliente.existente`) sembrados por la ruta de herramientas de voz (call-token -> quote -> confirm -> orders), con estado y antiguedad
 //    ajustados despues (como setup-orders.ts); direcciones guardadas por SQL.
@@ -19,8 +20,11 @@ import { gasto } from "./llm.ts";
 import { newPhone, snapshot, relojReal, stats } from "./lib.ts";
 
 const ORG_SLUG = "los-taquitos-de-pm";
-/** Numero de WhatsApp de la ORGANIZACION en la copia efimera (prep-canales-c3.sql): sin fila en whatsapp_branch_channel. */
+/** Numero de WhatsApp de la ORGANIZACION en la copia efimera (prep-canales-c3.sql): sin fila en whatsapp_branch_channel. Solo se usa con QA_C3_NUMERO=org (modo anterior). */
 export const PNID_ORG = process.env.QA_C3_PNID ?? "5550009999";
+/** `sucursal` (por omision): cada escenario escribe al numero de su `sucursal_chat`; `org`: todos al numero de la organizacion (banco anterior al 2026-11-06). */
+const MODO_NUMERO = process.env.QA_C3_NUMERO === "org" ? "org" : "sucursal";
+let PNID_DE_SUCURSAL = new Map<string, string>();
 const H_TOOL = { "content-type": "application/json", "x-atiende-tool-secret": "qa-voice-tool-secret-local" };
 const MODELO_CLIENTE = process.env.QA_C3_CLIENTE ?? "anthropic/claude-haiku-5.5"; // el mismo cliente simulado que el arnes de origen
 const FIN = "<FIN>";
@@ -335,7 +339,7 @@ async function correrUna(s: Stack, ref: Ref, e: any, colonias: any[], rep: numbe
     if (msg === null) break;
     const telAntes = telDe(phone).length;
     let r: Awaited<ReturnType<Stack["say"]>>;
-    try { r = await s.say(phone, msg, { pnid: PNID_ORG }); } catch (err) { turnos.push({ cliente: msg, agente: "", ms: 0 }); invalida = `fetch del arnes: ${(err as Error).message}`; causa = /fetch failed/i.test(String(err)) ? "fetch_failed" : "excepcion_arnes"; break; }
+    try { r = await s.say(phone, msg, { pnid: pnidDe(e) }); } catch (err) { turnos.push({ cliente: msg, agente: "", ms: 0 }); invalida = `fetch del arnes: ${(err as Error).message}`; causa = /fetch failed/i.test(String(err)) ? "fetch_failed" : "excepcion_arnes"; break; }
     const tel = telDe(phone).slice(telAntes);
     const st = await snapshot(s, phone); const nuevosAhora = st.orders.filter((o: any) => !previos.has(o.id) && !creadoEn.has(o.id));
     for (const o of nuevosAhora) creadoEn.set(o.id, Date.now());
@@ -393,15 +397,25 @@ async function seca(s: Stack, ref: Ref, E: any[], res: string) {
   console.log(`\nSECO listo: ${out.length} escenarios -> ${res}/c3-seco.json`);
 }
 
+/** Numero de WhatsApp al que escribe el cliente del escenario (ver MODO_NUMERO). */
+function pnidDe(e: any): string { return MODO_NUMERO === "org" ? PNID_ORG : PNID_DE_SUCURSAL.get(e.sucursal_chat) ?? PNID_ORG; }
+
 // ---------- entrada desde run.ts ----------
 export async function correrC3(s: Stack, o: { conc: number; filtro: RegExp | null; res: string }) {
   const banco = cargarBanco(); const colonias = banco._port?.colonias ?? [];
   const E = (banco.escenarios as any[]).filter((e) => !o.filtro || o.filtro.test(e.id));
   const ref = await referencia(s);
-  // El numero de la organizacion debe existir y NO estar mapeado a una sucursal (si no, el agente tendria "sucursal de este chat").
+  // Numero por sucursal (por omision): cada sucursal activa con su numero en whatsapp_branch_channel. Modo `org`: el numero de la organizacion sin sucursal.
+  PNID_DE_SUCURSAL = new Map((await s.pool.query(`select bd.slug, b.phone_number_id from restaurantes.whatsapp_branch_channel b join restaurantes.branch_detail bd on bd.property_id = b.property_id where b.organization_id = $1`, [ORG_ID])).rows.map((x: any) => [x.slug, x.phone_number_id]));
+  if (MODO_NUMERO === "sucursal") {
+    const faltan = [...new Set(E.map((e) => e.sucursal_chat))].filter((x) => !x || !PNID_DE_SUCURSAL.has(x));
+    if (faltan.length) throw new Error(`C3: sucursal_chat sin numero en whatsapp_branch_channel: ${faltan.join(",")} (prep-canales-c3.sql / c3-conciliar.py)`);
+    console.log(`C3: ${E.length} escenarios | numero POR SUCURSAL ${JSON.stringify(Object.fromEntries(PNID_DE_SUCURSAL))} | cliente simulado ${MODELO_CLIENTE} | conc ${o.conc} | minutos permitidos ${[...ref.minutos].sort((a, b) => a - b).join(",")}`);
+  } else {
   const canal = (await s.pool.query(`select c.phone_number_id, b.property_id from restaurantes.whatsapp_channel_config c left join restaurantes.whatsapp_branch_channel b on b.phone_number_id = c.phone_number_id where c.organization_id = $1`, [ORG_ID])).rows[0];
   if (!canal || canal.phone_number_id !== PNID_ORG || canal.property_id) throw new Error(`C3 requiere el numero de organizacion ${PNID_ORG} sin sucursal (prep-canales-c3.sql); hay ${JSON.stringify(canal)}`);
   console.log(`C3: ${E.length} escenarios | numero de organizacion ${PNID_ORG} (sin sucursal) | cliente simulado ${MODELO_CLIENTE} | conc ${o.conc} | minutos permitidos ${[...ref.minutos].sort((a, b) => a - b).join(",")}`);
+  }
   if (process.env.QA_C3_SECO === "1") return seca(s, ref, E, o.res);
   const rep = Number(process.env.QA_C3_REP ?? 1); const outFile = `${o.res}/c3-resultados.json`; const resultados: any[] = [];
   let idx = 0;
