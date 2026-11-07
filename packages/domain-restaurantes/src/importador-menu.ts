@@ -141,12 +141,23 @@ export function armarBorrador(crudos: readonly Crudo[], ilegibles = 0): Borrador
   return { categorias, productos: final, ilegibles: ilegiblesTotal, recortado };
 }
 
+/** Quita las cercas de codigo (```json ... ```) en tiempo lineal y sin regex de cola (`\s*```$` es polinomial: CodeQL js/polynomial-redos). */
+function quitarCercas(texto: string): string {
+  let t = texto.trim();
+  if (t.startsWith("```")) {
+    const salto = t.indexOf("\n");
+    t = salto >= 0 ? t.slice(salto + 1) : t.slice(3);
+  }
+  if (t.endsWith("```")) t = t.slice(0, -3);
+  return t.trim();
+}
+
 /** Valida la salida del modelo (JSON del responseFormat). Nunca confia en ella: tipos, cortes y precios se revisan aqui. */
 export function borradorDesdeExtraccion(salida: unknown): BorradorMenu {
   let datos: unknown = salida;
   if (typeof salida === "string") {
     try {
-      datos = JSON.parse(salida.replace(/^```(?:json)?\s*|\s*```$/g, ""));
+      datos = JSON.parse(quitarCercas(salida));
     } catch {
       return armarBorrador([], 1);
     }
