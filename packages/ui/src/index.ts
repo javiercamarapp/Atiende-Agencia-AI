@@ -36,6 +36,17 @@ export { LogoMarcaDiferido } from "./components/LogoMarcaDiferido.js";
 export { AtiendeMark, AtiendeWordmark } from "./components/AtiendeLogo.js";
 export { ThemeSelector } from "./components/ThemeSelector.js";
 export { SelectorIdioma } from "./components/SelectorIdioma.js";
+export { CapaArranque } from "./components/CapaArranque.js";
+export {
+  ARRANQUE_ESTABLE_MS,
+  ARRANQUE_FUNDIDO_MS,
+  ARRANQUE_MINIMO_MS,
+  ARRANQUE_NAVEGACION_MS,
+  ARRANQUE_RETARDO_MS,
+  ARRANQUE_TOPE_MS,
+  gobernarArranque,
+  hayCargaPendiente,
+} from "./lib/arranque.js";
 export { CLAVE_IDIOMA, IDIOMAS, IDIOMA_CAMBIO_EVENTO, guardarIdioma, leerIdioma, type Idioma } from "./lib/idioma.js";
 export { ThemeBoot, useTemaGlobal } from "./components/ThemeBoot.js";
 export { aplicarTema, aplicarBanderaDiseno, leerTema, sincronizarDisenoOrganizacion, type Tema } from "./lib/tema.js";
