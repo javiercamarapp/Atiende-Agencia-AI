@@ -34,7 +34,7 @@ test.describe("copiloto ds3 de restaurantes @copiloto @ds3", () => {
     });
   });
 
-  test("portada con temas, respuesta con «Cómo se calculó» en el Drawer e historial en Drawer sm", async ({ page, iniciarSesion, mock, vigilante }, info) => {
+  test("portada con temas, respuesta con traza y «Ver cómo lo calculé» en el Drawer e historial en Drawer sm", async ({ page, iniciarSesion, mock, vigilante }, info) => {
     await iniciarSesion("restaurantes", "owner");
     await page.goto(RUTA);
     await afirmarPantallaSana(page, "copiloto");
@@ -62,7 +62,9 @@ test.describe("copiloto ds3 de restaurantes @copiloto @ds3", () => {
     await capturar(page, "respuesta", info.project.name);
 
     // «Cómo se calculó»: Drawer con la evidencia que mando el servidor (no se inventa nada en el cliente).
-    await hilo.getByRole("button", { name: "Cómo se calculó" }).click();
+    // «Cómo llegué a esto»: los pasos que el servidor reporto en vivo (NDJSON), plegados por omision.
+    await expect(hilo.getByTestId("copiloto-traza").locator("summary")).toHaveText(/Cómo llegué a esto · 1 paso · /);
+    await hilo.getByRole("button", { name: "Ver cómo lo calculé" }).click();
     const calculo = page.getByRole("dialog", { name: /Cómo se calculó: Ventas por día/ });
     await expect(calculo).toBeVisible();
     await expect(calculo.getByText("Pedidos completados")).toBeVisible();
@@ -71,7 +73,7 @@ test.describe("copiloto ds3 de restaurantes @copiloto @ds3", () => {
     await capturar(page, "como-se-calculo", info.project.name);
     await page.keyboard.press("Escape");
     await expect(calculo).toBeHidden();
-    await expect(hilo.getByRole("button", { name: "Cómo se calculó" })).toBeFocused();
+    await expect(hilo.getByRole("button", { name: "Ver cómo lo calculé" })).toBeFocused();
 
     // Historial: Drawer sm con cabecera, «Chat nuevo», grupo «Hoy» y filas de 40 px.
     await page.getByRole("button", { name: "Historial de chats" }).click();

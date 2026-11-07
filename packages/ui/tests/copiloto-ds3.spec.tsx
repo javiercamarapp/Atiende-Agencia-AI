@@ -10,7 +10,8 @@ import { partirUltimoMes } from "../src/components/copiloto/formato";
 import { traductorCopiloto } from "../src/components/copiloto/idioma";
 import type { ConversacionResumen } from "../src/components/copiloto/tipos";
 import { CLAVE_IDIOMA, guardarIdioma } from "../src/lib/idioma";
-import { RESPUESTA_OK, clic, limpiarDom, microtareas, montar, propsBase, transporteFalso, type Montado } from "./copiloto-utils";
+import { textoMs } from "../src/components/copiloto/CopilotoTraza";
+import { RESPUESTA_OK, clic, envioColgado, limpiarDom, microtareas, montar, propsBase, transporteFalso, type Montado } from "./copiloto-utils";
 
 let montado: Montado | undefined;
 afterEach(() => {
@@ -175,6 +176,67 @@ describe("«Cómo se calculó» (ds3)", () => {
     await microtareas();
     expect(montado.container.textContent).toContain("Hola.");
     expect(montado.container.querySelector(".ds3-copiloto-calculo")).toBeNull();
+  });
+});
+
+describe("pensamiento en vivo y «Cómo llegué a esto» (ds3)", () => {
+  it("mientras piensa: «Pensamiento del sistema en vivo · n» (oculto sin bandera) pliega y despliega los pasos", async () => {
+    const colgado = envioColgado();
+    const { t } = transporteFalso({ enviar: colgado.enviar });
+    montado = montar(<ChatDatosShell {...propsBase(t)} />);
+    const c = montado.container;
+    clic(Array.from(c.querySelectorAll("button")).find((b) => b.textContent === "¿Cuánto vendí esta semana?") as HTMLButtonElement);
+    await microtareas();
+    const { act } = await import("react");
+    act(() => colgado.emitir({ t: "paso", fase: "inicio", herramienta: "ventas_por_dia" }));
+    const pensando = c.querySelector("[data-testid=copiloto-pensando]") as HTMLElement;
+    const toggle = pensando.querySelector(".ds3-copiloto-pensamiento") as HTMLButtonElement;
+    expect(toggle.hidden).toBe(true);
+    expect(toggle.textContent).toBe("Pensamiento del sistema en vivo · 1");
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    const lista = pensando.querySelector("ul") as HTMLElement;
+    expect(lista.hidden).toBe(false);
+    expect(lista.textContent).toContain("Leyendo ventas por día");
+    clic(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(lista.hidden).toBe(true);
+    act(() => colgado.p.resolver(RESPUESTA_OK));
+    await microtareas();
+  });
+
+  it("al terminar, la respuesta lleva la traza de pasos del servidor con su tiempo; sin pasos no hay traza", async () => {
+    const { t } = transporteFalso({
+      enviar: vi.fn(async (args) => {
+        args.onEvento({ t: "paso", fase: "inicio", herramienta: "ventas_por_dia" });
+        args.onEvento({ t: "paso", fase: "fin", herramienta: "ventas_por_dia" });
+        return RESPUESTA_OK;
+      }),
+    });
+    montado = montar(<ChatDatosShell {...propsBase(t)} />);
+    clic(Array.from(montado.container.querySelectorAll("button")).find((b) => b.textContent === "¿Cuánto vendí esta semana?") as HTMLButtonElement);
+    await microtareas();
+    await microtareas();
+    const traza = montado.container.querySelector("[data-testid=copiloto-traza]") as HTMLElement;
+    expect(traza.closest("[hidden]")).not.toBeNull();
+    expect(traza.querySelector("summary")?.textContent).toMatch(/^Cómo llegué a esto · 1 paso · \d+ ms$/);
+    expect(traza.querySelector("li")?.textContent).toMatch(/^Leyendo ventas por día · \d+ ms$/);
+    expect(montado.container.querySelector(".ds3-copiloto-calculo")?.textContent).toBe("Ver cómo lo calculé");
+    montado.unmount();
+    limpiarDom();
+
+    const { t: t2 } = transporteFalso();
+    montado = montar(<ChatDatosShell {...propsBase(t2)} />);
+    clic(Array.from(montado.container.querySelectorAll("button")).find((b) => b.textContent === "¿Cuánto vendí esta semana?") as HTMLButtonElement);
+    await microtareas();
+    await microtareas();
+    expect(montado.container.querySelector("[data-testid=copiloto-traza]")).toBeNull();
+  });
+
+  it("textoMs: ms por debajo de un segundo y segundos con un decimal", () => {
+    expect(textoMs(850)).toBe("850 ms");
+    expect(textoMs(1234)).toBe("1.2 s");
+    expect(textoMs(1234, "en")).toBe("1.2 s");
+    expect(textoMs(null)).toBe("");
   });
 });
 
