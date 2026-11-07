@@ -3,7 +3,7 @@
 // (`cotizar`), y consentimiento de WhatsApp obligatorio y explicito. Privacidad: de un cliente existente solo se indica que existe y se muestran las COLONIAS guardadas
 // (en llamadas no hay remitente que valide el numero): nombre y direccion completa los captura el encargado a mano, nunca se leen ni se precargan.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, ConfirmDialog, EstadoCargando, EstadoError, FormField, Input, PageContainer, StatusBadge, Switch, Textarea, formatMoney, notify } from "@atiende/ui";
+import { Button, ConfirmDialog, EstadoCargando, EstadoError, FormField, Input, PageContainer, PageHeader, StatusBadge, Switch, Textarea, formatMoney, notify } from "@atiende/ui";
 import type { RespuestaCotizar, RespuestaCrearPedido } from "@atiende/domain-restaurantes/operacion";
 import { AlertTriangle, CheckCircle2, Clock } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -184,9 +184,7 @@ export function OperacionNuevoPedidoPage({ apiBaseUrl, token, propertyId, orgSlu
   return (
     <PageContainer padding="none">
       <div className="mx-auto w-full max-w-3xl space-y-4 pb-4">
-        <div className="flex items-center justify-between gap-2">
-          <h1 className="sr-only">Nuevo pedido</h1>
-        </div>
+        <PageHeader titulo="Nuevo pedido" />
 
         <FormField label="Cómo entró el pedido">
           <div className="grid grid-cols-3 gap-2" role="group" aria-label="Cómo entró el pedido">

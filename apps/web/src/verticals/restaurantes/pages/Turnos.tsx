@@ -3,7 +3,7 @@
 // Quien cubre cada turno sale del staff de la organizacion (`fetchOrgMembers`, owner/admin) con acceso a esta sucursal.
 import { useEffect, useState } from "react";
 import { Clock } from "lucide-react";
-import { Button, Card, CardContent, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, EstadoVacio, Input, PageContainer } from "@atiende/ui";
+import { Button, Card, CardContent, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, EstadoVacio, Input, PageContainer, PageHeader } from "@atiende/ui";
 import { fetchOrgMembers } from "../lib/staff-client.ts";
 import type { OrgMember } from "../lib/staff-client.ts";
 import { fetchTurnos, guardarTurnos } from "../lib/conversaciones-client.ts";
@@ -120,10 +120,8 @@ export function TurnosPage({ apiBaseUrl, token, propertyId, role }: Restaurantes
 
   return (
     <PageContainer padding="none">
-      <header>
-        <h1 className="sr-only">Turnos</h1>
-        <p className="m-0 text-ui text-muted-foreground">Quién atiende las conversaciones en cada turno de esta sucursal. El primero de cada turno es el principal; los siguientes son respaldo y reciben el aviso si nadie contesta.</p>
-      </header>
+      <PageHeader titulo="Turnos" />
+      <p className="m-0 text-ui text-muted-foreground">Quién atiende las conversaciones en cada turno de esta sucursal. El primero de cada turno es el principal; los siguientes son respaldo y reciben el aviso si nadie contesta.</p>
 
       {error && <EstadoError mensaje={error} onReintentar={() => setVersion((n) => n + 1)} />}
       {!error && turnos === null && <EstadoCargando lineas={3} />}

@@ -4,7 +4,7 @@
 // Un cierre generado no se recalcula: se rotula con su hora de generación. Sin dato = "—" con su razón (nunca 0 inventado).
 import { useCallback, useEffect, useState } from "react";
 import { CalendarCheck, CircleSlash, Clock, DollarSign, ShoppingBag, Receipt } from "lucide-react";
-import { Button, Callout, Card, CardContent, CardHeader, CardTitle, DataTable, EstadoCargando, EstadoError, EstadoVacio, Selector, PageContainer, StatCard, notify } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, CardHeader, CardTitle, DataTable, EstadoCargando, EstadoError, EstadoVacio, Selector, PageContainer, PageHeader, StatCard, notify } from "@atiende/ui";
 import { fetchCierres, generarCierre } from "../lib/cierres-client.ts";
 import type { CierreFila, CierreTipo, CierresLista } from "../lib/cierres-client.ts";
 import { desdeError } from "../voz/carga.ts";
@@ -70,30 +70,32 @@ export function CierresPage({ apiBaseUrl, token, propertyId, role, fetchImpl }: 
 
   return (
     <PageContainer padding="none">
-      <header className="flex min-w-0 items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="font-display truncate text-xl font-semibold">Cierre del día</h1>
-          <p className="mt-1 truncate text-ui text-muted-foreground">Ventas, canales, cancelaciones y tiempos de entrega, congelados por día de negocio de la sucursal.</p>
-        </div>
-        {puedeVer ? (
-          <div className="shrink-0">
-            <label htmlFor="tipo-cierre" className="sr-only">
-              Tipo de cierre
-            </label>
-            <Selector
-              id="tipo-cierre"
-              value={tipo}
-              onChange={(e) => {
-                setSeleccion(null);
-                setTipo(e.target.value as CierreTipo);
-              }}
-            >
-              <option value="dia">Cierre del día</option>
-              <option value="semana">Resumen semanal</option>
-            </Selector>
-          </div>
-        ) : null}
-      </header>
+      <PageHeader
+        titulo="Cierre del día"
+        descripcion="Ventas, canales, cancelaciones y tiempos de entrega, congelados por día de negocio de la sucursal."
+        acciones={
+          puedeVer ? (
+            <>
+              <label htmlFor="tipo-cierre" className="sr-only">
+                Tipo de cierre
+              </label>
+              <Selector
+                id="tipo-cierre"
+                value={tipo}
+                onChange={(e) => {
+                  setSeleccion(null);
+                  setTipo(e.target.value as CierreTipo);
+                }}
+                wrapperClassName="w-auto"
+                className="rounded-full"
+              >
+                <option value="dia">Cierre del día</option>
+                <option value="semana">Resumen semanal</option>
+              </Selector>
+            </>
+          ) : undefined
+        }
+      />
 
       {!puedeVer ? (
         <Callout tone="info">
