@@ -784,6 +784,25 @@ const PIN_ANTES_DE_CREAR_MENSAJE =
   "El cliente describió su casa solo con referencias visuales (sin número ni cruzamientos) y todavía no hay pin de ubicación. Antes de registrar, pídale UNA vez que comparta su ubicación de WhatsApp (botón o clip) o un enlace de Google Maps, " +
   "para que el repartidor llegue directo; guarde la referencia visual en referencias_acceso. Si responde que no puede o no quiere, vuelva a llamar crear_pedido con los mismos datos y se registra sin pin. No escale por esto.";
 
+/**
+ * C3 PED-32 (cerebro v2, perfil PM): cotizar un pedido de OTRA sucursal (la que entrega el domicilio o la que el cliente eligió para recoger) desde este chat. El prompt solo
+ * trae los TIEMPOS de la sucursal del chat y el modelo los usaba en el resumen («75 a 90 minutos», García Lavín en hora pico) después de haber dicho los de la que entrega
+ * («40 a 50»): el cliente reclamaba la diferencia. La cotización trae el tiempo de la sucursal cotizada para que el resumen use ese. `null` sin bandera, con la sucursal
+ * del chat, otro perfil o sin tiempo configurado (el resultado queda idéntico).
+ */
+async function tiempoDeSucursalCotizada(repo: RestaurantesRepository, ctx: AgentToolContext, organizationId: string, branchSlug: string): Promise<{ tiempo_entrega: string; aviso_tiempo: string } | null> {
+  if (!ctx.cerebroV2 || ctx.channel !== "whatsapp" || !ctx.entryPropertyId || !branchSlug) return null;
+  const cotizada = await repo.findBranch(organizationId, { slug: branchSlug }).catch(() => null);
+  if (!cotizada || cotizada.propertyId === ctx.entryPropertyId) return null;
+  const config = await repo.findWhatsAppAgentConfig(organizationId, cotizada.propertyId).catch(() => null);
+  const tiempo = config?.perfil === "taqueria_pm" ? config.deliveryTimeText?.trim() || null : null;
+  if (!tiempo) return null;
+  return {
+    tiempo_entrega: tiempo,
+    aviso_tiempo: `Este pedido es de ${cotizada.name}, no de la sucursal de este chat: el tiempo que le diga al cliente, también en el resumen, es el de ${cotizada.name} (${tiempo}), nunca los TIEMPOS DE ESTA SUCURSAL del prompt. Use el mismo en todos los mensajes.`,
+  };
+}
+
 /** La sucursal asignada al domicilio cuando NO es la de este chat (`entryPropertyId`); `null` si coincide o no hay sucursal de entrada. */
 async function sucursalDeOtroChat(repo: RestaurantesRepository, ctx: AgentToolContext, organizationId: string, branchSlug: string, confirmada = true): Promise<Record<string, unknown> | null> {
   if (!ctx.entryPropertyId) return null;
@@ -2246,9 +2265,11 @@ async function dispatchTool(
       const sinPromocion = !quote.promocionAplicada && (quote.promocionesSugeridas?.length ?? 0) === 0;
       // QA-PM-R4-reglas-02 (P0): con MEDIA orden de nachos el modelo de voz prometia "las 2 aguas de cortesia" y cotizaba 4 horchatas (+$120). La explicacion va como frase LITERAL de la herramienta.
       const mediaOrdenConBebida = sinPromocion && quote.lines.some((l) => /nachos/i.test(l.name) && /\(1\/2 orden\)/.test(l.name)) && quote.lines.some((l) => ES_BEBIDA_POR_NOMBRE.test(l.name));
+      const tiempoDeOtra = await tiempoDeSucursalCotizada(repo, ctx, organizationId, branchSlug);
       return {
         result: {
           quote: quoteToWire(quote),
+          ...(tiempoDeOtra ?? {}),
           ...(sinPromocion ? { sin_cortesias: SIN_CORTESIAS_AVISO } : {}),
           ...(mediaOrdenConBebida ? { mensaje_media_orden_nachos: MENSAJE_MEDIA_ORDEN_NACHOS } : {}),
           ...(dobleGuacamole ? { aviso_guacamole: AVISO_DOBLE_GUACAMOLERA } : {}),
