@@ -238,8 +238,8 @@ describe("prompt de PM (PM-C3): contenido del cerebro, sin aflojar reglas vigent
     expect(p).toMatch(/Si el cliente pide el combo y la cotización no lo muestra .* no lo prometa/);
   });
 
-  it("las promociones por omision valen solo en Francisco de Montejo, Pensiones y Galerias: lunes 2x1 y martes nachos con 2 aguas, solo recoger (R22 #4)", () => {
-    expect(PM_PROMOS_POR_OMISION).toBe("lunes 2x1 en tacos al pastor y martes nachos de pastor con 2 aguas de cortesía; solo para recoger y solo en Francisco de Montejo, Pensiones y Galerías");
+  it("las promociones por omision valen solo en Francisco de Montejo y Pensiones (Galerias es solo venta local desde el 6-nov): lunes 2x1 y martes nachos con 2 aguas, solo recoger (R22 #4)", () => {
+    expect(PM_PROMOS_POR_OMISION).toBe("lunes 2x1 en tacos al pastor y martes nachos de pastor con 2 aguas de cortesía; solo para recoger y solo en Francisco de Montejo y Pensiones");
     expect(PM_PROMOS_POR_OMISION).not.toMatch(/todas las sucursales/);
   });
 
@@ -250,10 +250,10 @@ describe("prompt de PM (PM-C3): contenido del cerebro, sin aflojar reglas vigent
     expect(p).toMatch(/el horario y el precio de cada una los da la herramienta/);
   });
 
-  it("lista las 7 sucursales del mapa (T4 solo informativa, T5 de temporada) con su telefono publico", () => {
-    for (const nombre of ["Prolongación Montejo", "Francisco de Montejo", "Pensiones", "Galerías", "Playa", "García Lavín", "Victory Altabrisa"]) expect(p).toContain(nombre);
-    for (const tel of ["999 944 0342", "999 953 7122", "999 987 5410", "999 941 9612", "969 688 4195", "999 518 2637", "999 518 2857"]) expect(p).toContain(tel);
-    expect(p).toMatch(/Galerías \(999 941 9612\): solo informativa/);
+  it("lista las 6 sucursales del mapa (T5 de temporada) con su telefono publico; Galerias (T4, solo venta local) nunca se nombra", () => {
+    for (const nombre of ["Prolongación Montejo", "Francisco de Montejo", "Pensiones", "Playa", "García Lavín", "Victory Altabrisa"]) expect(p).toContain(nombre);
+    for (const tel of ["999 944 0342", "999 953 7122", "999 987 5410", "969 688 4195", "999 518 2637", "999 518 2857"]) expect(p).toContain(tel);
+    expect(p).not.toMatch(/Galer|941 9612/);
     expect(p).toMatch(/Playa, Chicxulub \(969 688 4195\): de temporada/);
   });
 

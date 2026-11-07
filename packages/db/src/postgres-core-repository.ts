@@ -419,6 +419,24 @@ export class PostgresCoreRepository implements CoreRepository, CoreStaffReposito
     }));
   }
 
+  // Migracion 0060: columna aparte (no cambia la firma de core.find_memberships_by_user_id). Dentro de un SAVEPOINT porque
+  // la sesion puede ser una transaccion compartida; contra la base sin migrar (42703) el mapa queda vacio = diseno actual.
+  async findDisenoPorOrganizacion(organizationIds: readonly string[]): Promise<ReadonlyMap<string, string>> {
+    if (organizationIds.length === 0) return new Map();
+    return runWithSavepointFallback({
+      session: this.db,
+      primary: async () => {
+        const { rows } = await this.db.query<{ id: string; diseno: string }>(
+          `select id, diseno from core.organization where id = any($1::uuid[]) and diseno is not null;`,
+          [[...organizationIds]],
+        );
+        return new Map(rows.map((r) => [r.id, r.diseno] as const));
+      },
+      isRecoverable: (err) => isMigrationPendingError(err),
+      fallback: async () => new Map<string, string>(),
+    });
+  }
+
   // ---- CoreStaffRepository — RLS real de `core.staff_invite` es la autoridad
   // (owner/admin de la organización), esta clase solo ejecuta el SQL. ----
 

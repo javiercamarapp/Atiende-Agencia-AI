@@ -66,6 +66,7 @@ import { clasificarCausaError, TopeLlamadaLlmError } from "./observabilidad-turn
 import { completarConHedging, HedgeLlmFalloError, hedgeLlmDespuesMs, hedgeLlmRetrasoEfectivoMs } from "./llm-hedge.ts";
 import type { PataHedgeInforme } from "./llm-hedge.ts";
 import type { CausaErrorTurno, ObservabilidadTurno, ResultadoTool, ResultadoTurno } from "./observabilidad-turno.ts";
+import { buscarSucursalParaClientes, resumenSucursalesParaClientes } from "../solo-venta-local.ts";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Tono, reglas duras y generación del prompt.
@@ -714,10 +715,11 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       const perfil: PerfilAgenteWhatsApp = config.perfil ?? "generico";
       // El flujo de PM encadena mas llamadas por turno (cliente, zona, un producto por renglon, cotizar).
       const maxToolUseTurns = options.maxToolUseTurns ?? (perfil === "taqueria_pm" ? 8 : 4);
-      const branches = await repo.listBranchesForOrganization(organizationId);
+      const branches = await resumenSucursalesParaClientes(repo, organizationId);
       // Sucursal dueña del numero que recibio el mensaje (null = numero por defecto de la org).
       const entryBranch = entryPropertyId ? await repo.findBranchById(organizationId, entryPropertyId) : null;
-      const activeEntryBranch = entryBranch && entryBranch.status === "active" ? entryBranch : null;
+      // Una sucursal solo venta local (migracion 105) no es sucursal de entrada: el agente no la nombra ni toma pedidos en ella.
+      const activeEntryBranch = entryBranch && branches.some((b) => b.propertyId === entryBranch.propertyId) ? entryBranch : null;
       // Conocimiento del negocio (053): politicas, FAQ y avisos vigentes HOY segun la fecha local de la sucursal, antes de las reglas duras.
       // Base sin migrar o sin entradas = bloque vacio (el prompt es identico al de antes); la lectura corre en SAVEPOINT dentro del repositorio.
       const conocimientoBloque = await bloqueConocimientoDelTurno(repo, organizationId, activeEntryBranch?.propertyId ?? entryPropertyId ?? null, config.timezone, now());
@@ -765,7 +767,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       /** Zona horaria de la SUCURSAL del pedido (la misma que usa el servidor para validar la hora de recogida); si no se puede leer, la del agente. */
       const zonaDeLaSucursal = async (propertyIdDelPedido: string | null | undefined, branchSlug: unknown): Promise<string> => {
         try {
-          const pid = propertyIdDelPedido ?? (typeof branchSlug === "string" && branchSlug ? (await repo.findBranch(organizationId, { slug: branchSlug }))?.propertyId : null) ?? null;
+          const pid = propertyIdDelPedido ?? (typeof branchSlug === "string" && branchSlug ? (await buscarSucursalParaClientes(repo, organizationId, { slug: branchSlug }))?.propertyId : null) ?? null;
           if (pid) return resolverZonaHorariaNegocio((await repo.findBranchZonaHoraria(pid)).zonaHoraria);
         } catch {
           // Sin zona de sucursal se usa la del agente.

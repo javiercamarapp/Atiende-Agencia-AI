@@ -361,7 +361,7 @@ export function RestaurantesDashboardPage({
         etiqueta="Ventas netas"
         tamano="md"
       />
-      <p className="text-ui text-muted-foreground sm:hidden">
+      <p className="ds3-resumen-movil text-ui text-muted-foreground sm:hidden">
         Ventas netas{" "}
         <span className="font-medium tabular-nums text-foreground">
           {formatMoney(sales.revenue)}
@@ -385,6 +385,11 @@ export function RestaurantesDashboardPage({
         saludo={saludo}
         nombre={nombre}
         subtitulo={`${orgSlug} · ${PERIOD_OPTIONS.find((o) => o.id === period)?.label ?? period}`}
+        frase={
+          <>
+            Ventas netas · {PERIOD_OPTIONS.find((o) => o.id === period)?.label ?? period}: <strong>{formatMoney(sales.revenue)}</strong>.
+          </>
+        }
         destacado={destacado}
         kpis={kpis}
         acciones={

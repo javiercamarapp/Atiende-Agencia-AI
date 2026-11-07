@@ -11,6 +11,8 @@ import { CopilotoHistorial, TOPE_HISTORIAL } from "./CopilotoHistorial";
 import { CopilotoMensajeVista } from "./CopilotoMensaje";
 import { CopilotoPensando } from "./CopilotoPensando";
 import { CopilotoPortada } from "./CopilotoPortada";
+import { CopilotoTemas } from "./CopilotoTemas";
+import { useIdiomaCopiloto } from "./idioma";
 import type { ChatDatosShellProps, CopilotoDirecta } from "./tipos";
 import { useCopiloto } from "./useCopiloto";
 
@@ -50,6 +52,7 @@ export function ChatDatosShell({
   });
   const { mensajes, enviando, fase, pasos, conversacionId, abriendo, errorAbrir } = copiloto;
 
+  const { t } = useIdiomaCopiloto();
   const [texto, setTexto] = useState("");
   const [historialAbierto, setHistorialAbierto] = useState(false);
   const [saliendo, setSaliendo] = useState(false);
@@ -58,6 +61,29 @@ export function ChatDatosShell({
   const botonHistorial = useRef<HTMLButtonElement>(null);
   const temporizador = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(temporizador.current), []);
+
+  const raiz = useRef<HTMLDivElement>(null);
+  const cuerpo = useRef<HTMLDivElement>(null);
+  // Con el historial abierto (dialogo modal: aria-modal + foco atrapado) el fondo queda `inert`: el hilo y el compositor, y todo lo
+  // que esta fuera del chat (menu, encabezado, portales ya montados). El boton «Historial» sigue vivo para cerrarlo. Se restaura al cerrar.
+  useEffect(() => {
+    if (!historialAbierto || typeof document === "undefined") return;
+    const marcados: Element[] = [];
+    const marcar = (el: Element) => {
+      if (el.hasAttribute("inert") || el instanceof HTMLScriptElement || el instanceof HTMLStyleElement) return;
+      el.setAttribute("inert", "");
+      marcados.push(el);
+    };
+    if (cuerpo.current) marcar(cuerpo.current);
+    for (let n: HTMLElement | null = raiz.current; n && n !== document.body; n = n.parentElement) {
+      const padre = n.parentElement;
+      if (!padre) break;
+      for (const hermano of Array.from(padre.children)) if (hermano !== n) marcar(hermano);
+    }
+    return () => {
+      for (const el of marcados) el.removeAttribute("inert");
+    };
+  }, [historialAbierto]);
 
   const idHistorial = useId();
   const idCategorias = useId();
@@ -74,6 +100,8 @@ export function ChatDatosShell({
   const cerrarHistorial = useCallback(() => {
     clearTimeout(temporizador.current);
     botonHistorial.current?.focus();
+    // En ds3 el boton esta oculto (visibility) mientras el panel esta abierto: el foco se devuelve otra vez cuando reaparece.
+    setTimeout(() => botonHistorial.current?.focus(), 0);
     if (movimientoReducido()) {
       setHistorialAbierto(false);
       setSaliendo(false);
@@ -126,30 +154,36 @@ export function ChatDatosShell({
   return (
     <div
       className={panel ? "copiloto relative h-full min-h-0 overflow-y-auto overflow-x-hidden px-3 pt-3" : "copiloto relative min-h-[calc(100dvh-8rem)] overflow-hidden px-4 pt-4"}
+      ref={raiz}
       data-testid="copiloto-shell"
+      data-ds3-copiloto=""
       data-variante={variante}
     >
       <CampoPixeles color="hsl(var(--copiloto-acento))" />
 
       {puedeHistorial ? (
-        <div className="relative flex justify-end mb-6">
+        <div data-ds3="hist-fila-boton" className="relative flex justify-end mb-6">
           <button
             ref={botonHistorial}
             type="button"
             onClick={historialAbierto && !saliendo ? cerrarHistorial : abrirHistorial}
-            aria-label="Historial de chats"
+            aria-label={t("historialAria")}
             aria-expanded={historialAbierto && !saliendo}
             aria-controls={idHistorial}
+            data-ds3="hist-btn"
             className="relative flex items-center gap-1.5 text-xs border border-border rounded-full pl-3 pr-2.5 py-1.5 bg-card text-muted-foreground hover:bg-muted transition-colors"
           >
             <History className="w-3.5 h-3.5" aria-hidden />
-            Historial
-            {contador ? <span className="font-mono text-2xs bg-muted rounded-full px-1.5 py-0.5 text-foreground">{contador}</span> : null}
+            {t("historial")}
+            {contador ? <span data-ds3="hist-contador" className="font-mono text-2xs bg-muted rounded-full px-1.5 py-0.5 text-foreground">{contador}</span> : null}
           </button>
         </div>
       ) : null}
 
       <div
+        ref={cuerpo}
+        data-hay-conversacion={hayConversacion || undefined}
+        data-ds3="cuerpo"
         className={`relative flex flex-col items-center ${panel ? "px-1 pb-4" : "px-4 pb-8"} ${
           hayConversacion ? (panel ? "min-h-[calc(100%-3rem)] justify-end" : "min-h-[calc(100dvh-8rem)] justify-end") : panel ? "pt-6" : "pt-16 md:pt-24"
         }`}
@@ -157,7 +191,7 @@ export function ChatDatosShell({
         {!hayConversacion ? <CopilotoPortada textos={textos} compacta={panel} /> : null}
 
         {hayConversacion ? (
-          <div ref={hilo} role="log" aria-live="polite" aria-label="Conversación con el Copiloto" className={`w-full ${panel ? "max-w-full" : "max-w-2xl"} space-y-5 mb-6`}>
+          <div ref={hilo} data-ds3-hilo="" role="log" aria-live="polite" aria-label="Conversación con el Copiloto" className={`w-full ${panel ? "max-w-full" : "max-w-2xl"} space-y-5 mb-6`}>
             {abriendo ? (
               <p className="text-sm text-muted-foreground" role="status">
                 Abriendo conversación…
@@ -181,6 +215,7 @@ export function ChatDatosShell({
                 onRegenerar={copiloto.regenerar}
                 onPreguntar={preguntarChip}
                 vertical={vertical}
+                etiquetasHerramienta={etiquetasHerramienta}
                 {...(acciones ? { acciones } : {})}
               />
             ))}
@@ -190,7 +225,7 @@ export function ChatDatosShell({
 
         {!hayConversacion && categoriasVisibles ? <CopilotoCategorias id={idCategorias} categorias={categorias} onElegir={preguntarChip} compacta={panel} /> : null}
 
-        <div className={`w-full flex justify-center sticky ${panel ? "bottom-0" : "bottom-[calc(63px+var(--safe-area-bottom))] md:bottom-0"}`}>
+        <div data-ds3="dock" className={`w-full flex justify-center sticky ${panel ? "bottom-0" : "bottom-[calc(63px+var(--safe-area-bottom))] md:bottom-0"}`}>
           <CopilotoCompositor
             valor={texto}
             onCambia={setTexto}
@@ -211,8 +246,9 @@ export function ChatDatosShell({
 
         {!hayConversacion ? (
           <>
+            <CopilotoTemas categorias={categorias} onElegir={preguntarChip} ocupado={enviando} />
             {sugerencias.length > 0 ? (
-              <div className="flex flex-wrap gap-1.5 justify-center mt-4 max-w-xl">
+              <div data-ds3={categorias.some((c) => c.preguntas.length > 0) ? "chips-con-temas" : "chips"} className="flex flex-wrap gap-1.5 justify-center mt-4 max-w-xl">
                 {sugerencias.slice(0, 5).map((s) => (
                   <button
                     key={s}
@@ -225,12 +261,12 @@ export function ChatDatosShell({
                 ))}
               </div>
             ) : null}
-            <p className="text-xs text-muted-foreground text-center mt-8 max-w-lg">{textos.nota}</p>
+            <p data-ds3="pie" className="text-xs text-muted-foreground text-center mt-8 max-w-lg">{textos.nota}</p>
           </>
         ) : null}
 
         {uso ? (
-          <div className="mt-4 w-full max-w-xs text-xs text-muted-foreground">
+          <div data-ds3="uso" className="mt-4 w-full max-w-xs text-xs text-muted-foreground">
             <div className="flex justify-between mb-1">
               <span>{uso.etiqueta}</span>
               <span className="font-mono tabular-nums">{Math.round(uso.pct)}%</span>

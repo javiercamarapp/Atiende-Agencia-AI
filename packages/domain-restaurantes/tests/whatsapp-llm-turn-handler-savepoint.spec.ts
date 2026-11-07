@@ -52,6 +52,8 @@ describe("createLlmWhatsAppTurnHandler (restaurantes) — SAVEPOINT por tool cal
       { match: /from restaurantes\.whatsapp_agent_config/, respond: () => [] },
       { match: /from restaurantes\.whatsapp_agent_config/, respond: () => [] },
       { match: /read_order_flow_state/, respond: () => [{ state: null, context: null, version: 0 }] },
+      // Migracion 105 (solo venta local): ninguna sucursal marcada.
+      { match: /solo_venta_local/, respond: () => [] },
       { match: /from core\.property/, respond: () => [] },
       { match: /callback_registrar|insert into restaurantes\.callback_requests/, respond: () => genericPostgresError() },
       { match: /select 1/, respond: () => [] },
@@ -121,6 +123,8 @@ describe("createLlmWhatsAppTurnHandler (restaurantes) — SAVEPOINT por tool cal
     const organizationId = randomUUID();
     const session = new AbortAwareFakeSession([
       { match: /from restaurantes\.whatsapp_agent_config/, respond: () => [] },
+      // Migracion 105 (solo venta local): ninguna sucursal marcada.
+      { match: /solo_venta_local/, respond: () => [] },
       { match: /from core\.property/, respond: () => [] },
       { match: /callback_registrar|insert into restaurantes\.callback_requests/, respond: () => genericPostgresError() },
       { match: /select 1/, respond: () => [] },
@@ -150,6 +154,8 @@ describe("lectura de la cotizacion vigente al arrancar el turno (guardia de cifr
     const session = new AbortAwareFakeSession([
       { match: /from restaurantes\.whatsapp_agent_config/, respond: () => [] },
       { match: /read_order_flow_state/, respond: () => sinFuncion },
+      // Migracion 105 (solo venta local): ninguna sucursal marcada.
+      { match: /solo_venta_local/, respond: () => [] },
       { match: /from core\.property/, respond: () => [] },
       { match: /select 1/, respond: () => [] },
     ]);

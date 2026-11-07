@@ -13,15 +13,15 @@
 import { costoEstimadoMicroUsd } from "./config-plataforma.ts";
 import type { ConfigPlataformaVoz, EscalonVoz } from "./config-plataforma.ts";
 
-/** Proveedores de componente validos: `deepgram` (STT), `deepgram-aura-2` (TTS), `heygen` (TTS) u `openrouter:<modelo>` (LLM). El largo total (1-80) es el CHECK de
+/** Proveedores de componente validos: `deepgram` y `elevenlabs` (STT), `deepgram-aura-2`, `elevenlabs-tts` y `heygen` (TTS) u `openrouter:<modelo>` (LLM). El largo total (1-80) es el CHECK de
  * `core.usage_cost_event.proveedor`: la base rechazaria uno mas largo con 23514 y se perderia el costo de la llamada. */
-export const PROVEEDOR_COMPONENTE_RE = /^(?=.{1,80}$)(?:deepgram|deepgram-aura-2|heygen|openrouter:[a-z0-9][a-z0-9._/-]{0,60}(?::[a-z0-9._-]{1,16})?)$/;
+export const PROVEEDOR_COMPONENTE_RE = /^(?=.{1,80}$)(?:deepgram|deepgram-aura-2|elevenlabs|elevenlabs-tts|heygen|openrouter:[a-z0-9][a-z0-9._/-]{0,60}(?::[a-z0-9._-]{1,16})?)$/;
 
 export type UnidadComponente = "segundo" | "unidad";
 
 /** Unidad en la que se mide cada proveedor: Deepgram STT en segundos de audio; TTS en caracteres y LLM en llamadas, ambos `unidad`. */
 export function unidadDeComponente(proveedor: string): UnidadComponente {
-  return proveedor === "deepgram" ? "segundo" : "unidad";
+  return proveedor === "deepgram" || proveedor === "elevenlabs" ? "segundo" : "unidad";
 }
 
 /** Solo OpenRouter reporta el costo de cada respuesta (`usage.cost`); Deepgram y HeyGen se estiman con tarifa: su `costoReal` siempre es false. */

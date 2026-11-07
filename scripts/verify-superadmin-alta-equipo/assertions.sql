@@ -22,7 +22,11 @@
 insert into core.organization (id, vertical, name, slug, status) values
   ('00000000-0000-0000-0000-0000000f3000', 'restaurantes', 'Org A alta equipo', 'org-ae-a', 'active'),
   ('00000000-0000-0000-0000-0000000f3001', 'restaurantes', 'Org B alta equipo', 'org-ae-b', 'active'),
-  ('00000000-0000-0000-0000-0000000f3002', 'citas', 'Org C alta equipo', 'org-ae-c', 'active')
+  ('00000000-0000-0000-0000-0000000f3002', 'citas', 'Org C alta equipo', 'org-ae-c', 'active'),
+  ('00000000-0000-0000-0000-0000000f3003', 'despachos', 'Org D alta equipo', 'org-ae-d', 'trial'),
+  ('00000000-0000-0000-0000-0000000f3004', 'rentas', 'Org R alta equipo', 'org-ae-r', 'trial'),
+  ('00000000-0000-0000-0000-0000000f3005', 'hoteles', 'Org H alta equipo', 'org-ae-h', 'trial'),
+  ('00000000-0000-0000-0000-0000000f3006', 'licitaciones', 'Org L alta equipo', 'org-ae-l', 'trial')
 on conflict do nothing;
 insert into core.property (id, organization_id, vertical, name, status) values
   ('00000000-0000-0000-0000-0000000f3300', '00000000-0000-0000-0000-0000000f3000', 'restaurantes', 'Sucursal A1', 'active'),
@@ -131,12 +135,12 @@ do $$ declare v_ok boolean := false; begin
 end $$;
 rollback;
 
-\echo 'B2. vertical sin lista blanca (citas): 22023 -- RECHAZADO'
+\echo 'B2. rol de OTRA vertical (repartidor en citas): 22023 -- RECHAZADO (desde 0070 citas tiene lista blanca propia)'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f3100', true);
 do $$ declare v_ok boolean := false; begin
-  begin perform * from core.superadmin_invite_staff('00000000-0000-0000-0000-0000000f3100', '00000000-0000-0000-0000-0000000f3002', 'nuevo@example.com', 'admin', null, repeat('a', 64), 'Alta del equipo inicial del go-live', false); exception when sqlstate '22023' then v_ok := true; end;
+  begin perform * from core.superadmin_invite_staff('00000000-0000-0000-0000-0000000f3100', '00000000-0000-0000-0000-0000000f3002', 'nuevo@example.com', 'repartidor', null, repeat('a', 64), 'Alta del equipo inicial del go-live', false); exception when sqlstate '22023' then v_ok := true; end;
   if not v_ok then raise exception 'esperaba SQLSTATE 22023'; end if;
 end $$;
 rollback;
@@ -243,6 +247,83 @@ begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f3100', true);
 select (select count(*) from core.superadmin_invite_staff('00000000-0000-0000-0000-0000000f3100', '00000000-0000-0000-0000-0000000f3001', 'nuevo@example.com', 'admin', null, repeat('a', 64), 'Alta del equipo inicial del go-live', false))::int as deberia_ser_1;
+rollback;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- B') Migracion 0070: lista blanca por vertical (todas las verticales)
+-- ═══════════════════════════════════════════════════════════════════════════
+\echo 'B14. citas: owner -> platform_role owner -- OK'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f3100', true);
+select (select count(*) from core.superadmin_invite_staff('00000000-0000-0000-0000-0000000f3100', '00000000-0000-0000-0000-0000000f3002', 'duena@example.com', 'owner', null, repeat('a', 64), 'Alta del equipo inicial del go-live', false) where platform_role = 'owner')::int as deberia_ser_1;
+rollback;
+
+\echo 'B15. despachos: admin -> platform_role owner (el dueño del despacho) -- OK'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f3100', true);
+select (select count(*) from core.superadmin_invite_staff('00000000-0000-0000-0000-0000000f3100', '00000000-0000-0000-0000-0000000f3003', 'contadora@example.com', 'admin', null, repeat('a', 64), 'Alta del equipo inicial del go-live', false) where platform_role = 'owner')::int as deberia_ser_1;
+rollback;
+
+\echo 'B16. despachos: dos dueños (admin) pendientes sin confirmar: el segundo 55000 -- RECHAZADO'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f3100', true);
+select count(*) from core.superadmin_invite_staff('00000000-0000-0000-0000-0000000f3100', '00000000-0000-0000-0000-0000000f3003', 'uno@example.com', 'admin', null, repeat('a', 64), 'Alta del equipo inicial del go-live', false);
+do $$ declare v_ok boolean := false; begin
+  begin perform * from core.superadmin_invite_staff('00000000-0000-0000-0000-0000000f3100', '00000000-0000-0000-0000-0000000f3003', 'dos@example.com', 'admin', null, repeat('b', 64), 'Alta del equipo inicial del go-live', false); exception when sqlstate '55000' then v_ok := true; end;
+  if not v_ok then raise exception 'esperaba SQLSTATE 55000'; end if;
+end $$;
+rollback;
+
+\echo 'B17. rentas: admin_gestora -> owner; contador -> viewer -- OK'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f3100', true);
+select (
+  (select count(*) from core.superadmin_invite_staff('00000000-0000-0000-0000-0000000f3100', '00000000-0000-0000-0000-0000000f3004', 'gestora@example.com', 'admin_gestora', null, repeat('a', 64), 'Alta del equipo inicial del go-live', false) where platform_role = 'owner')
+  + (select count(*) from core.superadmin_invite_staff('00000000-0000-0000-0000-0000000f3100', '00000000-0000-0000-0000-0000000f3004', 'conta@example.com', 'contador', null, repeat('b', 64), 'Alta del equipo inicial del go-live', false) where platform_role = 'viewer')
+)::int as deberia_ser_2;
+rollback;
+
+\echo 'B18. hoteles: gm -> admin; licitaciones: viewer -> viewer -- OK'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f3100', true);
+select (
+  (select count(*) from core.superadmin_invite_staff('00000000-0000-0000-0000-0000000f3100', '00000000-0000-0000-0000-0000000f3005', 'gm@example.com', 'gm', null, repeat('a', 64), 'Alta del equipo inicial del go-live', false) where platform_role = 'admin')
+  + (select count(*) from core.superadmin_invite_staff('00000000-0000-0000-0000-0000000f3100', '00000000-0000-0000-0000-0000000f3006', 'lector@example.com', 'viewer', null, repeat('b', 64), 'Alta del equipo inicial del go-live', false) where platform_role = 'viewer')
+)::int as deberia_ser_2;
+rollback;
+
+\echo 'B19. rol de restaurantes en rentas (owner): 22023 -- RECHAZADO'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f3100', true);
+do $$ declare v_ok boolean := false; begin
+  begin perform * from core.superadmin_invite_staff('00000000-0000-0000-0000-0000000f3100', '00000000-0000-0000-0000-0000000f3004', 'nuevo@example.com', 'owner', null, repeat('a', 64), 'Alta del equipo inicial del go-live', false); exception when sqlstate '22023' then v_ok := true; end;
+  if not v_ok then raise exception 'esperaba SQLSTATE 22023'; end if;
+end $$;
+rollback;
+
+\echo 'B20. aceptar la invitacion del dueño de despachos crea la membresia owner/admin -- OK'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f3100', true);
+select count(*) from core.superadmin_invite_staff('00000000-0000-0000-0000-0000000f3100', '00000000-0000-0000-0000-0000000f3003', 'dueno-desp@example.com', 'admin', null, repeat('d', 64), 'Alta del equipo inicial del go-live', false);
+select set_config('request.jwt.claim.sub', '', true);
+select count(*) from core.accept_staff_invite(repeat('d', 64), 'Dueno Despacho', 'hash-de-prueba');
+reset role;
+select (select count(*) from core.membership m join core.staff_user u on u.id = m.user_id
+  where u.email = 'dueno-desp@example.com' and m.organization_id = '00000000-0000-0000-0000-0000000f3003' and m.platform_role = 'owner' and m.vertical_role = 'admin')::int as deberia_ser_1;
+rollback;
+
+\echo 'D9. la lectura incluye la vertical de la organizacion -- OK'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f3100', true);
+select (case when core.list_org_team_for_superadmin('00000000-0000-0000-0000-0000000f3100', '00000000-0000-0000-0000-0000000f3003') ->> 'vertical' = 'despachos' then 1 else 0 end)::int as deberia_ser_1;
 rollback;
 
 -- ═══════════════════════════════════════════════════════════════════════════

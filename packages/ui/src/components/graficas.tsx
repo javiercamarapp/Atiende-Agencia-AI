@@ -56,7 +56,10 @@ export function Tendencia({ valor }: { valor: number | null }) {
   const sube = valor >= 0;
   return (
     <span className={cn("block truncate text-xs font-medium", sube ? "text-success" : "text-destructive")} title={`${sube ? "+" : ""}${valor}% vs los 7 días previos`}>
-      {sube ? "↑" : "↓"} {Math.abs(valor)}%<span className="font-normal text-muted-foreground"> · 7d</span>
+      <span className="ds3-delta" data-tono={sube ? "bueno" : "malo"}>
+        {sube ? "↑" : "↓"} {Math.abs(valor)}%
+      </span>
+      <span className="font-normal text-muted-foreground"> · 7d</span>
     </span>
   );
 }

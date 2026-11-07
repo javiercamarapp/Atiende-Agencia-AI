@@ -3,7 +3,7 @@
 import { Fragment, useState } from "react";
 import { Lightbulb } from "lucide-react";
 import type { CriterioOrden, KpiTarjeta, ResumenVista } from "@atiende/domain-restaurantes/cfo";
-import { Callout, Card, DataTable, EstadoVacio, PageContainer, RadioSegmentado, Semaforo, SectionLabel, cn } from "@atiende/ui";
+import { Callout, Card, CifraTexto, DataTable, EstadoVacio, PageContainer, RadioSegmentado, Semaforo, SectionLabel, cn } from "@atiende/ui";
 import type { EstadoSemaforo } from "@atiende/ui";
 import { fetchResumen } from "./cfo-client.ts";
 import { enlaceDeAccion, type CfoPaginaProps } from "./contexto.ts";
@@ -49,10 +49,10 @@ function KpiCard({ k }: { readonly k: KpiTarjeta }) {
         <Semaforo estado={SEMAFORO_KPI[k.semaforo]} />
       </div>
       <p className={cn("min-w-0 truncate font-display text-xl font-semibold tabular-nums", sinDato && "text-faint")} aria-label={sinDato ? `${k.etiqueta}: sin dato` : undefined} title={sinDato ? undefined : textoCifra(k.valor, k.tipo)}>
-        {textoCifra(k.valor, k.tipo)}
+        <CifraTexto texto={textoCifra(k.valor, k.tipo)} />
       </p>
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
-        <span className={CLASE_TONO[tono]} data-testid="kpi-variacion">
+        <span className={cn("ds3-delta", CLASE_TONO[tono])} data-tono={tono} data-testid="kpi-variacion">
           {textoVariacion(k.variacion)}
         </span>
         <ChipDeCifra cifra={k.valor} />
@@ -152,7 +152,7 @@ export function CfoResumen(props: CfoPaginaProps) {
                   <div className="min-w-0">
                     <p className="text-xs text-muted-foreground">{d.titular.etiqueta}</p>
                     <p className="font-display text-xl font-semibold tabular-nums" aria-label={d.titular.cifra.valor === null ? `${d.titular.etiqueta}: sin dato` : undefined}>
-                      {d.titular.cifra.valor === null ? SIN_DATO : pesos(d.titular.cifra.valor)}
+                      {d.titular.cifra.valor === null ? SIN_DATO : <CifraTexto texto={pesos(d.titular.cifra.valor)} />}
                     </p>
                   </div>
                   <ChipDeCifra cifra={d.titular.cifra} mostrarMedido={d.titular.origen === "softrestaurant"} />

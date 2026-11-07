@@ -90,8 +90,9 @@ no es una transferencia en el sentido del Art. 35, porque actúan como encargado
 | Meta (WhatsApp) | Enviar y recibir los mensajes de WhatsApp | Mensajes, teléfono, ubicación compartida | Estados Unidos (sede; `[[POR COMPLETAR: confirmar lugar de tratamiento]]`) |
 | Google (Gemini) | Modelo de lenguaje y voz del asistente | Texto y audio del turno | Estados Unidos (`[[POR COMPLETAR: confirmar región configurada]]`) |
 | OpenRouter y los proveedores de modelos que enruta | Entender los mensajes y las llamadas y tomar el pedido | Texto del turno; sin teléfono completo cuando es posible `[[POR COMPLETAR: verificar con ingeniería]]` | Estados Unidos |
-| Deepgram | Convertir voz en texto y texto en voz (cascada de voz, si está habilitada) | Audio de la llamada | `[[POR COMPLETAR: país]]` |
-| ElevenLabs | Voz sintética del asistente (si está habilitada) | Texto que el asistente pronuncia | `[[POR COMPLETAR: país]]` |
+| ElevenLabs (Eleven Labs Inc.) | Pedidos por teléfono: convertir la voz en texto y generar la voz del asistente | Audio de la llamada y su transcripción (nombre, dirección, teléfono, pedido dichos en la llamada); **puede conservarlos según su propia política** (https://elevenlabs.io/privacy-policy) | Estados Unidos (sede) |
+| Deepgram | Respaldo de ElevenLabs (voz a texto y texto a voz) | Audio de la llamada y su transcripción | `[[POR COMPLETAR: país]]` |
+| Fly.io | Servidores donde corre el asistente de voz | Audio y texto de la llamada mientras se atiende | Estados Unidos (`[[POR COMPLETAR: región de la máquina]]`) |
 | Twilio | Recibir y transportar llamadas telefónicas | Número, metadatos y audio de la llamada | Estados Unidos |
 | LiveKit | Transmitir el audio de la llamada en tiempo real | Audio de la llamada | Estados Unidos (`[[POR COMPLETAR: región de la instancia]]`) |
 | Supabase | Base de datos donde se guarda su información | Todos los datos de la sección 3 | `[[POR COMPLETAR: región del proyecto]]` |
