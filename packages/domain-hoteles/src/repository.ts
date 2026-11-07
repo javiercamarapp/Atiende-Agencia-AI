@@ -77,6 +77,8 @@ import type {
   GuestReviewActionStatus,
   GuestReviewResponseRecord,
   NewGuestReviewResponseInput,
+  GenerarInventarioInput,
+  GenerarInventarioResultado,
 } from "./types.ts";
 import type { ReservationStatus } from "./reservationStateMachine.ts";
 import type { RevenueGateState } from "./revenue/revenueEngineGate.ts";
@@ -209,6 +211,11 @@ export interface HotelesRepository {
    *  nunca falla por duplicado. Devuelve cuántas fechas se escribieron (para que la
    *  ruta HTTP confirme al staff "se sembraron N noches" en vez de un 200 opaco). */
   upsertRatePlanRange(input: NewRatePlanRangeInput): Promise<{ datesWritten: number }>;
+
+  /** Onboarding P0 (`hoteles.generar_inventario`, migracion 050): crea/actualiza `hoteles.availability` por tipo de habitacion y noche
+   *  con total_rooms = habitaciones fisicas del tipo, sin tocar booked_rooms. Idempotente. Lanza el error de Postgres tal cual
+   *  (42501 sin rol de catalogo, 22023 rango invalido, 42883 base sin la 050): la ruta lo traduce. */
+  generarInventario(input: GenerarInventarioInput): Promise<GenerarInventarioResultado>;
 
   /** Alta de huésped nuevo — antes de este cambio `guestId` en `POST .../reservas`
    *  solo podía apuntar a un huésped YA sembrado por SQL directo (`searchGuests` era

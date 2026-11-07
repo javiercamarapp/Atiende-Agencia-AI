@@ -557,3 +557,5 @@ export * from "./reservas-agente/index.ts";
 // Agente de VOZ de hoteles sobre @atiende/voice-core (perfil, registro de tools con maquina de reserva, transportes). El simulador y sus guiones salen por
 // `@atiende/domain-hoteles/voz/simulador` (solo pruebas y la prueba ciega manual).
 export * from "./voz/index.ts";
+export { INVENTARIO_MAX_NOCHES, TAX_CONFIG_POR_DEFECTO } from "./types.ts";
+export type { GenerarInventarioInput, GenerarInventarioResultado } from "./types.ts";

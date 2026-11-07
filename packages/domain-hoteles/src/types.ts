@@ -125,6 +125,28 @@ export interface TaxConfigRecord {
   readonly discountThreshold: number;
 }
 
+/** Onboarding P0: espejo de los DEFAULT de `hoteles.tax_config` (migracion 001), que la migracion 050 siembra al crear el primer tipo de
+ * habitacion. El doble en memoria lo usa para reproducir ese trigger. */
+export const TAX_CONFIG_POR_DEFECTO: TaxConfigRecord = { ivaRate: 0.16, ishRate: 0.03, discountThreshold: 500 };
+
+/** Generacion de inventario (`hoteles.generar_inventario`, migracion 050). Fechas YYYY-MM-DD, ambas incluidas. */
+export interface GenerarInventarioInput {
+  readonly propertyId: string;
+  readonly desde: string;
+  readonly hasta: string;
+}
+
+export interface GenerarInventarioResultado {
+  /** Tipos de habitacion de la propiedad. */
+  readonly tipos: number;
+  readonly noches: number;
+  /** Filas de hoteles.availability creadas o actualizadas (0 = ya estaba al dia). */
+  readonly filas: number;
+}
+
+/** Tope de noches por llamada (mismo que la funcion SQL). */
+export const INVENTARIO_MAX_NOCHES = 400;
+
 export interface NightlyRateRecord {
   readonly date: string;
   readonly price: number;

@@ -86,6 +86,8 @@ import type {
   GuestReviewActionStatus,
   GuestReviewResponseRecord,
   NewGuestReviewResponseInput,
+  GenerarInventarioInput,
+  GenerarInventarioResultado,
 } from "./types.ts";
 import type { ReservationStatus } from "./reservationStateMachine.ts";
 import type { RevenueGateState } from "./revenue/revenueEngineGate.ts";
@@ -1067,6 +1069,15 @@ export class PostgresHotelesRepository implements HotelesRepository {
       if ((err as { code?: string }).code === "23505") throw new Error(`codigo_duplicado: ya existe una habitación con el código "${input.code}" en esta property.`);
       throw err;
     }
+  }
+
+  async generarInventario(input: GenerarInventarioInput): Promise<GenerarInventarioResultado> {
+    const { rows } = await this.db.query<{ out_tipos: number; out_noches: number; out_filas: number }>(
+      `select out_tipos, out_noches, out_filas from hoteles.generar_inventario($1::uuid, $2::date, $3::date);`,
+      [input.propertyId, input.desde, input.hasta],
+    );
+    const r = rows[0];
+    return { tipos: Number(r?.out_tipos ?? 0), noches: Number(r?.out_noches ?? 0), filas: Number(r?.out_filas ?? 0) };
   }
 
   async upsertRatePlanRange(input: NewRatePlanRangeInput): Promise<{ datesWritten: number }> {

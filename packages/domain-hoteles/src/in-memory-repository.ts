@@ -6,6 +6,7 @@
 // rol que InMemoryRestaurantesRepository.
 import { createHash, randomUUID } from "node:crypto";
 import { hoyFechaNegocio } from "@atiende/core-tenancy";
+import { INVENTARIO_MAX_NOCHES, TAX_CONFIG_POR_DEFECTO } from "./types.ts";
 import type { EmailOutboxJobRow, HotelesRepository, IdempotencyParams, IdempotentResult, MessagingOutboxRow, ReservationPage } from "./repository.ts";
 import type {
   ActiveHotelProperty,
@@ -84,6 +85,8 @@ import type {
   GuestReviewActionStatus,
   GuestReviewResponseRecord,
   NewGuestReviewResponseInput,
+  GenerarInventarioInput,
+  GenerarInventarioResultado,
 } from "./types.ts";
 import type { ReservationStatus } from "./reservationStateMachine.ts";
 import { isCancellable } from "./reservationStateMachine.ts";
@@ -849,7 +852,36 @@ export class InMemoryHotelesRepository implements HotelesRepository {
       maxOverbookRooms: 0,
       overbookingOccupancyThresholdPct: 95,
     });
+    // Espejo del trigger de la migracion 050: el primer tipo de habitacion siembra la tax_config por defecto (nunca pisa una existente).
+    if (!this.taxConfigByProperty.has(input.propertyId)) this.taxConfigByProperty.set(input.propertyId, TAX_CONFIG_POR_DEFECTO);
     return { id, name: input.name, maxOccupancy: input.maxOccupancy };
+  }
+
+  /** Espejo de `hoteles.generar_inventario` (migracion 050). La autorizacion real (owner/gm) vive en la funcion SQL; aqui solo el rango. */
+  async generarInventario(input: GenerarInventarioInput): Promise<GenerarInventarioResultado> {
+    const dia = (f: string) => Date.parse(`${f}T00:00:00Z`);
+    const desde = dia(input.desde);
+    const hasta = dia(input.hasta);
+    const ayer = Date.parse(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`) - 86_400_000;
+    const noches = Math.round((hasta - desde) / 86_400_000) + 1;
+    if (Number.isNaN(desde) || Number.isNaN(hasta) || hasta < desde || desde < ayer || noches > INVENTARIO_MAX_NOCHES) {
+      throw Object.assign(new Error("generar_inventario: rango invalido"), { code: "22023" });
+    }
+    if (!this.taxConfigByProperty.has(input.propertyId)) this.taxConfigByProperty.set(input.propertyId, TAX_CONFIG_POR_DEFECTO);
+    const tipos = [...this.roomTypes.values()].filter((rt) => rt.propertyId === input.propertyId);
+    let filas = 0;
+    for (const rt of tipos) {
+      const total = [...this.rooms.values()].filter((r) => r.propertyId === input.propertyId && r.roomTypeId === rt.id).length;
+      for (let i = 0; i < noches; i++) {
+        const fecha = new Date(desde + i * 86_400_000).toISOString().slice(0, 10);
+        const key = `${input.propertyId}:${rt.id}:${fecha}`;
+        const actual = this.availability.get(key);
+        if (actual && actual.totalRooms === total) continue;
+        this.availability.set(key, { totalRooms: total, bookedRooms: actual?.bookedRooms ?? 0 });
+        filas += 1;
+      }
+    }
+    return { tipos: tipos.length, noches, filas };
   }
 
   async listRooms(propertyId: string, roomTypeId?: string | null): Promise<readonly RoomSummary[]> {
