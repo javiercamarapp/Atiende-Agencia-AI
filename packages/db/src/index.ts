@@ -299,6 +299,7 @@ export {
   AltaPropiedadNoDisponibleError,
   InMemoryAltaPropiedadRepository,
   PostgresAltaPropiedadRepository,
+  recortarGuiones,
   slugSucursal,
   TOPE_PROPIEDADES_POR_ORGANIZACION,
   topePropiedadesPorOrganizacion,

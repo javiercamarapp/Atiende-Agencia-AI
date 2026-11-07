@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
   AltaPropiedadError,
   InMemoryAltaPropiedadRepository,
+  recortarGuiones,
   slugSucursal,
   TOPE_PROPIEDADES_POR_ORGANIZACION,
   topePropiedadesPorOrganizacion,
@@ -34,6 +35,24 @@ describe("slugSucursal", () => {
   it("nunca empieza ni termina en '-' con signos al inicio o al final; quita acentos", () => {
     expect(slugSucursal("¡¡Sucursal Centro Histórico!!")).toBe("sucursal-centro-historico");
     expect(slugSucursal("  --Norte--  ")).toBe("norte");
+  });
+
+  it("recortarGuiones quita los '-' de las orillas en tiempo lineal, sin regex (CodeQL js/polynomial-redos)", () => {
+    expect(recortarGuiones("--a-b--")).toBe("a-b");
+    expect(recortarGuiones("----")).toBe("");
+    expect(recortarGuiones("")).toBe("");
+    expect(recortarGuiones("abc")).toBe("abc");
+    // Peor caso de la regex /^-+|-+$/: muchos '-' seguidos de algo que no es '-'. Lineal: 200k guiones se recortan al instante.
+    const muchos = `${"-".repeat(200_000)}x${"-".repeat(200_000)}`;
+    const inicio = performance.now();
+    expect(recortarGuiones(muchos)).toBe("x");
+    expect(performance.now() - inicio).toBeLessThan(500);
+  });
+
+  it("slugSucursal con miles de signos sigue siendo rapido y valido", () => {
+    const inicio = performance.now();
+    expect(slugSucursal(`${"!-".repeat(100_000)}Centro${"-!".repeat(100_000)}`)).toBe("centro");
+    expect(performance.now() - inicio).toBeLessThan(500);
   });
 
   it("sin letras ni numeros cae a 'sucursal'", () => {

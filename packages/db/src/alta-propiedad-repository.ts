@@ -24,15 +24,23 @@ export function topePropiedadesPorOrganizacion(vertical: string): number {
 /** Slug base de una sucursal de restaurantes, igual que 0071: minusculas sin acentos, todo lo que no sea [a-z0-9] a '-', corte a 60 y
  *  sin '-' al inicio ni al final (el recorte va DESPUES del corte, que puede caer justo en un guion). Vacio = "sucursal". */
 export function slugSucursal(nombre: string): string {
-  const base = nombre
+  const guionado = nombre
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 60)
-    .replace(/^-+|-+$/g, "");
+    .replace(/[^a-z0-9]+/g, "-");
+  const base = recortarGuiones(recortarGuiones(guionado).slice(0, 60));
   return base || "sucursal";
+}
+
+/** Quita los '-' del inicio y del final en tiempo lineal y sin regex: `/^-+|-+$/` es polinomial (ReDoS, CodeQL
+ *  js/polynomial-redos) con muchos '-' seguidos de otro caracter, y el nombre llega del usuario. */
+export function recortarGuiones(texto: string): string {
+  let inicio = 0;
+  let fin = texto.length;
+  while (inicio < fin && texto.charCodeAt(inicio) === 45) inicio++;
+  while (fin > inicio && texto.charCodeAt(fin - 1) === 45) fin--;
+  return texto.slice(inicio, fin);
 }
 
 export type AltaPropiedadCodigo = "forbidden" | "validation" | "not_found" | "conflict" | "tope" | "incompleta";
