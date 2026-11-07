@@ -1,4 +1,5 @@
-// Inicio de sesion ds3 = el de Rovaq AI, en las 6 verticales (escritorio y movil de la matriz ds3, claro y oscuro).
+// Inicio de sesion = el de Rovaq AI, por omision en las 6 verticales (escritorio y movil de la matriz ds3, claro y oscuro;
+// con E2E_DISENO=ds3 se mide ademas con la bandera de diseno encendida).
 // Comprueba en el navegador lo que jsdom no ve: la rejilla de dos columnas iguales con el panel oscuro a la IZQUIERDA (radio 24)
 // y la esfera de particulas en un canvas real; en movil una sola columna sin canvas; tipografias y medidas de Rovaq (titular
 // Fraunces 36, kicker IBM Plex Mono 11, campo de 44 con radio 12, botones en pildora de 48, columna de 470); tema SIEMPRE claro
@@ -6,13 +7,14 @@
 // sin defectos. Accesibilidad con axe: el repo no trae @axe-core/playwright (agregarlo requiere visto bueno), asi que el
 // barrido de axe corre solo si AXE_CORE_JS apunta a un axe.min.js local; sin la variable se omite y lo dice en la salida.
 //
-// Capturas antes/despues: DS3_CAPTURAS=1 DS3_ETAPA=antes|despues (antes = bandera apagada, solo captura y no afirma ds3).
+// Capturas antes/despues: DS3_CAPTURAS=1 DS3_ETAPA=antes|despues. «antes» = build con VITE_LOGIN_LEGADO=1 (la pantalla
+// anterior): solo captura y no afirma nada del login nuevo.
 // API simulada de e2e/mock-api, nunca la real.
 import { existsSync, readFileSync } from "node:fs";
 import type { Page } from "@playwright/test";
 import { expect, test } from "../e2e/helpers/fixtures.ts";
 import { VERTICALES } from "../e2e/mock-api/personas.ts";
-import { ETAPA, medir } from "./comun.ts";
+import { ETAPA, medir, prepararBandera } from "./comun.ts";
 
 const ANTES = ETAPA === "antes";
 
@@ -34,19 +36,11 @@ const esDesviacionRovaq = (linea: string) => DESVIACIONES_ROVAQ.some((d) => line
 const AXE = process.env["AXE_CORE_JS"];
 
 test.beforeEach(async ({ page }) => {
-  // Este spec es del login ds3: enciende la bandera siempre, salvo en la captura «antes».
-  await page.addInitScript((antes: boolean) => {
-    try {
-      if (antes) window.localStorage.removeItem("atiende-diseno");
-      else window.localStorage.setItem("atiende-diseno", "ds3");
-    } catch {
-      // sin almacenamiento la prueba usa ?diseno=ds3
-    }
-  }, ANTES);
+  await prepararBandera(page);
 });
 
 async function abrir(page: Page, vertical: string): Promise<void> {
-  await page.goto(`/${vertical}/login${ANTES ? "?diseno=off" : "?diseno=ds3"}`);
+  await page.goto(`/${vertical}/login`);
   await expect(page.locator("main")).toHaveCount(1);
   await page.waitForLoadState("networkidle");
   await page.evaluate(() => document.fonts.ready);
@@ -78,7 +72,8 @@ for (const vertical of VERTICALES) {
     await expect(page.getByRole("button", { name: "Continuar con Google" })).toBeVisible();
     await expect(page.getByRole("textbox", { name: "Correo" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Continuar con correo" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "¿Olvidaste tu contraseña?" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "¿Olvidaste tu contraseña?" })).toHaveCount(0);
+    await expect(page.locator('input[type="password"]')).toHaveCount(0);
     await expect(page.locator("details.ld3-ayuda summary")).toHaveText("¿Necesitas ayuda para entrar?");
     await expect(page.locator(".ld3-invitacion")).toBeVisible();
 

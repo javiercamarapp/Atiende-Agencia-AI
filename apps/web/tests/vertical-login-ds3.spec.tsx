@@ -1,15 +1,13 @@
 // @vitest-environment jsdom
 //
-// ds3: inicio de sesion identico al de Rovaq AI en las 6 verticales (paleta de Atiende). Monta la PAGINA real de cada
-// vertical con la bandera encendida y comprueba el orden de Rovaq, los metodos que Atiende ya tenia (Google, enlace por
+// Inicio de sesion identico al de Rovaq AI en las 6 verticales (paleta de Atiende), por omision y sin bandera. Monta la
+// PAGINA real de cada vertical y comprueba el orden de Rovaq, los metodos que Atiende ya tenia (Google, enlace por
 // correo, ¿Olvidaste tu contraseña?), el copy por vertical en ES/EN, la espera de 60 s para reenviar y el tema claro.
 import type { ReactElement } from "react";
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { changeValue, click, flushMicrotasks, renderComponent, submitForm, type RenderedComponent } from "./test-utils/render.tsx";
-
-vi.mock("@atiende/ui", async (importOriginal) => ({ ...(await importOriginal<typeof import("@atiende/ui")>()), DISENO_DS3: true }));
 
 const iniciarMagicLink = vi.fn();
 const verificarGoogle = vi.fn();
@@ -32,6 +30,7 @@ const { RentasLoginPage } = await import("../src/verticals/rentas/pages/Login.ts
 const { RestaurantesLoginPage } = await import("../src/verticals/restaurantes/pages/Login.tsx");
 const { COPIA_LOGIN_DS3 } = await import("../src/components/login-ds3-copia.ts");
 const { ESPERA_REENVIO_S } = await import("../src/components/VerticalLoginDs3.tsx");
+const { loginLegadoActivo } = await import("../src/components/VerticalLogin.tsx");
 
 const API = "https://api.test";
 const noop = () => undefined;
@@ -137,13 +136,29 @@ describe.each(PAGINAS)("login ds3 · %s", (vertical, pagina) => {
     expect(c.querySelector('.ld3-idiomas button[aria-current="true"]')!.textContent).toBe("EN");
   });
 
-  it("conserva «¿Olvidaste tu contraseña?» y abre el restablecer en la misma pantalla", async () => {
+  it("solo enlace por correo y Google, como Rovaq: sin contraseña ni «¿Olvidaste tu contraseña?»", async () => {
     const c = await montar(pagina, `/${vertical}/login`);
-    click(boton(c, /¿Olvidaste tu contraseña\?/));
-    expect(c.textContent).toContain("Restablece tu contraseña");
-    expect(c.querySelector(".ld3-google")).toBeNull();
-    click(boton(c, /Volver a iniciar sesión/));
-    expect(c.querySelector(".ld3-google")).not.toBeNull();
+    expect(c.querySelector('input[type="password"]')).toBeNull();
+    expect(botones(c).some((b) => /contraseña/i.test(b.textContent ?? ""))).toBe(false);
+    expect(c.querySelectorAll('input[type="email"]')).toHaveLength(1);
+    expect(c.querySelector(".ld3-ayuda p")!.textContent).toContain("No necesitas contraseña.");
+  });
+});
+
+describe("login · pantalla por omision e interruptor de emergencia", () => {
+  it("sin variable (o con cualquier valor que no sea «1») monta el login de Rovaq; VITE_LOGIN_LEGADO=1 vuelve al anterior", () => {
+    expect(loginLegadoActivo(undefined)).toBe(false);
+    expect(loginLegadoActivo("")).toBe(false);
+    expect(loginLegadoActivo("0")).toBe(false);
+    expect(loginLegadoActivo("true")).toBe(false);
+    expect(loginLegadoActivo("1")).toBe(true);
+    expect(loginLegadoActivo(" 1 ")).toBe(true);
+  });
+
+  it("el build de pruebas (sin VITE_LOGIN_LEGADO) pinta la pantalla de Rovaq en la pagina real", async () => {
+    const c = await montar(PAGINAS[5]![1], "/citas/login");
+    expect(c.querySelector("main.login-ds3")).not.toBeNull();
+    expect(c.querySelector(".login-editorial")).toBeNull();
   });
 });
 
@@ -159,6 +174,7 @@ describe("login ds3 · comportamiento", () => {
     expect(iniciarMagicLink).toHaveBeenCalledWith(API, "dueno@negocio.com", "citas");
     const estado = c.querySelector(".ld3-estado")!;
     expect(estado.getAttribute("data-estado")).toBe("enviado");
+    expect(c.querySelectorAll('[role="status"]')).toHaveLength(1);
     expect(estado.querySelector('[role="status"]')!.textContent).toContain("dueno@negocio.com");
     const cta = c.querySelector<HTMLButtonElement>('form button[type="submit"]')!;
     expect(cta.disabled).toBe(true);
@@ -197,7 +213,7 @@ describe("login ds3 · comportamiento", () => {
     const google = boton(c, /Continuar con Google/);
     expect(google.disabled).toBe(true);
     const aviso = c.querySelector(".ld3-separador p")!;
-    expect(aviso.textContent).toBe("Google no está disponible por ahora.");
+    expect(aviso.textContent).toBe("Google: pendiente de configurar en este entorno.");
     expect(google.getAttribute("aria-describedby")).toBe(aviso.id);
   });
 
