@@ -47,13 +47,16 @@ LLAMADA (voz)
 - Si no entiende dos veces seguidas o falla el sistema: derivar_a_humano.`;
 }
 
+/** Aviso que cierra cada saludo pregrabado (H-P3-03): la persona sabe desde el primer segundo que le atiende una IA y que el aviso de privacidad esta en linea. Texto fijo del perfil: no toca la logica de voz. */
+const AVISO_IA_Y_PRIVACIDAD = "Le atiende un asistente automático de inteligencia artificial. Nuestro aviso de privacidad está disponible en línea, en la página de aviso de privacidad del hotel.";
+
 /** Textos pregrabados de un hotel (es-MX, trato de usted): se reproducen desde audio local, sin depender del proveedor de voz. Sin datos del huésped. */
 export function mensajesPregrabadosHotel(hotelName: string): CatalogoMensajes {
   return {
-    saludo_respaldo: `Gracias por llamar a ${hotelName}. En un momento le atendemos.`,
-    saludo_respaldo_dias: `Buenos días, gracias por llamar a ${hotelName}. En un momento le atendemos.`,
-    saludo_respaldo_tardes: `Buenas tardes, gracias por llamar a ${hotelName}. En un momento le atendemos.`,
-    saludo_respaldo_noches: `Buenas noches, gracias por llamar a ${hotelName}. En un momento le atendemos.`,
+    saludo_respaldo: `Gracias por llamar a ${hotelName}. ${AVISO_IA_Y_PRIVACIDAD} En un momento le atendemos.`,
+    saludo_respaldo_dias: `Buenos días, gracias por llamar a ${hotelName}. ${AVISO_IA_Y_PRIVACIDAD} En un momento le atendemos.`,
+    saludo_respaldo_tardes: `Buenas tardes, gracias por llamar a ${hotelName}. ${AVISO_IA_Y_PRIVACIDAD} En un momento le atendemos.`,
+    saludo_respaldo_noches: `Buenas noches, gracias por llamar a ${hotelName}. ${AVISO_IA_Y_PRIVACIDAD} En un momento le atendemos.`,
     silencio_reprompt: "¿Sigue ahí? Si desea reservar o necesita algo, dígame con gusto en qué le ayudo.",
     silencio_despedida: "No logro escucharle, así que voy a terminar la llamada. Puede volver a llamarnos cuando guste. Que tenga buen día.",
     pedir_repetir: "Disculpe, no le escuché bien. ¿Me lo puede repetir, por favor?",

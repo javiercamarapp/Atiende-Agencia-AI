@@ -43,6 +43,7 @@ import { hotelesGruposRoutes } from "./grupos.ts";
 import { hotelesGruposLiberacionCronRoutes } from "./grupos-liberacion-cron.ts";
 import { hotelesReservasAgenteRoutes } from "./reservas-agente.ts";
 import { hotelesConversacionesRoutes } from "./conversaciones.ts";
+import { hotelesMensajesHuespedCronRoutes, hotelesMensajesHuespedRoutes } from "./mensajes-huesped.ts";
 
 export function hotelesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -135,5 +136,8 @@ export function hotelesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", hotelesHousekeepingDiaCronRoutes(deps));
   // H-20 (P1) -- bandeja de conversaciones de WhatsApp con handoff a humano (tomar / devolver / cerrar / notas / responder via outbox), migracion 043.
   app.route("/", hotelesConversacionesRoutes(deps));
+  // H-P3-03 -- mensajes automaticos al huesped (config, plantillas HSM, historial) + cron /internal/hoteles/mensajes-huesped.
+  app.route("/", hotelesMensajesHuespedRoutes(deps));
+  app.route("/", hotelesMensajesHuespedCronRoutes(deps));
   return app;
 }
