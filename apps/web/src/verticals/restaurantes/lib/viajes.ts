@@ -1,5 +1,9 @@
 // Reglas puras de la pantalla Viajes del encargado: seleccion de lote (maximo 6), chofer por omision y texto de carga. Sin DOM ni red.
 import type { ViajesSalida } from "@atiende/domain-restaurantes/operacion";
+import { traductorActivo } from "@atiende/ui";
+import { restaurantesViajes } from "@atiende/ui/i18n/restaurantes/viajes";
+
+const tr = traductorActivo(restaurantesViajes);
 
 export const MAX_LOTE = 6;
 export const ETA_POR_OMISION_MIN = 35;
@@ -25,12 +29,12 @@ export function choferInicial(repartidores: readonly Chofer[]): string | null {
 }
 
 export function etiquetaChofer(c: Chofer): string {
-  const carga = c.activos === 1 ? "1 activo" : `${c.activos} activos`;
-  return `${c.nombre} (${carga})${c.sugerido ? " · sugerido" : ""}${c.disponible ? "" : " · fuera de turno"}`;
+  const carga = tr("restaurantes.viajes.activos", { count: c.activos });
+  return `${c.nombre} (${carga})${c.sugerido ? tr("restaurantes.viajes.sugerido") : ""}${c.disponible ? "" : tr("restaurantes.viajes.fueraDeTurnoSufijo")}`;
 }
 
 export function textoBotonSalio(n: number): string {
-  return n === 1 ? "Salió (1 pedido)" : `Salió (${n} pedidos)`;
+  return tr("restaurantes.viajes.salio", { count: n });
 }
 
 export interface PedidoLote {
@@ -83,18 +87,17 @@ const lista = (n: readonly number[]) => n.map((x) => `#${x}`).join(", ");
 /** Mensajes para la persona: uno de exito (si salio alguno) y uno de atencion por cada grupo que NO salio. */
 export function mensajesLote(r: ResumenLote, chofer: string): { readonly exito: string | null; readonly atencion: readonly string[] } {
   const atencion: string[] = [];
-  if (r.sinRespuesta.length > 0) atencion.push(`El servidor no confirmó ${r.sinRespuesta.length === 1 ? "el pedido" : "los pedidos"} ${lista(r.sinRespuesta)}: revisa en «En camino» antes de volver a intentar.`);
-  if (r.yaEstaban.length > 0) atencion.push(`${lista(r.yaEstaban)} ya estaba${r.yaEstaban.length === 1 ? "" : "n"} en camino con ${chofer}.`);
-  if (r.reasignados.length > 0) atencion.push(`${lista(r.reasignados)} se reasignó${r.reasignados.length === 1 ? "" : "aron"} a ${chofer}.`);
-  if (r.sinAviso > 0) atencion.push(`${r.sinAviso === 1 ? "1 cliente quedó" : `${r.sinAviso} clientes quedaron`} sin aviso por WhatsApp: avísales por llamada.`);
-  const exito = r.salieron.length > 0 ? `${r.salieron.length === 1 ? `El pedido ${lista(r.salieron)} salió` : `Los pedidos ${lista(r.salieron)} salieron`} con ${chofer}.` : null;
+  if (r.sinRespuesta.length > 0) atencion.push(tr("restaurantes.viajes.sinRespuesta", { count: r.sinRespuesta.length, lista: lista(r.sinRespuesta) }));
+  if (r.yaEstaban.length > 0) atencion.push(tr("restaurantes.viajes.yaEstaban", { count: r.yaEstaban.length, lista: lista(r.yaEstaban), chofer }));
+  if (r.reasignados.length > 0) atencion.push(tr("restaurantes.viajes.reasignados", { count: r.reasignados.length, lista: lista(r.reasignados), chofer }));
+  if (r.sinAviso > 0) atencion.push(tr("restaurantes.viajes.sinAviso", { count: r.sinAviso }));
+  const exito = r.salieron.length > 0 ? tr("restaurantes.viajes.exito", { count: r.salieron.length, lista: lista(r.salieron), chofer }) : null;
   return { exito, atencion };
 }
 
 /** 409 `estado_cambio`: dice cual pedido cambio si el servidor lo informa (`details.pedidoId`), si no, avisa del lote completo (el despacho es todo o nada). */
 export function textoEstadoCambio(lote: readonly PedidoLote[], details: Readonly<Record<string, string>> | null): string {
   const culpable = details?.["pedidoId"] ? lote.find((p) => p.id === details["pedidoId"]) : undefined;
-  return culpable
-    ? `El pedido #${culpable.numero} ya cambió de estado y nada salió. Se actualizó la lista: revisa y vuelve a elegir.`
-    : "Alguno de los pedidos ya cambió de estado y nada salió. Se actualizó la lista: revisa y vuelve a elegir.";
+  return culpable ? tr("restaurantes.viajes.estadoCambioUno", { numero: String(culpable.numero) }) : tr("restaurantes.viajes.estadoCambioLote");
+
 }

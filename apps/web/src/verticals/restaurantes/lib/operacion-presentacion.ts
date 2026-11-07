@@ -2,15 +2,20 @@
 import type { AccionDisponible, EstadoPanel, TarjetaPedido } from "@atiende/domain-restaurantes/operacion";
 import { semaforoPedido } from "./semaforo.ts";
 import type { Semaforo } from "@atiende/domain-restaurantes/operacion";
+import { etiquetasTraducidas } from "@atiende/ui";
+import { restaurantesOperacion } from "@atiende/ui/i18n/restaurantes/operacion";
 
 export type PestanaCola = "nuevos" | "preparacion" | "listos" | "camino";
 
-export const PESTANAS_COLA: readonly { readonly valor: PestanaCola; readonly etiqueta: string }[] = [
-  { valor: "nuevos", etiqueta: "Nuevos" },
-  { valor: "preparacion", etiqueta: "En preparación" },
-  { valor: "listos", etiqueta: "Listos" },
-  { valor: "camino", etiqueta: "En camino" },
-];
+const ETIQUETA_PESTANA = etiquetasTraducidas<PestanaCola>(["nuevos", "preparacion", "listos", "camino"], (p) => `restaurantes.operacion.cola.${p}` as const, restaurantesOperacion);
+
+/** `etiqueta` se traduce en cada lectura al idioma activo (i18n); en espanol, los textos de siempre. */
+export const PESTANAS_COLA: readonly { readonly valor: PestanaCola; readonly etiqueta: string }[] = (["nuevos", "preparacion", "listos", "camino"] as const).map((valor) => ({
+  valor,
+  get etiqueta() {
+    return ETIQUETA_PESTANA[valor];
+  },
+}));
 
 /** Pestana de un pedido. En domicilio, «listo» es `preparando` con `listoAt` (no hay estado propio); recoger usa `listo_para_recoger`. Otros estados no se pintan en la cola. */
 export function pestanaDe(p: Pick<TarjetaPedido, "estado" | "listoAt">): PestanaCola | null {
@@ -50,12 +55,29 @@ export function accionPrincipal(p: Pick<TarjetaPedido, "accionesDisponibles" | "
   return null;
 }
 
-export const ETIQUETA_ACCION: Readonly<Record<string, string>> = { aceptar: "Aceptar", listo: "Listo", entregar: "Entregado", salio: "Salió" };
+export const ETIQUETA_ACCION: Readonly<Record<string, string>> = etiquetasTraducidas(
+  ["aceptar", "listo", "entregar", "salio"] as const,
+  (a) => `restaurantes.operacion.tarjeta.accion.${a}` as const,
+  restaurantesOperacion,
+);
+
+const CANAL_DE_ORIGEN: Readonly<Record<string, "whatsapp" | "voz" | "llamada" | "mostrador" | "web" | "admin">> = {
+  whatsapp: "whatsapp",
+  whatsapp_manual: "whatsapp",
+  voice: "voz",
+  voz: "voz",
+  llamada: "llamada",
+  mostrador: "mostrador",
+  web: "web",
+  admin: "admin",
+};
+const ETIQUETA_ORIGEN = etiquetasTraducidas(["whatsapp", "voz", "llamada", "mostrador", "web", "admin"] as const, (c) => `restaurantes.operacion.canal.${c}` as const, restaurantesOperacion);
 
 export function etiquetaOrigen(origen: string): string {
-  const mapa: Record<string, string> = { whatsapp: "WhatsApp", whatsapp_manual: "WhatsApp", voice: "Voz", voz: "Voz", llamada: "Llamada", mostrador: "Mostrador", web: "Web", admin: "Captura" };
-  return mapa[origen] ?? origen;
+  const canal = CANAL_DE_ORIGEN[origen];
+  return canal ? ETIQUETA_ORIGEN[canal] : origen;
 }
+
 
 /** Minutos del pedido ahora: los que dijo el servidor al actualizar mas lo que ha pasado en ESTE telefono desde esa consulta (no mezcla relojes). */
 export function minutosVivos(p: Pick<TarjetaPedido, "minutos">, consultadoEnMs: number, ahoraMs: number): number {
