@@ -100,3 +100,13 @@ techo mínimo de roles.
 - `limpieza.ts`: `POST .../unidades/:unidadId/incidencias/:incidenciaId/confirmar-bloqueo` confirma el
   bloqueo de mantenimiento de una incidencia grave (solo roles de gestión; nunca cancela reservas).
 
+
+## Checklist de onboarding (Rn-36) y seed demo (Rn-33)
+
+- `admin-onboarding.ts`: `GET /v1/rentas/:propertyId/admin/onboarding` (mismo prefijo `/v1/rentas/:propertyId/admin/...` que catálogo y staff).
+  Checklist de TODA la organización calculado con datos reales (feeds iCal conectados, tarifa base por unidad, reglas de comisión confirmadas,
+  política de acceso, staff invitado, propietarios y plantilla aprobada); solo `admin_gestora` con acceso a todas las propiedades (una membership
+  acotada recibe 403) y **solo lectura**: un GET no emite notificaciones ni escribe. Cada medición degrada bajo SAVEPOINT a `no_disponible` contra
+  la base sin migrar. Una regla de comisión *sugerida* (la que nace con la organización, `default_sugerido…`) y un feed en cuarentena no cuentan
+  como hechos. Lecturas en `@atiende/domain-rentas` (`src/onboarding-checklist/`); web: `components/OnboardingChecklist.tsx` en el Resumen.
+- La cuenta demo (`scripts/seed-rentas-demo`) no forma parte de la API: es un script de operador, ver su README.

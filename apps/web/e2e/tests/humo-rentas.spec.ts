@@ -26,6 +26,33 @@ test.describe("rentas @humo", () => {
     vigilante.verificar();
   });
 
+  // Rn-36 / Rn-33: el checklist de onboarding sale de datos reales del servidor (aqui, los del escenario equivalente al seed demo) y cada
+  // punto enlaza a la pantalla que lo resuelve. Es solo lectura.
+  test("resumen: la administradora ve 'Configura tu gestora' con el progreso real, y cada punto enlaza a su pantalla sin escribir nada", async ({ page, iniciarSesion, mock, vigilante }) => {
+    await iniciarSesion("rentas", "admin");
+    await page.goto(`/rentas/${rentas.orgSlug}`);
+    const tarjeta = page.getByTestId("onboarding-checklist");
+    await expect(tarjeta.getByText("Configura tu gestora")).toBeVisible();
+    await expect(tarjeta.getByText("4 de 7 listos")).toBeVisible();
+    await expect(tarjeta.getByText("3 feeds activos, 2 ya sincronizados, 1 en cuarentena")).toBeVisible();
+    await expect(tarjeta.getByText("Solo valores sugeridos sin confirmar")).toBeVisible();
+    expect((await mock.buscar({ metodo: "GET", ruta: "/admin/onboarding" })).length).toBeGreaterThan(0);
+
+    await tarjeta.getByRole("link", { name: /Confirmar las reglas de comisión/ }).click();
+    await expect(page).toHaveURL(new RegExp(`/rentas/${rentas.orgSlug}/finanzas$`));
+    expect(await mock.escrituras()).toHaveLength(0);
+    vigilante.verificar();
+  });
+
+  test("resumen: quien no es administradora (el dueno de la API simulada) no ve la tarjeta de onboarding ni la pide", async ({ page, iniciarSesion, mock, vigilante }) => {
+    await iniciarSesion("rentas", "owner");
+    await page.goto(`/rentas/${rentas.orgSlug}`);
+    await expect(page.getByText("Llegadas hoy", { exact: true })).toBeVisible();
+    await expect(page.getByTestId("onboarding-checklist")).toHaveCount(0);
+    expect(await mock.buscar({ metodo: "GET", ruta: "/admin/onboarding" })).toHaveLength(0);
+    vigilante.verificar();
+  });
+
   test("cancelar reserva: 'No, mantenerla' y Escape no escriben; confirmar hace un POST /cancelar", async ({ page, iniciarSesion, mock, vigilante }) => {
     await iniciarSesion("rentas", "owner");
     await page.goto(`/rentas/${rentas.orgSlug}/calendario`);
