@@ -11,7 +11,6 @@ import { useEffect, useId, useLayoutEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
 import { aplicarTema, AtiendeMark, AtiendeWordmark, FormField, GoogleIcon, leerTema } from "@atiende/ui";
-import { EtiquetaBoton } from "./EtiquetaBoton.tsx";
 import { LoginArtwork } from "./LoginArtwork.tsx";
 import { iniciarMagicLink, mensajeGoogleError, mensajeMagicLinkError, urlIniciarGoogleLogin, verificarGoogleConfigurado } from "../lib/google-auth.ts";
 import { esCorreoValido, useEscritorio, type VerticalLoginProps } from "./login-comun.ts";
@@ -21,6 +20,11 @@ import "../pages/login-ds3.css";
 
 /** Segundos de espera antes de poder pedir otro enlace (Rovaq: «Reintentar en N s»). */
 export const ESPERA_REENVIO_S = 60;
+
+/** Segundos siempre con dos cifras de ancho (un espacio de cifra delante de 1-9): el texto no cambia de ancho al contar. */
+export function segundosVisibles(n: number): string {
+  return n < 10 ? `\u2007${n}` : String(n);
+}
 
 /** El login es siempre claro (Rovaq: `color-scheme: light`): quita `dark` mientras la pantalla vive y repone el tema guardado al salir. */
 function useTemaClaro(): void {
@@ -127,7 +131,6 @@ export function VerticalLoginDs3({ apiBaseUrl, vertical, nombre, descripcion, ki
   const magicLinkError = searchParams.get("magic_link_error");
   const alertaExterna = googleError ? mensajeGoogleError(googleError) : magicLinkError ? mensajeMagicLinkError(magicLinkError) : null;
   const errorFormulario = errorCorreo ?? errorEnvio;
-  const reposo = espera > 0 ? tr(`Reintentar en ${espera} s`, `Try again in ${espera} s`) : tr("Continuar con correo", "Continue with email");
 
   return (
     <main className="login-ds3" data-vertical={vertical} lang={locale}>
@@ -196,7 +199,14 @@ export function VerticalLoginDs3({ apiBaseUrl, vertical, nombre, descripcion, ki
                   <span aria-hidden className="login-glifo">
                     <AtiendeMark className="h-[17px] w-auto brightness-0 invert" />
                   </span>
-                  <EtiquetaBoton ocupado={enviando} reposo={reposo} enCurso={tr("Enviando…", "Sending…")} />
+                  {/* Tres textos apilados en la misma celda (solo uno visible): cambiar de estado o de segundo no mueve nada (CLS 0). */}
+                  <span className="login-etiqueta">
+                    <span className={enviando || espera > 0 ? "invisible" : undefined}>{tr("Continuar con correo", "Continue with email")}</span>
+                    <span className={!enviando && espera > 0 ? undefined : "invisible"}>
+                      {tr("Reintentar en", "Try again in")} <span className="ld3-segundos">{segundosVisibles(espera || ESPERA_REENVIO_S)}</span> s
+                    </span>
+                    <span className={enviando ? undefined : "invisible"}>{tr("Enviando…", "Sending…")}</span>
+                  </span>
                 </button>
                 {/* Ranura de alto reservado (Rovaq: role=status): enviado y errores ocupan el mismo espacio, el formulario no se mueve. */}
                 <div className="login-estado ld3-estado" data-estado={enviadoA && !errorFormulario ? "enviado" : errorFormulario ? "error" : "reposo"}>

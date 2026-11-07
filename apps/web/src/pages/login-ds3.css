@@ -8,7 +8,7 @@
 .login-ds3 {
   --ld3-serif: 'Fraunces', 'Fraunces Fallback', Georgia, 'Times New Roman', serif;
   --ld3-sans: 'Instrument Sans', 'Instrument Sans Fallback', Arial, sans-serif;
-  --ld3-mono: 'IBM Plex Mono DS3', 'IBM Plex Mono', ui-monospace, monospace;
+  --ld3-mono: 'IBM Plex Mono DS3', 'IBM Plex Mono DS3 Ajuste', 'IBM Plex Mono', ui-monospace, monospace;
   --ld3-tinta: hsl(var(--foreground));
   --ld3-tenue: hsl(var(--muted-foreground));
   --ld3-borde: hsl(var(--border));
@@ -71,9 +71,12 @@
 
 .login-ds3 .ld3-google { margin-top: 32px; }
 .login-ds3 .ld3-separador { display: flex; align-items: center; gap: 10px; margin: 24px 0 32px; font-size: 12px; text-align: center; color: var(--ld3-tenue); }
-.login-ds3 .ld3-separador span { flex: 1; min-width: 16px; height: 1px; background: var(--ld3-borde); }
-.login-ds3 .ld3-separador p { flex: 0 1 auto; margin: 0; }
+.login-ds3 .ld3-separador span { flex: 1; min-width: 0; height: 1px; background: var(--ld3-borde); }
+/* Un solo renglon siempre (el aviso de Google no debe pasar a dos renglones al llegar la fuente y empujar lo de abajo). */
+.login-ds3 .ld3-separador p { flex: 0 1 auto; min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .login-ds3 .ld3-correo { display: grid; gap: 16px; }
+/* Segundos del reenvio en cifras tabulares (siempre dos de ancho, ver segundosVisibles): no se mueven de un segundo a otro. */
+.login-ds3 .ld3-segundos { font-variant-numeric: tabular-nums; }
 .login-ds3 .ld3-correo-solo { margin-top: 32px; }
 /* Alto reservado (Rovaq: min-height 56): dos renglones de aviso o de error sin mover lo de abajo. */
 /* Alto FIJO (no min-height): enviado, error y reposo miden lo mismo y nada se mueve (CLS 0). Pisa la .login-estado de login.css. */
@@ -157,7 +160,8 @@
 @media (max-width: 1023px) and (max-height: 900px) {
   .login-ds3 .ld3-columna { padding: 12px 20px; }
   .login-ds3 .ld3-marca { min-height: 44px; }
-  .login-ds3 .ld3-copia { padding: 8px 0 12px; }
+  /* Arriba, no centrado: si la fuente llega tarde y un renglon cambia de alto, lo de arriba no se mueve. */
+  .login-ds3 .ld3-copia { margin: 0 auto; padding: 8px 0 12px; }
   .login-ds3 .ld3-titulo { font-size: 28px; margin: 6px 0 6px; }
   .login-ds3 .ld3-intro { font-size: 14px; line-height: 1.45; }
   .login-ds3 .ld3-divisor { margin-top: 12px; }
