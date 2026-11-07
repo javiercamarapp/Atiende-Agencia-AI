@@ -79,6 +79,8 @@ function stub(rutas: Rutas) {
       if (method === "POST") return res(rutas.conocimientoPost ? rutas.conocimientoPost(JSON.parse(init!.body as string)) : { status: 500 });
       return res(rutas.conocimiento ?? { status: 200, body: { disponible: true, topeCaracteres: 6000, entradas: [] } });
     }
+    // Idiomas del agente de voz (#712): sin ese backend la seccion dice "no disponible aun".
+    if (url === "https://api.test/v1/restaurantes/prop-1/admin/agente/voz-idiomas") return res({ status: 404 });
     throw new Error(`fetch inesperado: ${method} ${url}`);
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -189,6 +191,18 @@ describe("pestaña Voz (sin clonación)", () => {
     await irA("Voz");
     expect(rendered!.container.querySelector('[data-testid="selector-voz-telefono"]')).toBeNull();
     expect(rendered!.container.querySelector('[data-testid="aviso-voz-telefono"]')!.textContent).toMatch(/No disponible aún: requiere la migración 103/);
+  });
+
+  it("la pestaña Voz carga aparte los idiomas del agente (owner/admin) y sin el backend de #712 lo dice", async () => {
+    await pintar();
+    await irA("Voz");
+    for (let i = 0; i < 50 && !rendered!.container.querySelector('[data-testid="idiomas-voz-no-disponible"]'); i++) {
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 20));
+      });
+    }
+    expect(rendered!.container.querySelector('[data-testid="idiomas-voz-no-disponible"]')!.textContent).toMatch(/requiere el PR #712/);
+    expect(fetchMock.mock.calls.some(([url]) => url === "https://api.test/v1/restaurantes/prop-1/admin/agente/voz-idiomas")).toBe(true);
   });
 
   it("marca la voz guardada, deja elegir otra y guarda con PUT del cuerpo exacto", async () => {
