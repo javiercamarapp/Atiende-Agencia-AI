@@ -1,6 +1,6 @@
 import type { ModuloEs } from "../tipos.ts";
 
-/** Selector de idiomas del agente de VOZ por sucursal (Agente de voz -> Voz). La traduccion vive en `en/voz-idiomas.ts`. */
+/** Selector de idiomas del agente de VOZ por sucursal (Agente de voz -> Voz). La traduccion vive en `en/vozIdiomas.ts`. */
 export const vozIdiomas = {
   "vozIdiomas.titulo": "Idiomas del agente de voz",
   "vozIdiomas.descripcion": "En qué idioma saluda el agente y a cuáles puede cambiar durante la llamada. Solo cambia cómo habla; ninguna regla del negocio cambia.",

@@ -1,5 +1,5 @@
 import type { Traduccion } from "../../tipos.ts";
-import type { vozIdiomas } from "../voz-idiomas.ts";
+import type { vozIdiomas } from "../vozIdiomas.ts";
 
 export const vozIdiomasEn: Traduccion<typeof vozIdiomas> = {
   "vozIdiomas.titulo": "Voice agent languages",

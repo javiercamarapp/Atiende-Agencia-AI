@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Languages, X } from "lucide-react";
 import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, Selector, Switch, useI18n } from "@atiende/ui";
-import { vozIdiomas } from "@atiende/ui/i18n/voz-idiomas";
+import { vozIdiomas } from "@atiende/ui/i18n/vozIdiomas";
 import { VozNoDisponibleError } from "../lib/voz-client.ts";
 import { conAdicional, conPrincipal, fetchIdiomasVoz, guardarIdiomasVoz, mismosIdiomas, sinAdicional } from "../lib/voz-idiomas-client.ts";
 import type { ConfigIdiomasVoz, IdiomasVoz } from "../lib/voz-idiomas-client.ts";
