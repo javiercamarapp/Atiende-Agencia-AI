@@ -1,4 +1,5 @@
 import type { DemoAgentsDeps } from "./demo-agents/types.ts";
+import type { VozTurnoPuertos } from "./routes/verticals/restaurantes/voz-turno.ts";
 import type {
   AgentRunRepository,
   AuthzAuditRepository,
@@ -173,6 +174,8 @@ export interface AppDeps {
    * `(db) => new PostgresVozRepository(db)` y `voiceProvider` el adaptador de Gemini 3.8 Live
    * (emite sesiones solo con `GEMINI_API_KEY`). */
   readonly vozRepo?: (db: TenantDbSession) => VozRepository;
+  /** Turno de voz del cerebro v2 (POST /v1/restaurantes/voz/turno, migracion 191). Ausente = la ruta responde 503 con fin (apagado honesto). */
+  readonly vozTurno?: VozTurnoPuertos;
   /** Ajustes del agente por organizacion (migración 055: modelo, temperatura, voz, fondo). OPCIONAL: sin él las rutas responden 503 honesto. En producción es
    * `(db) => new PostgresAjustesAgenteRepository(db)` (degrada con SAVEPOINT a los valores de siempre contra la base sin migrar). */
   readonly ajustesAgenteRepo?: (db: TenantDbSession) => AjustesAgenteRepository;
