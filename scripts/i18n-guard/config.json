@@ -1,7 +1,10 @@
 {
   "alcance": [
     "packages/ui/src/i18n",
-    "apps/web/src/main.tsx"
+    "apps/web/src/main.tsx",
+    "apps/web/src/lib/carga-perezosa.tsx",
+    "packages/ui/src/components/RecuperarCarga.tsx",
+    "packages/ui/src/lib/recuperar-carga.ts"
   ],
   "excluir": [
     "packages/ui/src/i18n/mensajes"
