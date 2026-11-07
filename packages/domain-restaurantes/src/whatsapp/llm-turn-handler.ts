@@ -65,7 +65,8 @@ import { enforcePromoPolicy, stripUnpromptedTip } from "./cerebro-v2/politicas-p
 import { PM_POLICY_RULES_V2, adaptarPromptPmV2 } from "./cerebro-v2/prompt-v2.ts";
 import { cambioSoloDeFormaDePago } from "./cerebro-v2/pago.ts";
 import { normalizePhone } from "../phone.ts";
-import { consultasDeMenuParaPromesa, corregirPromesaSinBuscar, promesaDeProductoSinBuscar, quitarAlgoMasRepetido } from "./cerebro-v2/texto-final.ts";
+import { consultasDeMenuParaPromesa, corregirPromesaSinBuscar, guardiaTextoFinal, MOTIVO_PEDIDO_NO_REGISTRADO, promesaDeProductoSinBuscar, quitarAlgoMasRepetido } from "./cerebro-v2/texto-final.ts";
+import { esTextoEnIngles } from "./cerebro-v2/salud.ts";
 import { buscarEnCatalogo } from "./cerebro-v2/busqueda.ts";
 import { PM_AGENT_NAME_POR_OMISION, PM_COPY, buildPmSystemPrompt, saludoPorHora } from "./perfil-pm.ts";
 import { bloqueConocimientoPrompt, listarConocimientoVigente } from "../conocimiento/dominio.ts";
@@ -776,6 +777,12 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       const pedidosCreadosDelTurno: Array<{ readonly clave: string; readonly raw: unknown; readonly mensajeAlCliente: string | null; readonly timezone: string }> = [];
       let yaRegistradoEnTurno = false;
       let retenidoEnTurno = false;
+      // Cerebro v2 (guardia del texto final del suelto, R81-G/R82-4/R87-T): que paso con crear_pedido en el turno. `crearFalloInternoEnTurno` = error del sistema sin pedido
+      // (el texto lo arma el servidor y se deja el aviso operativo:pedido_no_registrado); `crearRechazadoEnTurno` = algun crear_pedido del turno fallo o se rechazo;
+      // `porAprobarEnTurno` = el pedido creado quedo por_aprobar (pedido grande con autopiloto).
+      let crearFalloInternoEnTurno = false;
+      let crearRechazadoEnTurno = false;
+      let porAprobarEnTurno = false;
       // Un pedido grande ya retenido (incluido `por_aprobar` del autopiloto) YA tiene su aviso: un "ya avise a la sucursal" del modelo no genera otro ni abre toma.
       let pedidoGrandeVisto = false;
       // El total que lee el cliente es SIEMPRE el real (cotizar/crear), aunque el modelo escriba otra cifra.
@@ -1574,6 +1581,34 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
               respuesta = corregirPromesaSinBuscar(respuesta, hiloV2, enElMenu) ?? respuesta;
             }
           }
+          // Cerebro v2: guardia del texto final del suelto (whatsapp-agent-core.ts ~7737-7787) en su orden: error del sistema al crear sin pedido -> texto del servidor y aviso
+          // operativo:pedido_no_registrado; pedido por aprobar dado por confirmado/en camino -> acuse + PEDIDO_POR_APROBAR_REPLY; pedido creado y «no se pudo» -> confirmacion.
+          // La promesa sin buscar ya se corrigio arriba y la afirmacion de registro sin pedido la quita la guardia de honestidad de siempre (pedidoPrevioRegistrado).
+          if (cerebroV2 && perfil === "taqueria_pm") {
+            const hiloGuardia = working.map((m) => ({ role: m.role, content: typeof m.content === "string" ? m.content : "" }));
+            const guardia = guardiaTextoFinal(respuesta, {
+              pedidoCreadoEnTurno: orderId !== null,
+              orderId,
+              pedidoPorAprobar: orderId !== null ? porAprobarEnTurno : customer.pedidoReciente?.estado === "por_confirmar",
+              productosDevueltosPorHerramientas: [],
+              productoPrometidoEnMenu: null,
+              mensajes: hiloGuardia,
+              crearFallido: orderId === null ? (crearFalloInternoEnTurno ? { interno: true, clase: "interno" } : null) : crearRechazadoEnTurno ? { interno: false, clase: "otro" } : null,
+              pedidoEnCurso: pedidoEnCursoV2 ? "abierto" : null,
+              pedidoPrevioRegistrado: true,
+              enIngles: esTextoEnIngles(pendientes.map((m) => m.content)),
+            });
+            if (guardia.reemplazado) respuesta = guardia.texto;
+            if (guardia.alertar && !preview) {
+              // Con SAVEPOINT (executeAgentToolSafely): si el aviso no se puede dejar, la respuesta al cliente sigue (como el try/catch del suelto).
+              await executeAgentToolSafely(
+                repo,
+                { organizationId, channel: "whatsapp", phone, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...modoCtx },
+                "registrar_contacto",
+                { customer_name: !customer.isNew && customer.name ? customer.name : "Cliente", reason: MOTIVO_PEDIDO_NO_REGISTRADO, message: "No se pudo registrar el pedido del cliente por un error del sistema (crear_pedido). Contáctelo para tomarlo." },
+              );
+            }
+          }
           const replyFinal = safeReply(respuesta);
           // B03: resumen por confirmar (cotizacion de ESTE turno, aun sin pedido): el webhook agrega los botones. Si no se puede comprobar la cotizacion vigente en el
           // servidor (base sin la maquina de estados) o no hay resumen con total, el cliente recibe el texto de siempre y contesta «si».
@@ -1674,6 +1709,12 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
                 if (comanda) result = { ...(result as object), comanda };
               }
             }
+          }
+          if (call.name === "crear_pedido") {
+            if (isToolErrorResult(result)) {
+              crearRechazadoEnTurno = true;
+              if (fallaSistema) crearFalloInternoEnTurno = true;
+            } else if ((result as { por_aprobar?: unknown } | null)?.por_aprobar === true) porAprobarEnTurno = true;
           }
           if (call.name === "escalar_a_humano" && !isToolErrorResult(result)) {
             escalacionOkEnTurno = true;
