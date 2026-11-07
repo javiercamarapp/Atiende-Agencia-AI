@@ -369,6 +369,8 @@ export const OPERATIONAL_ENV_VARS: readonly string[] = [
   "WHATSAPP_LLM_HEDGE_MS",
   // Turno asincrono del webhook de WhatsApp de restaurantes para TODAS las organizaciones (1/true/on/si); sin ella solo las de cerebro_v2. No es credencial.
   "WHATSAPP_TURNO_ASINCRONO",
+  // Ventana de silencio (ms, 500-10000; ausente = 2500) de la espera de rafagas deslizante del turno asincrono de WhatsApp de restaurantes. No es credencial.
+  "WHATSAPP_RAFAGA_SILENCIO_MS",
 ];
 
 /** Unión de toda variable "conocida" por este inventario (integraciones +

@@ -163,6 +163,9 @@ export interface AppDeps {
   /** PM-C5: espera real (en ms) entre las dos fases del webhook de WhatsApp cuando el agente tiene `replyDebounceSeconds` > 0. OPCIONAL: sin
    * ella se usa `setTimeout`; los tests inyectan una espera controlada. Con la espera apagada (lo normal) nunca se llama. */
   readonly esperarRafaga?: (ms: number) => Promise<void>;
+  /** Ventana de silencio (ms) de la espera DESLIZANTE del turno asincrono: se espera esta ventana y se repite solo si llego otro mensaje del mismo telefono,
+   * sin pasar de `replyDebounceSeconds`. OPCIONAL: por omision `WHATSAPP_RAFAGA_SILENCIO_MS` (2500). El camino sincrono conserva la espera fija. */
+  readonly silencioRafagaMs?: number;
   /** PM-C5: reloj en ms del webhook de WhatsApp para recortar la espera de rafagas segun lo que ya llevo la funcion. OPCIONAL (por omision `Date.now`); los tests lo inyectan. */
   readonly relojMs?: () => number;
   /** Turno ASINCRONO de WhatsApp de restaurantes: ¿esta organizacion acusa a Meta al terminar la fase A y corre la fase B despues con 60 s de vida? En

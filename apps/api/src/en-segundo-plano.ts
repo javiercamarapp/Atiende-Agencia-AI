@@ -19,3 +19,15 @@ export function turnoAsincronoDeEntorno(env: NodeJS.ProcessEnv = process.env): b
   const v = (env.WHATSAPP_TURNO_ASINCRONO ?? "").trim().toLowerCase();
   return v === "1" || v === "true" || v === "on" || v === "si";
 }
+
+/** Ventana de silencio de la espera de rafagas en el turno ASINCRONO, por omision. Con el acuse a Meta en la fase A, la espera ya no protege el 200: solo
+ * junta los mensajes seguidos del cliente. 2.5 s cubre el hueco tipico entre fragmentos de una rafaga (saludo, pedido, pin) sin sumarle 6 s a cada respuesta. */
+export const SILENCIO_RAFAGA_ASINCRONA_MS = 2_500;
+
+/** `WHATSAPP_RAFAGA_SILENCIO_MS` (500-10000): ventana de silencio de la espera deslizante del turno asincrono. Ausente, invalida o fuera de rango = 2500. */
+export function silencioRafagaAsincronaMs(env: NodeJS.ProcessEnv = process.env): number {
+  const crudo = (env.WHATSAPP_RAFAGA_SILENCIO_MS ?? "").trim();
+  if (!/^\d+$/.test(crudo)) return SILENCIO_RAFAGA_ASINCRONA_MS;
+  const n = Number(crudo);
+  return n >= 500 && n <= 10_000 ? n : SILENCIO_RAFAGA_ASINCRONA_MS;
+}

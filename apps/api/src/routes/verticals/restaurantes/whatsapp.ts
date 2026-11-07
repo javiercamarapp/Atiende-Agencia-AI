@@ -20,7 +20,7 @@ import { constantTimeEqual, requestActor } from "../../../http-security.ts";
 import { triggerRestaurantesWhatsAppDispatchInline } from "../../internal/whatsapp-dispatch.ts";
 import { triggerRestaurantesEmailDispatchInline } from "./email-dispatch.ts";
 import type { AppDeps } from "../../../deps.ts";
-import { waitUntilDeVercel } from "../../../en-segundo-plano.ts";
+import { silencioRafagaAsincronaMs, waitUntilDeVercel } from "../../../en-segundo-plano.ts";
 import { barrerTurnosHuerfanosWhatsApp } from "./whatsapp-turnos-huerfanos.ts";
 import { ALTA_CONFIRMADA_TEXTO, BAJA_CONFIRMADA_TEXTO, esPalabraBaja, procesarBajaOAlta } from "../../../supresion/index.ts";
 
@@ -300,7 +300,34 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
       // La espera se recorta para que la fase B (turnos del LLM) todavia quepa en la vida de la funcion; sin tiempo, se responde de inmediato. En modo
       // asincrono se recorta igual (contra los 30 s de siempre): los 30 s extra de la funcion son para el turno, no para esperar mas.
       const esperaMs = esperaEfectivaMs(Math.max(...lista.map((d) => d.esperaSegundos)), (deps.relojMs ?? Date.now)() - inicioMs);
-      if (esperaMs > 0) await esperar(esperaMs);
+      if (esperaMs > 0 && turnoAsincrono) {
+        // Espera DESLIZANTE (solo asincrono): el 200 a Meta ya salio, asi que la espera solo junta la rafaga. Se espera una ventana de silencio corta y se
+        // repite solo si en ella llego otro mensaje de estos telefonos (la fase A de ese mensaje ya lo agrego al historial), sin pasar de la espera configurada.
+        // Un mensaje que llegue despues de cerrar la ventana lo contesta la pasada siguiente de `responderTrasEspera` (MAX_PASADAS_RAFAGA).
+        const silencio = deps.silencioRafagaMs ?? silencioRafagaAsincronaMs();
+        const contarMensajes = () =>
+          deps.engine
+            .withAppSession({ userId: null }, async (db) => {
+              const repo = deps.restaurantesRepo(db);
+              let n = 0;
+              for (const d of lista) n += (await repo.whatsappAppendTurn(d.organizationId, d.phone, [], null, null, null)).filter((m) => m.role === "user").length;
+              return n;
+            })
+            .catch(() => null);
+        let previo = await contarMensajes();
+        let acumulado = 0;
+        while (acumulado < esperaMs) {
+          const ventana = Math.min(silencio, esperaMs - acumulado);
+          await esperar(ventana);
+          acumulado += ventana;
+          if (previo === null) break; // sin poder leer el historial no se alarga la espera
+          const ahora = await contarMensajes();
+          if (ahora === null || ahora === previo) break;
+          previo = ahora;
+        }
+      } else if (esperaMs > 0) {
+        await esperar(esperaMs);
+      }
       try {
         return await deps.engine.withAppSession({ userId: null }, async (db) => {
           const repo = deps.restaurantesRepo(db);
