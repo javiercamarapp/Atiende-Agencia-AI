@@ -457,3 +457,59 @@ html[data-diseno="ds3"] .ds3-velo.ds3-velo[data-state="open"] { animation-durati
   html[data-diseno="ds3"] .ds3-drawer,
   html[data-diseno="ds3"] .ds3-modal { border: 1px solid CanvasText; }
 }
+
+/* ---- 5. Carga: UNA capa de arranque a pantalla completa con el logo que respira -------------------------------------
+ * `#arranque` (index.html) cubre todo con un solo color y el logo de Atiende: opacidad .35 -> 1 y escala .985 -> 1 en 1,6 s con el
+ * easing unico. Visible mientras html no tenga data-arranque="suelto" (lo gobierna CapaArranque: suelta tras 600 ms estables; en una
+ * navegacion lenta vuelve si la carga pasa de 250 ms y dura >= 400 ms). Al soltarse se desvanece en 170 ms. Seguro CSS: a los 45 s se
+ * oculta aunque React nunca monte. Mientras la capa se ve, ningun otro logo animado se dibuja (uno a la vez); los cargadores de
+ * pagina completa nunca se dibujan: la capa los sustituye.
+ */
+@keyframes ds3-respira {
+  0%, 100% { opacity: 0.35; transform: scale(0.985); }
+  50% { opacity: 1; transform: scale(1); }
+}
+@keyframes ds3-arranque-tope {
+  to { opacity: 0; visibility: hidden; pointer-events: none; }
+}
+html[data-diseno="ds3"] #arranque.ds3-arranque[hidden] {
+  display: flex;
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  align-items: center;
+  justify-content: center;
+  background-color: hsl(var(--card));
+  color: hsl(var(--foreground));
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 170ms cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear 170ms;
+}
+html[data-diseno="ds3"].dark #arranque.ds3-arranque[hidden] { background-color: hsl(var(--background)); }
+html[data-diseno="ds3"]:not([data-arranque="suelto"]) #arranque.ds3-arranque[hidden] {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transition: none;
+  animation: ds3-arranque-tope 1ms linear 45s forwards;
+}
+html[data-diseno="ds3"] .ds3-arranque-logo.ds3-arranque-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  animation: ds3-respira 1.6s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+}
+html[data-diseno="ds3"] .ds3-arranque-logo svg { display: block; width: 30px; height: 24px; }
+html[data-diseno="ds3"] .ds3-arranque-punto.ds3-arranque-punto { fill: hsl(var(--primary)); }
+html[data-diseno="ds3"] .ds3-arranque-texto.ds3-arranque-texto { font-family: var(--font-display, inherit); font-size: 24px; font-weight: 700; line-height: 1; letter-spacing: -0.02em; }
+html[data-diseno="ds3"]:not([data-arranque="suelto"]) .carga-logo,
+html[data-diseno="ds3"] [data-carga-tamano="pantalla"] .carga-logo { visibility: hidden; }
+@media (prefers-reduced-motion: reduce) {
+  html[data-diseno="ds3"] .ds3-arranque-logo.ds3-arranque-logo { animation: none; opacity: 0.6; }
+  html[data-diseno="ds3"] #arranque.ds3-arranque[hidden] { transition: none; }
+}
+@media (forced-colors: active) {
+  html[data-diseno="ds3"] #arranque.ds3-arranque[hidden] { background-color: Canvas; color: CanvasText; }
+  html[data-diseno="ds3"] .ds3-arranque-punto.ds3-arranque-punto { fill: CanvasText; }
+}
