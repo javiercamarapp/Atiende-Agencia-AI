@@ -403,3 +403,57 @@ html[data-diseno="ds3"] .ds3-popover-guia.ds3-popover-guia { width: min(340px, c
 /* Barra de alcance: una fila de 32 sin wrap (scroll-x interno, sin barra visible), margen de 12 con el contenido. */
 html[data-diseno="ds3"] .ds3-alcance.ds3-alcance { min-height: 32px; gap: 8px; margin-bottom: 12px; }
 html[data-diseno="ds3"] .ds3-alcance-filtros.ds3-alcance-filtros { height: 32px; border-radius: 8px; }
+
+/* ---- 4. Superposiciones: Drawer (420/480/640), Modal (440/560), Popover (340) -------------------------------------
+ * Anatomia unica: cabecera (titulo 15/600 + subtitulo 12 + cerrar de 28 con radio 8), cuerpo con scroll propio (padding 16, gap 12,
+ * 13 px), pie con acciones a la derecha y, en el Drawer de escritorio, el logo de Atiende de 64 px al 60 % debajo del pie.
+ * Escritorio: el Drawer flota a 8 px del borde derecho con radio 12; entra con translateX(16px) + fundido en 180 ms y sale en 120.
+ * < 820 px: hoja inferior de 90dvh, radio 16 arriba, agarradera de 36x4, cerrar con area de 44 y sin logo; entra con translateY(32px).
+ */
+html[data-diseno="ds3"] .ds3-ov-cabecera.ds3-ov-cabecera { align-items: center; padding: 12px 16px; }
+html[data-diseno="ds3"] .ds3-ov-titulo.ds3-ov-titulo { font-size: 15px; font-weight: 600; line-height: 1.35; }
+html[data-diseno="ds3"] .ds3-ov-subtitulo.ds3-ov-subtitulo { font-size: 12px; line-height: 1.4; color: hsl(var(--muted-foreground)); }
+html[data-diseno="ds3"] .ds3-ov-cerrar.ds3-ov-cerrar { width: 28px; height: 28px; border-radius: 8px; }
+html[data-diseno="ds3"] .ds3-ov-cerrar svg { width: 14px; height: 14px; }
+html[data-diseno="ds3"] .ds3-ov-cuerpo.ds3-ov-cuerpo { padding: 16px; gap: 12px; font-size: 13px; }
+html[data-diseno="ds3"] .ds3-ov-pie.ds3-ov-pie { gap: 8px; padding-left: 16px; padding-right: 16px; }
+html[data-diseno="ds3"] .ds3-drawer-marca-logo [data-atiende-wordmark] { gap: 4px; height: 13px; }
+html[data-diseno="ds3"] .ds3-drawer-marca-logo [data-atiende-wordmark] svg { height: 12px; width: auto; }
+html[data-diseno="ds3"] .ds3-drawer-marca-logo [data-atiende-wordmark] > span { font-size: 13px; line-height: 13px; }
+html[data-diseno="ds3"] .ds3-modal.ds3-modal,
+html[data-diseno="ds3"] .ds3-drawer.ds3-drawer { border-radius: 12px; box-shadow: var(--shadow-pop); }
+
+@keyframes ds3-drawer-entra {
+  from { opacity: 0; transform: translateX(16px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes ds3-drawer-sale {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translateX(16px); }
+}
+@keyframes ds3-hoja-entra {
+  from { transform: translateY(32px); }
+  to { transform: none; }
+}
+@keyframes ds3-modal-entra {
+  from { opacity: 0; transform: scale(0.97); }
+  to { opacity: 1; transform: none; }
+}
+html[data-diseno="ds3"] .ds3-modal.ds3-modal[data-state="open"] { animation: ds3-modal-entra 160ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+html[data-diseno="ds3"] .ds3-velo.ds3-velo[data-state="open"] { animation-duration: 140ms; }
+
+@media (min-width: 820px) {
+  html[data-diseno="ds3"] .ds3-drawer.ds3-drawer[data-state="open"] { animation: ds3-drawer-entra var(--dur-base, 180ms) cubic-bezier(0.22, 1, 0.36, 1) both; }
+  html[data-diseno="ds3"] .ds3-drawer.ds3-drawer[data-state="closed"] { animation: ds3-drawer-sale 120ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+}
+@media (max-width: 819.98px) {
+  html[data-diseno="ds3"] .ds3-drawer.ds3-drawer { border-radius: 16px 16px 0 0; box-shadow: var(--shadow-hoja, var(--shadow-pop)); }
+  html[data-diseno="ds3"] .ds3-drawer.ds3-drawer[data-state="open"] { animation: ds3-hoja-entra var(--dur-slow, 240ms) cubic-bezier(0.22, 1, 0.36, 1) both; }
+  html[data-diseno="ds3"] .ds3-drawer .ds3-ov-cerrar.ds3-ov-cerrar { width: 32px; height: 32px; }
+  html[data-diseno="ds3"] .ds3-drawer-marca.ds3-drawer-marca { display: none; }
+}
+
+@media (forced-colors: active) {
+  html[data-diseno="ds3"] .ds3-drawer,
+  html[data-diseno="ds3"] .ds3-modal { border: 1px solid CanvasText; }
+}

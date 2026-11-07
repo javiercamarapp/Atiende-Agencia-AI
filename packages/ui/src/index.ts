@@ -187,6 +187,17 @@ export {
   SheetTrigger,
 } from "./components/ui/sheet.js";
 export { Popover, PopoverTrigger, PopoverAnchor, PopoverClose, PopoverContent } from "./components/ui/popover.js";
+export {
+  Drawer,
+  Modal,
+  ANCHOS_SUPERPOSICION,
+  HOJA_UMBRAL_CIERRE_PX,
+  tamanoDrawerPara,
+  type DrawerProps,
+  type ModalProps,
+  type TamanoDrawer,
+  type TamanoModalDs3,
+} from "./components/ui/drawer.js";
 export { Avatar, AvatarImage, AvatarFallback } from "./components/ui/avatar.js";
 export {
   DropdownMenu,
