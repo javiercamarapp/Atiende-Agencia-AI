@@ -217,7 +217,7 @@ export const INTEGRATIONS: readonly IntegrationDefinition[] = [
     id: "voz-elevenlabs",
     nombre: "Voz de restaurantes — ElevenLabs (Scribe v2 Realtime + eleven_v4_turbo) en la cascada v2",
     habilita:
-      "Stack de voz elegido para la llamada telefónica (6-nov-2026): el worker de voz (Fly) usa ELEVENLABS_API_KEY para el STT Scribe v2 Realtime (keyterms del menú de la sucursal) y el TTS eleven_v4_turbo con voz mexicana (Regina por omisión; la sucursal elige su voz telefónica en el panel). Deepgram (DEEPGRAM_API_KEY) queda como respaldo automático de cada etapa. El TTS descuenta créditos del plan de ElevenLabs. Sin la llave la cascada v2 usa solo Deepgram; la API no la lee.",
+      "Stack de voz elegido para la llamada telefónica (6-nov-2026): el worker de voz (Fly) usa ELEVENLABS_API_KEY para el STT Scribe v2 Realtime (keyterms del menú de la sucursal) y el TTS eleven_v4_turbo con voz mexicana (Regina por omisión; la sucursal elige su voz telefónica en el panel). Deepgram (DEEPGRAM_API_KEY) queda como respaldo automático de cada etapa. El TTS descuenta créditos del plan de ElevenLabs. Sin la llave la cascada v2 usa solo Deepgram. En la API la misma llave (misma cuenta) habilita la clonación de la voz telefónica de una sucursal (POST /v1/restaurantes/:propertyId/admin/voz/clonar, owner/admin); sin ella esa ruta responde 503 \"no disponible aún\" y la llave nunca sale del servidor.",
     variables: ["ELEVENLABS_API_KEY"],
   },
 
