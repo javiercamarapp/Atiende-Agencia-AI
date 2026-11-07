@@ -47,8 +47,11 @@ export interface ConfigWorker {
   readonly elevenlabsApiKey: string | null;
   /** `VOZ_ESCALERA` (escalones separados por coma): orden de la escalera; null = el de la plataforma. PM usa `cascada-v2,cascada-openrouter` (cascada, no voz a voz). */
   readonly escalera: readonly EscalonVoz[] | null;
-  /** `VOZ_RUIDO`: cancelacion de ruido de LiveKit sobre el audio del cliente. `krisp-telefonia` (BVC telefonico, por omision), `krisp` (NC estandar) o `ninguno`. */
+  /** `VOZ_RUIDO`: cancelacion de ruido de LiveKit sobre el audio del cliente: `ninguno` (por omision), `krisp-telefonia` (BVC telefonico) o `krisp` (NC estandar).
+   * Se enciende explicito tras medirlo con voz real (cambia el audio de TODAS las llamadas del worker). */
   readonly ruido: ModoRuido;
+  /** `VOZ_CEREBRO_DOS_NIVELES` (1/true/si): cascada v2 con GPT-6 Luna + Flash-Lite para cortesia + respaldo Haiku con plazo de 2.5 s al primer token. Apagado por omision. */
+  readonly cerebroDosNiveles: boolean;
   /** `VOZ_LLM_PROVEEDORES_ZDR` (slugs de OpenRouter separados por coma): sobreescribe los proveedores ZDR permitidos del cerebro de voz; vacio = los de `VOZ_PLATAFORMA`. */
   readonly proveedoresZdr: readonly string[];
   /** Ajuste fino del VAD de Gemini (`VOICE_VAD_SILENCIO_MS`, `VOICE_VAD_SENSIBILIDAD_FIN`); vacio = los valores de `VOZ_PLATAFORMA.gemini.vad`. */
@@ -180,9 +183,10 @@ export function cargarConfig(env: Readonly<Record<string, string | undefined>>, 
     if (validos.length !== pedidos.length || validos.length === 0 || new Set(validos).size !== validos.length) motivos.push(`VOZ_ESCALERA: escalones separados por coma, sin repetir, de entre ${ESCALERA_VOZ.join(", ")}.`);
     else escalera = validos;
   }
-  const ruidoCrudo = lleno(env.VOZ_RUIDO) ? env.VOZ_RUIDO.trim().toLowerCase() : "krisp-telefonia";
+  const ruidoCrudo = lleno(env.VOZ_RUIDO) ? env.VOZ_RUIDO.trim().toLowerCase() : "ninguno";
   if (!(MODOS_RUIDO as readonly string[]).includes(ruidoCrudo)) motivos.push("VOZ_RUIDO debe ser krisp-telefonia, krisp o ninguno.");
-  const ruido: ModoRuido = (MODOS_RUIDO as readonly string[]).includes(ruidoCrudo) ? (ruidoCrudo as ModoRuido) : "krisp-telefonia";
+  const ruido: ModoRuido = (MODOS_RUIDO as readonly string[]).includes(ruidoCrudo) ? (ruidoCrudo as ModoRuido) : "ninguno";
+  const cerebroDosNiveles = lleno(env.VOZ_CEREBRO_DOS_NIVELES) && ["1", "true", "si", "sí"].includes(env.VOZ_CEREBRO_DOS_NIVELES.trim().toLowerCase());
   const zdrCrudo = lleno(env.VOZ_LLM_PROVEEDORES_ZDR) ? env.VOZ_LLM_PROVEEDORES_ZDR.split(",").map((x) => x.trim()).filter((x) => x !== "") : [];
   const proveedoresZdr = zdrCrudo.filter((x) => /^[a-z0-9][a-z0-9-]*(\/[a-z0-9-]+)?$/.test(x));
   if (proveedoresZdr.length !== zdrCrudo.length) motivos.push("VOZ_LLM_PROVEEDORES_ZDR: cada proveedor debe ser un slug de OpenRouter (p. ej. google-vertex o google-vertex/us).");
@@ -245,6 +249,7 @@ export function cargarConfig(env: Readonly<Record<string, string | undefined>>, 
     elevenlabsApiKey: elevenlabs,
     escalera,
     ruido,
+    cerebroDosNiveles,
     proveedoresZdr,
     vad,
     costoMaxLlamadaMicroUsd: costoMax,

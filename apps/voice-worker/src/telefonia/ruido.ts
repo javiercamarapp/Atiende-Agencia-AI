@@ -1,5 +1,6 @@
 // Cancelacion de ruido de LiveKit (Krisp) sobre el audio del CLIENTE, antes del STT. Se aplica en el agente, no en el troncal SIP: la doc de LiveKit pide no
 // encimar el NC del troncal (`krisp_enabled`) con el del agente.
+//   (por omision `ninguno`: se enciende explicito tras medirlo con voz real)
 //   krisp-telefonia  BVC telefonico (`TelephonyBackgroundVoiceCancellation`): quita cocina, musica y la conversacion de al lado; afinado para audio SIP de 8 kHz.
 //   krisp            NC estandar (`NoiseCancellation`): solo ruido estacionario; para pedidos de grupo donde hablan varios legitimos.
 //   ninguno          sin filtro.

@@ -26,7 +26,7 @@ async function main(): Promise<void> {
     // Import diferido: el SDK de LiveKit trae un binario nativo. Un worker NO configurado (o en una maquina sin el binario) debe poder arrancar y
     // responder 503 en /salud en vez de caerse al cargar un modulo que no va a usar.
     const { LiveKitTelefonia } = await import("./telefonia/livekit.ts");
-    // Cancelacion de ruido de LiveKit sobre el audio del cliente (Krisp BVC telefonico por omision; requiere LiveKit Cloud). Si el modulo no carga, se atiende sin ella y se registra.
+    // Cancelacion de ruido de LiveKit sobre el audio del cliente (`VOZ_RUIDO`, apagada por omision; Krisp requiere LiveKit Cloud). Si el modulo no carga, se atiende sin ella y se registra.
     const ruido = await cargarCancelacionRuido(config.ruido, logPlano);
     const telefonia = new LiveKitTelefonia({ ...config.livekit, log: logPlano, ...(ruido ? { cancelacionRuido: ruido } : {}) });
     const api = new ClienteApi({ baseUrl: config.apiBaseUrl, internalSecret: config.internalSecret });
@@ -44,7 +44,7 @@ async function main(): Promise<void> {
         pregrabados: pregrabados.audios,
         api,
         log: sumidero,
-        crearEscalera: () => crearEscaleraPlataforma({ geminiApiKey: config.geminiApiKey, openrouterApiKey: config.openrouterApiKey, deepgramApiKey: config.deepgramApiKey, elevenlabsApiKey: config.elevenlabsApiKey, ...(config.escalera ? { config: { ...VOZ_PLATAFORMA, escalera: config.escalera } } : {}), cascadaV2Habilitada: config.cascadaV2Habilitada, confirmacionAntesDeCrear: { confirmar: "confirmar_resumen", crear: "crear_pedido", cotizar: "cotizar_pedido" }, llm, llmV2, log: sumidero, herramientasEnParalelo: HERRAMIENTAS_VOZ_SOLO_LECTURA, ...(Object.keys(config.vad).length > 0 ? { vad: config.vad } : {}), ...(vertex ? { vertex } : {}) }, OPCIONES_ESCALERA_PM),
+        crearEscalera: () => crearEscaleraPlataforma({ geminiApiKey: config.geminiApiKey, openrouterApiKey: config.openrouterApiKey, deepgramApiKey: config.deepgramApiKey, elevenlabsApiKey: config.elevenlabsApiKey, ...(config.escalera ? { config: { ...VOZ_PLATAFORMA, escalera: config.escalera } } : {}), dosNiveles: config.cerebroDosNiveles, cascadaV2Habilitada: config.cascadaV2Habilitada, confirmacionAntesDeCrear: { confirmar: "confirmar_resumen", crear: "crear_pedido", cotizar: "cotizar_pedido" }, llm, llmV2, log: sumidero, herramientasEnParalelo: HERRAMIENTAS_VOZ_SOLO_LECTURA, ...(Object.keys(config.vad).length > 0 ? { vad: config.vad } : {}), ...(vertex ? { vertex } : {}) }, OPCIONES_ESCALERA_PM),
         ...(config.costoMaxLlamadaMicroUsd !== null ? { limites: { ...LIMITES_VOZ_PM, costoMaxMicroUsd: config.costoMaxLlamadaMicroUsd } } : {}),
       },
     });
