@@ -830,7 +830,10 @@ async function sucursalDeOtroChat(repo: RestaurantesRepository, ctx: AgentToolCo
       branch_slug: asignada.slug,
       branch_name: asignada.name,
       ...(asignada.phone ? { telefono: asignada.phone } : {}),
-      aviso: `La referencia (NO confirmada) apunta a ${asignada.name}${tel}, que no es la sucursal de este chat. No diga que entregan ni que le toca esa sucursal; ofrezca recoger en la sucursal de este chat y, si insiste en domicilio, escale UNA vez (zona_ambigua).`,
+      // C3 PED-35/36 (cerebro v2): el dueño no quiere escalaciones por la zona; la referencia no confirmada se aclara con la ubicación o se ofrece recoger.
+      aviso: ctx.cerebroV2
+        ? `La referencia (NO confirmada) apunta a ${asignada.name}, que no es la sucursal de este chat. No diga que entregan ni que le toca esa sucursal: pídale su ubicación de WhatsApp para confirmarlo (vuelva a llamar esta herramienta con lat y lng) u ofrezca recoger en la sucursal que prefiera. Si insiste en otra sucursal, explique con amabilidad que las zonas de reparto son fijas; no escale por eso.`
+        : `La referencia (NO confirmada) apunta a ${asignada.name}${tel}, que no es la sucursal de este chat. No diga que entregan ni que le toca esa sucursal; ofrezca recoger en la sucursal de este chat y, si insiste en domicilio, escale UNA vez (zona_ambigua).`,
     };
   }
   return {
@@ -843,6 +846,31 @@ async function sucursalDeOtroChat(repo: RestaurantesRepository, ctx: AgentToolCo
       `dígale con calidez que su zona la atiende ${asignada.name}, dele ${asignada.phone ? `el teléfono ${asignada.phone}` : "el teléfono de esa sucursal (lista de DATOS DEL NEGOCIO)"} y conteste lo que preguntó (precio o tiempo). ` +
       `Ofrezca recoger en ${delChat?.name ?? "la sucursal de este chat"}. Si insiste una primera vez, mantenga la postura (las zonas de reparto son fijas) y ofrezca recoger otra vez; si insiste de nuevo, escale UNA vez con motivo zona_ambigua (el cliente insiste en otra sucursal para domicilio). No escale antes de eso.`,
   };
+}
+
+// ── C3 PED-11 / PED-35 / PED-36 (cerebro v2, decisión del dueño): sin escalaciones por la zona ─────────────────────────────────────────────────────────────
+// Cada sucursal tiene su número y las zonas de reparto son fijas: el domicilio se toma para la sucursal que lo cubre y, si el cliente insiste en otra, se le explica y se le ofrece
+// recoger en la que prefiera. El modelo escalaba igual: zona_ambigua al insistir el cliente (PED-36), cliente_lo_pide cuando pedía «un supervisor» para lo mismo (PED-35) y «otro»
+// para «confirmar la atención de su zona» con la sucursal ya asignada y cotizada (PED-11). El prompt solo no bastó: el servidor rechaza esas escaladas y le dice qué contestar.
+export const INSTRUCCION_ZONA_SIN_ESCALAR =
+  "No escale por la zona: las zonas de reparto son fijas y el domicilio ya tiene la sucursal que lo entrega (la que dio buscar_sucursal_cercana). Explíquele con amabilidad que cada sucursal reparte solo en su zona, ofrezca el domicilio desde la sucursal que cubre (con su tiempo) o recoger en la sucursal que prefiera, y siga con el pedido. No diga que avisó al gerente, al encargado ni al equipo, ni que alguien lo revisará. Solo si el cliente pide una persona por OTRO motivo (queja, alergia, etc.), escale con ese motivo.";
+/** Resumen de una escalada que trata de la zona o de qué sucursal entrega (sin acentos, minúsculas). */
+const RESUMEN_DE_ZONA = /\b(?:zonas?|cobertura|colonia)\b|\bsucursal\b.{0,80}\b(?:entreg|atiend|cubr|repart|despach)/;
+/** Escaladas que, aunque mencionen la zona, son de otro asunto y siempre pasan. */
+const RESUMEN_DE_OTRO_ASUNTO = /\b(?:queja|reclam\w*|alergi\w*|factur\w*|cancel\w*|cobr\w*|cargo|emple\w*|evento|repartidor)\b/;
+
+async function escaladaDeZonaInnecesaria(repo: RestaurantesRepository, ctx: AgentToolContext, input: Record<string, unknown>): Promise<boolean> {
+  if (!ctx.cerebroV2 || ctx.channel !== "whatsapp") return false;
+  const motivo = normalizarMotivoEscalacion(input.motivo);
+  if (motivo !== "zona_ambigua" && motivo !== "otro" && motivo !== "cliente_lo_pide") return false;
+  if ((await repo.findWhatsAppAgentConfig(ctx.organizationId, null).catch(() => null))?.perfil !== "taqueria_pm") return false;
+  // zona_ambigua es justo «el cliente insiste en otra sucursal para domicilio»: con cerebro v2 ya no se escala.
+  if (motivo === "zona_ambigua") return true;
+  const resumen = (typeof input.resumen === "string" ? input.resumen : "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  if (!RESUMEN_DE_ZONA.test(resumen) || RESUMEN_DE_OTRO_ASUNTO.test(resumen)) return false;
+  // Solo con una cotización a domicilio vigente (la zona ya tiene sucursal que entrega): sin ella puede ser un domicilio que ninguna sucursal cubre, que sigue su camino de siempre.
+  const flujo = ctx.flow ? await repo.readOrderFlow(ctx.organizationId, ctx.flow.key).catch(() => null) : null;
+  return flujo?.context?.quotedCanal === "domicilio";
 }
 
 /** Una tool apunta a otra sucursal que la fijada por el contexto -> se rechaza (aislamiento entre sucursales). */
@@ -2409,6 +2437,7 @@ async function dispatchTool(
       if (!ctx.phone) throw new OrderValidationError("No se conoce el teléfono de esta conversación; no se puede dejar aviso.");
       const esEscalada = def.name === "escalar_a_humano";
       if (esEscalada && input.motivo === "pedido_grande" && !(await servidorConfirmaPedidoGrande(repo, ctx))) throw new OrderValidationError(INSTRUCCION_PEDIDO_GRANDE_SOLO_SERVIDOR);
+      if (esEscalada && (await escaladaDeZonaInnecesaria(repo, ctx, input))) throw new OrderValidationError(INSTRUCCION_ZONA_SIN_ESCALAR);
       if (!esEscalada && input.reason === "cliente_llego") return avisarLlegadaDelCliente(repo, ctx, input);
       if (!esEscalada && input.reason === "pedido_telefonico") return pasarNotaDePedidoTelefonico(repo, ctx, input);
       const reason = esEscalada ? `escalada:${normalizarMotivoEscalacion(input.motivo)}` : typeof input.reason === "string" ? input.reason : undefined;

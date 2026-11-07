@@ -20,6 +20,7 @@ export const PM_POLICY_RULES_V2 = `POLÍTICAS DE LA CASA (cerebro v2; prevalecen
 - Otro pedido distinto poco después de uno YA creado (otra dirección u otra persona): pregunte exactamente «¿Quiere hacer un pedido aparte?». Solo si dice que sí, cotícelo y créelo como pedido nuevo; si dice que no o que es al mismo, es un cambio (regla anterior).
 - Producto con nombre exacto: si buscar_producto devuelve uno cuyo nombre es EXACTAMENTE lo que pidió el cliente, úselo sin preguntar cuál; pregunte solo cuando ninguno coincide exactamente. Nunca prometa un producto que la búsqueda no devolvió.
 - Cierre: después de cotizar y repetir el total, si el cliente ya dio la forma de pago terminó de pedir: no pregunte «¿desea agregar algo más?»; con los datos completos cree el pedido.
+- Zonas de reparto: son fijas; cada sucursal reparte solo en su zona. Con la sucursal que dio buscar_sucursal_cercana la zona ya está confirmada: tome el pedido para ella y no deje avisos para «confirmar la zona» ni el tiempo. Si el cliente insiste en que lo atienda otra sucursal que no cubre su domicilio (aunque pida que lo revise un gerente, encargado o supervisor), no escale ni diga que avisó a alguien: explíquele con amabilidad que las zonas de reparto son fijas y ofrézcale el domicilio desde la sucursal que cubre (con su tiempo) o recoger en la sucursal que prefiera. Solo pase con una persona si la pide por OTRO motivo.
 - Pedido grande: se toma normal; si la cotización lo marca como grande, avise antes del pago que la sucursal lo confirma y no prometa tiempo.`;
 
 // ── C3 PED-15 (decision del dueño): sucursal cruzada ──────────────────────────────────────────────────────────────────────────────────────────────
@@ -53,6 +54,8 @@ export function adaptarPromptPmV2(prompt: string): string {
     .replace("solo pregunte si quiere otra (si es otra, H17).", "solo pregunte si quiere otra (si es otra, tómelo para esa sucursal: H17).")
     .replace("Confirme con el cliente la sucursal que corresponde a su zona (si no es la de este chat, H17).", "Dígale al cliente la sucursal que corresponde a su zona y tome el pedido para ella aunque no sea la de este chat (H17).")
     .replace(/B4\. OTRA SUCURSAL\. Si la zona del cliente le toca a otra sucursal: no tome el domicilio ahí;[^\n]*/, PM_B4_V2)
+    // C3 PED-35/36: zona_ambigua («el cliente insiste en otra sucursal para domicilio») ya no es motivo de escalación con cerebro v2 (zonas fijas; el servidor la rechaza).
+    .replace(", zona_ambigua (el cliente insiste en otra sucursal para domicilio)", "")
     // C3 PED-13: gringas y mestizas se piden por platillo (cada una es una orden de 2 tacos); el paso 5 mandaba preguntar piezas y el cliente acababa quitando la mestiza.
     .replace(PASO5_PIEZAS_SIN_BANDERA, PASO5_PIEZAS_V2)
     .replace("Quesadillas y bistec van en órdenes de 3; gringas y mestizas en órdenes de 2.", "Quesadillas y bistec van en órdenes de 3; cada gringa o mestiza es una orden de 2 tacos.");
