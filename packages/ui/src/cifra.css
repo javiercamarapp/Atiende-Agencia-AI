@@ -74,3 +74,120 @@ html[data-diseno="ds3"] .ds3-delta {
 }
 html[data-diseno="ds3"] .ds3-delta[data-tono="bueno"] { background-color: hsl(var(--success-tint)); color: hsl(var(--success-ink)); }
 html[data-diseno="ds3"] .ds3-delta[data-tono="malo"] { background-color: hsl(var(--danger-tint)); color: hsl(var(--danger-ink)); }
+
+/* ======================================================================================================================
+   Resumen y tira de KPI (paridad Rovaq «Hoy», PARIDAD-ATIENDE-ROVAQ #5/#6/#18). Valores en px de Rovaq, sin compensar la raiz.
+   ResumenLayout pinta siempre el eyebrow y la frase (ocultos con `hidden`); aqui se muestran solo bajo ds3. Los ganchos son
+   `data-parte` para no tocar las clases de Likida.
+   ====================================================================================================================== */
+
+/* Encabezado: eyebrow 12/600 MAYUSCULAS tracking 0.72 px muted; H1 20/600/-0.5. */
+html[data-diseno="ds3"] .ds3-resumen [data-parte="eyebrow"] {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 12px;
+  line-height: 16.8px;
+  font-weight: 600;
+  letter-spacing: 0.72px;
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground));
+}
+html[data-diseno="ds3"] .ds3-resumen [data-parte="titulo"] {
+  font-family: var(--font-sans);
+  font-size: 20px;
+  line-height: 26px;
+  font-weight: 600;
+  letter-spacing: -0.5px;
+}
+
+/* Con frase: la frase (cifras clave en negritas) sustituye al subtitulo y al odometro; Rovaq no tiene odometro. */
+html[data-diseno="ds3"] .ds3-resumen [data-parte="frase"] {
+  display: block;
+  margin-top: 4px;
+  max-width: 72ch;
+  font-size: 13px;
+  line-height: 19.5px;
+  color: hsl(var(--muted-foreground));
+}
+html[data-diseno="ds3"] .ds3-resumen [data-parte="frase"] strong {
+  font-weight: 600;
+  color: hsl(var(--foreground));
+  font-variant-numeric: tabular-nums;
+}
+html[data-diseno="ds3"] .ds3-resumen[data-con-frase] [data-parte="subtitulo"],
+html[data-diseno="ds3"] .ds3-resumen[data-con-frase] [data-parte="destacado"] [data-testid="odometro"],
+html[data-diseno="ds3"] .ds3-resumen[data-con-frase] [data-parte="destacado"] .ds3-resumen-movil {
+  display: none;
+}
+
+/* Tira de KPI: UNA tarjeta con N celdas separadas por filetes de 1 px, borde superior de 3 px del color de la metrica, punto del
+   mismo color en la etiqueta, sin chip de icono. Cada celda pinta su filete izquierdo y superior y se corre 1 px: el contenedor
+   (overflow hidden) recorta los del borde exterior, asi una fila incompleta no deja huecos grises. */
+html[data-diseno="ds3"] .ds3-resumen [data-parte="kpis"] {
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid hsl(var(--border));
+  border-radius: 12px;
+  background-color: hsl(var(--card));
+}
+html[data-diseno="ds3"] .ds3-resumen [data-parte="kpis"] > * {
+  --kpi-color: var(--chart-1);
+  min-width: 0;
+  margin: -1px 0 0 -1px;
+  border-top: 1px solid hsl(var(--border));
+  border-left: 1px solid hsl(var(--border));
+  box-shadow: inset 0 3px 0 hsl(var(--kpi-color));
+}
+html[data-diseno="ds3"] .ds3-resumen [data-parte="kpis"] > :nth-child(4n + 2) { --kpi-color: var(--chart-2); }
+html[data-diseno="ds3"] .ds3-resumen [data-parte="kpis"] > :nth-child(4n + 3) { --kpi-color: var(--chart-3); }
+html[data-diseno="ds3"] .ds3-resumen [data-parte="kpis"] > :nth-child(4n + 4) { --kpi-color: var(--chart-4); }
+html[data-diseno="ds3"] .ds3-resumen [data-parte="kpis"] .ds3-stat {
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+  background-color: transparent;
+  box-shadow: none;
+  padding: 17px 14px 14px;
+}
+html[data-diseno="ds3"] .ds3-resumen [data-parte="kpis"] :is(.ds3-stat-chip, .ds3-kpi-chip) { display: none; }
+html[data-diseno="ds3"] .ds3-resumen [data-parte="kpis"] :is(.ds3-stat-label, .ds3-kpi-label)::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  border-radius: 9999px;
+  vertical-align: 1px;
+  background-color: hsl(var(--kpi-color));
+}
+
+/* Valor KPI de Rovaq en toda tarjeta ds3: 26/700, tracking -0.52 px (movil: 18-21 px, una linea). */
+html[data-diseno="ds3"] :is(.ds3-stat-valor, .ds3-kpi-valor) {
+  font-size: 26px;
+  line-height: 28.6px;
+  font-weight: 700;
+  letter-spacing: -0.52px;
+}
+@media (max-width: 639.98px) {
+  html[data-diseno="ds3"] :is(.ds3-stat-valor, .ds3-kpi-valor) { font-size: clamp(18px, 5.2vw, 21px); line-height: 1.15; }
+}
+
+/* Sello de clase «● Observado · fuente · cuando» (Rovaq KindBadge), solo cuando la pagina lo trae. */
+html[data-diseno="ds3"] .ds3-sello {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  line-height: 14px;
+  font-weight: 500;
+  color: hsl(var(--muted-foreground));
+}
+html[data-diseno="ds3"] .ds3-sello::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background-color: hsl(var(--success-ink));
+}
+html[data-diseno="ds3"] .ds3-sello[data-clase="estimado"]::before { background-color: hsl(var(--chart-4)); }
+html[data-diseno="ds3"] .ds3-sello[data-clase="inferido"]::before { background-color: hsl(var(--chart-7)); }

@@ -34,8 +34,23 @@ export interface StatCardProps {
    * circular, como en los Resumenes de las verticales. El resto (cifra, pie punteado, delta en texto) es identico.
    */
   variante?: StatCardVariante;
+  /**
+   * ds3 (Rovaq KindBadge): sello «● Observado · fuente · cuando». Solo se pinta si la pagina sabe de verdad de donde sale la cifra
+   * (nunca se infiere aqui). Sin la bandera queda oculto.
+   */
+  sello?: StatCardSello;
   className?: string;
 }
+
+export interface StatCardSello {
+  readonly clase: "observado" | "estimado" | "inferido";
+  /** De donde sale la cifra (p. ej. "pedidos de Atiende"). */
+  readonly fuente: string;
+  /** Frescura ya resuelta por la pagina (p. ej. "hace 5 min"). */
+  readonly cuando?: string;
+}
+
+const CLASE_SELLO: Record<StatCardSello["clase"], string> = { observado: "Observado", estimado: "Estimado", inferido: "Inferido" };
 
 export type StatCardVariante = "marca" | "neutra";
 
@@ -45,7 +60,7 @@ export type StatCardVariante = "marca" | "neutra";
  * Atiende, etiqueta gris, cifra grande) y, debajo, un pie tras divisor punteado.
  * Con la disciplina de "nunca inventar una cifra": sin dato real muestra "—" y dice por que.
  */
-export function StatCard({ icon: Icon, label, value, nota, delta, deltaNota = "vs periodo anterior", sinDato, cargando = false, variante = "marca", className }: StatCardProps) {
+export function StatCard({ icon: Icon, label, value, nota, delta, deltaNota = "vs periodo anterior", sinDato, cargando = false, variante = "marca", sello, className }: StatCardProps) {
   const mostrarSinDato = Boolean(sinDato);
   // CargandoLogo es un div role=status: no puede vivir dentro de un <p>.
   const Valor = cargando ? "div" : "p";
@@ -70,6 +85,11 @@ export function StatCard({ icon: Icon, label, value, nota, delta, deltaNota = "v
       {/* El espaciador alinea los pies en una fila de tarjetas parejas aunque una etiqueta envuelva a dos lineas. */}
       <div className="grow" />
       {pie && <div aria-hidden={cargando || undefined} className={cn("ds3-stat-pie mx-1.5 mt-1.5 border-t border-dashed border-line2 pt-1.5 text-xs", cargando && "invisible")}>{pie}</div>}
+      {sello && !cargando && !mostrarSinDato && (
+        <p data-testid="stat-card-sello" data-clase={sello.clase} className="ds3-sello hidden mx-1.5 mt-1">
+          {[CLASE_SELLO[sello.clase], sello.fuente, sello.cuando].filter(Boolean).join(" · ")}
+        </p>
+      )}
     </Card>
   );
 }

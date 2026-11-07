@@ -38,7 +38,7 @@ export { ThemeSelector } from "./components/ThemeSelector.js";
 export { ThemeBoot, useTemaGlobal } from "./components/ThemeBoot.js";
 export { aplicarTema, aplicarBanderaDiseno, leerTema, type Tema } from "./lib/tema.js";
 export { DISENO_DS3, leerDisenoDs3 } from "./lib/diseno.js";
-export { StatCard, TrendStatCard, type StatCardVariante } from "./components/StatCard.js";
+export { StatCard, TrendStatCard, type StatCardSello, type StatCardVariante } from "./components/StatCard.js";
 export { EstadoVacio, VarianteEstadoVacioProvider } from "./components/EstadoVacio.js";
 export { EstadoError } from "./components/EstadoError.js";
 export { EstadoCargando, type EstadoCargandoVariante } from "./components/EstadoCargando.js";
