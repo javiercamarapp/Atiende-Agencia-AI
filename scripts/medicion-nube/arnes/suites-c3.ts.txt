@@ -17,7 +17,7 @@ import { createHmac, randomUUID } from "node:crypto";
 import { readFileSync, writeFileSync, appendFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { Stack } from "./stack.ts";
-import { APP_SECRET, ORG_ID, cabeceraReloj, conRelojPropio } from "./stack.ts";
+import { APP_SECRET, ORG_ID, cabeceraReloj, conRelojPropio, relojPorConversacion } from "./stack.ts";
 import { gasto } from "./llm.ts";
 import { newPhone, snapshot, relojReal, stats } from "./lib.ts";
 
@@ -366,6 +366,10 @@ function escalaciones(st: { callbacks: any[]; handoffs: any[] }) {
 // ---------- una conversacion ----------
 async function correrUna(s: Stack, ref: Ref, e: any, colonias: any[], rep: number) {
   const phone = newPhone(); const t0 = relojReal();
+  // Reloj de la BD: el agente vive con el reloj DESPLAZADO del escenario pero `orders.created_at` sale del now() REAL de Postgres, asi que
+  // «¿ya quedo mi pedido?» buscaba con una ventana en el futuro y no encontraba el pedido recien creado (falso «no aparece» + aviso falla_sistema,
+  // C3-PED-32). El disparador de prep-canales-c3.sql suma este desfase al created_at de los pedidos de ESTE telefono (solo la copia efimera).
+  { const st = relojPorConversacion.getStore(); if (st) await s.pool.query(`insert into public.qa_desfase_telefono (tel10, desfase) values ($1, make_interval(secs => $2)) on conflict (tel10) do update set desfase = excluded.desfase`, [phone.replace(/\D/g, "").slice(-10), (st.base - st.since) / 1000]).catch((err: Error) => console.error(`[reloj BD] sin desfase: ${err.message}`)); }
   const modo = e.modo_cliente === "guion" ? "guion" : "llm";
   let sembrados: string[] = []; let semilla = "";
   if (e.cliente?.existente) { const r = await sembrarCliente(s, ref, phone, e.cliente); sembrados = r.ids; semilla = r.nota; }

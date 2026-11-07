@@ -14,3 +14,16 @@ insert into restaurantes.whatsapp_branch_channel(phone_number_id, organization_i
  ('5550000205','f838fd2c-967e-46fd-af8d-e0229b15748d','82f4cdfe-cd15-4f82-8547-121eb6750e77'),
  ('5550000206','f838fd2c-967e-46fd-af8d-e0229b15748d','75c67a13-101c-47eb-9ae4-76757c1098bd'),
  ('5550000207','f838fd2c-967e-46fd-af8d-e0229b15748d','9b68a3c2-0cb2-4ac2-84fb-cd4d6d8f6d83') on conflict do nothing;
+-- Reloj de la BD (SOLO copia efimera): el arnes corre cada conversacion con su reloj desplazado; created_at de un pedido nuevo recibe el desfase de
+-- su telefono (lo inserta suites-c3 al arrancar la conversacion) para que las ventanas «pedido reciente» del agente lo encuentren.
+create table if not exists public.qa_desfase_telefono (tel10 text primary key, desfase interval not null);
+grant select on public.qa_desfase_telefono to public;
+create or replace function public.qa_desfase_created_at() returns trigger language plpgsql security definer set search_path = public as $$
+declare d interval;
+begin
+  select q.desfase into d from public.qa_desfase_telefono q where q.tel10 = right(regexp_replace(coalesce(new.customer_phone, ''), '[^0-9]', '', 'g'), 10);
+  if d is not null then new.created_at := coalesce(new.created_at, now()) + d; end if;
+  return new;
+end $$;
+drop trigger if exists qa_desfase_created_at on restaurantes.orders;
+create trigger qa_desfase_created_at before insert on restaurantes.orders for each row execute function public.qa_desfase_created_at();
