@@ -4,6 +4,8 @@
 // El rango bloqueante es el de México: atrapa ejes invertidos, signo perdido y (0,0) sin cerrar la puerta a
 // negocios de Cancún, Tijuana o Hermosillo. Fuera de Yucatán solo hay un aviso (no bloquea) para quien opera
 // en zona America/Merida. NO se siembra ninguna coordenada: el dato lo confirma el dueño con un pin.
+import { traductorActivo } from "@atiende/ui";
+import { restaurantesSucursales } from "@atiende/ui/i18n/restaurantes/sucursales";
 
 export const LAT_MIN = 14.5;
 export const LAT_MAX = 32.8;
@@ -16,7 +18,7 @@ const YUC_LAT_MAX = 21.7;
 const YUC_LNG_MIN = -90.5;
 const YUC_LNG_MAX = -87.4;
 
-export const AVISO_FUERA_DE_YUCATAN = "Este punto queda fuera de Yucatán: confirma que es el pin correcto.";
+const tr = traductorActivo(restaurantesSucursales);
 
 export interface Coordenadas {
   readonly lat: number;
@@ -59,14 +61,14 @@ export function leerCoordenada(texto: string, eje: "lat" | "lng"): ResultadoCamp
   const t = texto.trim();
   if (t === "") return { valor: null, error: null };
   if (!/^-?\d{1,3}(?:\.\d+)?$/.test(t)) {
-    return { valor: null, error: eje === "lat" ? "La latitud debe ser un número con punto decimal, por ejemplo 21.0280." : "La longitud debe ser un número con punto decimal, por ejemplo -89.6100." };
+    return { valor: null, error: tr(eje === "lat" ? "restaurantes.sucursales.coord.latFormato" : "restaurantes.sucursales.coord.lngFormato") };
   }
   const n = Number(t);
   if (eje === "lat" && (n < LAT_MIN || n > LAT_MAX)) {
-    return { valor: n, error: `La latitud debe estar entre ${LAT_MIN} y ${LAT_MAX} (México). ¿Invertiste latitud y longitud?` };
+    return { valor: n, error: tr("restaurantes.sucursales.coord.latRango", { min: LAT_MIN, max: LAT_MAX }) };
   }
   if (eje === "lng" && (n < LNG_MIN || n > LNG_MAX)) {
-    return { valor: n, error: `La longitud debe estar entre ${LNG_MIN} y ${LNG_MAX} (México). ¿Falta el signo menos?` };
+    return { valor: n, error: tr("restaurantes.sucursales.coord.lngRango", { min: LNG_MIN, max: LNG_MAX }) };
   }
   return { valor: n, error: null };
 }
@@ -85,8 +87,9 @@ export function validarPar(latTexto: string, lngTexto: string): ValidacionPar {
   let errorLat = a.error;
   let errorLng = b.error;
   if (!errorLat && !errorLng) {
-    if (a.valor !== null && b.valor === null) errorLng = "Falta la longitud: la ubicación necesita latitud y longitud.";
-    if (a.valor === null && b.valor !== null) errorLat = "Falta la latitud: la ubicación necesita latitud y longitud.";
+    if (a.valor !== null && b.valor === null) errorLng = tr("restaurantes.sucursales.coord.faltaLng");
+    if (a.valor === null && b.valor !== null) errorLat = tr("restaurantes.sucursales.coord.faltaLat");
+
   }
   return { lat: a.valor, lng: b.valor, errorLat, errorLng };
 }

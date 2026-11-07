@@ -28,7 +28,9 @@ import {
   Textarea,
   formatMoney,
   notify,
+  useT,
 } from "@atiende/ui";
+import { restaurantesProductos } from "@atiende/ui/i18n/restaurantes/productos";
 import { FolderPlus, Pencil, Plus } from "lucide-react";
 import {
   createCategory,
@@ -50,6 +52,7 @@ import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 
 export function ProductosPage({ apiBaseUrl, token, propertyId, role }: RestaurantesShellContext) {
   // PL-23: el staff (cajero/cocina) ve el menu y marca agotado/disponible; precios y alta/edicion del catalogo son de owner/admin.
+  const t = useT(restaurantesProductos);
   const puedeEditarCatalogo = puedeEn(role, "catalogo.precio");
   const [categories, setCategories] = useState<readonly Category[] | null>(null);
   const [products, setProducts] = useState<readonly Product[] | null>(null);
@@ -89,7 +92,7 @@ export function ProductosPage({ apiBaseUrl, token, propertyId, role }: Restauran
       setProducts(prods);
       setMarks(await fetchNoDomicilio(fetch, apiBaseUrl, token, propertyId).catch(() => null));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo cargar el catálogo.");
+      setError(err instanceof Error ? err.message : t("restaurantes.productos.error.cargar"));
     }
   }
 
@@ -107,8 +110,8 @@ export function ProductosPage({ apiBaseUrl, token, propertyId, role }: Restauran
 
   async function handleCreateCategory() {
     const faltantes = {
-      nombre: newCatName.trim() ? undefined : "Escribe el nombre de la categoría.",
-      slug: newCatSlug.trim() ? undefined : "Escribe el slug de la categoría.",
+      nombre: newCatName.trim() ? undefined : t("restaurantes.productos.error.nombreCategoria"),
+      slug: newCatSlug.trim() ? undefined : t("restaurantes.productos.error.slugCategoria"),
     };
     setErroresCategoria(faltantes);
     if (faltantes.nombre || faltantes.slug) return;
@@ -122,7 +125,7 @@ export function ProductosPage({ apiBaseUrl, token, propertyId, role }: Restauran
       setDialogoCategoria(false);
       await load();
     } catch (err) {
-      setErrorCategoria(err instanceof Error ? err.message : "No se pudo crear la categoría.");
+      setErrorCategoria(err instanceof Error ? err.message : t("restaurantes.productos.error.crearCategoria"));
     } finally {
       setCreatingCategory(false);
     }
@@ -143,13 +146,13 @@ export function ProductosPage({ apiBaseUrl, token, propertyId, role }: Restauran
   async function handleCreateProduct() {
     const price = Number(newProdPrice);
     const faltantes = {
-      nombre: newProdName.trim() ? undefined : "Escribe el nombre del producto.",
-      precio: newProdPrice.trim() !== "" && Number.isFinite(price) && price >= 0 ? undefined : "Escribe un precio base válido (0 o más).",
+      nombre: newProdName.trim() ? undefined : t("restaurantes.productos.error.nombreProducto"),
+      precio: newProdPrice.trim() !== "" && Number.isFinite(price) && price >= 0 ? undefined : t("restaurantes.productos.error.precioBase"),
     };
     setErroresProducto(faltantes);
     if (faltantes.nombre || faltantes.precio) return;
     if (newProdBorradorAlias.trim() !== "") {
-      setErrorProducto(`Tienes un alias sin agregar («${newProdBorradorAlias.trim()}»): presiona Enter para agregarlo o bórralo.`);
+      setErrorProducto(t("restaurantes.productos.error.aliasSinAgregar", { alias: newProdBorradorAlias.trim() }));
       return;
     }
     setCreatingProduct(true);
@@ -171,7 +174,7 @@ export function ProductosPage({ apiBaseUrl, token, propertyId, role }: Restauran
       setDialogoProducto(false);
       await load();
     } catch (err) {
-      setErrorProducto(err instanceof Error ? err.message : "No se pudo crear el producto.");
+      setErrorProducto(err instanceof Error ? err.message : t("restaurantes.productos.error.crearProducto"));
     } finally {
       setCreatingProduct(false);
     }
@@ -186,7 +189,7 @@ export function ProductosPage({ apiBaseUrl, token, propertyId, role }: Restauran
       await setBranchAvailability(fetch, apiBaseUrl, token, propertyId, product.id, { isAvailable: nextAvailable });
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo actualizar la disponibilidad.");
+      setError(err instanceof Error ? err.message : t("restaurantes.productos.error.disponibilidad"));
     } finally {
       setSavingId(null);
     }
@@ -199,10 +202,10 @@ export function ProductosPage({ apiBaseUrl, token, propertyId, role }: Restauran
     setError(null);
     try {
       const r = await marcarAgotadoHastaManana(fetch, apiBaseUrl, token, propertyId, product.id);
-      notify.success(`${product.name} queda agotado y se repone solo el ${r.agotadoHasta}.`);
+      notify.success(t("restaurantes.productos.agotadoToast", { producto: product.name, fecha: r.agotadoHasta }));
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo marcar el producto como agotado.");
+      setError(err instanceof Error ? err.message : t("restaurantes.productos.error.agotado"));
     } finally {
       setSavingId(null);
     }
@@ -217,7 +220,7 @@ export function ProductosPage({ apiBaseUrl, token, propertyId, role }: Restauran
       await setBranchAvailability(fetch, apiBaseUrl, token, propertyId, product.id, { price, isAvailable: product.branch?.isAvailable ?? true });
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo actualizar el precio.");
+      setError(err instanceof Error ? err.message : t("restaurantes.productos.error.precio"));
     } finally {
       setSavingId(null);
     }
@@ -230,7 +233,7 @@ export function ProductosPage({ apiBaseUrl, token, propertyId, role }: Restauran
       await setNoDomicilio(fetch, apiBaseUrl, token, propertyId, kind, id, !current);
       setMarks(await fetchNoDomicilio(fetch, apiBaseUrl, token, propertyId));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo actualizar la regla de domicilio.");
+      setError(err instanceof Error ? err.message : t("restaurantes.productos.error.domicilio"));
     } finally {
       setSavingId(null);
     }
@@ -243,7 +246,7 @@ export function ProductosPage({ apiBaseUrl, token, propertyId, role }: Restauran
       await updateProduct(fetch, apiBaseUrl, token, propertyId, product.id, { isPopular: !product.isPopular });
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo actualizar el producto.");
+      setError(err instanceof Error ? err.message : t("restaurantes.productos.error.producto"));
     } finally {
       setSavingId(null);
     }
@@ -251,7 +254,7 @@ export function ProductosPage({ apiBaseUrl, token, propertyId, role }: Restauran
 
   return (
     <PageContainer padding="none">
-      <h1 className="sr-only">Productos y categorías</h1>
+      <h1 className="sr-only">{t("restaurantes.productos.titulo")}</h1>
 
       {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
 
@@ -259,25 +262,25 @@ export function ProductosPage({ apiBaseUrl, token, propertyId, role }: Restauran
         <div className="flex flex-wrap items-center justify-end gap-2">
           <Button type="button" variant="outline" onClick={abrirCategoria}>
             <FolderPlus />
-            Nueva categoría
+            {t("restaurantes.productos.nuevaCategoria")}
           </Button>
           <Button type="button" onClick={abrirProducto}>
             <Plus />
-            Nuevo producto
+            {t("restaurantes.productos.nuevoProducto")}
           </Button>
         </div>
       ) : (
-        <Callout tone="info">Puedes marcar productos como agotados o disponibles en esta sucursal. Solo el dueño o un administrador cambia precios y edita el catálogo.</Callout>
+        <Callout tone="info">{t("restaurantes.productos.soloStaff")}</Callout>
       )}
 
       {categories && (puedeEditarCatalogo || categories.length > 0) && (
         <Card>
           <CardHeader className="p-4 pb-3">
-            <CardTitle>Categorías</CardTitle>
+            <CardTitle>{t("restaurantes.productos.categorias")}</CardTitle>
           </CardHeader>
           <CardContent className="p-4 pt-0">
             {categories.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Todavía no hay categorías. Crea la primera con «Nueva categoría».</p>
+              <p className="text-sm text-muted-foreground">{t("restaurantes.productos.sinCategorias")}</p>
             ) : (
               <CategoriasCatalogo
                 categorias={categories}
@@ -290,18 +293,18 @@ export function ProductosPage({ apiBaseUrl, token, propertyId, role }: Restauran
             )}
             {marks && categories.length > 0 && (
               <fieldset className="mt-3 flex flex-col gap-1.5 border-0 p-0">
-                <legend className="mb-1 p-0 text-xs text-muted-foreground">No se vende a domicilio (aplica a todos los productos de la categoría)</legend>
+                <legend className="mb-1 p-0 text-xs text-muted-foreground">{t("restaurantes.productos.noDomicilioLeyenda")}</legend>
                 <div className="flex flex-wrap gap-3">
                   {categories.map((c) => (
                     <Checkbox
                       key={c.id}
-                      aria-label={`${c.name}: no se vende a domicilio`}
+                      aria-label={t("restaurantes.productos.noDomicilioAria", { nombre: c.name })}
                       label={c.name}
                       wrapperClassName="text-xs"
                       checked={marks.categoryIds.includes(c.id)}
                       onChange={() => void handleToggleNoDomicilio("categorias", c.id, marks.categoryIds.includes(c.id))}
                       disabled={savingId === c.id || !puedeEditarCatalogo}
-                      title={puedeEditarCatalogo ? undefined : "Solo el dueño o un administrador puede cambiar esta regla."}
+                      title={puedeEditarCatalogo ? undefined : t("restaurantes.productos.soloDuenoRegla")}
                     />
                   ))}
                 </div>
@@ -314,22 +317,22 @@ export function ProductosPage({ apiBaseUrl, token, propertyId, role }: Restauran
       {(products || !error) && (
         <Card>
           <CardHeader className="p-3 pb-2">
-            <CardTitle>Catálogo</CardTitle>
+            <CardTitle>{t("restaurantes.productos.catalogo")}</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             <DataTable<Product>
-              etiqueta="catálogo de productos de esta sucursal"
+              etiqueta={t("restaurantes.productos.tablaEtiqueta")}
               filas={products ?? []}
               obtenerId={(p) => p.id}
               estado={!products ? "loading" : products.length === 0 ? "empty" : "ok"}
-              vacio={{ titulo: "Sin productos", mensaje: "Este negocio todavía no tiene productos en su catálogo." }}
+              vacio={{ titulo: t("restaurantes.productos.sinProductos"), mensaje: t("restaurantes.productos.sinProductosMensaje") }}
               paginacion={{ tamano: 25 }}
               columnas={[
-                { id: "producto", encabezado: "Producto", principal: true, celda: (p) => <span className="font-medium text-foreground">{p.name}</span>, valorOrden: (p) => p.name },
-                { id: "categoria", encabezado: "Categoría", celda: (p) => <span className="text-muted-foreground">{p.categoryName ?? "—"}</span>, valorOrden: (p) => p.categoryName },
+                { id: "producto", encabezado: t("restaurantes.productos.col.producto"), principal: true, celda: (p) => <span className="font-medium text-foreground">{p.name}</span>, valorOrden: (p) => p.name },
+                { id: "categoria", encabezado: t("restaurantes.productos.col.categoria"), celda: (p) => <span className="text-muted-foreground">{p.categoryName ?? "—"}</span>, valorOrden: (p) => p.categoryName },
                 {
                   id: "precio",
-                  encabezado: "Precio en esta sucursal",
+                  encabezado: t("restaurantes.productos.col.precio"),
                   celda: (p) =>
                     puedeEditarCatalogo ? (
                       <div className="flex flex-wrap items-center gap-2">
@@ -337,13 +340,13 @@ export function ProductosPage({ apiBaseUrl, token, propertyId, role }: Restauran
                           type="number"
                           min={0}
                           step="0.01"
-                          aria-label={`Precio de ${p.name} en esta sucursal`}
+                          aria-label={t("restaurantes.productos.precioAria", { nombre: p.name })}
                           defaultValue={p.branch?.price ?? p.price}
                           onBlur={(e) => void handlePriceChange(p, e.target.value)}
                           disabled={savingId === p.id}
                           className="w-[100px]"
                         />
-                        {p.branch === null && <span className="text-xs text-muted-foreground">(precio base ${formatMoney(p.price)}, nunca dado de alta aquí)</span>}
+                        {p.branch === null && <span className="text-xs text-muted-foreground">{t("restaurantes.productos.precioBaseNota", { precio: formatMoney(p.price) })}</span>}
                       </div>
                     ) : (
                       <span className="text-foreground">${formatMoney(p.branch?.price ?? p.price)}</span>
@@ -351,7 +354,7 @@ export function ProductosPage({ apiBaseUrl, token, propertyId, role }: Restauran
                 },
                 {
                   id: "disponible",
-                  encabezado: "Disponible aquí",
+                  encabezado: t("restaurantes.productos.col.disponible"),
                   celda: (p) => (
                     <Button
                       type="button"
@@ -359,40 +362,40 @@ export function ProductosPage({ apiBaseUrl, token, propertyId, role }: Restauran
                       variant={p.branch?.isAvailable ? "default" : "outline"}
                       onClick={() => void handleToggleAvailability(p)}
                       disabled={savingId === p.id || (!puedeEditarCatalogo && p.branch === null)}
-                      title={!puedeEditarCatalogo && p.branch === null ? "Un administrador debe activar este producto en la sucursal primero." : undefined}
+                      title={!puedeEditarCatalogo && p.branch === null ? t("restaurantes.productos.activarPrimero") : undefined}
                     >
-                      {p.branch?.isAvailable ? "Disponible" : "No disponible"}
+                      {t(p.branch?.isAvailable ? "restaurantes.productos.disponible" : "restaurantes.productos.noDisponible")}
                     </Button>
                   ),
                 },
                 {
                   id: "agotado-hoy",
-                  encabezado: "Agotado solo por hoy",
+                  encabezado: t("restaurantes.productos.col.agotadoHoy"),
                   celda: (p) => (
                     <Button
                       type="button"
                       size="sm"
                       variant="outline"
                       disabled={savingId === p.id || !p.branch?.isAvailable}
-                      title={p.branch?.isAvailable ? "Se repone solo al cambiar el día de la sucursal" : "Ya no está disponible"}
+                      title={t(p.branch?.isAvailable ? "restaurantes.productos.seRepone" : "restaurantes.productos.yaNoDisponible")}
                       onClick={() => void handleAgotadoHastaManana(p)}
                     >
-                      Agotado hasta mañana
+                      {t("restaurantes.productos.agotadoHastaManana")}
                     </Button>
                   ),
                 },
                 {
                   id: "popular",
-                  encabezado: "Popular",
-                  celda: (p) => <Checkbox aria-label={`Marcar ${p.name} como popular`} checked={p.isPopular} onChange={() => void handleTogglePopular(p)} disabled={savingId === p.id || !puedeEditarCatalogo} />,
+                  encabezado: t("restaurantes.productos.col.popular"),
+                  celda: (p) => <Checkbox aria-label={t("restaurantes.productos.marcarPopular", { nombre: p.name })} checked={p.isPopular} onChange={() => void handleTogglePopular(p)} disabled={savingId === p.id || !puedeEditarCatalogo} />,
                 },
                 ...(puedeEditarCatalogo
                   ? [
                       {
                         id: "editar",
-                        encabezado: "Editar",
+                        encabezado: t("restaurantes.productos.col.editar"),
                         celda: (p: Product) => (
-                          <Button type="button" size="icon-sm" variant="ghost" aria-label={`Editar ${p.name}`} disabled={savingId === p.id} onClick={() => setProductoEditando(p)}>
+                          <Button type="button" size="icon-sm" variant="ghost" aria-label={t("restaurantes.productos.editarAria", { nombre: p.name })} disabled={savingId === p.id} onClick={() => setProductoEditando(p)}>
                             <Pencil className="h-4 w-4" strokeWidth={1.75} />
                           </Button>
                         ),
@@ -403,10 +406,10 @@ export function ProductosPage({ apiBaseUrl, token, propertyId, role }: Restauran
                   ? [
                       {
                         id: "no-domicilio",
-                        encabezado: "No a domicilio",
+                        encabezado: t("restaurantes.productos.col.noDomicilio"),
                         celda: (p: Product) => (
                           <Checkbox
-                            aria-label={`${p.name}: no se vende a domicilio`}
+                            aria-label={t("restaurantes.productos.noDomicilioAria", { nombre: p.name })}
                             checked={marks.productIds.includes(p.id)}
                             onChange={() => void handleToggleNoDomicilio("productos", p.id, marks.productIds.includes(p.id))}
                             disabled={savingId === p.id || !puedeEditarCatalogo}
@@ -424,21 +427,21 @@ export function ProductosPage({ apiBaseUrl, token, propertyId, role }: Restauran
       <FormDialog
         open={dialogoCategoria}
         onOpenChange={setDialogoCategoria}
-        titulo="Nueva categoría"
-        subtitulo="Agrupa productos del catálogo (ej. Postres)."
+        titulo={t("restaurantes.productos.nuevaCategoria")}
+        subtitulo={t("restaurantes.productos.categoriaSub")}
         anchoClase="max-w-2xl"
         onGuardar={() => void handleCreateCategory()}
         guardando={creatingCategory}
-        textoBotonGuardar="Crear categoría"
+        textoBotonGuardar={t("restaurantes.productos.crearCategoria")}
         bloquearCierre={creatingCategory}
       >
         <div className="grid gap-3">
           {errorCategoria && <Callout tone="danger">{errorCategoria}</Callout>}
-          <FormField label="Nombre" required error={erroresCategoria.nombre}>
-            <Input placeholder="Nombre (ej. Postres)" value={newCatName} onChange={(e) => setNewCatName(e.target.value)} />
+          <FormField label={t("restaurantes.productos.nombre")} required error={erroresCategoria.nombre}>
+            <Input placeholder={t("restaurantes.productos.nombreCategoriaPh")} value={newCatName} onChange={(e) => setNewCatName(e.target.value)} />
           </FormField>
-          <FormField label="Slug" required error={erroresCategoria.slug} hint="Identificador corto en minúsculas, sin espacios (ej. postres).">
-            <Input placeholder="slug (ej. postres)" value={newCatSlug} onChange={(e) => setNewCatSlug(e.target.value)} />
+          <FormField label={t("restaurantes.productos.slug")} required error={erroresCategoria.slug} hint={t("restaurantes.productos.slugAyuda")}>
+            <Input placeholder={t("restaurantes.productos.slugPh")} value={newCatSlug} onChange={(e) => setNewCatSlug(e.target.value)} />
           </FormField>
         </div>
       </FormDialog>
@@ -446,28 +449,29 @@ export function ProductosPage({ apiBaseUrl, token, propertyId, role }: Restauran
       <FormDialog
         open={dialogoProducto}
         onOpenChange={setDialogoProducto}
-        titulo="Nuevo producto"
-        subtitulo="Un producto recién creado NO aparece en el pedido/agente hasta activarlo en la tabla, en esta sucursal."
+        titulo={t("restaurantes.productos.nuevoProducto")}
+        subtitulo={t("restaurantes.productos.productoSub")}
         anchoClase="max-w-2xl"
         onGuardar={() => void handleCreateProduct()}
         guardando={creatingProduct}
-        textoBotonGuardar="Crear producto"
+        textoBotonGuardar={t("restaurantes.productos.crearProducto")}
         bloquearCierre={creatingProduct}
       >
         <div className="grid gap-3">
           {errorProducto && <Callout tone="danger">{errorProducto}</Callout>}
-          <FormField label="Nombre" required error={erroresProducto.nombre}>
-            <Input placeholder="Nombre" value={newProdName} onChange={(e) => setNewProdName(e.target.value)} />
+          <FormField label={t("restaurantes.productos.nombre")} required error={erroresProducto.nombre}>
+            <Input placeholder={t("restaurantes.productos.nombre")} value={newProdName} onChange={(e) => setNewProdName(e.target.value)} />
           </FormField>
-          <FormField label="Precio base" required error={erroresProducto.precio}>
-            <Input placeholder="Precio base" type="number" min={0} step="0.01" value={newProdPrice} onChange={(e) => setNewProdPrice(e.target.value)} />
+          <FormField label={t("restaurantes.productos.precioBase")} required error={erroresProducto.precio}>
+            <Input placeholder={t("restaurantes.productos.precioBase")} type="number" min={0} step="0.01" value={newProdPrice} onChange={(e) => setNewProdPrice(e.target.value)} />
           </FormField>
-          <FormField label="Descripción" hint="Qué lleva o cómo se sirve. El agente también busca aquí.">
+          <FormField label={t("restaurantes.productos.descripcion")} hint={t("restaurantes.productos.descripcionAyuda")}>
             <Textarea rows={3} value={newProdDescription} onChange={(e) => setNewProdDescription(e.target.value)} />
           </FormField>
-          <FormField label="Categoría">
+          <FormField label={t("restaurantes.productos.col.categoria")}>
             <Selector value={newProdCategoryId} onChange={(e) => setNewProdCategoryId(e.target.value)}>
-              <option value="">Sin categoría</option>
+              <option value="">{t("restaurantes.productos.sinCategoria")}</option>
+
               {categories?.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}

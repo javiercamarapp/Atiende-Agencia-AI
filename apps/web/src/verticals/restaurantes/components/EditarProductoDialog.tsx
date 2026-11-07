@@ -2,7 +2,8 @@
 // clave y si se vende en ESTA sucursal. «Desactivar» no borra nada: apaga el producto en la sucursal (branch_products, lo que
 // consulta el agente) y conserva su descripción y sus alias para cuando se vuelva a encender.
 import { useEffect, useState } from "react";
-import { Button, Callout, FormDialog, FormField, Input, Selector, Switch, Textarea } from "@atiende/ui";
+import { Button, Callout, FormDialog, FormField, Input, Selector, Switch, Textarea, useT } from "@atiende/ui";
+import { restaurantesProductos } from "@atiende/ui/i18n/restaurantes/productos";
 import { AliasChips } from "./AliasChips.tsx";
 import { setBranchAvailability, updateProduct } from "../lib/catalog-client.ts";
 import type { Category, Product } from "../lib/catalog-client.ts";
@@ -24,6 +25,7 @@ function mismosAlias(a: readonly string[], b: readonly string[]): boolean {
 }
 
 export function EditarProductoDialog({ producto, categorias, apiBaseUrl, token, propertyId, onCerrar, onGuardado }: EditarProductoDialogProps) {
+  const t = useT(restaurantesProductos);
   const [nombre, setNombre] = useState("");
   const [descripcion, setDescripcion] = useState("");
   const [precio, setPrecio] = useState("");
@@ -59,13 +61,13 @@ export function EditarProductoDialog({ producto, categorias, apiBaseUrl, token, 
     if (!producto) return;
     const precioNum = Number(precio);
     const faltantes = {
-      nombre: nombre.trim() ? undefined : "Escribe el nombre del producto.",
-      precio: precio.trim() !== "" && Number.isFinite(precioNum) && precioNum >= 0 ? undefined : "Escribe un precio base válido (0 o más).",
+      nombre: nombre.trim() ? undefined : t("restaurantes.productos.error.nombreProducto"),
+      precio: precio.trim() !== "" && Number.isFinite(precioNum) && precioNum >= 0 ? undefined : t("restaurantes.productos.error.precioBase"),
     };
     setErrores(faltantes);
     if (faltantes.nombre || faltantes.precio) return;
     if (borradorAlias.trim() !== "") {
-      setErrorGeneral(`Tienes un alias sin agregar («${borradorAlias.trim()}»): presiona Enter para agregarlo o bórralo.`);
+      setErrorGeneral(t("restaurantes.productos.error.aliasSinAgregar", { alias: borradorAlias.trim() }));
       return;
     }
 
@@ -97,8 +99,8 @@ export function EditarProductoDialog({ producto, categorias, apiBaseUrl, token, 
       await onGuardado();
       onCerrar();
     } catch (err) {
-      const base = err instanceof Error ? err.message : "No se pudo guardar el producto.";
-      setErrorGeneral(guardoCatalogo && cambiaSucursal ? `Se guardaron los datos del producto, pero no se pudo cambiar su disponibilidad en esta sucursal: ${base}` : base);
+      const base = err instanceof Error ? err.message : t("restaurantes.productos.editar.errorGuardar");
+      setErrorGeneral(guardoCatalogo && cambiaSucursal ? t("restaurantes.productos.editar.parcial", { detalle: base }) : base);
       // Si ya se escribió algo, el catálogo de fondo debe reflejarlo aunque el diálogo siga abierto.
       if (guardoCatalogo) await onGuardado();
     } finally {
@@ -112,28 +114,28 @@ export function EditarProductoDialog({ producto, categorias, apiBaseUrl, token, 
       onOpenChange={(abierto) => {
         if (!abierto) onCerrar();
       }}
-      titulo={producto ? `Editar ${producto.name}` : "Editar producto"}
-      subtitulo="Nombre, descripción, categoría, alias y disponibilidad llegan al agente en cuanto guardas. El precio base no cambia el de los pedidos ya hechos ni el de cada sucursal."
+      titulo={producto ? t("restaurantes.productos.editarAria", { nombre: producto.name }) : t("restaurantes.productos.editar.titulo")}
+      subtitulo={t("restaurantes.productos.editar.subtitulo")}
       anchoClase="max-w-2xl"
       onGuardar={() => void guardar()}
       guardando={guardando}
-      textoBotonGuardar="Guardar cambios"
+      textoBotonGuardar={t("restaurantes.productos.editar.guardar")}
       bloquearCierre={guardando}
     >
       <div className="grid gap-3">
         {errorGeneral && <Callout tone="danger">{errorGeneral}</Callout>}
-        <FormField label="Nombre" required error={errores.nombre}>
+        <FormField label={t("restaurantes.productos.nombre")} required error={errores.nombre}>
           <Input value={nombre} onChange={(e) => setNombre(e.target.value)} disabled={guardando} />
         </FormField>
-        <FormField label="Descripción" hint="Qué lleva o cómo se sirve. El agente también busca aquí.">
+        <FormField label={t("restaurantes.productos.descripcion")} hint={t("restaurantes.productos.descripcionAyuda")}>
           <Textarea rows={3} value={descripcion} onChange={(e) => setDescripcion(e.target.value)} disabled={guardando} />
         </FormField>
-        <FormField label="Precio base" required error={errores.precio} hint="El precio en cada sucursal se cambia en la tabla del catálogo.">
+        <FormField label={t("restaurantes.productos.precioBase")} required error={errores.precio} hint={t("restaurantes.productos.editar.precioAyuda")}>
           <Input type="number" min={0} step="0.01" value={precio} onChange={(e) => setPrecio(e.target.value)} disabled={guardando} />
         </FormField>
-        <FormField label="Categoría">
+        <FormField label={t("restaurantes.productos.col.categoria")}>
           <Selector value={categoriaId} onChange={(e) => setCategoriaId(e.target.value)} disabled={guardando}>
-            <option value="">Sin categoría</option>
+            <option value="">{t("restaurantes.productos.sinCategoria")}</option>
             {categorias.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
@@ -147,13 +149,13 @@ export function EditarProductoDialog({ producto, categorias, apiBaseUrl, token, 
             <div className="grid gap-2">
               <p>
                 {dejarDeVender
-                  ? "Se dejará de vender: no volverá solo a la venta. Guarda para aplicarlo."
-                  : `Agotado hasta el ${agotadoHasta}: vuelve a la venta solo.`}
+                  ? t("restaurantes.productos.editar.dejaraDeVender")
+                  : t("restaurantes.productos.editar.agotadoHasta", { fecha: agotadoHasta })}
               </p>
               {!dejarDeVender && !seVende && (
                 <div>
                   <Button type="button" size="sm" variant="outline" disabled={guardando} onClick={() => setDejarDeVender(true)}>
-                    Dejar de venderlo
+                    {t("restaurantes.productos.editar.dejarDeVender")}
                   </Button>
                 </div>
               )}
@@ -163,9 +165,10 @@ export function EditarProductoDialog({ producto, categorias, apiBaseUrl, token, 
         <div className="flex items-start justify-between gap-3 rounded-md border border-border p-3">
           <div className="grid gap-0.5">
             <label htmlFor="producto-se-vende" className="text-sm font-medium text-foreground">
-              Se vende en esta sucursal
+              {t("restaurantes.productos.editar.seVende")}
             </label>
-            <p className="text-xs text-muted-foreground">Apagado, el agente deja de ofrecerlo. No se borra: conserva su descripción y sus alias.</p>
+            <p className="text-xs text-muted-foreground">{t("restaurantes.productos.editar.seVendeAyuda")}</p>
+
           </div>
           <Switch
             id="producto-se-vende"

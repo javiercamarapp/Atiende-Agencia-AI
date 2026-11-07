@@ -7,7 +7,9 @@
 // `Input`/`Label` para el formulario de edición y `Button` para Editar/Guardar/
 // Cancelar. Toda la lógica de carga/edición/guardado de abajo es la MISMA.
 import { useEffect, useState } from "react";
-import { Button, Callout, Card, CardContent, EstadoCargando, EstadoError, FormField, Input, Label, PageContainer, StatusBadge } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, EstadoCargando, EstadoError, FormField, Input, Label, PageContainer, StatusBadge, useT } from "@atiende/ui";
+import { restaurantesComun } from "@atiende/ui/i18n/restaurantes/comun";
+import { restaurantesSucursales } from "@atiende/ui/i18n/restaurantes/sucursales";
 import { ExternalLink, MapPin, Pencil } from "lucide-react";
 import { fetchBranchTimezone } from "../lib/config-client.ts";
 import { fetchAdminBranches, updateBranchDetail } from "../lib/branches-client.ts";
@@ -17,13 +19,14 @@ import { puedeEn } from "../lib/permisos.ts";
 import { ReglasSucursal } from "./ReglasSucursal.tsx";
 import { ControlesSucursal } from "../components/ControlesSucursal.tsx";
 import { Link } from "react-router-dom";
-import { AVISO_FUERA_DE_YUCATAN, esEnlaceCortoDeMaps, fueraDeYucatan, interpretarCoordenadasPegadas, textoCoordenada, urlVerEnMapa, validarPar } from "../lib/coordenadas.ts";
+import { esEnlaceCortoDeMaps, fueraDeYucatan, interpretarCoordenadasPegadas, textoCoordenada, urlVerEnMapa, validarPar } from "../lib/coordenadas.ts";
 
 // Mismo criterio que STAFF_NAV_ROLES de RestaurantesShell.tsx: cosmético, el servidor (admin-modelo-pm.ts
 // + RLS) es el enforcement real.
 const REGLAS_ROLES: ReadonlySet<string> = new Set(["owner", "admin"]);
 
 export function SucursalesPage({ apiBaseUrl, token, propertyId, role, orgSlug }: RestaurantesShellContext) {
+  const t = useT(restaurantesComun, restaurantesSucursales);
   const [branches, setBranches] = useState<readonly BranchDetail[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
@@ -43,7 +46,7 @@ export function SucursalesPage({ apiBaseUrl, token, propertyId, role, orgSlug }:
     try {
       setBranches(await fetchAdminBranches(fetch, apiBaseUrl, token, propertyId));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudieron cargar las sucursales.");
+      setError(err instanceof Error ? err.message : t("restaurantes.sucursales.error.cargar"));
     }
   }
 
@@ -74,17 +77,17 @@ export function SucursalesPage({ apiBaseUrl, token, propertyId, role, orgSlug }:
       try {
         texto = (await navigator.clipboard.readText()).trim();
       } catch {
-        setErrorPegado("El navegador no dejó leer el portapapeles. Pega el texto en el recuadro y vuelve a pulsar el botón.");
+        setErrorPegado(t("restaurantes.sucursales.error.portapapeles"));
         return;
       }
     }
     const par = interpretarCoordenadasPegadas(texto);
     if (!par && esEnlaceCortoDeMaps(texto)) {
-      setErrorPegado("Ese es un enlace corto de Google Maps y no trae el punto. Ábrelo en el navegador, mantén pulsado el pin y copia las coordenadas (o copia el enlace largo de la barra de direcciones).");
+      setErrorPegado(t("restaurantes.sucursales.error.enlaceCorto"));
       return;
     }
     if (!par) {
-      setErrorPegado("No reconocí coordenadas. Pega algo como 21.0280, -89.6100 o el enlace de Google Maps con @latitud,longitud.");
+      setErrorPegado(t("restaurantes.sucursales.error.sinCoordenadas"));
       return;
     }
     setDraft((d) => ({ ...d, lat: String(par.lat), lng: String(par.lng) }));
@@ -119,7 +122,7 @@ export function SucursalesPage({ apiBaseUrl, token, propertyId, role, orgSlug }:
       setEditing(null);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo guardar la sucursal.");
+      setError(err instanceof Error ? err.message : t("restaurantes.sucursales.error.guardar"));
     } finally {
       setSaving(false);
     }
@@ -128,23 +131,23 @@ export function SucursalesPage({ apiBaseUrl, token, propertyId, role, orgSlug }:
   const sinCoordenadas = (branches ?? []).filter((b) => b.status === "active" && (b.lat === null || b.lng === null));
   return (
     <PageContainer padding="none">
-      <h1 className="sr-only">Sucursales</h1>
+      <h1 className="sr-only">{t("restaurantes.sucursales.titulo")}</h1>
       <Callout tone="info">
-        Crear una sucursal nueva o darla de baja no está disponible aún desde este panel: es una operación de plataforma que afecta tu plan y facturación. Pídela a tu contacto de Atiende; consulta tu plan en{" "}
-        <Link to={`/restaurantes/${orgSlug}/plan`} className="underline">Plan y uso</Link>. Sí puedes encender o apagar aquí el agente de voz y el de WhatsApp de cada sucursal.
+        {t("restaurantes.sucursales.plataformaAntes")}{" "}
+        <Link to={`/restaurantes/${orgSlug}/plan`} className="underline">{t("restaurantes.sucursales.planYUso")}</Link>{t("restaurantes.sucursales.plataformaDespues")}
       </Callout>
 
-      {!puedeEditar && <Callout tone="info">Solo el dueño o un administrador puede editar los datos de la sucursal.</Callout>}
+      {!puedeEditar && <Callout tone="info">{t("restaurantes.sucursales.soloDueno")}</Callout>}
 
       {sinCoordenadas.length > 0 && (
-        <Callout tone="warning" titulo="Sucursal activa sin coordenadas" icon={<MapPin />}>
-          {sinCoordenadas.map((b) => b.name).join(", ")}: sin coordenadas el agente no puede asignar la sucursal por distancia cuando el cliente manda su ubicación.
-          {puedeEditar ? " Edita la sucursal y captura latitud y longitud." : " Pídele al dueño o a un administrador que las capture."}
+        <Callout tone="warning" titulo={t("restaurantes.sucursales.sinCoordenadasTitulo")} icon={<MapPin />}>
+          {t("restaurantes.sucursales.sinCoordenadasTexto", { sucursales: sinCoordenadas.map((b) => b.name).join(", ") })}
+          {t(puedeEditar ? "restaurantes.sucursales.sinCoordenadasEditar" : "restaurantes.sucursales.sinCoordenadasPedir")}
         </Callout>
       )}
 
       {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
-      {!branches && !error && <EstadoCargando etiqueta="Cargando sucursales…" />}
+      {!branches && !error && <EstadoCargando etiqueta={t("restaurantes.sucursales.cargando")} />}
 
       <div className="flex flex-col gap-3">
         {branches?.map((b) => {
@@ -162,13 +165,13 @@ export function SucursalesPage({ apiBaseUrl, token, propertyId, role, orgSlug }:
                   <p className="m-0 font-semibold text-foreground">{b.name}</p>
                   <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
                     <span>/{b.slug} ·</span>
-                    <StatusBadge tone={b.status === "active" ? "success" : "danger"}>{b.status === "active" ? "Activa" : "Inactiva"}</StatusBadge>
+                    <StatusBadge tone={b.status === "active" ? "success" : "danger"}>{t(b.status === "active" ? "restaurantes.sucursales.activa" : "restaurantes.sucursales.inactiva")}</StatusBadge>
                   </div>
                 </div>
                 {editing !== b.propertyId && puedeEditar && (
                   <Button type="button" variant="outline" size="sm" onClick={() => startEditing(b)}>
                     <Pencil />
-                    Editar
+                    {t("restaurantes.sucursales.editar")}
                   </Button>
                 )}
               </div>
@@ -181,7 +184,7 @@ export function SucursalesPage({ apiBaseUrl, token, propertyId, role, orgSlug }:
                 <div className="mt-3 flex flex-col gap-3">
                   <div className="flex flex-col gap-1.5">
                     <Label htmlFor={`sucursal-telefono-${b.propertyId}`} className="text-xs text-muted-foreground">
-                      Teléfono
+                      {t("restaurantes.sucursales.telefono")}
                     </Label>
                     <Input
                       id={`sucursal-telefono-${b.propertyId}`}
@@ -191,7 +194,7 @@ export function SucursalesPage({ apiBaseUrl, token, propertyId, role, orgSlug }:
                   </div>
                   <div className="flex flex-col gap-1.5">
                     <Label htmlFor={`sucursal-direccion-${b.propertyId}`} className="text-xs text-muted-foreground">
-                      Dirección
+                      {t("restaurantes.sucursales.direccion")}
                     </Label>
                     <Input
                       id={`sucursal-direccion-${b.propertyId}`}
@@ -200,22 +203,22 @@ export function SucursalesPage({ apiBaseUrl, token, propertyId, role, orgSlug }:
                     />
                   </div>
                   <fieldset className="m-0 flex flex-col gap-3 rounded-card border border-border p-3">
-                    <legend className="px-1 text-xs font-semibold text-foreground">Ubicación en el mapa</legend>
+                    <legend className="px-1 text-xs font-semibold text-foreground">{t("restaurantes.sucursales.ubicacion")}</legend>
                     <p className="m-0 text-xs text-muted-foreground">
-                      En Google Maps, mantén pulsado el punto exacto del local: abajo aparece el pin y arriba los números (por ejemplo 21.0280, -89.6100). Cópialos, o copia el enlace del mapa, y pégalos aquí.
+                      {t("restaurantes.sucursales.ubicacionAyuda")}
                     </p>
-                    <FormField label="Pegar de Google Maps" error={errorPegado ?? undefined} id={`sucursal-pegar-${b.propertyId}`}>
+                    <FormField label={t("restaurantes.sucursales.pegar")} error={errorPegado ?? undefined} id={`sucursal-pegar-${b.propertyId}`}>
                       {(props) => (
                         <div className="flex gap-2">
-                          <Input {...props} value={pegado} placeholder="21.0280, -89.6100 o enlace con @lat,lng" onChange={(e) => setPegado(e.target.value)} />
+                          <Input {...props} value={pegado} placeholder={t("restaurantes.sucursales.pegarPh")} onChange={(e) => setPegado(e.target.value)} />
                           <Button type="button" variant="outline" size="sm" onClick={() => void aplicarPegado()}>
-                            Pegar de Google Maps
+                            {t("restaurantes.sucursales.pegar")}
                           </Button>
                         </div>
                       )}
                     </FormField>
                     <div className="grid grid-cols-2 gap-3">
-                      <FormField label="Latitud" id={`sucursal-lat-${b.propertyId}`} error={verLat ? (validacion.errorLat ?? undefined) : undefined}>
+                      <FormField label={t("restaurantes.sucursales.latitud")} id={`sucursal-lat-${b.propertyId}`} error={verLat ? (validacion.errorLat ?? undefined) : undefined}>
                         <Input
                           inputMode="decimal"
                           value={draft.lat}
@@ -223,7 +226,7 @@ export function SucursalesPage({ apiBaseUrl, token, propertyId, role, orgSlug }:
                           onBlur={() => setTocados((t) => ({ ...t, lat: true }))}
                         />
                       </FormField>
-                      <FormField label="Longitud" id={`sucursal-lng-${b.propertyId}`} error={verLng ? (validacion.errorLng ?? undefined) : undefined}>
+                      <FormField label={t("restaurantes.sucursales.longitud")} id={`sucursal-lng-${b.propertyId}`} error={verLng ? (validacion.errorLng ?? undefined) : undefined}>
                         <Input
                           inputMode="decimal"
                           value={draft.lng}
@@ -234,41 +237,41 @@ export function SucursalesPage({ apiBaseUrl, token, propertyId, role, orgSlug }:
                     </div>
                     {avisoYucatan && (
                       <p role="status" className="m-0 text-xs text-warning">
-                        {AVISO_FUERA_DE_YUCATAN}
+                        {t("restaurantes.sucursales.coord.fueraYucatan")}
                       </p>
                     )}
                     {hrefMapaDraft && (
                       <a href={hrefMapaDraft} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-primary underline">
-                        Ver en el mapa <ExternalLink className="size-3" aria-hidden="true" />
+                        {t("restaurantes.sucursales.verEnMapa")}<ExternalLink className="size-3" aria-hidden="true" />
                       </a>
                     )}
                   </fieldset>
                   <div className="flex gap-2">
                     <Button type="button" size="sm" onClick={() => void handleSave(b)} loading={saving}>
-                      Guardar
+                      {t("restaurantes.sucursales.guardar")}
                     </Button>
                     <Button type="button" variant="outline" size="sm" onClick={() => setEditing(null)} disabled={saving}>
-                      Cancelar
+                      {t("restaurantes.cancelar")}
                     </Button>
                   </div>
                 </div>
               ) : (
                 <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
-                  <dt className="text-muted-foreground">Teléfono</dt>
+                  <dt className="text-muted-foreground">{t("restaurantes.sucursales.telefono")}</dt>
                   <dd className="m-0 text-foreground">{b.phone ?? "—"}</dd>
-                  <dt className="text-muted-foreground">Dirección</dt>
+                  <dt className="text-muted-foreground">{t("restaurantes.sucursales.direccion")}</dt>
                   <dd className="m-0 text-foreground">{b.address ?? "—"}</dd>
-                  <dt className="text-muted-foreground">Coordenadas</dt>
+                  <dt className="text-muted-foreground">{t("restaurantes.sucursales.coordenadas")}</dt>
                   <dd className="m-0 text-foreground">
                     {b.lat !== null && b.lng !== null ? (
                       <>
                         {b.lat}, {b.lng}{" "}
                         <a href={urlVerEnMapa(b.lat, b.lng) ?? undefined} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-primary underline">
-                          Ver en el mapa <ExternalLink className="size-3" aria-hidden="true" />
+                          {t("restaurantes.sucursales.verEnMapa")}<ExternalLink className="size-3" aria-hidden="true" />
                         </a>
                       </>
                     ) : b.status === "active" ? (
-                      <StatusBadge tone="warning">Sin coordenadas</StatusBadge>
+                      <StatusBadge tone="warning">{t("restaurantes.sucursales.sinCoordenadas")}</StatusBadge>
                     ) : (
                       "—"
                     )}
@@ -285,7 +288,8 @@ export function SucursalesPage({ apiBaseUrl, token, propertyId, role, orgSlug }:
                     aria-expanded={reglasAbiertas === b.propertyId}
                     onClick={() => setReglasAbiertas((actual) => (actual === b.propertyId ? null : b.propertyId))}
                   >
-                    {reglasAbiertas === b.propertyId ? "Ocultar reglas de pedido" : "Reglas de pedido"}
+                    {t(reglasAbiertas === b.propertyId ? "restaurantes.sucursales.ocultarReglas" : "restaurantes.sucursales.reglas")}
+
                   </Button>
                   {reglasAbiertas === b.propertyId && <ReglasSucursal apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} branchId={b.propertyId} />}
                 </div>
