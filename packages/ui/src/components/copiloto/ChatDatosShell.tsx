@@ -62,6 +62,29 @@ export function ChatDatosShell({
   const temporizador = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(temporizador.current), []);
 
+  const raiz = useRef<HTMLDivElement>(null);
+  const cuerpo = useRef<HTMLDivElement>(null);
+  // Con el historial abierto (dialogo modal: aria-modal + foco atrapado) el fondo queda `inert`: el hilo y el compositor, y todo lo
+  // que esta fuera del chat (menu, encabezado, portales ya montados). El boton «Historial» sigue vivo para cerrarlo. Se restaura al cerrar.
+  useEffect(() => {
+    if (!historialAbierto || typeof document === "undefined") return;
+    const marcados: Element[] = [];
+    const marcar = (el: Element) => {
+      if (el.hasAttribute("inert") || el instanceof HTMLScriptElement || el instanceof HTMLStyleElement) return;
+      el.setAttribute("inert", "");
+      marcados.push(el);
+    };
+    if (cuerpo.current) marcar(cuerpo.current);
+    for (let n: HTMLElement | null = raiz.current; n && n !== document.body; n = n.parentElement) {
+      const padre = n.parentElement;
+      if (!padre) break;
+      for (const hermano of Array.from(padre.children)) if (hermano !== n) marcar(hermano);
+    }
+    return () => {
+      for (const el of marcados) el.removeAttribute("inert");
+    };
+  }, [historialAbierto]);
+
   const idHistorial = useId();
   const idCategorias = useId();
   const idEntrada = useId();
@@ -131,6 +154,7 @@ export function ChatDatosShell({
   return (
     <div
       className={panel ? "copiloto relative h-full min-h-0 overflow-y-auto overflow-x-hidden px-3 pt-3" : "copiloto relative min-h-[calc(100dvh-8rem)] overflow-hidden px-4 pt-4"}
+      ref={raiz}
       data-testid="copiloto-shell"
       data-ds3-copiloto=""
       data-variante={variante}
@@ -157,6 +181,7 @@ export function ChatDatosShell({
       ) : null}
 
       <div
+        ref={cuerpo}
         data-hay-conversacion={hayConversacion || undefined}
         data-ds3="cuerpo"
         className={`relative flex flex-col items-center ${panel ? "px-1 pb-4" : "px-4 pb-8"} ${
