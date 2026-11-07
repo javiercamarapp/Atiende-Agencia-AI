@@ -94,6 +94,21 @@ const botones = (root: ParentNode) => [...root.querySelectorAll("button")];
 const porTexto = (root: ParentNode, t: string) => botones(root).find((b) => b.textContent?.trim().includes(t));
 
 describe("RestaurantesCopilotoPage", () => {
+  it("?q= (desde el Resumen general) envia la pregunta UNA vez al abrir un chat nuevo, con el mismo POST que una escrita", async () => {
+    instalarFetch(estadoOk);
+    rendered = renderComponent(
+      <MemoryRouter initialEntries={[`/restaurantes/demo/copiloto?q=${encodeURIComponent("Compara las ventas de mis sucursales esta semana")}`]}>
+        <RestaurantesCopilotoPage apiBaseUrl={API} token="tok" propertyId="prop-1" orgSlug="demo" role="owner" staffFullName="Ana" staffEmail="a@b.mx" />
+      </MemoryRouter>,
+    );
+    await esperar(60);
+    const posts = llamadas.filter((l) => l.method === "POST");
+    expect(posts).toHaveLength(1);
+    expect(posts[0]?.body).toMatchObject({ question: "Compara las ventas de mis sucursales esta semana" });
+    // El cuerpo nunca lleva ids de sucursal ni de organizacion: el alcance lo fija el servidor.
+    expect(JSON.stringify(posts[0]?.body)).not.toContain("prop-1");
+  });
+
   it("consulta /estado de la sucursal activa y pinta la portada con el h1, los 5 chips y el uso del dia", async () => {
     instalarFetch(estadoOk);
     const root = await montar();
