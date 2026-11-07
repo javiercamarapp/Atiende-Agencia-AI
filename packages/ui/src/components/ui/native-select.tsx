@@ -8,7 +8,7 @@ import { campoBase } from "./field-styles";
 // py-0: con h-9 (36 px), borde de 1 px y text-ui de 19.5 px de interlineado, un py-2
 // dejaba solo 18 px de contenido y el texto salia recortado (hallazgo del revisor de #296,
 // restaurantes-staff-movil); el <select> centra su texto en vertical por si solo.
-const nativeSelectVariants = cva(`${campoBase} appearance-none pr-9`, {
+const nativeSelectVariants = cva(`${campoBase} ds3-native-select appearance-none pr-9`, {
   variants: {
     size: {
       sm: "h-[var(--control-sm)] py-0",
@@ -39,7 +39,7 @@ const NativeSelect = React.forwardRef<HTMLSelectElement, NativeSelectProps>(
       </select>
       <ChevronDown
         aria-hidden="true"
-        className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+        className="ds3-native-chevron pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
       />
     </div>
   ),

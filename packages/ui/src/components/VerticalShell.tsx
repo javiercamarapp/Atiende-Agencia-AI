@@ -23,6 +23,7 @@ import { EstadoVacio } from "./EstadoVacio";
 import { MobileAccountMenu } from "./MobileAccountMenu";
 import { Sidebar, type SidebarItem, type SidebarPiePildora, type SidebarSection, type SidebarUser } from "./Sidebar";
 import { Button } from "./ui/button";
+import { GrupoNavContext } from "./PageHeader";
 
 export const VERTICAL_SHELL_MAIN_ID = "contenido-principal";
 
@@ -244,6 +245,11 @@ export interface VerticalShellProps {
   readonly mobileSelector?: React.ReactNode;
   /** Panel lateral derecho (p. ej. el Copiloto Cmd+J del superadmin): hermano de la columna de contenido; el propio panel anima su ancho. Sin el, nada cambia. */
   readonly panelLateral?: React.ReactNode;
+  /**
+   * Ranura del historial de «Pregúntale a tus datos» (ds3): el carril del chat monta aqui UN `Drawer` (sm, 420) con el historial; el
+   * shell solo le da un lugar unico y estable fuera del <main> (no se remonta al navegar ni al cambiar de sucursal). Sin ella no se pinta nada.
+   */
+  readonly historialChat?: React.ReactNode;
   /** `key` del <main>: al cambiar (sucursal activa) las paginas hijas se remontan. */
   readonly contentKey?: string;
   /** Nombre de la organizacion activa: en ds3 la tarjeta de cuenta del pie lo muestra junto al rol. Opcional. */
@@ -275,6 +281,7 @@ export function VerticalShell({
   sidebarPie,
   contentKey,
   panelLateral,
+  historialChat,
   organizacion,
   adminHref,
   onGuia,
@@ -314,6 +321,10 @@ export function VerticalShell({
   const barraDeConsola = sobrescrito?.titulo === "";
   const IconoBarra = barraDeConsola ? undefined : (sobrescrito?.icono ?? barraDeRuta?.icon);
   const tituloBarra = barraDeConsola ? header.title : (sobrescrito?.titulo ?? barraDeRuta?.label ?? header.title);
+  // ds3: el encabezado lleva SIEMPRE el nombre de la pagina (tambien en el Resumen); el de la consola queda solo si la ruta no es del menu.
+  const tituloDs3 = sobrescrito?.titulo || activo?.item.label || header.title;
+  // ds3: grupo del menu de la pantalla activa, antetitulo del PageHeader.
+  const grupoNav = activo ? activo.grupo : null;
   const iconoBarra = IconoBarra ? <IconoBarra className="size-[15px] text-muted-foreground" strokeWidth={1.75} /> : header.icon;
   const selectores =
     organizationSelector || branchSelector ? (
@@ -349,11 +360,18 @@ export function VerticalShell({
 
       {/* Marco de Likida: columna de contenido gris tenue (--sunken = --g1) con hairline y esquinas
           redondeadas; la barra queda dentro, blanca, y las tarjetas blancas encima. */}
-      <div ref={fijarMarco} className="ds3-shell-marco relative flex min-w-0 flex-1 flex-col bg-sunken md:sticky md:top-4 md:m-4 md:h-[calc(100dvh-2rem)] md:overflow-hidden md:rounded-2xl md:border md:border-border">
+      <div ref={fijarMarco} data-pantalla={barraDeConsola ? "chat" : undefined} className="ds3-shell-marco relative flex min-w-0 flex-1 flex-col bg-sunken md:sticky md:top-4 md:m-4 md:h-[calc(100dvh-2rem)] md:overflow-hidden md:rounded-2xl md:border md:border-border">
         {/* ds3: la zona es la barra de 44 px (la cabecera interna se aplana con display:contents) y el boton «Guía» queda junto al
             titulo; vive FUERA de [data-testid="barra-pagina"] para que la barra del diseno actual siga sin botones propios. */}
-        <div className="ds3-cabecera-zona hidden md:block shrink-0">
-          <BarraPagina icon={iconoBarra} title={tituloBarra} acciones={accionesBarra} comoH1={sinH1} className="ds3-cabecera" />
+        <div className="ds3-cabecera-zona hidden md:block shrink-0" data-sin-cabecera={barraDeConsola ? "" : undefined}>
+          <BarraPagina
+            icon={iconoBarra}
+            title={tituloBarra}
+            tituloDs3={tituloDs3 !== tituloBarra ? tituloDs3 : undefined}
+            acciones={accionesBarra}
+            comoH1={sinH1}
+            className="ds3-cabecera"
+          />
           <button
             type="button"
             hidden
@@ -378,7 +396,9 @@ export function VerticalShell({
             <TituloBarraContext.Provider value={fijarTitulo}>
               <AccionesBarraContext.Provider value={fijarAcciones}>
                 <MarcoShellContext.Provider value={marco}>
-                  <RutaBoundary resetKey={pathname}>{children}</RutaBoundary>
+                  <GrupoNavContext.Provider value={grupoNav}>
+                    <RutaBoundary resetKey={pathname}>{children}</RutaBoundary>
+                  </GrupoNavContext.Provider>
                 </MarcoShellContext.Provider>
               </AccionesBarraContext.Provider>
             </TituloBarraContext.Provider>
@@ -387,6 +407,8 @@ export function VerticalShell({
       </div>
 
       {panelLateral}
+
+      {historialChat ? <div data-testid="ranura-historial-chat" className="contents">{historialChat}</div> : null}
 
       <BottomNav items={mobileItems} moreSections={sections} pie={pie} />
     </div>

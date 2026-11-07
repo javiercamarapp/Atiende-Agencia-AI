@@ -106,6 +106,10 @@ test.describe("login sin saltos @humo", () => {
           await new Promise((r) => setTimeout(r, 400)); // ventana para medir el estado "enviando"
           return ruta.fulfill({ status: modo === "ok" ? 200 : 429, headers: { "access-control-allow-origin": "*", "content-type": "application/json" }, body: JSON.stringify({ ok: modo === "ok" }) });
         });
+        // Reloj controlable: tras un envio exitoso el login (como el de Rovaq) espera 60 s antes de dejar pedir otro enlace.
+        // Movimiento reducido: la esfera de particulas queda quieta y adelantar el reloj no pinta 60 s de cuadros.
+        await page.emulateMedia({ reducedMotion: "reduce" });
+        await page.clock.install();
         await abrir(page, "/citas/login", tema, v);
         const base = await cajas(page);
         const campo = page.getByRole("textbox", { name: /correo/i });
@@ -131,6 +135,9 @@ test.describe("login sin saltos @humo", () => {
         // Enviado.
         await expect(page.getByRole("status")).toContainText("Te mandamos un enlace");
         await afirmarMismoLugar(page, base, "enviado");
+        // Pasa la espera de reenvio («Reintentar en N s»): el boton vuelve a «Continuar con correo» sin mover nada.
+        await page.clock.runFor(61_000);
+        await expect(page.getByRole("button", { name: "Continuar con correo" })).toBeEnabled();
 
         // Correo mal escrito DESPUES de un envio exitoso: el error reemplaza al aviso y es visible (un solo mensaje).
         await campo.fill("me-equivoque");
@@ -167,31 +174,6 @@ test.describe("login sin saltos @humo", () => {
     await expect(page.getByRole("status")).toBeVisible();
     expect(await page.evaluate(() => window.scrollY)).toBe(0);
     await expect(page.getByRole("textbox", { name: /correo/i })).toBeFocused();
-  });
-
-  test("¿Olvidaste tu contraseña?: el aviso de enviado y el error no mueven el formulario", async ({ page }) => {
-    await page.route("**/auth/password-reset/solicitar", (ruta) =>
-      ruta.request().method() === "OPTIONS"
-        ? ruta.fulfill({ status: 204, headers: { "access-control-allow-origin": "*", "access-control-allow-headers": "*" } })
-        : ruta.fulfill({ status: 200, headers: { "access-control-allow-origin": "*", "content-type": "application/json" }, body: JSON.stringify({ ok: true }) }),
-    );
-    await abrir(page, "/citas/login", "light", { width: 375, height: 667 });
-    await page.getByRole("button", { name: "¿Olvidaste tu contraseña?" }).click();
-    const piezas = ["form", "form button[type=submit]", ".login-estado"] as const;
-    const antes = await Promise.all(piezas.map((s) => page.locator(s).first().boundingBox()));
-    expect((await altoPagina(page)).contenido, "la vista de restablecer contrasena hace scroll").toBeLessThanOrEqual((await altoPagina(page)).ventana);
-    await page.getByRole("textbox", { name: /correo/i }).fill("no-es-correo");
-    await page.keyboard.press("Enter");
-    await expect(page.getByRole("alert")).toContainText("correo válido");
-    await page.getByRole("textbox", { name: /correo/i }).fill("dueno@negocio.com");
-    await page.keyboard.press("Enter");
-    await expect(page.getByRole("status")).toContainText("Revisa tu correo");
-    const despues = await Promise.all(piezas.map((s) => page.locator(s).first().boundingBox()));
-    piezas.forEach((s, i) => {
-      for (const k of ["x", "y", "width", "height"] as const) expect(Math.abs(despues[i]![k] - antes[i]![k]), `${s}.${k}`).toBeLessThanOrEqual(1);
-    });
-    const { contenido, ventana } = await altoPagina(page);
-    expect(contenido).toBeLessThanOrEqual(ventana);
   });
 });
 

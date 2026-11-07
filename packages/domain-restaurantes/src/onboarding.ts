@@ -77,6 +77,9 @@ export interface OnboardingSnapshot {
   readonly privacidadDisponible: boolean;
   /** La organizacion publico la URL de su aviso de privacidad integral (migracion 030). */
   readonly avisoPublicado: boolean;
+  /** «Probar el agente» llego a un pedido simulado (evento `prueba_agente_whatsapp` de core.onboarding_evento, migracion 0073).
+   * `null` = no se puede medir (base sin la 0073); ausente = el llamador no lo mide (el punto no se muestra). */
+  readonly pruebaAgente?: boolean | null;
 }
 
 const lista = (nombres: readonly string[]) => (nombres.length > 0 ? nombres.join(", ") : "");
@@ -258,6 +261,27 @@ export function buildOnboardingChecklist(snapshot: OnboardingSnapshot): Onboardi
     pantalla: "privacidad",
   });
 
+  // «Probar el agente»: la conversacion de prueba no persiste nada por diseño (agente-preview.ts), asi que el hito se guarda como evento
+  // verificable cuando la prueba llega a un pedido simulado. No es obligatorio (no cambia el gate): es la señal de que el dueño ya vio
+  // al agente tomar un pedido antes de conectar WhatsApp.
+  if (snapshot.pruebaAgente !== undefined) {
+    add({
+      id: "prueba_agente",
+      titulo: "Probar el agente",
+      estado: snapshot.pruebaAgente === null ? "externo" : snapshot.pruebaAgente ? "hecho" : "pendiente",
+      obligatorio: false,
+      detalle:
+        snapshot.pruebaAgente === null
+          ? "La medición de la prueba del agente aún no está disponible en este despliegue (requiere la migración 0073)."
+          : snapshot.pruebaAgente
+            ? "Ya probaste al agente: tomó un pedido de prueba (PRUEBA-…) sin crear nada real."
+            : "Conversa con el agente en «Probar agente» como si fueras cliente hasta que tome un pedido de prueba.",
+      faltantes: [],
+      responsable: snapshot.pruebaAgente === null ? "plataforma" : "dueno",
+      pantalla: "configuracion",
+    });
+  }
+
   add({
     id: "nombre_del_asistente",
     titulo: "Nombre del asistente virtual",
@@ -304,14 +328,18 @@ export interface OnboardingExtras {
   readonly vozProveedorListo?: () => Promise<boolean>;
   /** Repositorio de privacidad (migracion 030). Ausente o base sin migrar = aviso no disponible. */
   readonly privacidad?: PrivacidadRepository;
+  /** Hito «la prueba del agente llego a un pedido simulado» (migracion 0073). `null` = no se puede medir. Ausente = no se muestra. */
+  readonly pruebaAgente?: () => Promise<boolean | null>;
 }
 
 export async function cargarOnboarding(repo: RestaurantesRepository, organizationId: string, extras: OnboardingExtras = {}): Promise<OnboardingChecklist> {
   const branches = await repo.listBranchesForOrganizationAdmin(organizationId);
+  // Solo venta local (migracion 105): no atiende clientes por Atiende, asi que no se le piden productos, zonas ni WhatsApp (se lista como no activa para el agente).
+  const soloLocal = new Set(branches.length > 0 ? await repo.listarSucursalesSoloVentaLocal(organizationId) : []);
   const numerosPropios = new Set((await repo.listWhatsappBranchChannels(organizationId)).map((c) => c.propertyId));
   const sucursales: OnboardingBranchSnapshot[] = [];
   for (const b of branches) {
-    const activa = b.status === "active";
+    const activa = b.status === "active" && !soloLocal.has(b.propertyId);
     if (!activa) {
       sucursales.push({ nombre: b.name, activa, conCoordenadas: b.lat !== null && b.lng !== null, productosDisponibles: 0, conHorario: false, dobleTurno: false, conPedidoMinimo: false, zonasDeEntrega: 0, conWhatsappPropio: numerosPropios.has(b.propertyId), voz: "sin_configurar" });
       continue;
@@ -342,6 +370,7 @@ export async function cargarOnboarding(repo: RestaurantesRepository, organizatio
   const pedidos = await repo.listOrders(organizationId, { propertyIds: null, limit: 1 });
   const privacidad = extras.privacidad ? await extras.privacidad.getPrivacyConfig(organizationId) : null;
   const vozProveedorListo = extras.vozProveedorListo ? await extras.vozProveedorListo().catch(() => false) : false;
+  const pruebaAgente = extras.pruebaAgente ? await extras.pruebaAgente().catch(() => null) : undefined;
   return buildOnboardingChecklist({
     sucursales,
     vozProveedorListo,
@@ -353,5 +382,6 @@ export async function cargarOnboarding(repo: RestaurantesRepository, organizatio
     agenteConfigurado: agente !== null,
     nombreDelAsistente: agente?.agentName != null && agente.agentName.trim().length > 0,
     pedidos: pedidos.orders.length,
+    ...(pruebaAgente !== undefined ? { pruebaAgente } : {}),
   });
 }

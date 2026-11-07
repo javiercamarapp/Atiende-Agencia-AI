@@ -34,12 +34,12 @@ const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
     }, [indeterminate, props.checked]);
 
     const caja = (
-      <span className="relative inline-flex size-[18px] shrink-0 items-center justify-center">
+      <span className="ds3-check relative inline-flex size-[18px] shrink-0 items-center justify-center">
         <input
           ref={setRef}
           type="checkbox"
           className={cn(
-            "peer size-full cursor-pointer appearance-none rounded-[5px] border border-control bg-card transition-[background-color,border-color,box-shadow] duration-fast ease-brand checked:border-primary checked:bg-primary indeterminate:border-primary indeterminate:bg-primary disabled:cursor-not-allowed disabled:opacity-50 aria-[invalid=true]:border-destructive",
+            "ds3-check-input peer size-full cursor-pointer appearance-none rounded-[5px] border border-control bg-card transition-[background-color,border-color,box-shadow] duration-fast ease-brand checked:border-primary checked:bg-primary indeterminate:border-primary indeterminate:bg-primary disabled:cursor-not-allowed disabled:opacity-50 aria-[invalid=true]:border-destructive",
             className,
           )}
           {...props}

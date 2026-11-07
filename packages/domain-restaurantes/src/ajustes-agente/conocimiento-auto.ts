@@ -409,7 +409,9 @@ export function generarConocimientoAuto(datos: DatosConocimiento): ConocimientoA
 
 /** Lee los datos con los metodos de LECTURA que ya usa el panel (cada uno ya degrada solo contra la base sin migrar). */
 export async function cargarDatosConocimiento(repo: RestaurantesRepository, organizationId: string): Promise<DatosConocimiento> {
-  const branches = await repo.listBranchesForOrganizationAdmin(organizationId);
+  // Solo venta local (migracion 105): el conocimiento del agente no la menciona (ni directorio, ni colonias, ni FAQ, ni menu).
+  const soloLocal = new Set(await repo.listarSucursalesSoloVentaLocal(organizationId));
+  const branches = (await repo.listBranchesForOrganizationAdmin(organizationId)).filter((b) => !soloLocal.has(b.propertyId));
   const zonas = await repo.listKnownZones(organizationId);
   // Referencia del piloto (migracion 056): contra la base sin migrar `disponible:false` y todo sigue como antes.
   const lecturaRef = await repo.listColoniasReferencia(organizationId);

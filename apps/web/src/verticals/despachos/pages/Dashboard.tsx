@@ -246,7 +246,7 @@ export function DashboardPage({ apiBaseUrl, token, orgSlug, propertyId, role, st
         tamano="md"
       />
       {/* El odómetro se oculta bajo `sm` (como en Likida): en móvil la cifra viaja en una línea. */}
-      <p className="text-ui text-muted-foreground sm:hidden">
+      <p className="ds3-resumen-movil text-ui text-muted-foreground sm:hidden">
         Cartera pendiente <span className="font-medium tabular-nums text-foreground">{cartera ? formatMoney(cartera.montoPendiente) : "—"}</span>
       </p>
     </div>
@@ -258,6 +258,13 @@ export function DashboardPage({ apiBaseUrl, token, orgSlug, propertyId, role, st
         saludo={saludoDespacho()}
         nombre={primerNombreOCorreo(staffFullName, staffEmail)}
         subtitulo={`${data.organizacion.nombre} · ${data.totalClientes} cliente(s)`}
+        frase={
+          cartera ? (
+            <>
+              {data.organizacion.nombre} · {data.totalClientes} cliente(s). Cartera pendiente: <strong>{formatMoney(cartera.montoPendiente)}</strong>.
+            </>
+          ) : undefined
+        }
         destacado={destacado}
         kpis={kpisResumen(data, base)}
         acciones={

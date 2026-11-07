@@ -3,7 +3,8 @@
 --
 --   A) Caller-binding: solo un superadmin real con su propio uid ve algo; staff normal, uid ajeno, sesion de sistema -> CERO filas;
 --      anon no ejecuta nada (sin GRANT).
---   B) Checklist por vertical: organizacion completa 6/6; organizacion vacia con pendientes; despachos (sin fuente de operaciones)
+--   B) Checklist por vertical: organizacion completa 6/6; organizacion vacia con pendientes; despachos (desde 0074: clientes con ficha
+--      y CFDI importados como catalogo y primera operacion)
 --      -> 'no_se_pudo_medir' con razon, NUNCA 'pendiente'; una fuente ausente (tabla renombrada) tambien -> no_se_pudo_medir.
 --   C) Aislamiento entre organizaciones: las operaciones, el menu y el WhatsApp de una organizacion no cuentan en otra.
 --   D) Metricas a 30 dias: la ventana excluye lo viejo (operaciones y costo), la 'primera operacion' mira toda la historia.
@@ -165,14 +166,29 @@ select (count(*) = 6
 from core.get_org_onboarding_for_superadmin('00000000-0000-0000-0000-0000000f2100', '00000000-0000-0000-0000-0000000f2001');
 rollback;
 
-\echo 'B3. F3 (despachos): sin whatsapp ni catalogo; la primera operacion es no_se_pudo_medir con razon sin_fuente (NO pendiente) -- OK'
+\echo 'B3. F3 (despachos, desde 0074): sin whatsapp; catalogo (clientes con ficha) y primeros CFDI se MIDEN y estan pendientes -- OK'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f2100', true);
-select (count(*) = 4
-        and count(*) filter (where paso in ('whatsapp', 'catalogo')) = 0
-        and count(*) filter (where paso = 'primera_operacion' and estado = 'no_se_pudo_medir' and razon = 'sin_fuente') = 1
-        and count(*) filter (where estado = 'pendiente' and paso = 'primera_operacion') = 0)::int as deberia_ser_1
+select (count(*) = 5
+        and count(*) filter (where paso = 'whatsapp') = 0
+        and count(*) filter (where paso = 'catalogo' and estado = 'pendiente' and titulo = 'Clientes con ficha fiscal') = 1
+        and count(*) filter (where paso = 'primera_operacion' and estado = 'pendiente' and titulo = 'Primeros CFDI importados') = 1
+        and count(*) filter (where estado = 'no_se_pudo_medir') = 0)::int as deberia_ser_1
+from core.get_org_onboarding_for_superadmin('00000000-0000-0000-0000-0000000f2100', '00000000-0000-0000-0000-0000000f2002');
+rollback;
+
+\echo 'B3b. F3 (despachos) con un cliente con ficha y un CFDI: catalogo y primera operacion HECHOS -- OK'
+begin;
+insert into core.property (id, organization_id, vertical, name, status) values
+  ('00000000-0000-0000-0000-0000000f2302', '00000000-0000-0000-0000-0000000f2002', 'despachos', 'Cliente F3', 'active');
+insert into despachos.cliente_ficha (property_id, organization_id, rfc, razon_social, regimenes_fiscales, cp_fiscal) values
+  ('00000000-0000-0000-0000-0000000f2302', '00000000-0000-0000-0000-0000000f2002', 'AAA010101AAA', 'Cliente Prueba SA', array['601'], '97000');
+insert into despachos.invoice (organization_id, property_id, folio_fiscal, tipo, rfc_emisor, rfc_receptor, subtotal, total, valido) values
+  ('00000000-0000-0000-0000-0000000f2002', '00000000-0000-0000-0000-0000000f2302', '00000000-0000-4000-8000-0000000f2f01', 'I', 'AAA010101AAA', 'BBB010101BBB', 100, 116, true);
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f2100', true);
+select (count(*) filter (where paso in ('catalogo', 'primera_operacion') and estado = 'hecho') = 2)::int as deberia_ser_1
 from core.get_org_onboarding_for_superadmin('00000000-0000-0000-0000-0000000f2100', '00000000-0000-0000-0000-0000000f2002');
 rollback;
 
@@ -186,13 +202,13 @@ select (count(*) filter (where paso = 'whatsapp' and estado = 'no_se_pudo_medir'
 from core.get_org_onboarding_for_superadmin('00000000-0000-0000-0000-0000000f2100', '00000000-0000-0000-0000-0000000f2004');
 rollback;
 
-\echo 'B5. el resumen x/y de todas las organizaciones: F1 6/6, F2 0/6, F3 0/4 con 1 no medible -- OK'
+\echo 'B5. el resumen x/y de todas las organizaciones: F1 6/6, F2 0/6, F3 (despachos, 0074) 0/5 sin no medibles -- OK'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f2100', true);
 select ((select hechos = 6 and total = 6 and no_medibles = 0 from core.get_orgs_onboarding_resumen_for_superadmin('00000000-0000-0000-0000-0000000f2100') where organization_id = '00000000-0000-0000-0000-0000000f2000')
     and (select hechos = 0 and total = 6 from core.get_orgs_onboarding_resumen_for_superadmin('00000000-0000-0000-0000-0000000f2100') where organization_id = '00000000-0000-0000-0000-0000000f2001')
-    and (select hechos = 0 and total = 4 and no_medibles = 1 from core.get_orgs_onboarding_resumen_for_superadmin('00000000-0000-0000-0000-0000000f2100') where organization_id = '00000000-0000-0000-0000-0000000f2002'))::int as deberia_ser_1;
+    and (select hechos = 0 and total = 5 and no_medibles = 0 from core.get_orgs_onboarding_resumen_for_superadmin('00000000-0000-0000-0000-0000000f2100') where organization_id = '00000000-0000-0000-0000-0000000f2002'))::int as deberia_ser_1;
 rollback;
 
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -227,11 +243,11 @@ select (llm_30d_micro_usd = 5000 and eventos_30d_micro_usd = 900 and plan_id = '
 from core.get_orgs_metricas_for_superadmin('00000000-0000-0000-0000-0000000f2100', (now() at time zone 'America/Mexico_City')::date) where organization_id = '00000000-0000-0000-0000-0000000f2000';
 rollback;
 
-\echo 'D2. despachos: operaciones null con razon sin_fuente (no 0) y sin plan (null sin razon) -- OK'
+\echo 'D2. despachos (0074): operaciones medidas (0 CFDI, sin razon) y sin plan (null sin razon) -- OK'
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f2100', true);
-select (operaciones_30d is null and operaciones_razon = 'sin_fuente' and plan_id is null and plan_razon is null)::int as deberia_ser_1
+select (operaciones_30d = 0 and operaciones_razon is null and plan_id is null and plan_razon is null)::int as deberia_ser_1
 from core.get_orgs_metricas_for_superadmin('00000000-0000-0000-0000-0000000f2100', (now() at time zone 'America/Mexico_City')::date) where organization_id = '00000000-0000-0000-0000-0000000f2002';
 rollback;
 

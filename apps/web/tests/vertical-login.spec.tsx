@@ -5,7 +5,9 @@
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
-import { VerticalLogin, esCorreoValido, type VerticalLoginProps } from "../src/components/VerticalLogin.tsx";
+// Desde el 6-nov la pantalla por omision es la de Rovaq (vertical-login-ds3.spec.tsx); esta cubre la anterior, que queda como
+// interruptor de emergencia (VITE_LOGIN_LEGADO=1).
+import { VerticalLoginLegado as VerticalLogin, esCorreoValido, type VerticalLoginProps } from "../src/components/VerticalLogin.tsx";
 import { changeValue, click, flushMicrotasks, renderComponent, submitForm, type RenderedComponent } from "./test-utils/render.tsx";
 
 const iniciarMagicLink = vi.fn();

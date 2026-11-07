@@ -120,6 +120,26 @@ describe("POST /billing/checkout", () => {
     expect(stripe.calls[0]!.cancelUrl).toContain(base.organizationId);
   });
 
+  it("las URLs de regreso apuntan a las rutas web /billing/success y /billing/cancel con la vertical (onboarding P0)", async () => {
+    const base = await buildTestDeps();
+    const coreRepo = base.deps.coreRepo as InMemoryCoreRepository;
+    const stripe = new FakeSaasStripeClient();
+    const deps = { ...base.deps, saasBillingStripeClient: stripe };
+    const app = buildApp(deps);
+    const ownerId = (await coreRepo.findStaffByEmail(base.ownerEmail))!.id;
+    const token = await tokenFor(deps, ownerId, base.ownerEmail);
+    await app.request("/billing/checkout", jsonRequestInit({ organizationId: base.organizationId, priceId: "price_1", seats: 1 }, { authorization: `Bearer ${token}` }));
+    const exito = new URL(stripe.calls[0]!.successUrl.replace("{CHECKOUT_SESSION_ID}", "cs_test"));
+    const cancelado = new URL(stripe.calls[0]!.cancelUrl);
+    expect(exito.pathname).toBe("/billing/success");
+    expect(cancelado.pathname).toBe("/billing/cancel");
+    for (const u of [exito, cancelado]) {
+      expect(u.searchParams.get("organization_id")).toBe(base.organizationId);
+      expect(u.searchParams.get("vertical")).toBe("restaurantes");
+    }
+    expect(exito.searchParams.get("session_id")).toBe("cs_test");
+  });
+
   it("sin STRIPE_SECRET_KEY configurada (saasBillingStripeClient ausente) responde 503 honesto, nunca finge una URL", async () => {
     const base = await buildTestDeps();
     const coreRepo = base.deps.coreRepo as InMemoryCoreRepository;
