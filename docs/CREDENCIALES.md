@@ -119,7 +119,7 @@ Estas 4 URLs override **estaban leídas** por `env.ts` pero **no documentadas** 
 | `ALERTAS_EMAIL_DESTINATARIOS` | tú (correos separados por comas) | No | Aviso por correo (vía Resend, reusa `RESEND_API_KEY`) cuando un cron falla o el resumen diario detecta una alerta crítica | Canal de correo apagado | No |
 | `ALERTAS_WEBHOOK_URL` | tu sistema receptor (Slack/Make/n8n/propio) | Sí (la URL suele llevar el token) | POST JSON de la alerta; solo `https`, nunca hacia hosts privados/loopback | Canal de webhook apagado | No |
 | `ALERTAS_WEBHOOK_SECRETO` | tú (`openssl rand -hex 32`) | Sí | Firma `X-Atiende-Signature: sha256=HMAC(secreto, "<X-Atiende-Timestamp>.<cuerpo>")` | El webhook sale sin firma | No |
-| `SENTRY_DSN` | Sentry → Project Settings → Client Keys | Sí | Evento por la API HTTP de envelopes (sin SDK) | Sentry apagado | No |
+| `SENTRY_DSN` | Sentry → Project Settings → Client Keys | Sí | Evento por la API HTTP de envelopes (sin SDK): las alertas de plataforma y cada error 500 no controlado de la API (`apps/api/src/observabilidad/errores-sentry.ts`: mensaje redactado, ruta sin IDs ni query, pila sin variables; nunca cuerpo, cabeceras, IP ni usuario; tope de 30 por minuto por instancia) | Sentry apagado: los 500 solo quedan en el log `apps_api_error_interno` | No |
 | `ALERTAS_LIMITE_POR_HORA` | tú | No | Máximo de avisos por (tipo de alerta, destino) en una hora; entero 1–60 | Default 2 | No |
 
 Los datos sensibles (correos, teléfonos, tokens, JWT, URIs con credenciales, claves por nombre) se redactan
