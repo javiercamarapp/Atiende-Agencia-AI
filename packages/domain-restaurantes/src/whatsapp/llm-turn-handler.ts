@@ -36,7 +36,7 @@ import { intentarCancelacionConAutopiloto, registrarQuejaConAutopiloto } from ".
 import type { AutopilotoTurnoHooks } from "./autopiloto-turno.ts";
 import type { AgregadosHook } from "../agregados/tipos.ts";
 import { asistentePidioConfirmarResumen, bloqueCotizacionVigente, QUOTE_TTL_MS, resumenMostradoEnHistorial } from "../agent-tools/order-flow.ts";
-import { cierreMaquinaActiva, clasificarRespuestaCierre, componerRespuestaConResumen, corregirHoraDeRecogidaEnRespuesta, estadoDeCierre } from "../agent-tools/cierre-maquina.ts";
+import { cierreMaquinaActiva, clasificarRespuestaCierre, componerRespuestaConResumen, corregirHoraDeRecogidaEnRespuesta, datosDeCierreDeContexto, estadoDeCierre, pagoConVistoBuenoAlResumen, type DatosDeCierre } from "../agent-tools/cierre-maquina.ts";
 import { MENSAJE_PEDIDO_GRANDE_PENDIENTE, executeAgentToolSafely, toolDefinitionsForChannel } from "../agent-tools/registry.ts";
 import { planCierreDeterminista } from "../agent-tools/cierre-determinista.ts";
 import { bloqueCantidadNoMultiplo, bloqueProductoNoManejado } from "../unidades-pm.ts";
@@ -1047,10 +1047,19 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       };
 
       /** Total del resumen vigente si el ultimo mensaje del cliente es un «si» claro a ese resumen y aun no hay pedido; si no, null. */
+      const pagoAdoptadoV2 = (): DatosDeCierre | null => {
+        if (!cerebroV2 || perfil !== "taqueria_pm" || !cotizacionVigente || !flowSnapshot?.context || flowSnapshot.state !== "cotizado") return null;
+        const sinResponder = mensajesSinResponder(messages);
+        if (sinResponder.length !== 1) return null;
+        const c = flowSnapshot.context;
+        return pagoConVistoBuenoAlResumen([...messages].reverse().find((m) => m.role === "assistant")?.content, sinResponder[0]!.content, { total: c.quotedTotal, canal: c.quotedCanal, datosCotizados: datosDeCierreDeContexto(c) });
+      };
       const siPendienteSinPedido = (): number | null => {
         const total = flowSnapshot?.context?.quotedTotal;
         if (typeof total !== "number" || !Number.isFinite(total) || !cotizacionVigente) return null;
         const estado = estadoDeCierre(flowSnapshot, messages);
+        // C3 PED-16 (cerebro v2): «Tarjeta… sí, todo lo demás está bien» a un resumen vigente que pedía el pago tambien es el sí (el pago se adopta al confirmar).
+        if (pagoAdoptadoV2() !== null) return total;
         if (estado !== "esperando_confirmacion" && estado !== "confirmado") return null;
         // TODOS los mensajes sin responder deben ser un «si» claro: en una rafaga («mejor 3 cocas» + «si») el «si» responde al cambio, no al resumen que el servidor guardo.
         const sinResponder = mensajesSinResponder(messages);
@@ -1075,7 +1084,9 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         if (lecturaFallida) return null;
         cierreDeterministaIntentado = true;
         if (!fresco?.context || fresco.context.quotedTotal !== totalConfirmado || fresco.context.quoteHash !== flowSnapshot?.context?.quoteHash) return null;
-        const plan = planCierreDeterminista(fresco, { ahoraMs: now().getTime(), nombreDeLaFicha: customer.isNew ? null : customer.name, hayUbicacionCompartida: sharedLocation !== null && sharedLocation !== undefined });
+        // C3 PED-16: el plan lleva el pago que el cliente acaba de dar (confirmar_resumen lo adopta en la cotizacion con la misma regla).
+        const adoptado = porToque ? null : pagoAdoptadoV2();
+        const plan = planCierreDeterminista(adoptado ? { ...fresco, context: { ...fresco.context, ...(adoptado.pago ? { quotedPago: adoptado.pago } : {}), quotedEfectivoCon: adoptado.efectivoCon, quotedPropinaMxn: adoptado.propinaMxn, quotedPropinaPct: adoptado.propinaPct } } : fresco, { ahoraMs: now().getTime(), nombreDeLaFicha: customer.isNew ? null : customer.name, hayUbicacionCompartida: sharedLocation !== null && sharedLocation !== undefined });
         if (!plan.ok) return null;
         return [
           { id: "cierre-determinista-1", name: "confirmar_resumen", argumentsJson: "{}" },

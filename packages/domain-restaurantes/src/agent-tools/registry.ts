@@ -1611,8 +1611,21 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
       // R11: cierre como maquina de estados. Con historial de WhatsApp el servidor exige que el ULTIMO mensaje del asistente sea el resumen vigente y que el ultimo del cliente sea un «si»
       // explicito. La negativa se devuelve como RESULTADO (no como excepcion): el SAVEPOINT revertiria la marca de «ambiguo» que habilita la salida segura del turno siguiente.
       const cierreOn = cierreMaquinaActiva() && ctx.channel === "whatsapp" && ctx.conversacionReciente !== undefined;
+      let confirmable: OrderFlowContext = current;
       if (cierreOn) {
-        const decision = decidirConfirmacion({ ctx: current, historial: ctx.conversacionReciente!, turn: flow.turn, canonico: current.resumenCanonico });
+        const decision = decidirConfirmacion({ ctx: current, historial: ctx.conversacionReciente!, turn: flow.turn, canonico: current.resumenCanonico, ...(ctx.cerebroV2 ? { pagoConVistoBueno: true } : {}) });
+        // C3 PED-16 (cerebro v2): el pago que el cliente dio junto con su visto bueno se guarda en la cotizacion antes de confirmar (la firma confirmada ya lo lleva).
+        if (decision.ok && decision.datosAdoptados) {
+          const d = decision.datosAdoptados;
+          confirmable = {
+            ...current,
+            ...(d.pago ? { quotedPago: d.pago } : {}),
+            quotedEfectivoCon: d.efectivoCon,
+            quotedPropinaMxn: d.propinaMxn,
+            quotedPropinaPct: d.propinaPct,
+            ...(current.resumenBase ? { resumenCanonico: resumenCanonico({ ...current.resumenBase, datos: d }) } : {}),
+          };
+        }
         if (!decision.ok) {
           // Respuesta de pago / propina: el servidor ADOPTA el dato (avanza), vuelve a `cotizado` y rearma el resumen; el modelo solo lo muestra. Nunca confirma.
           if (decision.datosNuevos && current.resumenBase) {
@@ -1643,9 +1656,9 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
         }
       }
       const res = await writeFlow(repo, ctx, flow, snap.version, "confirmado", {
-        ...current,
+        ...confirmable,
         confirmedAtMs: flowNow(flow),
-        ...(cierreOn ? { confirmedFirma: firmaDeCierre(datosDeCierreDeContexto(current)), ...(flow.turn !== null ? { confirmedTurn: flow.turn } : {}) } : {}),
+        ...(cierreOn ? { confirmedFirma: firmaDeCierre(datosDeCierreDeContexto(confirmable)), ...(flow.turn !== null ? { confirmedTurn: flow.turn } : {}) } : {}),
       });
       if (res === "written") return { result: { confirmado: true, quote_hash: current.quoteHash, instruccion: INSTRUCCION_TRAS_CONFIRMAR_RESUMEN }, orderId: null, propertyId: null, quoteHash: current.quoteHash };
       if (res === "unavailable") return { result: { confirmado: true }, orderId: null, propertyId: null };
