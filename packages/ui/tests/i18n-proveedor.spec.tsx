@@ -5,8 +5,8 @@
 // texto sin recargar; `cambiarIdioma` guarda, anuncia y llama a `persistir`; `<html lang>` sigue al idioma.
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { IdiomaProvider, useI18n, useT } from "../src/i18n/index";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { IdiomaProvider, cargarIdioma, useI18n, useT } from "../src/i18n/index";
 import { CLAVE_IDIOMA, guardarIdioma } from "../src/lib/idioma";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -34,6 +34,8 @@ function montar(el: ReturnType<typeof createElement>) {
   });
   return contenedor;
 }
+
+beforeAll(() => cargarIdioma("en"));
 
 beforeEach(() => {
   window.localStorage.clear();

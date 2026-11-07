@@ -34,19 +34,22 @@ function errores(codigo: string): string[] {
 
 describe("tipos del catalogo", () => {
   it("un modulo completo compila", () => {
-    expect(errores(`import { definirModulo } from "${i18n}/tipos";
-      export const m = definirModulo({ es: { "x.a": "A", "x.b": { one: "1", other: "n" } }, en: { "x.a": "A!", "x.b": { other: "n" } } });`)).toEqual([]);
+    expect(errores(`import type { ModuloEs, Traduccion } from "${i18n}/tipos";
+      const es = { "x.a": "A", "x.b": { one: "1", other: "n" } } as const satisfies ModuloEs;
+      export const en: Traduccion<typeof es> = { "x.a": "A!", "x.b": { other: "n" } };`)).toEqual([]);
   }, 60_000);
 
   it("falta una clave en ingles -> error de tipos", () => {
-    const e = errores(`import { definirModulo } from "${i18n}/tipos";
-      export const m = definirModulo({ es: { "x.a": "A", "x.b": "B" }, en: { "x.a": "A!" } });`);
+    const e = errores(`import type { ModuloEs, Traduccion } from "${i18n}/tipos";
+      const es = { "x.a": "A", "x.b": "B" } as const satisfies ModuloEs;
+      export const en: Traduccion<typeof es> = { "x.a": "A!" };`);
     expect(e.join("\n")).toMatch(/x\.b/);
   }, 60_000);
 
   it("sobra una clave en ingles -> error de tipos", () => {
-    const e = errores(`import { definirModulo } from "${i18n}/tipos";
-      export const m = definirModulo({ es: { "x.a": "A" }, en: { "x.a": "A!", "x.z": "Z" } });`);
+    const e = errores(`import type { ModuloEs, Traduccion } from "${i18n}/tipos";
+      const es = { "x.a": "A" } as const satisfies ModuloEs;
+      export const en: Traduccion<typeof es> = { "x.a": "A!", "x.z": "Z" };`);
     expect(e.join("\n")).toMatch(/x\.z/);
   }, 60_000);
 

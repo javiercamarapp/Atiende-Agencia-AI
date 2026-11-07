@@ -1,11 +1,23 @@
 // i18n ES/EN: `traducir` (sin React) y `crearFormatos`. Lo que promete el nucleo: interpolacion, plurales por Intl.PluralRules,
 // respaldo al espanol y formato es-MX / en-US de numeros, dinero, porcentajes y fechas.
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { crearFormatos } from "../src/i18n/formato.ts";
-import type { Clave } from "../src/i18n/mensajes/index.ts";
+import { cargarIdioma, idiomaListo, type Clave } from "../src/i18n/mensajes/index.ts";
 import { crearTraductor, traducir } from "../src/i18n/traducir.ts";
 
+describe("carga perezosa del ingles", () => {
+  it("antes de cargar, el ingles cae al espanol (nunca una clave cruda); despues, ingles", async () => {
+    if (!idiomaListo("en")) expect(traducir("en", "comun.reintentar")).toBe("Reintentar");
+    await cargarIdioma("en");
+    await cargarIdioma("en");
+    expect(idiomaListo("en")).toBe(true);
+    expect(traducir("en", "comun.reintentar")).toBe("Try again");
+  });
+});
+
 describe("traducir", () => {
+  beforeAll(() => cargarIdioma("en"));
+
   it("devuelve el texto del idioma pedido", () => {
     expect(traducir("es", "comun.reintentar")).toBe("Reintentar");
     expect(traducir("en", "comun.reintentar")).toBe("Try again");
