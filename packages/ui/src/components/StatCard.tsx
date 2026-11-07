@@ -1,6 +1,8 @@
 import { cn } from "../lib/utils";
 import { CargandoLogo } from "./CargandoLogo";
 import { Card } from "./ui/card";
+import { useT } from "../i18n/proveedor";
+import type { Traductor } from "../i18n/traducir.ts";
 
 type IconType = React.ComponentType<{ className?: string; strokeWidth?: number | string }>;
 
@@ -44,11 +46,13 @@ export type StatCardVariante = "marca" | "neutra";
  * Atiende, etiqueta gris, cifra grande) y, debajo, un pie tras divisor punteado.
  * Con la disciplina de "nunca inventar una cifra": sin dato real muestra "—" y dice por que.
  */
-export function StatCard({ icon: Icon, label, value, nota, delta, deltaNota = "vs periodo anterior", sinDato, cargando = false, variante = "marca", className }: StatCardProps) {
+export function StatCard({ icon: Icon, label, value, nota, delta, deltaNota: deltaNotaProp, sinDato, cargando = false, variante = "marca", className }: StatCardProps) {
   const mostrarSinDato = Boolean(sinDato);
   // CargandoLogo es un div role=status: no puede vivir dentro de un <p>.
   const Valor = cargando ? "div" : "p";
-  const pie = pieDe({ mostrarSinDato, sinDato, delta, deltaNota, nota });
+  const t = useT();
+  const deltaNota = deltaNotaProp ?? t("comun.kpi.vsPeriodoAnterior");
+  const pie = pieDe({ t, mostrarSinDato, sinDato, delta, deltaNota, nota });
   return (
     <Card className={cn("ds3-stat flex h-full min-w-0 flex-col p-2", className)} aria-busy={cargando || undefined}>
       <div className="ds3-stat-inner min-w-0 rounded-xl border border-line2 bg-canvas px-3 py-2">
@@ -61,9 +65,9 @@ export function StatCard({ icon: Icon, label, value, nota, delta, deltaNota = "v
         <Valor
           className={cn("ds3-stat-valor mt-0.5 min-w-0 truncate font-display text-xl font-semibold leading-tight tabular-nums", mostrarSinDato ? "text-faint" : "text-foreground", cargando && "flex min-h-7 items-center")}
           title={mostrarSinDato || cargando ? undefined : value}
-          aria-label={mostrarSinDato ? `${label}: sin dato` : undefined}
+          aria-label={mostrarSinDato ? t("comun.sinDato", { etiqueta: label }) : undefined}
         >
-          {cargando ? <CargandoLogo tamano="linea" etiqueta={`Cargando ${label}`} /> : mostrarSinDato ? "—" : value}
+          {cargando ? <CargandoLogo tamano="linea" etiqueta={t("comun.cargandoEtiqueta", { etiqueta: label })} /> : mostrarSinDato ? "—" : value}
         </Valor>
       </div>
       {/* El espaciador alinea los pies en una fila de tarjetas parejas aunque una etiqueta envuelva a dos lineas. */}
@@ -74,12 +78,14 @@ export function StatCard({ icon: Icon, label, value, nota, delta, deltaNota = "v
 }
 
 function pieDe({
+  t,
   mostrarSinDato,
   sinDato,
   delta,
   deltaNota,
   nota,
 }: {
+  t: Traductor;
   mostrarSinDato: boolean;
   sinDato?: string;
   delta?: StatCardDelta | null;
@@ -95,7 +101,7 @@ function pieDe({
           {cero ? "" : delta.pct > 0 ? "↑ " : "↓ "}
           {Math.abs(delta.pct)}%
         </span>
-        <span className="truncate text-faint">{cero ? "sin cambio vs periodo anterior" : deltaNota}</span>
+        <span className="truncate text-faint">{cero ? t("comun.kpi.sinCambio") : deltaNota}</span>
       </p>
     );
   }
@@ -103,7 +109,7 @@ function pieDe({
     const t = nota.trim();
     return <p className={t.startsWith("+") ? "text-success" : t.startsWith("-") ? "text-destructive" : "text-faint"}>{nota}</p>;
   }
-  if (delta === null) return <p className="text-faint">sin periodo comparable</p>;
+  if (delta === null) return <p className="text-faint">{t("comun.kpi.sinComparable")}</p>;
   return null;
 }
 
@@ -120,7 +126,7 @@ export interface TrendStatCardProps {
 }
 
 /** KPI con tendencia: la misma tarjeta de dos capas con el pie `↑ 12 % vs periodo anterior`. */
-export function TrendStatCard({ icon, label, value, deltaPct, deltaLabel = "vs periodo anterior", sinDato, variante, className }: TrendStatCardProps) {
+export function TrendStatCard({ icon, label, value, deltaPct, deltaLabel, sinDato, variante, className }: TrendStatCardProps) {
   return (
     <StatCard
       icon={icon}

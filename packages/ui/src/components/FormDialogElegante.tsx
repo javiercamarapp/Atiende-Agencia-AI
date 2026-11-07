@@ -5,6 +5,7 @@ import { AtiendeMark } from "./AtiendeLogo";
 import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./ui/dialog";
 import { type TamanoModal } from "./ui/superficies";
+import { useT } from "../i18n/proveedor";
 
 export interface FormDialogEleganteProps {
   readonly open: boolean;
@@ -42,15 +43,17 @@ export function FormDialogElegante({
   footer,
   onGuardar,
   guardando = false,
-  textoBotonGuardar = "Guardar cambios",
+  textoBotonGuardar: textoBotonGuardarProp,
   guardarDeshabilitado = false,
   tamano = "md",
   bloquearCierre = false,
 }: FormDialogEleganteProps) {
+  const t = useT();
+  const textoBotonGuardar = textoBotonGuardarProp ?? t("comun.guardarCambios");
   const pie =
     footer ?? (
       <Button type={onGuardar ? "submit" : "button"} className="w-full" loading={guardando} disabled={guardando || guardarDeshabilitado}>
-        {guardando ? "Guardando…" : textoBotonGuardar}
+        {guardando ? t("comun.guardando") : textoBotonGuardar}
       </Button>
     );
   const cuerpo = (

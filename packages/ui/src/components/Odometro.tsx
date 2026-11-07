@@ -11,6 +11,7 @@
 import { useEffect, useState } from "react";
 import { cn } from "../lib/utils";
 import { formatMoney } from "../lib/formatMoney";
+import { useT } from "../i18n/proveedor";
 
 export type OdometroTamano = "md" | "lg";
 
@@ -75,7 +76,9 @@ export function avanceHaciaMeta(valor: number, meta: number): number {
   return Math.min(100, Math.max(0, Math.round((valor / meta) * 100)));
 }
 
-export function Odometro({ valor, digitos, prefijo, etiqueta, sinDato = "sin medir", tamano = "md", meta, className }: OdometroProps) {
+export function Odometro({ valor, digitos, prefijo, etiqueta, sinDato: sinDatoProp, tamano = "md", meta, className }: OdometroProps) {
+  const t = useT();
+  const sinDato = sinDatoProp ?? t("comun.sinMedir");
   const d = DIMS[tamano];
   const contenedor = cn("hidden shrink-0 flex-col items-end gap-2 sm:flex", className);
   const medible = valor !== null && Number.isFinite(valor) && valor >= 0;
@@ -111,10 +114,10 @@ export function Odometro({ valor, digitos, prefijo, etiqueta, sinDato = "sin med
       <span className="whitespace-nowrap text-xs font-semibold uppercase tracking-wide text-muted-foreground">{etiqueta}</span>
       {avance !== null && (
         <div className="flex w-full items-center gap-2">
-          <div role="progressbar" aria-label="Avance hacia la meta" aria-valuemin={0} aria-valuemax={100} aria-valuenow={avance} className="h-1 flex-1 overflow-hidden rounded-full bg-canvas">
+          <div role="progressbar" aria-label={t("comun.meta.avance")} aria-valuemin={0} aria-valuemax={100} aria-valuenow={avance} className="h-1 flex-1 overflow-hidden rounded-full bg-canvas">
             <div data-testid="odometro-avance" className="h-full rounded-full bg-primary" style={{ width: `${avance}%` }} />
           </div>
-          <span className="text-2xs font-medium tabular-nums text-muted-foreground">{avance}% de la meta</span>
+          <span className="text-2xs font-medium tabular-nums text-muted-foreground">{t("comun.meta.porcentaje", { avance })}</span>
         </div>
       )}
     </div>

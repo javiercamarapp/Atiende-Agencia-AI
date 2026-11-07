@@ -8,6 +8,7 @@ import { resolverFormato, type FormatoPreset } from "../lib/formato-preset";
 import { CargandoLogo } from "./CargandoLogo";
 import { Card } from "./ui/card";
 import { SparklineConsola, Tendencia } from "./graficas";
+import { useT } from "../i18n/proveedor";
 
 export interface KpiTileProps {
   /** Elemento ya armado (`<Icon className="size-[15px]" strokeWidth={1.75} />`). */
@@ -29,6 +30,7 @@ export interface KpiTileProps {
 }
 
 export function KpiTile({ icono, etiqueta, valor, formato = "numero", tendencia, sparkline, vacio, nota, cargando = false, className }: KpiTileProps) {
+  const t = useT();
   const noMedible = valor === null || !Number.isFinite(valor);
   const texto = noMedible ? "—" : resolverFormato(formato)(valor);
   return (
@@ -40,9 +42,9 @@ export function KpiTile({ icono, etiqueta, valor, formato = "numero", tendencia,
             data-testid="kpi-tile-valor"
             className={cn("ds3-kpi-valor min-w-0 truncate font-display text-xl font-semibold leading-tight tabular-nums", noMedible && "text-faint", cargando && "flex min-h-7 items-center")}
             title={noMedible || cargando ? undefined : texto}
-            aria-label={noMedible ? `${etiqueta}: sin dato` : undefined}
+            aria-label={noMedible ? t("comun.sinDato", { etiqueta }) : undefined}
           >
-            {cargando ? <CargandoLogo tamano="linea" etiqueta={`Cargando ${etiqueta}`} /> : texto}
+            {cargando ? <CargandoLogo tamano="linea" etiqueta={t("comun.cargandoEtiqueta", { etiqueta })} /> : texto}
           </div>
           <div className="ds3-kpi-label mt-0.5 line-clamp-2 text-xs text-muted-foreground">{etiqueta}</div>
         </div>

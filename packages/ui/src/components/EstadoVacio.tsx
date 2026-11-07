@@ -3,6 +3,7 @@ import type { ComponentType } from "react";
 import { Info } from "lucide-react";
 
 import { cn } from "../lib/utils";
+import { useT } from "../i18n/proveedor";
 
 type IconType = ComponentType<{ className?: string; strokeWidth?: number | string }>;
 
@@ -19,7 +20,7 @@ export const VarianteEstadoVacioProvider = VarianteEstadoVacioContext.Provider;
  */
 export function EstadoVacio({
   icon: Icon = Info,
-  titulo = "Sin datos aún",
+  titulo: tituloProp,
   mensaje,
   accion,
   compacto = false,
@@ -39,6 +40,8 @@ export function EstadoVacio({
   variante?: "centrado" | "fila";
   className?: string;
 }) {
+  const t = useT();
+  const titulo = tituloProp ?? t("comun.sinDatos");
   const porDefecto = useContext(VarianteEstadoVacioContext);
   const variante = varianteProp ?? porDefecto;
   if (variante === "centrado") {

@@ -1,6 +1,7 @@
 import { AlertTriangle } from "lucide-react";
 
 import { cn } from "../lib/utils";
+import { useT } from "../i18n/proveedor";
 
 /**
  * `EstadoError` identico al de Likida (kit.tsx; spec UNI-3c 6.5): tarjeta p-4 con
@@ -11,7 +12,7 @@ import { cn } from "../lib/utils";
  * de credenciales" (REQ-UX-002, ACEPTACION criterio 10).
  */
 export function EstadoError({
-  titulo = "No se pudo cargar la información",
+  titulo: tituloProp,
   mensaje,
   integracion,
   pendienteCredenciales = false,
@@ -30,13 +31,15 @@ export function EstadoError({
   compacto?: boolean;
   className?: string;
 }) {
+  const t = useT();
+  const titulo = tituloProp ?? t("comun.error.titulo");
   const descripcion =
     mensaje ??
     (integracion
       ? pendienteCredenciales
-        ? `${integracion} está pendiente de credenciales. Conecta la integración para ver datos reales aquí.`
-        : `No se pudo conectar con ${integracion}. Verifica la conexión e inténtalo de nuevo.`
-      : "Ocurrió un problema al conectar con el servidor. Verifica la conexión e inténtalo de nuevo.");
+        ? t("comun.error.pendienteCredenciales", { integracion })
+        : t("comun.error.integracion", { integracion })
+      : t("comun.error.servidor"));
 
   return (
     <div role="alert" className={cn("card flex min-w-0 items-start gap-3 rounded-lg border border-border bg-card shadow-card", compacto ? "p-3" : "p-4", className)}>
@@ -48,7 +51,7 @@ export function EstadoError({
         <p className="mt-0.5 text-muted-foreground">{descripcion}</p>
         {pendienteCredenciales && (
           <p className="mt-2 inline-flex items-center rounded-full border border-border bg-canvas px-2.5 py-0.5 font-mono text-2xs uppercase tracking-[0.08em] text-muted-foreground">
-            Pendiente de credenciales
+            {t("comun.error.etiquetaPendiente")}
           </p>
         )}
         {onReintentar && (
@@ -58,7 +61,7 @@ export function EstadoError({
               onClick={onReintentar}
               className="mt-2 rounded-full border border-border px-3 py-1.5 text-xs font-medium transition-opacity hover:opacity-70"
             >
-              Reintentar
+              {t("comun.reintentar")}
             </button>
           </div>
         )}

@@ -8,6 +8,7 @@ import { EstadoVacio } from "./EstadoVacio";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
+import { useT } from "../i18n/proveedor";
 
 export type DataTableEstado = "loading" | "error" | "empty" | "ok";
 export type DataTableDireccion = "asc" | "desc";
@@ -128,7 +129,7 @@ export function DataTable<T>({
   obtenerId,
   etiqueta,
   estado,
-  vacio = { mensaje: "No hay registros que mostrar." },
+  vacio: vacioProp,
   error,
   orden: ordenControlado,
   onOrdenChange,
@@ -141,6 +142,8 @@ export function DataTable<T>({
   vista = "auto",
   className,
 }: DataTableProps<T>) {
+  const t = useT();
+  const vacio = vacioProp ?? { mensaje: t("comun.tabla.vacio") };
   const esEscritorio = useEsEscritorio();
   const comoTarjetas = vista === "tarjetas" || (vista === "auto" && !esEscritorio);
 
@@ -194,12 +197,12 @@ export function DataTable<T>({
 
   const estadoEfectivo: DataTableEstado = estado ?? (filas.length === 0 ? "empty" : "ok");
 
-  if (estadoEfectivo === "loading") return <EstadoCargando variante="tabla" etiqueta={`Cargando ${etiqueta}`} className={className} />;
+  if (estadoEfectivo === "loading") return <EstadoCargando variante="tabla" etiqueta={t("comun.cargandoEtiqueta", { etiqueta })} className={className} />;
   if (estadoEfectivo === "error") {
     return <EstadoError titulo={error?.titulo} mensaje={error?.mensaje} onReintentar={error?.onReintentar} className={className} compacto />;
   }
   if (estadoEfectivo === "empty") {
-    return <EstadoVacio titulo={vacio.titulo ?? "Sin registros"} mensaje={vacio.mensaje} accion={vacio.accion} className={className} compacto />;
+    return <EstadoVacio titulo={vacio.titulo ?? t("comun.tabla.sinRegistros")} mensaje={vacio.mensaje} accion={vacio.accion} className={className} compacto />;
   }
 
   const idsVisibles = visibles.map(obtenerId);
@@ -244,7 +247,7 @@ export function DataTable<T>({
           {seleccionable && (
             <li className="flex items-center rounded-lg border border-border bg-card px-3 py-2">
               <Checkbox
-                label="Seleccionar todas"
+                label={t("comun.tabla.seleccionarTodas")}
                 checked={todasVisibles}
                 indeterminate={algunasVisibles}
                 onChange={alternarTodas}
@@ -271,7 +274,7 @@ export function DataTable<T>({
                   <div className="min-w-0 text-sm font-medium text-foreground">{principal?.celda(fila)}</div>
                   {seleccionable && (
                     <Checkbox
-                      aria-label={`Seleccionar ${textoColumna(principal!)} ${id}`}
+                      aria-label={t("comun.tabla.seleccionarElemento", { nombre: textoColumna(principal!), id })}
                       checked={marcada}
                       onChange={() => alternarFila(id)}
                     />
@@ -298,7 +301,7 @@ export function DataTable<T>({
               {seleccionable && (
                 <TableHead className="w-10">
                   <Checkbox
-                    aria-label="Seleccionar todas las filas de la página"
+                    aria-label={t("comun.tabla.seleccionarTodasPagina")}
                     checked={todasVisibles}
                     indeterminate={algunasVisibles}
                     onChange={alternarTodas}
@@ -348,7 +351,7 @@ export function DataTable<T>({
                 >
                   {seleccionable && (
                     <TableCell className="w-10">
-                      <Checkbox aria-label={`Seleccionar fila ${id}`} checked={marcada} onChange={() => alternarFila(id)} />
+                      <Checkbox aria-label={t("comun.tabla.seleccionarFila", { id })} checked={marcada} onChange={() => alternarFila(id)} />
                     </TableCell>
                   )}
                   {columnas.map((c) => (
@@ -366,19 +369,19 @@ export function DataTable<T>({
       {(pag || seleccionable) && (
         <div className="flex flex-wrap items-center justify-between gap-2.5 text-xs text-muted-foreground">
           <p role="status" aria-live="polite">
-            {seleccionable && seleccion.size > 0 ? `${seleccion.size} seleccionada${seleccion.size === 1 ? "" : "s"} · ` : ""}
-            {ordenadas.length === 0 ? "Sin resultados" : `Mostrando ${desde}–${hasta} de ${ordenadas.length}`}
+            {seleccionable && seleccion.size > 0 ? t("comun.tabla.seleccionadas", { count: seleccion.size }) : ""}
+            {ordenadas.length === 0 ? t("comun.tabla.sinResultados") : t("comun.tabla.mostrando", { desde, hasta, total: ordenadas.length })}
           </p>
           {pag && totalPaginas > 1 && (
-            <nav aria-label="Paginación" className="flex items-center gap-2">
+            <nav aria-label={t("comun.tabla.paginacion")} className="flex items-center gap-2">
               <Button type="button" variant="outline" size="sm" className="h-7 rounded-lg px-2.5 text-xs" iconLeft={<ChevronLeft aria-hidden="true" />} disabled={pagina <= 1} onClick={() => irAPagina(pagina - 1)}>
-                Anterior
+                {t("comun.tabla.anterior")}
               </Button>
               <span aria-current="page" className="min-w-[5.5rem] text-center">
-                Página {pagina} de {totalPaginas}
+                {t("comun.tabla.pagina", { pagina, total: totalPaginas })}
               </span>
               <Button type="button" variant="outline" size="sm" className="h-7 rounded-lg px-2.5 text-xs" iconRight={<ChevronRight aria-hidden="true" />} disabled={pagina >= totalPaginas} onClick={() => irAPagina(pagina + 1)}>
-                Siguiente
+                {t("comun.tabla.siguiente")}
               </Button>
             </nav>
           )}

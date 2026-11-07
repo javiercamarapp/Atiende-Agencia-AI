@@ -2,6 +2,7 @@ import { AtiendeMark } from "./AtiendeLogo";
 import { RegionCargando } from "./CargandoDelegado";
 import { Skeleton } from "./ui/skeleton";
 import { cn } from "../lib/utils";
+import { useT } from "../i18n/proveedor";
 
 export type EstadoCargandoVariante = "bloque" | "pantalla" | "tabla" | "tarjeta";
 
@@ -18,7 +19,7 @@ export type EstadoCargandoVariante = "bloque" | "pantalla" | "tabla" | "tarjeta"
  */
 export function EstadoCargando({
   lineas = 3,
-  etiqueta = "Cargando…",
+  etiqueta: etiquetaProp,
   variante = "bloque",
   filas = 5,
   className,
@@ -30,6 +31,8 @@ export function EstadoCargando({
   filas?: number;
   className?: string;
 }) {
+  const t = useT();
+  const etiqueta = etiquetaProp ?? t("comun.cargando");
   if (variante === "pantalla") {
     return (
       <RegionCargando

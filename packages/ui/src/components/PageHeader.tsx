@@ -3,6 +3,7 @@ import { ArrowLeft, ChevronRight } from "lucide-react";
 import { Link } from "react-router-dom";
 
 import { cn } from "../lib/utils";
+import { useT } from "../i18n/proveedor";
 
 export interface PageHeaderMiga {
   readonly etiqueta: string;
@@ -35,10 +36,11 @@ export interface PageHeaderProps {
  * Es el unico `<h1>` de la pantalla; `BarraPagina` pinta el nombre de la pagina en un `<p>`.
  */
 export function PageHeader({ titulo, descripcion, acciones, migas, atras, meta, className }: PageHeaderProps) {
+  const t = useT();
   return (
     <header className={cn("grid gap-2.5", className)}>
       {migas && migas.length > 0 && (
-        <nav aria-label="Migas de pan">
+        <nav aria-label={t("comun.migas")}>
           <ol className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
             {migas.map((m, i) => {
               const ultima = i === migas.length - 1;
@@ -67,7 +69,7 @@ export function PageHeader({ titulo, descripcion, acciones, migas, atras, meta, 
           className="inline-flex w-fit items-center gap-1.5 rounded-sm text-sm text-muted-foreground transition-colors duration-fast ease-brand hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <ArrowLeft aria-hidden="true" className="size-4" />
-          {atras.etiqueta ?? "Volver"}
+          {atras.etiqueta ?? t("comun.volver")}
         </Link>
       )}
 
