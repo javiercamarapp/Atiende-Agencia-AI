@@ -1,7 +1,8 @@
 // Voz y saludo de ESTA sucursal dentro de la pantalla de ajustes: el catalogo de 30 voces de Gemini con muestra y la frase de saludo. Usa la configuracion de voz
 // por sucursal que ya existe (lib/voz-client.ts): el PUT reemplaza la config completa, asi que se guarda sobre lo vigente (habilitado y comportamiento no se tocan).
 import { useCallback, useEffect, useState } from "react";
-import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, Textarea } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, Textarea, useT } from "@atiende/ui";
+import { restaurantesAjustesAgente } from "@atiende/ui/i18n/restaurantes/ajustesAgente";
 import { VozNoDisponibleError, fetchVozConfig, updateVozConfig } from "../lib/voz-client.ts";
 import type { VozConfig } from "../lib/voz-client.ts";
 import { SelectorVoz } from "../voz/SelectorVoz.tsx";
@@ -26,6 +27,7 @@ export interface VozYSaludoProps {
 }
 
 export function VozYSaludo({ apiBaseUrl, token, propertyId, crearAudio }: VozYSaludoProps) {
+  const t = useT(restaurantesAjustesAgente);
   const [estado, setEstado] = useState<Estado>({ fase: "cargando" });
   const [vozId, setVozId] = useState<string | null>(null);
   const [saludo, setSaludo] = useState("");
@@ -46,7 +48,7 @@ export function VozYSaludo({ apiBaseUrl, token, propertyId, crearAudio }: VozYSa
         setSaludo(c?.mensajeInicial ?? "");
       } catch (err) {
         if (cancelado) return;
-        setEstado(err instanceof VozNoDisponibleError ? { fase: "no_disponible" } : { fase: "error", mensaje: err instanceof Error ? err.message : "No se pudo cargar la configuración de voz." });
+        setEstado(err instanceof VozNoDisponibleError ? { fase: "no_disponible" } : { fase: "error", mensaje: err instanceof Error ? err.message : t("restaurantes.ajustesAgente.saludo.error.cargar") });
       }
     })();
     return () => {
@@ -74,7 +76,7 @@ export function VozYSaludo({ apiBaseUrl, token, propertyId, crearAudio }: VozYSa
       setEstado({ fase: "listo", config: c });
       setGuardado(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudieron guardar los cambios.");
+      setError(err instanceof Error ? err.message : t("restaurantes.ajustesAgente.saludo.error.guardar"));
     } finally {
       setGuardando(false);
     }
@@ -83,15 +85,15 @@ export function VozYSaludo({ apiBaseUrl, token, propertyId, crearAudio }: VozYSa
   return (
     <Card data-testid="seccion-voz-saludo">
       <CardHeader className="p-4 pb-2">
-        <CardTitle>Voz y saludo de esta sucursal</CardTitle>
-        <CardDescription>El catálogo de voces de Gemini con su muestra y la frase con la que el agente contesta la llamada.</CardDescription>
+        <CardTitle>{t("restaurantes.ajustesAgente.saludo.titulo")}</CardTitle>
+        <CardDescription>{t("restaurantes.ajustesAgente.saludo.descripcion")}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3 p-4 pt-0">
-        {estado.fase === "cargando" ? <EstadoCargando etiqueta="Cargando la voz de esta sucursal…" /> : null}
+        {estado.fase === "cargando" ? <EstadoCargando etiqueta={t("restaurantes.ajustesAgente.saludo.cargando")} /> : null}
         {estado.fase === "error" ? <EstadoError mensaje={estado.mensaje} onReintentar={reintentar} /> : null}
         {estado.fase === "no_disponible" ? (
           <p role="status" data-testid="voz-no-disponible" className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-            No disponible aún: el servicio de voz todavía no está activo en esta base de datos, así que la voz y el saludo no se pueden guardar.
+            {t("restaurantes.ajustesAgente.saludo.noDisponible")}
           </p>
         ) : null}
         {estado.fase === "listo" ? (
@@ -99,23 +101,24 @@ export function VozYSaludo({ apiBaseUrl, token, propertyId, crearAudio }: VozYSa
             <SelectorVoz vozId={vozId} onElegir={setVozId} baseUrl={import.meta.env.BASE_URL} {...(crearAudio ? { crearAudio } : {})} />
             <div>
               <label htmlFor="ajustes-saludo" className="block text-sm font-medium text-foreground mb-1.5">
-                Frase de saludo
+                {t("restaurantes.ajustesAgente.saludo.frase")}
               </label>
+              {/* // i18n-ignorar: ejemplo del saludo que la voz le dice al cliente; va en espanol en los dos idiomas. */}
               <Textarea id="ajustes-saludo" value={saludo} onChange={(e) => setSaludo(e.target.value)} rows={3} placeholder="Hola, le atiende el asistente virtual de …" />
             </div>
             {saludo.trim() !== "" && !mencionaAsistenteVirtual(saludo) ? (
               <Callout tone="warning" role="alert" data-testid="alerta-sin-asistente-virtual">
-                Este saludo no dice que es un asistente virtual. Agrégalo antes de poner el agente en producción.
+                {t("restaurantes.ajustesAgente.saludo.alerta")}
               </Callout>
             ) : null}
             <div className="flex flex-wrap items-center gap-3 border-t border-border pt-3">
               <Button type="button" onClick={() => void guardar()} disabled={!sucio || vozId === null} loading={guardando}>
-                Guardar voz y saludo
+                {t("restaurantes.ajustesAgente.saludo.guardar")}
               </Button>
-              {vozId === null ? <span className="text-xs text-muted-foreground">Elige una voz para poder guardar.</span> : null}
+              {vozId === null ? <span className="text-xs text-muted-foreground">{t("restaurantes.ajustesAgente.saludo.elegirVoz")}</span> : null}
               {guardado && !sucio ? (
                 <span role="status" className="text-xs text-primary">
-                  Voz y saludo guardados.
+                  {t("restaurantes.ajustesAgente.saludo.guardados")}
                 </span>
               ) : null}
               {error ? (
