@@ -288,6 +288,8 @@ export {
   InMemoryOrgEquipoRepository,
   PostgresOrgEquipoRepository,
   enmascararCorreo,
+  esRolInvitableEnAlgunaVertical,
+  ROLES_INVITABLES_POR_VERTICAL,
   traducirErrorEquipo,
 } from "./superadmin-alta-equipo-repository.ts";
 export { PostgresLoginChoferRepository, InMemoryLoginChoferRepository, LoginChoferNoDisponibleError, LoginChoferTelefonoError } from "./login-chofer-repository.ts";
