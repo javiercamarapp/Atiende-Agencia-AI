@@ -445,3 +445,6 @@ export { AlertasDuenioNoDisponibleError, AlertasDuenioParametrosError, AlertasDu
 export type { CandidatoSilencio, ResultadoSilencio, UmbralesAlertasDuenio } from "./alertas-duenio/silencio.ts";
 export { avisarPresupuestoIaAlDuenio } from "./alertas-duenio/presupuesto.ts";
 export type { ResultadoAvisoPresupuesto, UmbralPresupuestoIa } from "./alertas-duenio/presupuesto.ts";
+
+// Clasificador de frases que afirman el registro del pedido (lo usa tambien la cascada de voz: no se dice «quedó registrado» antes de crear_pedido).
+export { afirmaPedidoRegistrado } from "./whatsapp/guards.ts";

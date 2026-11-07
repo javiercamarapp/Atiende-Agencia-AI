@@ -11,7 +11,7 @@
 //   5. Escalera, puente de audio, controlador. Al terminar: se vacia la despedida, se cuelga, se registran turnos, costo por escalon y cierre.
 //
 // El worker nunca contesta a medias: sin contexto de la API (o sin token) dice el pregrabado de falla y cuelga, sin abrir sesion con el proveedor.
-import { ControladorLlamada, canonicalizeMexicanPhone, crearEjecutorTools, crearGuardiaPersonaVoz, transporteHttp, LIMITES_VOZ_PM } from "@atiende/domain-restaurantes";
+import { ControladorLlamada, afirmaPedidoRegistrado, canonicalizeMexicanPhone, crearEjecutorTools, crearGuardiaPersonaVoz, transporteHttp, LIMITES_VOZ_PM } from "@atiende/domain-restaurantes";
 import type { AbrirSesionLlamada, EjecutorTools, MensajeId, SumideroLog, TransporteTools, VozResultado } from "@atiende/domain-restaurantes";
 import { MezcladorSalida, conAvisosDeHerramienta, costoTotalMicroUsd, eventoSinPII, eventosCostoLlamada, referenciaLlamada } from "@atiende/voice-core";
 import type { EscaleraLlamada, LimitesLlamada, VozSesionLlamada } from "@atiende/voice-core";
@@ -33,6 +33,10 @@ export function disparadorDeApertura(apertura: AperturaPrivacidad | null): strin
   const espera = apertura.pideConsentimientoGrabacion ? " Después de decirlo, espere la respuesta del cliente sobre la grabación antes de tomar el pedido." : "";
   return `${DISPARADOR_SALUDO} Después del saludo diga al cliente, tal cual y sin cambiar nada, este aviso: «${apertura.guion}».${espera}`;
 }
+
+/** Regla confirmar -> crear de la cascada v2 de PM: con el «si» al resumen el pedido se crea antes de cualquier escalacion, y una frase que afirma el registro
+ * (`afirmaPedidoRegistrado`, la misma guardia de WhatsApp) no se dice hasta que crear_pedido tuvo exito. */
+export const CONFIRMACION_VOZ_PM = { confirmar: "confirmar_resumen", crear: "crear_pedido", cotizar: "cotizar_pedido", escalar: "escalar_a_humano", afirmaRegistro: afirmaPedidoRegistrado } as const;
 
 /** Cuantas veces se repite la pregunta de grabacion ante una respuesta ambigua antes de atender la llamada sin grabar. */
 export const REINTENTOS_CONSENTIMIENTO = 2;
