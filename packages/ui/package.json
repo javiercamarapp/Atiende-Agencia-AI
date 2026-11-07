@@ -11,6 +11,7 @@
     "./styles.css": "./src/index.css",
     "./i18n/formato": "./src/i18n/formato-publico.ts",
     "./i18n/comun": "./src/i18n/mensajes/comun.ts",
+    "./i18n/vozClon": "./src/i18n/mensajes/vozClon.ts",
     "./cifra.css": "./src/cifra.css",
     "./ds3-shell.css": "./src/ds3/shell.css",
     "./ds3-copiloto.css": "./src/ds3/copiloto.css",
