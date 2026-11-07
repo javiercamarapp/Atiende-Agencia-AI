@@ -4,6 +4,7 @@
 // la bandera) el pie del sidebar: tema, idioma y tarjeta de cuenta con «Salir». El teclado abierto se publica en html[data-teclado].
 // Solo AÑADE: no toca ningun spec existente.
 import { act } from "react";
+import type * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { CalendarCheck, Settings, Users } from "lucide-react";
@@ -30,7 +31,7 @@ afterEach(() => {
   delete document.documentElement.dataset.teclado;
 });
 
-function renderShell(onLogout = () => {}, ruta = "/v/demo/configuracion"): RenderedComponent {
+function renderShell(onLogout = () => {}, ruta = "/v/demo/configuracion", extra: Partial<React.ComponentProps<typeof VerticalShell>> = {}): RenderedComponent {
   return renderComponent(
     <MemoryRouter initialEntries={[ruta]}>
       <VerticalShell
@@ -43,6 +44,7 @@ function renderShell(onLogout = () => {}, ruta = "/v/demo/configuracion"): Rende
         user={{ email: "ana@negocio.mx", nombre: "Ana Pérez", rolEtiqueta: "Propietaria" }}
         onLogout={onLogout}
         header={{ icon: <span />, title: "Demo" }}
+        {...extra}
       >
         <p>contenido</p>
       </VerticalShell>
@@ -93,6 +95,53 @@ describe("ds3 — hoja «Más» con el pie del sidebar", () => {
     expect(onLogout).toHaveBeenCalledTimes(1);
     // El menu de cuenta de la cabecera sigue siendo el camino visible a «Cerrar sesión» sin la bandera.
     expect([...hoja.querySelectorAll("button")].some((b) => b.textContent?.trim() === "Cerrar sesión")).toBe(false);
+  });
+});
+
+// Decision de Omar 7-nov-2026 (igual que Rovaq; reemplaza «encabezado movil sin campana» y la barra fija en 4 + «Más»).
+describe("ds3 — campana en la cabecera movil y «Preguntar» como 5.o destino", () => {
+  it("la cabecera lleva la campana de 44 (enlace a notificaciones, contador real, 99+) entre el selector y el menu de cuenta; oculta sin la bandera", () => {
+    rendered = renderShell(() => {}, "/v/demo/configuracion", { notificaciones: { to: "/v/demo/notificaciones", contador: 3, hayNoLeidas: true } });
+    const fila = q(".ds3-movil-cabecera-fila")!;
+    const campana = q('a[data-testid="movil-campana"]', fila) as HTMLAnchorElement;
+    expect(campana.getAttribute("href")).toBe("/v/demo/notificaciones");
+    expect(campana.getAttribute("aria-label")).toBe("Notificaciones: 3 sin leer");
+    expect(campana.hidden).toBe(true);
+    expect(campana.classList.contains("ds3-solo")).toBe(true);
+    expect(campana.classList.contains("ds3-movil-campana")).toBe(true);
+    expect(q('[data-testid="movil-campana-contador"]', campana)!.textContent).toBe("3");
+    // Orden: campana justo antes del menu de cuenta.
+    expect(campana.nextElementSibling?.getAttribute("aria-label")).toBe("Abrir menú de cuenta");
+    expect(fila.textContent).not.toContain("Pregúntale a tus datos");
+    rendered.unmount();
+    rendered = renderShell(() => {}, "/v/demo/configuracion", { notificaciones: { to: "/v/demo/notificaciones", contador: 150, hayNoLeidas: true } });
+    expect(q('[data-testid="movil-campana-contador"]')!.textContent).toBe("99+");
+    rendered.unmount();
+    rendered = renderShell(() => {}, "/v/demo/configuracion", { notificaciones: { to: "/v/demo/notificaciones", contador: 0, hayNoLeidas: false } });
+    expect(q('a[data-testid="movil-campana"]')!.getAttribute("aria-label")).toBe("Notificaciones");
+    expect(q('[data-testid="movil-campana-contador"]')).toBeNull();
+    expect(q('[data-testid="movil-campana-punto"]')).toBeNull();
+  });
+
+  it("sin `notificaciones` no hay campana (no hay controles maqueta)", () => {
+    rendered = renderShell();
+    expect(q('[data-testid="movil-campana"]')).toBeNull();
+  });
+
+  it("«Preguntar» va entre los destinos y «Más», enlace al chat de datos, solo-ds3; sin `preguntarHref` (rol sin acceso) no existe", () => {
+    rendered = renderShell(() => {}, "/v/demo/copiloto", { preguntarHref: "/v/demo/copiloto" });
+    const barra = q('nav[aria-label="Navegación móvil"]')!;
+    const lugares = [...barra.querySelectorAll(":scope > ul > li")];
+    expect(lugares.map((li) => li.textContent?.trim())).toEqual(["Resumen", "Clientes", "Preguntar", "Más"]);
+    const li = lugares[2] as HTMLLIElement;
+    expect(li.hidden).toBe(true);
+    expect(li.classList.contains("ds3-barra-preguntar")).toBe(true);
+    const enlace = li.querySelector("a")!;
+    expect(enlace.getAttribute("href")).toBe("/v/demo/copiloto");
+    expect(enlace.getAttribute("aria-current")).toBe("page");
+    rendered.unmount();
+    rendered = renderShell();
+    expect(q('[data-testid="barra-preguntar"]')).toBeNull();
   });
 });
 

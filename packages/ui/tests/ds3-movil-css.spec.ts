@@ -39,4 +39,22 @@ describe("ds3 — movil", () => {
   it("campos de 16 px en pantallas tactiles (sin zoom de iOS)", () => {
     expect(valorCss(".ds3-shell textarea", "font-size", "pointer: coarse")).toBe("16px");
   });
+
+  // Decision de Omar 7-nov-2026 (igual que Rovaq): campana con contador en la cabecera y «Preguntar» como 5.o destino de la barra.
+  it("campana de la cabecera: 44 x 44, borde, radio 12; contador de 18 en --action con 99+ en la marca", () => {
+    expect(valorCss(".ds3-movil-campana.ds3-solo[hidden]", "display", MOVIL)).toBe("inline-flex");
+    expect(valorCss(".ds3-movil-campana.ds3-solo[hidden]", "width", MOVIL)).toBe("44px");
+    expect(valorCss(".ds3-movil-campana.ds3-solo[hidden]", "height", MOVIL)).toBe("44px");
+    expect(valorCss(".ds3-movil-campana.ds3-solo[hidden]", "border-radius", MOVIL)).toBe("12px");
+    expect(valorCss(".ds3-movil-campana-contador.ds3-movil-campana-contador", "min-width", MOVIL)).toBe("18px");
+    expect(valorCss(".ds3-movil-campana-contador.ds3-movil-campana-contador", "background-color", MOVIL)).toBe("hsl(var(--action))");
+    expect(valorCss(".ds3-movil-acciones.ds3-movil-acciones", "gap", MOVIL)).toBe("8px");
+  });
+
+  it("«Preguntar» se muestra con la bandera; en su ruta «Más» deja de marcarse", () => {
+    expect(valorCss(".ds3-barra-preguntar.ds3-solo[hidden]", "display", MOVIL)).toBe("block");
+    expect(valorCss(".ds3-barra-inferior:has(.ds3-barra-preguntar) .ds3-barra-destino > span:not([aria-hidden])", "font-size", MOVIL)).toBe("11px");
+    expect(valorCss(".ds3-barra-inferior.ds3-barra-inferior:has(.ds3-barra-preguntar) > ul", "gap", MOVIL)).toBe("0");
+    expect(valorCss('.ds3-barra-inferior:has(.ds3-barra-preguntar [aria-current="page"]) .ds3-barra-mas.ds3-barra-mas[data-activo]', "background-color", MOVIL)).toBe("transparent");
+  });
 });
