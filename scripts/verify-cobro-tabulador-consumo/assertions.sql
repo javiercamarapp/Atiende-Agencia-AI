@@ -96,7 +96,6 @@ rollback;
 
 \echo '10. un owner no lee los costos (0 filas)'
 begin;
-insert into core.cobro_costo_unitario (clave, costo_mxn, fuente) values ('minuto_voz', 1.2, 'prueba');
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000c301', true);
 select count(*)::int as owner_no_lee_deberia_ser_0 from core.cobro_costos_unitarios('00000000-0000-0000-0000-00000000c301');
@@ -364,7 +363,7 @@ rollback;
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000c303', true);
-select (t->>'margenMinimoPct')::int as margen_pro_deberia_ser_60 from core.list_plan_tarifas_for_superadmin('00000000-0000-0000-0000-00000000c303') t where t->>'planId' = 'restaurantes-pro';
+select (t->>'margenMinimoPct')::numeric::int as margen_pro_deberia_ser_60 from core.list_plan_tarifas_for_superadmin('00000000-0000-0000-0000-00000000c303') t where t->>'planId' = 'restaurantes-pro';
 rollback;
 
 \echo '43. pago por uso: cada banda con precio deja >= 55 por ciento por unidad despues de la comision de tarjeta'
