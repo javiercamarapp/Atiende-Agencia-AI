@@ -174,14 +174,17 @@ Otras variables: `OPENROUTER_ZDR` ya no cambia nada (ZDR obligatorio en todas la
 
 - Todas las peticiones llevan `provider.data_collection: "deny"` (solo proveedores que no retienen ni
   entrenan con el contenido) y `require_parameters: true`.
-- **ZDR (Zero Data Retention) OBLIGATORIO, falla cerrada (6-nov-2026)**: todas las superficies tocan datos de clientes u
-  organizaciones, así que **todo** escalón sale con `provider.zdr: true` y `only` = los proveedores de EE.UU. que hoy sirven el
+- **ZDR (Zero Data Retention) OBLIGATORIO en el gateway de texto, falla cerrada (6-nov-2026)**: todas sus superficies tocan datos de clientes u
+  organizaciones, así que **todo** escalón del gateway sale con `provider.zdr: true` y `only` = los proveedores de EE.UU. que hoy sirven el
   endpoint ZDR del modelo (`VERIFIED_MODEL_HOSTS`, verificado en `https://openrouter.ai/api/v1/endpoints/zdr`). Ya no depende de
   `OPENROUTER_ZDR` ni se puede apagar con `LLM_MODELS_JSON` (`routing.zdr: false` se rechaza). Un modelo fuera del registro, sin
   endpoint ZDR (Gemini 2.5 Flash-Lite, Muse Spark 1.3, Qwen 3.7 Flash) o premium (Sonnet, Opus, Sol, Gemini Pro; tope
   `PRECIO_MAXIMO_USD_POR_M`) se rechaza al validar. Si OpenRouter no encuentra endpoint ZDR en el momento, responde 404, el escalón
   falla y entra el respaldo; nunca se relaja la política. Sin `OPENROUTER_API_KEY` no hay escalera (el proveedor directo de OpenAI
-  no garantiza ZDR): modo sin IA.
+  no garantiza ZDR): modo sin IA. **Fuera de alcance: la voz** (`apps/voice-worker`, cascadas v1 y v2, STT/TTS de la cascada OpenRouter) no
+  pasa por el gateway y todavía no manda `provider.zdr`; va en su propio cambio.
+- **`LLM_MODELS_JSON` tiene dos candados**: una actividad decidida por el dueño (WhatsApp) no toma rutas de la variable (ni clave exacta, ni
+  `*:whatsapp_agent`, ni el comodín `*`), y la transcripción solo toma una ruta cuyos modelos acepten audio (`MODELOS_CON_AUDIO`).
 - Los mensajes que viajan ya pasan por la redacción de PII del motor del data-chat.
 - La llave solo viaja en la cabecera `Authorization`; los errores recortan el cuerpo de respuesta y nunca
   incluyen cabeceras. No se registra la llave en logs, tests ni docs.
