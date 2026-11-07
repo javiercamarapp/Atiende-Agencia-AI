@@ -32,23 +32,34 @@ rol (p.ej. restaurantes:data_chat)
 - **Archivos**: `providers/openrouter.ts` (proveedor), `prices.ts`, `upstash-rest-client.ts` (breaker
   compartido), `apps/api/src/production/llm-gateway.ts` (armado), `llm-models.ts` (tabla).
 
-## Tabla rol -> modelos (defaults, verificados el 2026-10-02)
+## Tabla actividad -> modelos (defaults, verificados el 2026-11-06)
 
-| Rol | Escalera (en orden) | Notas |
+Fuente única: `ACTIVIDADES_LLM` y `ACTIVIDAD_POR_ROL` en `apps/api/src/production/llm-models.ts`; `DEFAULT_ROLE_ROUTES` se deriva de ahí.
+Todos los escalones van con retención cero (ZDR) obligatoria y solo modelos baratos (ver "Privacidad"). Un test
+(`apps/api/tests/llm-modelos-por-actividad.spec.ts`) exige que cada rol de producción tenga actividad explícita y falla si una ruta trae un
+modelo sin ZDR o premium.
+
+| Actividad (roles) | Escalera (en orden) | Por qué |
 |---|---|---|
-| `*:data_chat` (6 verticales), `*:whatsapp_agent(_escalated)`, extractor de requisitos, borrador de propuesta, preguntas de junta, mensajería de rentas, conciliación de despachos | `openai/gpt-6-luna` (`low`) -> `deepseek/deepseek-v4.1-flash` (`low`, EE.UU.) -> `google/gemini-2.5-flash-lite` (`minimal`) -> `meta/muse-spark-1.3` (`low`) -> modo sin IA | Perfil económico. El modo sin IA lo decide el llamador (data-chat). |
-| `*:data_chat_retry` (reintento por guardia de cifras) | `deepseek/deepseek-v4-pro` (`medium`, EE.UU.) -> `openai/gpt-6-luna` (`high`) | Rol y ruta listos; ver "Huecos" para el cableado en el motor. |
-| `superadmin:copiloto` (CFO) | `anthropic/claude-sonnet-5.5` (`medium`) -> `deepseek/deepseek-v4-pro` (`medium`, EE.UU.) | Poco volumen, mayor riesgo. Lo invoca `POST /superadmin/copiloto` (CHAT-16, ver `docs/SUPERADMIN_COPILOTO.md`) con un gateway **dedicado** (gasto de plataforma, no de una organización); su interruptor de plataforma es `agente superadmin:copiloto`. |
-| `reportes:analisis_financiero` | `anthropic/claude-sonnet-5.5` -> `deepseek/deepseek-v4-pro` | Etapa de análisis de datos de reportes financieros. |
-| `reportes:analisis_general` | `qwen/qwen3-235b-a22b-2507` (EE.UU.) -> `deepseek/deepseek-v4.1-flash` -> `openai/gpt-6-luna` | Etapa de análisis de reportes no financieros. |
-| `reportes:redaccion_financiero`, `reportes:redaccion_general` | `google/gemini-3.8-flash` (`low`) -> `openai/gpt-6-luna` | Rutas separadas por tipo para que el eval decida (Qwen 3.7 Flash como candidato cuando tenga proveedor de EE.UU.). |
-| `restaurantes:transcripcion` (R-32, notas de voz de WhatsApp) | `google/gemini-2.5-flash-lite` (`minimal`) -> `google/gemini-3.5-flash-lite` | Únicos modelos baratos con entrada de audio y proveedor permitido (Google AI Studio / Vertex), verificado en `architecture.input_modalities` de OpenRouter el 2026-10-03. Interruptor de plataforma `agente restaurantes:transcripcion`; costo real en `core.llm_usage_daily` como el resto. Sin modelo que acepte la petición, el flujo pide al cliente que escriba. |
-| `plataforma:resumen_diario` | `google/gemini-3.8-flash` (`low`) -> `openai/gpt-6-luna` (`low`) | El precio de Gemini 3.8 Flash se duplica el 1-ene-2027 (investigación): reevaluar. |
-| `plataforma:enrutador_turno`, `plataforma:compuerta_escalamiento`, `plataforma:titulos_resumenes`, `plataforma:compactacion_historial` | `openai/gpt-6-luna` (`low`) -> `deepseek/deepseek-v4.1-flash` | Roles pensados para Qwen 3.7 Flash; hoy NO se puede usar (ver política de proveedores). Tienen llamador real desde MOD-12 (ver "Presupuesto del Copiloto y roles auxiliares"). |
+| Agente de WhatsApp (`*:whatsapp_agent`) y escalado (`*:whatsapp_agent_escalated`) | `openai/gpt-6-luna` (`low`) -> `anthropic/claude-haiku-5.5` | Decisión del dueño (6-nov-2026). |
+| Pregúntale a tus datos (`*:data_chat`, 6 verticales) | `openai/gpt-6-luna` (`low`) -> `google/gemini-3.5-flash-lite` -> `anthropic/claude-haiku-5.5` | Bake-off del arnés del Copiloto (30 preguntas): Luna 76.7 % a US$0.00019/pregunta; Gemini 3.5 Flash-Lite 83.3 %, p95 2.4 s. |
+| Reintento por guardia de cifras (`*:data_chat_retry`) | `google/gemini-3.5-flash-lite` -> `anthropic/claude-haiku-5.5` | Otro modelo que el primario; DeepSeek V4 Pro salió el peor (62.1 %, 7 cifras inventadas). |
+| Copiloto de superadmin/CFO (`superadmin:copiloto`) | `openai/gpt-6-luna` (`low`) -> `google/gemini-3.5-flash-lite` -> `anthropic/claude-haiku-5.5` (piso 3000) | Antes Sonnet 5.5 -> DeepSeek V4 Pro (premium y el peor en cifras). Mismo motor que el chat de datos. |
+| Reportes, análisis (`reportes:analisis_*`) | `openai/gpt-6-luna` (`high` en financiero) -> `google/gemini-3.5-flash-lite` | Sin eval propio; se quitan Sonnet y DeepSeek V4 Pro. |
+| Reportes, redacción (`reportes:redaccion_*`) y resumen diario (`plataforma:resumen_diario`) | `google/gemini-3.8-flash` (`low`) -> `openai/gpt-6-luna` | Sin cambio (Gemini 3.8 Flash tiene ZDR en Vertex). Su precio se duplica el 1-ene-2027: reevaluar. |
+| Tareas cortas (`plataforma:enrutador_turno`, `compuerta_escalamiento`, `titulos_resumenes`, `compactacion_historial`) | `openai/gpt-6-luna` (`low`) -> `google/gemini-3.5-flash-lite` | Salidas de 8 a 160 tokens; DeepSeek V4.1 Flash tuvo p95 de 9 s. |
+| Notas de voz (`restaurantes:transcripcion`) | `google/gemini-3.1-flash-lite` -> `google/gemini-3.5-flash-lite` | Bake-off con 10 notas sintéticas: WER 7.1 % y 10.0 %, ~US$0.00017 por nota. Gemini 2.5 Flash-Lite no tiene endpoint ZDR. |
+| Extracción de bases de licitación (`licitaciones:requirement_extractor`) | `openai/gpt-6-luna` (`low`) -> `deepseek/deepseek-v4.1-flash` | Texto extraído por página; contexto de 1M en ambos. |
+| Borradores (`licitaciones:junta_question_agent`, `licitaciones:proposal_draft_agent`, `rentas:mensajeria_agent`) y conciliación (`despachos:conciliacion_llm_agent`) | `openai/gpt-6-luna` (`low`) -> `anthropic/claude-haiku-5.5` | Sin eval propio; mismo par que WhatsApp. |
+| Demo pública (`plataforma:demo_publica`) | `openai/gpt-6-luna` (`low`) -> `anthropic/claude-haiku-5.5` | |
+| Rol sin actividad (no debería existir) | `openai/gpt-6-luna` -> `google/gemini-3.5-flash-lite` -> `anthropic/claude-haiku-5.5` | |
+
+Fuera del gateway (no cambian en este PR): la voz (cascada del `voice-worker`: decisión del dueño, Gemini 3.5 Flash-Lite rápido y Luna
+preciso) y la transcripción/síntesis de la cascada v1. La cascada v1 todavía no manda `provider.zdr`.
 
 Parámetros por modelo en los defaults:
 
-- `temperature: "omit"`. Los endpoints de GPT-6 Luna y Claude Sonnet 5.5 **no listan `temperature`** entre los
+- `temperature: "omit"`. Los endpoints ZDR de GPT-6 Luna, Claude Haiku 5.5 y los Gemini 3.x **no listan `temperature`** entre los
   parámetros soportados de OpenRouter (verificado en `/api/v1/models/<id>/endpoints`; con Luna y Sonnet 5.5 se
   confirmó con una llamada real: `temperature: 0` devuelve 404 "No endpoints found that can handle the requested
   parameters"). Con `require_parameters: true`, mandarla deja la ruta sin endpoints; por eso se omite en todos
@@ -155,7 +166,7 @@ registra modelos elegibles que no entran a la escalera por defecto. Hoy lo usa e
    (solo acepta `"deny"`: la privacidad no se puede relajar por configuración). Ver "Política de proveedores".
 6. Antes de cambiar el primario de un rol, corre el eval propio (sección Evals) y una llamada de humo.
 
-Otras variables: `OPENROUTER_ZDR=1` activa `provider.zdr` en todas las rutas, `OPENROUTER_API_KEY` (llave),
+Otras variables: `OPENROUTER_ZDR` ya no cambia nada (ZDR obligatorio en todas las rutas), `OPENROUTER_API_KEY` (llave),
 `OPENROUTER_COUNTRY_OF_RESIDENCE` (opcional, solo si confirmaste la ruta; alimenta el gate de residencia).
 `OPENROUTER_MODEL` **ya no se lee** y `ANTHROPIC_API_KEY`/`ANTHROPIC_MODEL` se retiraron.
 
@@ -163,10 +174,14 @@ Otras variables: `OPENROUTER_ZDR=1` activa `provider.zdr` en todas las rutas, `O
 
 - Todas las peticiones llevan `provider.data_collection: "deny"` (solo proveedores que no retienen ni
   entrenan con el contenido) y `require_parameters: true`.
-- **ZDR (Zero Data Retention)**: `provider.zdr: true` restringe a endpoints con retención cero. Requiere
-  habilitar ZDR en la cuenta de OpenRouter; **no está activo por defecto** porque si el modelo no tiene un
-  endpoint ZDR la ruta queda sin proveedores y el chat cae a modo sin IA. Actívalo con `OPENROUTER_ZDR=1`
-  (global) o `routing.zdr` por rol, después de habilitarlo en la cuenta y de una llamada de humo.
+- **ZDR (Zero Data Retention) OBLIGATORIO, falla cerrada (6-nov-2026)**: todas las superficies tocan datos de clientes u
+  organizaciones, así que **todo** escalón sale con `provider.zdr: true` y `only` = los proveedores de EE.UU. que hoy sirven el
+  endpoint ZDR del modelo (`VERIFIED_MODEL_HOSTS`, verificado en `https://openrouter.ai/api/v1/endpoints/zdr`). Ya no depende de
+  `OPENROUTER_ZDR` ni se puede apagar con `LLM_MODELS_JSON` (`routing.zdr: false` se rechaza). Un modelo fuera del registro, sin
+  endpoint ZDR (Gemini 2.5 Flash-Lite, Muse Spark 1.3, Qwen 3.7 Flash) o premium (Sonnet, Opus, Sol, Gemini Pro; tope
+  `PRECIO_MAXIMO_USD_POR_M`) se rechaza al validar. Si OpenRouter no encuentra endpoint ZDR en el momento, responde 404, el escalón
+  falla y entra el respaldo; nunca se relaja la política. Sin `OPENROUTER_API_KEY` no hay escalera (el proveedor directo de OpenAI
+  no garantiza ZDR): modo sin IA.
 - Los mensajes que viajan ya pasan por la redacción de PII del motor del data-chat.
 - La llave solo viaja en la cabecera `Authorization`; los errores recortan el cuerpo de respuesta y nunca
   incluyen cabeceras. No se registra la llave en logs, tests ni docs.

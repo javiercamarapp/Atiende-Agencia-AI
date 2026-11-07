@@ -26,9 +26,14 @@ de proveedores de EE.UU. (`routingForModel`) y comparten circuit breaker con el 
 interruptor de plataforma, el tope diario/mensual y el registro de uso siguen siendo los del rol. El reintento tras un fallo real de `crear_pedido` (rol escalado)
 no usa el modelo elegido.
 
-**Temperatura**: `aceptaTemperatura` sale de `supported_parameters` de los endpoints permitidos de OpenRouter (leído el 2026-10-04): DeepSeek V4.1 Flash,
-Gemini 2.5 Flash-Lite, Gemini 3.8 Flash y Muse Spark 1.3 la aceptan; GPT-6 Luna y Claude Sonnet 5.5 no (con `require_parameters` mandarla deja la ruta sin
-endpoints). Para esos dos la pantalla dice que no la admiten y el servidor la rechaza (400) en vez de ignorarla.
+**Lista (6-nov-2026, modelos por actividad)**: solo modelos baratos con endpoint de retención cero (ZDR) en proveedores de EE.UU.: GPT-6 Luna (predeterminado),
+Claude Haiku 5.5, DeepSeek V4.1 Flash y Gemini 3.5 Flash-Lite. Salieron Claude Sonnet 5.5 (premium), Gemini 2.5 Flash-Lite y Muse Spark 1.3 (sin endpoint ZDR) y
+Gemini 3.8 Flash (gama media). La base acota los mismos ids con un CHECK (migración 104, que regresa a null las filas con un modelo retirado); cambiar la lista
+exige una migración nueva en el mismo PR. El respaldo por tope de tiempo es Luna <-> Haiku 5.5.
+
+**Temperatura**: `aceptaTemperatura` sale de `supported_parameters` de los endpoints ZDR permitidos de OpenRouter (leído el 2026-11-06): DeepSeek V4.1 Flash la
+acepta; GPT-6 Luna, Claude Haiku 5.5 y Gemini 3.5 Flash-Lite no (con `require_parameters` mandarla deja la ruta sin endpoints). Para esos la pantalla dice que
+no la admiten y el servidor la rechaza (400) en vez de ignorarla.
 
 **Costo estimado**: precio de lista de `MODEL_PRICES` (agent-core) × un uso típico (6,000 tokens de entrada y 400 de salida por mensaje; 12,000 y 500 por minuto de
 cascada). No es una factura: el costo real lo reporta OpenRouter por llamada.
