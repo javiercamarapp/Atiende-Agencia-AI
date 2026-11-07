@@ -6,7 +6,7 @@ import { Link } from "react-router-dom";
 import { ClipboardPaste, FileUp, Settings2, ReceiptText, Store } from "lucide-react";
 import type { CuadreSrVista, FilaCuadreApi, LotesSrVista, OperacionVista, SemaforoCuadre } from "@atiende/domain-restaurantes/cfo";
 import type { LoteSr } from "@atiende/domain-restaurantes/cfo";
-import { BarrasAgrupadas, Button, Callout, ChartCard, DataTable, EstadoVacio, PageContainer, Semaforo, StatCard, TablaDatosGrafica } from "@atiende/ui";
+import { BarrasAgrupadas, Button, Callout, Card, ChartCard, DataTable, EstadoVacio, PageContainer, Semaforo, StatCard, TablaDatosGrafica } from "@atiende/ui";
 import type { EstadoSemaforo } from "@atiende/ui";
 import { puedeEn } from "../lib/permisos.ts";
 import { AjustesCfoDialogo } from "./AjustesCfoDialogo.tsx";
@@ -88,21 +88,23 @@ function Comandas({ d, base, abrir }: { readonly d: OperacionVista; readonly bas
         </Link>
       </div>
       {c.porSucursal.length > 1 && (
-        <DataTable<(typeof c.porSucursal)[number]>
-          etiqueta="Comandas por sucursal"
-          filas={c.porSucursal}
-          obtenerId={(f) => f.propertyId}
-          paginacion={false}
-          vista="tabla"
-          columnas={[
-            { id: "n", encabezado: "Sucursal", principal: true, celda: (f) => f.nombre },
-            { id: "m", encabezado: "Envío", celda: (f) => ETIQUETA_MODO[f.modo] ?? f.modo },
-            { id: "e", encabezado: "Encoladas", alinear: "right", className: "tabular-nums", celda: (f) => entero(f.sumas.encoladas) },
-            { id: "c", encabezado: "Confirmadas", alinear: "right", className: "tabular-nums", celda: (f) => entero(f.sumas.confirmadas) },
-            { id: "a", encabezado: "A mano", alinear: "right", className: "tabular-nums", celda: (f) => entero(f.sumas.capturadasManual) },
-            { id: "f", encabezado: "Fallidas", alinear: "right", className: "tabular-nums", celda: (f) => entero(f.sumas.fallidas) },
-          ]}
-        />
+        <Card className="overflow-hidden">
+          <DataTable<(typeof c.porSucursal)[number]>
+            etiqueta="Comandas por sucursal"
+            filas={c.porSucursal}
+            obtenerId={(f) => f.propertyId}
+            paginacion={false}
+            vista="tabla"
+            columnas={[
+              { id: "n", encabezado: "Sucursal", principal: true, celda: (f) => f.nombre },
+              { id: "m", encabezado: "Envío", celda: (f) => ETIQUETA_MODO[f.modo] ?? f.modo },
+              { id: "e", encabezado: "Encoladas", alinear: "right", className: "tabular-nums", celda: (f) => entero(f.sumas.encoladas) },
+              { id: "c", encabezado: "Confirmadas", alinear: "right", className: "tabular-nums", celda: (f) => entero(f.sumas.confirmadas) },
+              { id: "a", encabezado: "A mano", alinear: "right", className: "tabular-nums", celda: (f) => entero(f.sumas.capturadasManual) },
+              { id: "f", encabezado: "Fallidas", alinear: "right", className: "tabular-nums", celda: (f) => entero(f.sumas.fallidas) },
+            ]}
+          />
+        </Card>
       )}
     </div>
   );
@@ -124,23 +126,25 @@ function Lotes({ d, nombres }: { readonly d: LotesSrVista; readonly nombres: Rea
           ))}
         </ul>
       )}
-      <DataTable<LoteSr>
-        etiqueta="Lotes de reportes de SoftRestaurant cargados"
-        filas={d.lotes}
-        obtenerId={(f) => f.id}
-        paginacion={{ tamano: 8 }}
-        vista="tabla"
-        vacio={{ titulo: "Todavía no cargas ningún reporte", mensaje: "Cuando importes un reporte aparecerá aquí con los días que cubre." }}
-        columnas={[
-          { id: "a", encabezado: "Archivo", principal: true, celda: (f) => f.nombreArchivo },
-          { id: "s", encabezado: "Sucursal", celda: (f) => nombres.get(f.propertyId) ?? SIN_DATO },
-          { id: "t", encabezado: "Tipo", celda: (f) => ETIQUETA_TIPO[f.tipo] ?? f.tipo },
-          { id: "c", encabezado: "Cubre", celda: (f) => (f.fechaMin && f.fechaMax ? `${diaCorto(f.fechaMin)} a ${diaCorto(f.fechaMax)}` : SIN_DATO) },
-          { id: "ac", encabezado: "Aceptados", alinear: "right", className: "tabular-nums", celda: (f) => entero(f.aceptados) },
-          { id: "re", encabezado: "Rechazados", alinear: "right", className: "tabular-nums", celda: (f) => entero(f.rechazados) },
-          { id: "e", encabezado: "Estado", celda: (f) => (f.estado === "aplicado" ? "Aplicado" : "Reemplazado") },
-        ]}
-      />
+      <Card className="overflow-hidden">
+        <DataTable<LoteSr>
+          etiqueta="Lotes de reportes de SoftRestaurant cargados"
+          filas={d.lotes}
+          obtenerId={(f) => f.id}
+          paginacion={{ tamano: 8 }}
+          vista="tabla"
+          vacio={{ titulo: "Todavía no cargas ningún reporte", mensaje: "Cuando importes un reporte aparecerá aquí con los días que cubre." }}
+          columnas={[
+            { id: "a", encabezado: "Archivo", principal: true, celda: (f) => f.nombreArchivo },
+            { id: "s", encabezado: "Sucursal", celda: (f) => nombres.get(f.propertyId) ?? SIN_DATO },
+            { id: "t", encabezado: "Tipo", celda: (f) => ETIQUETA_TIPO[f.tipo] ?? f.tipo },
+            { id: "c", encabezado: "Cubre", celda: (f) => (f.fechaMin && f.fechaMax ? `${diaCorto(f.fechaMin)} a ${diaCorto(f.fechaMax)}` : SIN_DATO) },
+            { id: "ac", encabezado: "Aceptados", alinear: "right", className: "tabular-nums", celda: (f) => entero(f.aceptados) },
+            { id: "re", encabezado: "Rechazados", alinear: "right", className: "tabular-nums", celda: (f) => entero(f.rechazados) },
+            { id: "e", encabezado: "Estado", celda: (f) => (f.estado === "aplicado" ? "Aplicado" : "Reemplazado") },
+          ]}
+        />
+      </Card>
     </div>
   );
 }
