@@ -56,7 +56,7 @@ const TIEMPO_DOMICILIO_V2 = "- Tiempo a domicilio de la sucursal de este chat (c
 
 /** Prompt de PM con las reglas de sucursal cruzada del cerebro v2 en lugar de H17 / paso 4 / B4. Pura e idempotente; SOLO se llama con la bandera cerebro_v2. */
 export function adaptarPromptPmV2(prompt: string): string {
-  return prompt
+  return sinParrafoPedidoGrande(prompt
     .replace(TIEMPOS_SIN_BANDERA, TIEMPOS_V2)
     .replace(TIEMPO_DOMICILIO_SIN_BANDERA, TIEMPO_DOMICILIO_V2)
     .replace(`H17. ${PM_H17_WHATSAPP}`, `H17. ${PM_H17_V2}`)
@@ -96,8 +96,25 @@ export function adaptarPromptPmV2(prompt: string): string {
     // R6: la línea de cancelar de los datos contradice POLÍTICAS v2; la frase de programado_para del paso 8 iba dos veces.
     .replace("\n- Cancelar o cambiar un pedido ya hecho: lo confirma una persona; escale.", "")
     .replace(' Nunca mande programado_para vacío ni para "en 20 minutos": para "paso en 20 minutos" use minutos_para_recoger: 20; programado_para es solo para otro día o para una hora exacta con más de 30 minutos de anticipación.', "")
-    // R7: pedido grande: el servidor lo marca al crear (y rechaza escalar_a_humano con pedido_grande: INSTRUCCION_PEDIDO_GRANDE_SOLO_SERVIDOR); POLÍTICAS v2 «Pedido grande».
-    .replace(/ Pedido grande \(.*?el aviso al gerente de la sucursal lo da el sistema al crear el pedido\./, "");
+    // R7: pedido grande: el servidor lo marca al crear (y rechaza escalar_a_humano con pedido_grande: INSTRUCCION_PEDIDO_GRANDE_SOLO_SERVIDOR); POLÍTICAS v2.
+  );
+}
+
+/** R7 en tiempo lineal (CodeQL js/polynomial-redos): lo mismo que `.replace(/ Pedido grande \(.*?<FIN>/, "")` (la primera aparición cuyo fin está en su
+ *  misma línea), con indexOf en vez de un regex cuadrático. */
+const INICIO_PEDIDO_GRANDE = " Pedido grande (";
+const FIN_PEDIDO_GRANDE = "el aviso al gerente de la sucursal lo da el sistema al crear el pedido.";
+function sinParrafoPedidoGrande(texto: string): string {
+  let j = -1;
+  for (let i = texto.indexOf(INICIO_PEDIDO_GRANDE); i >= 0;) {
+    const finDeLinea = texto.indexOf("\n", i);
+    if (j < i + INICIO_PEDIDO_GRANDE.length) j = texto.indexOf(FIN_PEDIDO_GRANDE, i + INICIO_PEDIDO_GRANDE.length);
+    if (j < 0) return texto;
+    if (finDeLinea < 0 || j + FIN_PEDIDO_GRANDE.length <= finDeLinea) return texto.slice(0, i) + texto.slice(j + FIN_PEDIDO_GRANDE.length);
+    // El fin está en otra línea: ningún inicio de ESTA línea sirve; se sigue en la siguiente.
+    i = texto.indexOf(INICIO_PEDIDO_GRANDE, finDeLinea + 1);
+  }
+  return texto;
 }
 
 /** R4 del recorte: H16 corto (el servidor valida horario y horas; con la sucursal cerrada rige POLÍTICAS «Horarios»). */

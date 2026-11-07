@@ -354,7 +354,7 @@ function planoConMapa(original: string, padres = false): { plano: string; mapa: 
  * sin las frases de negación de las demás («no tengo alergia al cacahuate» => «al cacahuate»: conservador). La nota
  * nunca cita una negación. Conserva acentos y mayúsculas del original. Pura.
  */
-function textoDeclaradoSinNegaciones(original: string): string {
+export function textoDeclaradoSinNegaciones(original: string): string {
   const oraciones = String(original ?? "").split(PARTIR_ORACIONES);
   const conMapa = oraciones.map((o) => planoConMapa(o, true));
   const puras = negacionesPuras(conMapa.map((x) => x.plano));
@@ -373,7 +373,8 @@ function textoDeclaradoSinNegaciones(original: string): string {
     salida += o.slice(mapa[desde]);
     // Revisión 56 (R56-8): sin la negación quedaba la puntuación suelta («PAPÁS: , pero sí al camarón»): se quita el espacio
     // antes de un signo y la coma o el punto y coma que sigue a otro signo.
-    const limpia = salida.replace(/\s+/g, " ").replace(/\s+([.,;:!?…])/g, "$1").replace(/([.,;:!?…])(?:\s*[,;])+/g, "$1")
+    // Tras colapsar los espacios, «\s+» antes de un signo es un solo espacio (sin cuantificador: CodeQL js/polynomial-redos).
+    const limpia = salida.replace(/\s+/g, " ").replace(/ ([.,;:!?…])/g, "$1").replace(/([.,;:!?…])(?: ?[,;])+/g, "$1")
       .replace(/^[\s.,;:!?…-]+/, "").trim();
     if (limpia && /[\p{L}\p{N}]/u.test(limpia)) partes.push(limpia);
   });
@@ -411,8 +412,33 @@ export function preferenciasCaeMal(texto: string): string[] {
  * mi hijo la nuez lo pone malito» manda «a mi hijo la nuez lo pone malito»): ante la duda, al clasificador. Pura.
  */
 export function sinClausulasCaeMal(texto: string): string {
-  return String(texto ?? "").split(/[,;.!?\n]+|\s+(?:y|e|pero)\s+/i).map((c) => c.trim())
+  return partirClausulas(String(texto ?? "")).map((c) => c.trim())
     .filter((c) => c && !PREFERENCIA_CAE_MAL.test(planoAlergia(c))).join(", ");
+}
+
+/**
+ * Las cláusulas de un texto: cortes en [,;.!?\n]+ y en « y » / « e » / « pero » (con espacios de cualquier largo a los dos lados), lo mismo que el split
+ * `/[,;.!?\n]+|\s+(?:y|e|pero)\s+/i` pero en tiempo lineal (CodeQL js/polynomial-redos: ese regex era cuadrático con muchos espacios). Pura.
+ */
+function partirClausulas(texto: string): string[] {
+  const salida: string[] = [];
+  for (const pieza of texto.split(/[,;.!?\n]+/)) {
+    const fichas = pieza.match(/\s+|\S+/g) ?? [];
+    let actual = "";
+    for (let i = 0; i < fichas.length; i++) {
+      const f = fichas[i]!;
+      const sig = fichas[i + 1];
+      if (/^\s/.test(f) && sig !== undefined && /^(?:y|e|pero)$/i.test(sig) && fichas[i + 2] !== undefined && /^\s/.test(fichas[i + 2]!)) {
+        salida.push(actual);
+        actual = "";
+        i += 2;
+        continue;
+      }
+      actual += f;
+    }
+    salida.push(actual);
+  }
+  return salida;
 }
 const TOPE_NOTA_PREFERENCIA = 300;
 /**
