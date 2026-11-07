@@ -29,7 +29,8 @@ html:not([data-diseno="ds3"]) .guia-raiz { display: none !important; }
   background: var(--guia-fondo); color: var(--guia-tinta); box-shadow: var(--guia-sombra);
 }
 .guia-tarjeta { left: var(--guia-x, auto); top: var(--guia-y, auto); width: min(380px, calc(100vw - 32px)); padding: 14px 18px 16px; }
-.guia-tarjeta:not([data-posicionada]) { right: 24px; bottom: 24px; }
+/* Escritorio: hasta medir, abajo a la derecha (en movil manda la hoja inferior de abajo; esta regla no debe ganarle). */
+@media (min-width: 768px) { .guia-tarjeta:not([data-posicionada]) { right: 24px; bottom: 24px; } }
 .guia-invitacion { right: 24px; bottom: 24px; width: min(380px, calc(100vw - 32px)); padding: 16px 18px; }
 .guia-tarjeta h2, .guia-invitacion h2 { margin: 0 0 6px; font: 600 16px/1.35 var(--font-sans, inherit); letter-spacing: -0.01em; }
 .guia-tarjeta p, .guia-invitacion p { margin: 0 0 10px; font-size: 13px; line-height: 1.55; color: var(--guia-gris); }
@@ -162,7 +163,8 @@ html:not([data-diseno="ds3"]) .guia-raiz { display: none !important; }
 @media (max-width: 767px) {
   .guia-tarjeta, .guia-invitacion {
     left: 12px !important; right: 12px; top: auto !important; width: auto;
-    bottom: calc(63px + var(--safe-area-bottom, 0px) + 12px); border-radius: 16px;
+    /* Por encima de la barra inferior: --nav-total = alto de la barra + safe area + respiro (index.css). */
+    bottom: calc(var(--nav-total, 4.25rem) + 8px); border-radius: 16px;
   }
   .guia-tarjeta[data-hoja="arriba"] { top: calc(56px + var(--safe-area-top, 0px) + 12px) !important; bottom: auto; }
   .guia-tarjeta { max-height: min(62vh, 440px); overflow: auto; padding: 12px 14px 14px; }
@@ -172,7 +174,7 @@ html:not([data-diseno="ds3"]) .guia-raiz { display: none !important; }
   .guia-tarjeta[data-tipo="cierre"] .guia-ilu-marco { height: 80px; }
   .guia-ruta li:not([data-actual], .guia-ruta-mas) { display: none; }
   .guia-ruta li + li::before { content: none; }
-  .guia-menu { top: auto; right: 12px; left: 12px; bottom: calc(63px + var(--safe-area-bottom, 0px) + 12px); width: auto; border-radius: 16px; }
+  .guia-menu { top: auto; right: 12px; left: 12px; bottom: calc(var(--nav-total, 4.25rem) + 8px); width: auto; border-radius: 16px; }
   .guia-btn, .guia-btn-sec, .guia-menu button { min-height: 44px; }
   @media (prefers-reduced-motion: no-preference) {
     .guia-tarjeta, .guia-invitacion, .guia-menu { animation: guia-hoja 250ms var(--guia-ease); }

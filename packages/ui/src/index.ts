@@ -280,8 +280,9 @@ export * from "./components/resumen-piezas.js";
 export * from "./components/consola-kit.js";
 export * from "./components/graficas-cfo.js";
 // ds3 «Guía»: recorrido guiado animado (menu, foco que no tapa, tarjeta, viaje entre pantallas), progreso por persona y «Primeros pasos».
-export { GuiaRecorrido, TarjetaPaso, GUIA_ABRIR_EVENTO_RECORRIDO, GUIA_RECORRIDO_EVENTO, iniciarRecorridoGuia } from "./components/guia/GuiaRecorrido";
-export type { GuiaRecorridoProps, TarjetaPasoProps } from "./components/guia/GuiaRecorrido";
+// El componente de la guia (GuiaRecorrido) NO va en el barril: se importa diferido desde `@atiende/ui/guia` y solo con la bandera ds3.
+export { GUIA_ABRIR_EVENTO_RECORRIDO, GUIA_RECORRIDO_EVENTO, GUIA_VACIAR_EVENTO, abrirMenuGuia, iniciarRecorridoGuia, vaciarGuardadoGuia } from "./components/guia/eventos";
+export type { GuiaRecorridoProps } from "./components/guia/GuiaRecorrido";
 export { PrimerosPasos, resumirPrimerosPasos, hitosNuevos } from "./components/guia/PrimerosPasos";
 export type { PrimerPaso, PrimerosPasosProps, EstadoPrimerPaso } from "./components/guia/PrimerosPasos";
 export { construirTour, contarPasos, colocarTarjeta, pantallasDelMenu, rutaRelativa, slugDe } from "./components/guia/motor";

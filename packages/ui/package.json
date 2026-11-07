@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./guia": "./src/components/guia/GuiaRecorrido.tsx",
     "./logo-marca": "./src/components/LogoMarca.tsx",
     "./logos-marca": "./src/lib/logos-marca.generated.ts",
     "./styles.css": "./src/index.css",
