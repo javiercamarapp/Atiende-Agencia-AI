@@ -67,6 +67,11 @@ describe.each(["whatsapp", "voz"] as const)("%s: minutos_para_recoger", (channel
 
   it("un plazo corto (10 min) cotiza: la tolerancia de 'antes de 15 minutos' sigue siendo del prompt, no del servidor", async () => {
     const s = setup(channel);
+    // R22: por WhatsApp el minimo de 25 min lo exige el servidor (se pide otra hora); en voz sigue valiendo la tolerancia del prompt.
+    if (channel === "whatsapp") {
+      await expect(s.quote({ minutos_para_recoger: 10 })).rejects.toThrow(/25 minutos/);
+      return;
+    }
     const q = await s.quote({ minutos_para_recoger: 10 });
     expect(q.result).toHaveProperty("quote_hash");
   });

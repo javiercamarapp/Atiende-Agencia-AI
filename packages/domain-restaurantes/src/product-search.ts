@@ -384,6 +384,7 @@ export function matchesProductSearch(
   if (estricto) {
     const palabrasDe = (txt: string) => sinAcentos(txt).split(/[^a-z0-9.]+/).filter(Boolean);
     const vocab = [...palabrasDe(fields.name), ...fields.searchKeywords.flatMap(palabrasDe)];
+    const categoriaPalabras = fields.categoryName ? palabrasDe(fields.categoryName) : [];
     const pesoNombre = pesoDeProductoEnGramos(fields.name);
     const planoNombre = sinAcentos(fields.name);
     return tokens.every((t) => {
@@ -392,7 +393,10 @@ export function matchesProductSearch(
       if (t === SIN_ALCOHOL) return MENU_SIN_ALCOHOL.test(planoNombre);
       if (t === ORDEN_COMPLETA) return !/\b1\s*\/\s*2\b|\bmedia\s+orden\b/.test(planoNombre);
       if (t === "1/2") return /\b1\s*\/\s*2\b|\bmedia\s+orden\b/.test(planoNombre);
-      return vocab.some((w) => (t.length <= 2 ? w === t : w.startsWith(t)));
+      if (vocab.some((w) => (t.length <= 2 ? w === t : w.startsWith(t)))) return true;
+      // R5 (SIM-WA-248/061): «tacos suizos de pechuga de pollo» -> el producto es «Suizo de Pechuga» de la categoria «Tacos Suizos»: el menu pone el sustantivo generico («tacos») en la
+      // CATEGORIA, no en el nombre. Se acepta solo como palabra completa de la categoria (singular igual), nunca como subcadena ni por la descripcion.
+      return t.length > 2 && categoriaPalabras.some((w) => singularizar(w) === t);
     });
   }
   const textoPlano = sinAcentos([fields.name, fields.description, fields.categoryName].filter(Boolean).join(" "));

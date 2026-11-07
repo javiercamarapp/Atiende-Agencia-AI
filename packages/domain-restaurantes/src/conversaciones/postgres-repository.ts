@@ -40,6 +40,8 @@ import type {
   TurnoPersonal,
 } from "./types.ts";
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 function code(err: unknown): string | undefined {
   return err && typeof err === "object" && "code" in err ? ((err as { code?: unknown }).code as string | undefined) : undefined;
 }
@@ -177,6 +179,22 @@ export class PostgresConversacionesRepository implements ConversacionesRepositor
     });
   }
 
+  /** Nombres de las personas del panel que contestaron (PR-4, migracion 102). Base sin migrar o sin permiso: sin nombres (el hilo igual se ve, con el autor «Persona del equipo»). */
+  private async nombresDeStaff(organizationId: string, propertyId: string, ids: readonly string[]): Promise<Map<string, string>> {
+    const unicos = [...new Set(ids)];
+    if (unicos.length === 0) return new Map();
+    return runWithSavepointFallback<Map<string, string>>({
+      session: this.db,
+      savepointName: "sp_conv_detalle_nombres",
+      primary: async () => {
+        const { rows } = await this.db.query<{ id: string; nombre: string | null }>(`select id, nombre from restaurantes.handoff_staff_nombres($1::uuid, $2::uuid, $3::uuid[]);`, [organizationId, propertyId, unicos]);
+        return new Map(rows.flatMap((r) => (r.nombre ? [[r.id, r.nombre] as const] : [])));
+      },
+      isRecoverable: () => true,
+      fallback: async () => new Map(),
+    });
+  }
+
   private escritura<T>(savepointName: string, primary: () => Promise<T>): Promise<T> {
     return runWithSavepointFallback<T>({ session: this.db, savepointName, primary, isRecoverable: esRechazoConocido, fallback: aError });
   }
@@ -205,11 +223,15 @@ export class PostgresConversacionesRepository implements ConversacionesRepositor
         );
         if (!rows[0]) return null;
         const arr = Array.isArray(rows[0].messages) ? (rows[0].messages as Array<Record<string, unknown>>) : [];
-        mensajes = arr.map((m) => ({
-          rol: m.role === "user" ? "cliente" : m.autor === "humano" ? "humano" : "agente",
-          texto: typeof m.content === "string" ? m.content : "",
-          createdAt: null,
-        }));
+        const nombres = await this.nombresDeStaff(organizationId, propertyId, arr.flatMap((m) => (m.role !== "user" && m.autor === "humano" && typeof m.staff_id === "string" && UUID_RE.test(m.staff_id) ? [m.staff_id] : [])));
+        mensajes = arr.map((m): MensajeConversacion => {
+          const rol: MensajeConversacion["rol"] = m.role === "user" ? "cliente" : m.autor === "humano_app" ? "humano_app" : m.autor === "humano" ? "humano" : "agente";
+          const at = typeof m.at === "string" && Number.isFinite(Date.parse(m.at)) ? new Date(m.at).toISOString() : null;
+          const base = { rol, texto: typeof m.content === "string" ? m.content : "", createdAt: at };
+          if (rol !== "humano") return base;
+          const autorId = typeof m.staff_id === "string" && UUID_RE.test(m.staff_id) ? m.staff_id : null;
+          return { ...base, autorId, autorNombre: autorId ? (nombres.get(autorId) ?? null) : null };
+        });
       } else {
         const conv = await this.db.query<{ id: string }>(
           `select id from restaurantes.voice_conversation where id = $1 and organization_id = $2 and property_id = $3;`,
@@ -438,6 +460,67 @@ export class PostgresHandoffAgentGate implements HandoffAgentGate {
       isRecoverable: () => true,
       fallback: async () => null,
     });
+  }
+
+  async tomarPorEcoDeApp(input: { organizationId: string; propertyId: string | null; phone: string; atMs: number }): Promise<string | null> {
+    return runWithSavepointFallback<string | null>({
+      session: this.db,
+      savepointName: "sp_handoff_gate_eco_app",
+      primary: async () => {
+        const { rows } = await this.db.query<{ id: string | null }>(`select restaurantes.handoff_eco_app($1::uuid, $2::uuid, $3::text, $4::timestamptz) as id;`, [input.organizationId, input.propertyId, input.phone, new Date(input.atMs).toISOString()]);
+        return rows[0]?.id ?? null;
+      },
+      isRecoverable: () => true,
+      // «No aplica» (base sin la 101: 42P01/42703/42883) -> null y el eco igual queda guardado. Cualquier otro error (42501 = GRANT/rol mal puesto, caida de red) se LOGUEA con su
+      // SQLSTATE (sin PII) y se REPROPAGA: el eco falla y Meta reintenta; si lo tragara el asistente nunca callaria y nadie se enteraria.
+      fallback: async (err) => {
+        if (esBaseSinMigrar(err)) {
+          advertirNoDisponible(err);
+          return null;
+        }
+        console.error("PostgresHandoffAgentGate.tomarPorEcoDeApp: error real", code(err) ?? "sin_codigo");
+        throw err;
+      },
+    });
+  }
+
+  async tomaPorEcoDeApp(organizationId: string, phone: string): Promise<boolean> {
+    return runWithSavepointFallback<boolean>({
+      session: this.db,
+      savepointName: "sp_handoff_gate_toma_app",
+      primary: async () => {
+        const { rows } = await this.db.query<{ r: boolean | null }>(`select restaurantes.handoff_whatsapp_toma_por_app($1::uuid, $2::text) as r;`, [organizationId, phone]);
+        return rows[0]?.r === true;
+      },
+      isRecoverable: () => true,
+      fallback: async (err) => {
+        if (!esBaseSinMigrar(err)) console.error("PostgresHandoffAgentGate.tomaPorEcoDeApp: degrada a «sin toma de la app»", code(err) ?? "sin_codigo");
+        return false;
+      },
+    });
+  }
+
+  async avisarClienteConTomaDeApp(organizationId: string, phone: string): Promise<void> {
+    const toma = await runWithSavepointFallback<{ id: string; propertyId: string } | null>({
+      session: this.db,
+      savepointName: "sp_handoff_gate_aviso_app",
+      primary: async () => {
+        const { rows } = await this.db.query<{ id: string; property_id: string }>(
+          `select h.id, h.property_id from restaurantes.conversation_handoff h join restaurantes.whatsapp_conversations c on c.id = h.conversation_id
+            where h.organization_id = $1::uuid and right(regexp_replace(c.phone, '\\D', '', 'g'), 10) = right(regexp_replace($2::text, '\\D', '', 'g'), 10) and h.canal = 'whatsapp' and h.estado = 'tomada' and h.tomada_por_app limit 1;`,
+          [organizationId, phone],
+        );
+        return rows[0] ? { id: rows[0].id, propertyId: rows[0].property_id } : null;
+      },
+      isRecoverable: () => true,
+      fallback: async (err) => {
+        if (!esBaseSinMigrar(err)) console.error("PostgresHandoffAgentGate.avisarClienteConTomaDeApp: sin aviso", code(err) ?? "sin_codigo");
+        return null;
+      },
+    });
+    if (!toma) return;
+    // Una por toma y por ventana de 15 min (mismo dedupe que el resto del catalogo: la clave lo decide). Sin PII: titulo y cuerpo salen del catalogo.
+    await emitirNotificacion(this.db, { evento: "restaurantes.handoff.cliente_con_toma_de_app", organizationId, propertyId: toma.propertyId, clave: `${toma.id}:${Math.floor(Date.now() / (15 * 60_000))}`, entidadTipo: "conversation_handoff", entidadId: toma.id });
   }
 
   /** Acuse al cliente de una toma pendiente (migracion 045). Base sin migrar (42883/42P01/42703) -> false con SAVEPOINT: el agente sigue callando. */

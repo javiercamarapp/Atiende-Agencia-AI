@@ -179,7 +179,7 @@ describe("handleInboundWhatsAppMessage con nota de voz", () => {
     const p = puerto("quiero 3 de bistec");
     const outcome = await handleInboundWhatsAppMessage(fixture.repo, turn, { ...base(fixture, "wamid.v1"), transcripcion: { audio: AUDIO, puerto: p } });
     expect(outcome).toMatchObject({ ok: true, retryable: false });
-    expect(turn.vistos[0]!.at(-1)).toEqual({ role: "user", content: `${PREFIJO_NOTA_DE_VOZ} quiero 3 de bistec` });
+    expect(turn.vistos[0]!.at(-1)).toMatchObject({ role: "user", content: `${PREFIJO_NOTA_DE_VOZ} quiero 3 de bistec` });
   });
 
   it("replay de Meta con el mismo message.id: UNA sola transcripcion", async () => {
@@ -202,7 +202,7 @@ describe("handleInboundWhatsAppMessage con nota de voz", () => {
     const args = base(fixture, "wamid.fallo");
     const outcome = await handleInboundWhatsAppMessage(fixture.repo, turn, { ...args, transcripcion: { audio: AUDIO, puerto: puerto(new NotaDeVozError("apagado")) } });
     expect(outcome).toMatchObject({ ok: true });
-    expect(turn.vistos[0]!.at(-1)).toEqual({ role: "user", content: args.body });
+    expect(turn.vistos[0]!.at(-1)).toMatchObject({ role: "user", content: args.body });
   });
 
   it("sin puerto (sin credencial de Meta) no se intenta nada: mismo resultado que antes de R-32", async () => {
@@ -210,7 +210,7 @@ describe("handleInboundWhatsAppMessage con nota de voz", () => {
     const turn = capturingTurnHandler();
     const args = base(fixture, "wamid.sin-puerto");
     await handleInboundWhatsAppMessage(fixture.repo, turn, args);
-    expect(turn.vistos[0]!.at(-1)).toEqual({ role: "user", content: args.body });
+    expect(turn.vistos[0]!.at(-1)).toMatchObject({ role: "user", content: args.body });
   });
 
   it("la transcripcion pasa por la redaccion de datos de pago antes de guardarse", async () => {
@@ -230,7 +230,7 @@ describe("handleInboundWhatsAppMessage con nota de voz", () => {
     expect((await recibirMensajeConEspera(fixture.repo, args)).estado).toBe("duplicado");
     expect(p.transcripciones).toBe(1);
     const historial = await fixture.repo.whatsappAppendTurn(fixture.organizationId, PHONE, [], null, null, null);
-    expect(historial.at(-1)).toEqual({ role: "user", content: `${PREFIJO_NOTA_DE_VOZ} dos de pastor` });
+    expect(historial.at(-1)).toMatchObject({ role: "user", content: `${PREFIJO_NOTA_DE_VOZ} dos de pastor` });
   });
 });
 

@@ -1,7 +1,7 @@
 // Ajustes del prompt de PM que salen de los chats reales de T7 (2-oct-2026): lluvia, pin automático, aviso de salida, pago, facturación.
 import { describe, expect, it } from "vitest";
 import { PM_CONFIG_POR_OMISION } from "../../src/whatsapp/llm-turn-handler.ts";
-import { PM_MARGEN_LLUVIA_MINUTOS, buildPmSystemPrompt } from "../../src/whatsapp/perfil-pm.ts";
+import { PM_TIEMPO_LLUVIA, buildPmSystemPrompt } from "../../src/whatsapp/perfil-pm.ts";
 import type { BranchSummary } from "../../src/types.ts";
 
 function prompt(over: Partial<Parameters<typeof buildPmSystemPrompt>[0]> = {}) {
@@ -20,11 +20,11 @@ function prompt(over: Partial<Parameters<typeof buildPmSystemPrompt>[0]> = {}) {
 }
 
 describe("prompt PM: lo que enseñan los chats de T7", () => {
-  it("lluvia: tiempo de la sucursal más un margen, ya no la cifra fija de 1 h a 1 h 20", () => {
+  it("lluvia: la cifra de la web de PM (1 h a 1 h 20), ya no el «+20 min» sin fuente", () => {
     for (const canal of ["whatsapp", "voz"] as const) {
       const p = prompt({ canal });
-      expect(p).toContain(`más unos ${PM_MARGEN_LLUVIA_MINUTOS} minutos`);
-      expect(p).not.toMatch(/1 hora a 1 hora 20/);
+      expect(p).toContain(`con lluvia la entrega tarda ${PM_TIEMPO_LLUVIA}`);
+      expect(p).not.toMatch(/más unos \d+ minutos/);
     }
   });
 
@@ -68,9 +68,9 @@ describe("prompt PM: lo que enseñan los chats de T7", () => {
     expect(p).toMatch(/PEDIDO HECHO POR TELÉFONO[^\n]*NO cree pedido[^\n]*reason "pedido_telefonico"/);
   });
 
-  it("escalación: no promete «en un momento»; de madrugada dice cuándo responde el equipo", () => {
+  it("escalación: no promete «en un momento» ni afirma un horario de respuesta del equipo (sin respaldo)", () => {
     const p = prompt();
     expect(p).not.toMatch(/en un momento le responden/);
-    expect(p).toMatch(/entre la 1 am y las 12 del día[^\n]*a partir de las 12 del día/);
+    expect(p).not.toMatch(/nadie del equipo contesta|a partir de las 12 del día/);
   });
 });

@@ -36,11 +36,19 @@ export interface ContextoLlamada {
   readonly sonido: SonidoLlamada | null;
   /** Temperatura de la voz (0..1) de los ajustes del agente; null = la de la plataforma. */
   readonly temperatura: number | null;
+  /** Nombres y apodos del menu (hasta 50) para los keyterms del STT; vacio si la API no lo manda (API vieja). */
+  readonly vocabulario: readonly string[];
 }
 
 export interface SonidoLlamada {
   readonly fondo: { readonly activo: boolean; readonly volumen: number; readonly preset: PresetAmbiente };
   readonly tecleo: { readonly activo: boolean; readonly volumen: number };
+}
+
+/** Vocabulario del menu: solo textos cortos, hasta 50. Cualquier otra forma = sin vocabulario. */
+export function leerVocabulario(v: unknown): string[] {
+  if (!Array.isArray(v)) return [];
+  return v.filter((t): t is string => typeof t === "string" && t.trim() !== "" && t.length <= 60).slice(0, 50);
 }
 
 /** Valida lo que manda la API (nunca confia en el cuerpo): cualquier cosa fuera de rango o de forma se descarta como "sin sonido". */
@@ -164,6 +172,7 @@ export class ClienteApi {
       horaLocal: r.horaLocal,
       sonido: leerSonidoLlamada((r as { sonido?: unknown }).sonido),
       temperatura: temperaturaParaLlamada((r as { temperatura?: unknown }).temperatura).valor,
+      vocabulario: leerVocabulario((r as { vocabulario?: unknown }).vocabulario),
     };
   }
 

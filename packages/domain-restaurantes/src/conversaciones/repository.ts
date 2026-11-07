@@ -54,4 +54,11 @@ export interface HandoffAgentGate {
   /** PM R21: MOTIVO de la toma abierta (`alergia_salud`, `modificacion_platillo`...) o `null` si no hay toma o no se puede leer (base sin migrar, sin permiso). Opcional: quien no lo
    * implementa se trata como motivo desconocido (conservador: el agente sigue callando). */
   motivoToma?(organizationId: string, phone: string): Promise<string | null>;
+  /** PM PR-2 (coexistencia): el personal contesto desde la app (eco). Abre (o refresca) una toma `tomada` por la app para esa conversacion, de modo que el asistente calle hasta
+   * que pase la inactividad humana (devolucion automatica). Devuelve el id de la toma o `null` si no se pudo (base sin migrar 101, sin conversacion o sin sucursal): el eco igual queda guardado. Opcional. */
+  tomarPorEcoDeApp?(input: { organizationId: string; propertyId: string | null; phone: string; atMs: number }): Promise<string | null>;
+  /** `true` si la toma abierta de ese telefono la abrio el eco de la app. El agente lo consulta DESPUES de pensar y ANTES de enviar (carrera: el personal contesto mientras el modelo trabajaba). Opcional; base sin migrar -> `false`. */
+  tomaPorEcoDeApp?(organizationId: string, phone: string): Promise<boolean>;
+  /** El cliente escribio mientras la toma es de la app: avisa al panel (campana), a lo mas una vez por ventana de 15 min y toma. Nunca lanza. Opcional. */
+  avisarClienteConTomaDeApp?(organizationId: string, phone: string): Promise<void>;
 }

@@ -22,7 +22,7 @@
 //   * Horario general 12:00-01:00 todos los dias (una franja: la hora de cambio de turno no esta definida y no
 //     se inventa); T2 (lun-vie 18:00-24:00, sab-dom 12:00-24:00) y T3 (todos los dias 18:00-24:00) llevan horario PROPIO
 //     porque el sitio oficial y la ficha de Google coinciden (verificado el 23-oct-2026). Pedido minimo a domicilio $200, propina solo con tarjeta.
-//   * Promociones (solo recoger, todas las sucursales): el 2x1 del lunes y el combo de cortesia del martes (nachos de pastor
+//   * Promociones (solo recoger y solo en Francisco de Montejo, Pensiones y Galerias; decision del dueno 30-oct-2026): el 2x1 del lunes y el combo de cortesia del martes (nachos de pastor
 //     con 2 aguas); las que aun no se modelen se listan en `promociones_no_modeladas` de los datos.
 //   * Sin gasto de proveedores: la voz se carga DESHABILITADA (`habilitado = false`).
 //   * Sin secretos ni usuarios: nunca crea credenciales; la membresia del dueño es opcional y solo
@@ -869,7 +869,7 @@ export const PM_SEED_REQUIRED_SCHEMA: readonly { readonly table: string; readonl
   { table: "restaurantes.branch_voice_config", columns: ["habilitado", "comportamiento", "mensaje_inicial", "voice_id"], migration: "025_voz_config_conversaciones.sql" },
   { table: "restaurantes.promotions", columns: ["channels", "product_ids"], migration: "027_promociones_2x1_y_canal.sql" },
   { table: "restaurantes.promotions", columns: ["auto_apply"], migration: "031_recoger_promociones_automaticas_puentes.sql" },
-  // El 2x1 y el combo valen en todas las sucursales (property_ids null), pero el seed sigue exigiendo la 038: sin esa columna el INSERT
+  // El 2x1 y el combo valen solo en T2, T3 y T4 (property_ids, 038): sin esa columna el INSERT
   // de promociones falla a la mitad. El seed se niega a cargar antes de que la migracion exista.
   { table: "restaurantes.promotions", columns: ["property_ids"], migration: "038_promociones_por_sucursal.sql" },
   // Combo de cortesia del martes (031): las columnas de la propia promocion de cortesia.

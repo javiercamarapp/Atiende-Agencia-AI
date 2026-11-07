@@ -19,11 +19,11 @@
       "activa": true,
       "zona_cliente": "zona centro y norte",
       "horario": [
-        { "dias": [1, 2, 3, 4], "abre": "18:00", "cierra": "01:00", "ultimoPedidoDomicilio": "23:15", "ultimoPedidoRecoger": "00:30" },
-        { "dias": [0, 5, 6], "abre": "12:00", "cierra": "01:00", "ultimoPedidoDomicilio": "23:15", "ultimoPedidoRecoger": "00:30" }
+        { "dias": [1, 2, 3, 4, 5], "abre": "18:00", "cierra": "01:00", "ultimoPedidoDomicilio": "23:15", "ultimoPedidoRecoger": "00:30" },
+        { "dias": [0, 6], "abre": "12:00", "cierra": "01:00", "ultimoPedidoDomicilio": "23:15", "ultimoPedidoRecoger": "00:30" }
       ],
-      "horario_fuente": "Sitio oficial y ficha de Google Maps (23-oct-2026): COINCIDEN en lun-jue 18:00-01:00, sab-dom 12:00-01:00 y el cierre a la 1 am; el VIERNES estan en CONFLICTO (sitio 12:00, Google 18:00) y se uso el del sitio oficial (12:00-01:00) por decision del equipo.",
-      "horario_pendiente": "viernes: sitio 12:00, Google 18:00; confirmar con T1 (llamar a la sucursal). Si abre a las 18:00, cambiar el viernes a 18:00-01:00.",
+      "horario_fuente": "Sitio oficial y ficha de Google Maps (23-oct-2026): COINCIDEN en lun-jue 18:00-01:00, sab-dom 12:00-01:00 y el cierre a la 1 am; el VIERNES estan en CONFLICTO (sitio 12:00, Google 18:00) y desde R22 (30-oct-2026) se usa el de Google (18:00-01:00), el conservador: el agente no promete un pedido que la sucursal quiza no surte a mediodia.",
+      "horario_pendiente": "PENDIENTE viernes: sitio 12:00, Google 18:00; confirmar con T1 (llamar a la sucursal). Si abre a las 12:00, cambiar el viernes a 12:00-01:00.",
       "coordenadas_propuestas": {
         "lat": 21.0093272,
         "lng": -89.6135974,
@@ -67,11 +67,11 @@
       "id": "T3",
       "nombre": "Pensiones",
       "slug": "pensiones",
-      "direccion": "Calle 11 No. 371 x Av. 32, San Damián, Mérida",
+      "direccion": "Calle 52 No 37 por Av. 7, Residencial Pensiones, CP 97217, Mérida",
       "telefono": "999 987 5410",
       "lat": null,
       "lng": null,
-      "coordenadas_pendientes_de_verificar": "Calle 11 No. 371 x Av. 32, San Damián, Mérida (direccion del dueño; tel. 999 987 5410). Sin ficha de Google Maps ni otra fuente citable verificada: lat/lng quedan en null.",
+      "coordenadas_pendientes_de_verificar": "Calle 52 No 37 por Av. 7, Residencial Pensiones, CP 97217 (sitio oficial y ficha de Google Maps coinciden; R22, 30-oct-2026; la direccion anterior del dueño, Calle 11 No. 371 x Av. 32, no aparece en ninguna fuente publica). El pin de Google (coordenadas_propuestas) sigue PENDIENTE de confirmar por el dueño: lat/lng quedan en null.",
       "activa": true,
       "zona_cliente": "poniente",
       "horario": [
@@ -110,7 +110,8 @@
       "nota": "Registrada sin pedidos (el cuestionario la lista con 0 a domicilio y 0 para llevar, P9): inactiva y sin catalogo. Direccion y telefono de la web. Sin coordenadas en el seed.",
       "directorio": {
         "visible": true,
-        "nota": "Visible en el directorio como solo informativa (esta inactiva y sin catalogo: no lleva a pedir)."
+        "acepta_domicilio": false,
+        "nota": "Visible en el directorio como solo informativa (esta inactiva y sin catalogo: no lleva a pedir). Sin pedidos a domicilio (R22, 30-oct-2026)."
       }
     },
     {
@@ -124,9 +125,9 @@
       "activa": false,
       "coordenadas_aproximadas": true,
       "horario": [
-        { "dias": [0, 1, 2, 3, 4, 5, 6], "abre": "12:00", "cierra": "01:00" }
+        { "dias": [0, 1, 2, 3, 4, 5, 6], "abre": "18:00", "cierra": "01:00" }
       ],
-      "horario_fuente": "Horario provisional heredado del general (12:00-01:00) SIN horas de ultimo pedido: sucursal de temporada, inactiva y solo para recoger; el horario real sigue pendiente de P1 (ver nota). Se declara propio a proposito para que NO herede ultimoPedidoDomicilio/ultimoPedidoRecoger del horario_general.",
+      "horario_fuente": "Horario de TEMPORADA (sitio oficial, 24-oct-2026): abre en Semana Santa y en julio-agosto de 18:00 a 01:00; hoy esta CERRADA (la ficha de Google dice «Cerrado temporalmente»): inactiva, solo recoger y sin pedidos. SIN horas de ultimo pedido: se declara propio a proposito para que NO herede el horario_general (12:00-01:00) ni sus ultimoPedido.",
       "nota": "Solo para recoger. Cerrada fuera de temporada (abre en Semana Santa y en julio-agosto, de 18:00 a 01:00; el horario por sucursal sigue pendiente de P1; la ficha de Google (23-oct-2026) dice «Cerrado temporalmente» y no publica horario, asi que solo el sitio oficial respalda 18:00-01:00). Telefono y WhatsApp de la web: 969 688 4195. Coordenadas aproximadas del repo, no entran en known_zone. Catalogo y precios del menu impreso T5-2026.",
       "directorio": {
         "visible": true,
@@ -201,7 +202,7 @@
   "reglas": {
     "pedido_minimo_domicilio": 200,
     "pedido_minimo_recoger": null,
-    "propina_politica": "solo_tarjeta"
+    "propina_politica": "nunca"
   },
   "categorias": [
     "Tacos",
@@ -8404,7 +8405,12 @@
       "productos": [
         "Taco Al Pastor (individual)"
       ],
-      "descripcion": "2x1 en tacos al pastor, lunes, solo para recoger, en todas las sucursales (cuestionario l.99: la promocion no aplica a domicilio)."
+      "sucursales": [
+        "T2",
+        "T3",
+        "T4"
+      ],
+      "descripcion": "2x1 en tacos al pastor, lunes, solo para recoger y solo en Francisco de Montejo, Pensiones y Galerias (decision del dueño 30-oct-2026, R22: nunca a domicilio ni en Prolongacion Montejo, Garcia Lavin, Altabrisa o Playa)."
     },
     {
       "codigo": "MARTESNACHOSPM",
@@ -8425,7 +8431,12 @@
         "Té"
       ],
       "cortesia_cantidad": 2,
-      "descripcion": "Martes, solo para recoger: con una orden completa de Nachos de Pastor (la media orden no) van 2 aguas frescas de cortesia a elegir entre Jamaica, Horchata y Te, en todas las sucursales (cuestionario l.99). Que aguas entran exactamente sigue en P13."
+      "sucursales": [
+        "T2",
+        "T3",
+        "T4"
+      ],
+      "descripcion": "Martes, solo para recoger y solo en Francisco de Montejo, Pensiones y Galerias: con una orden completa de Nachos de Pastor (la media orden no) van 2 aguas frescas de cortesia a elegir entre Jamaica, Horchata y Te (decision del dueño 30-oct-2026, R22). Que aguas entran exactamente sigue en P13."
     }
   ],
   "promociones_no_modeladas": [],
@@ -8440,7 +8451,7 @@
     "tono": "formal_directo",
     "tiempo_entrega": "de 40 a 50 minutos para recoger y a domicilio; más en hora pico",
     "salsas": "roja, verde, cebolla con cilantro y limones van siempre; crema de ajo, guacamolera, mexicana y habanero (picado o soasado) solo si el cliente las pide, sin costo",
-    "promociones": "lunes 2x1 en tacos al pastor y martes nachos de pastor con 2 aguas de cortesía; solo para recoger, en todas las sucursales",
+    "promociones": "lunes 2x1 en tacos al pastor y martes nachos de pastor con 2 aguas de cortesía; solo para recoger y solo en Francisco de Montejo, Pensiones y Galerías",
     "motivos_escalacion_apagados": [],
     "reglas_duras": [
       "Alcohol: nunca a domicilio (se marca por producto: no_domicilio).",
@@ -8456,7 +8467,8 @@
       "a domicilio de 60 a 75 min (pico: 75 a 90); para recoger de 25 a 35 min (pico: 45 a 60)"
     ],
     "promociones_anteriores_sembradas": [
-      "lunes 2x1 en tacos al pastor, solo para recoger, en Francisco de Montejo, Pensiones y Galerías"
+      "lunes 2x1 en tacos al pastor, solo para recoger, en Francisco de Montejo, Pensiones y Galerías",
+      "lunes 2x1 en tacos al pastor y martes nachos de pastor con 2 aguas de cortesía; solo para recoger, en todas las sucursales"
     ],
     "espera_rafagas_segundos": 6
   },
@@ -8624,7 +8636,7 @@
     {
       "id": "P13",
       "titulo": "Martes: nachos de pastor con 2 aguas",
-      "detalle": "Cargado como combo de cortesia (martes, solo recoger, todas las sucursales): con una orden completa de Nachos de Pastor (la media orden no) van 2 aguas de cortesia a elegir entre Agua de Jamaica, Horchata y Te (las 'aguas frescas' del menu T3-2025). PREGUNTA abierta para Javier: ¿son esas tres las aguas de cortesia, o entran otras (p. ej. refrescos)?",
+      "detalle": "Cargado como combo de cortesia (martes, solo recoger, solo en Francisco de Montejo, Pensiones y Galerias): con una orden completa de Nachos de Pastor (la media orden no) van 2 aguas de cortesia a elegir entre Agua de Jamaica, Horchata y Te (las 'aguas frescas' del menu T3-2025). PREGUNTA abierta para Javier: ¿son esas tres las aguas de cortesia, o entran otras (p. ej. refrescos)?",
       "quien": "dueno",
       "pantalla": "promociones",
       "estado": "abierta"

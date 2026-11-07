@@ -49,6 +49,14 @@ export interface EstadoEspera {
   huellaOida?: string | null;
   huellaCotizada?: string | null;
   cotizoEnTurno?: boolean;
+  /** `confirmar` tuvo exito con la compuerta ABIERTA (resumen leido + afirmacion pura) en este turno y `crear` aun no corrio: la sesion fuerza `crear` en la vuelta siguiente (bucle R1). */
+  cierreListo?: boolean;
+  /** Forma de pago de la cotizacion vigente, tal como la mando el modelo en `cotizar` (el servidor hereda la previa si la omite; aqui igual). Sin ella NO se fuerza `crear`: el forzado inventaria el pago.
+   * El pago NO entra a la huella (`quote_hash`) pero un cambio es otra cotizacion (order-flow.ts quotedPago). El nombre y la direccion no viajan en la cotizacion de voz: la cascada no puede
+   * saberlos, asi que no se exigen (el servidor completa el nombre con «Cliente»). */
+  pagoCotizado?: "efectivo" | "tarjeta" | null;
+  /** Ya se forzo `crear` en este turno del cliente: no se vuelve a forzar aunque el modelo llame `confirmar` otra vez. La sesion lo apaga al empezar cada turno. */
+  forzadoEnTurno?: boolean;
 }
 
 function huellaDe(salida: unknown): string | null {
@@ -112,11 +120,18 @@ export async function ejecutarHerramientas(
     if (huellaLeida && espera.afirmacion !== true) log?.("v2_confirmacion_sin_afirmacion", { motivo: "bloquea_crear", herramienta: regla.confirmar });
     const leido = huellaLeida && espera.afirmacion === true;
     if (!leido) espera.pendiente = true;
+    else if (espera.forzadoEnTurno === true) log?.("v2_crear_no_forzado", { motivo: "ya_forzado_en_turno" });
+    else if ((espera.pagoCotizado ?? null) === null) log?.("v2_crear_no_forzado", { motivo: "sin_pago" });
+    else espera.cierreListo = true;
   };
   /** Anota la cotizacion: si su huella es distinta de la que el cliente oyo, el resumen nuevo aun no se ha leido. */
-  const alCotizar = (salida: unknown): void => {
+  const alCotizar = (salida: unknown, argsJson?: string): void => {
     if (!regla?.cotizar) return;
     espera.cotizoEnTurno = true;
+    // Una cotizacion nueva anula el cierre listo (el resumen que el cliente confirmo ya no es el vigente).
+    espera.cierreListo = false;
+    const pago = argsJson === undefined ? undefined : argumentosDe(argsJson)["payment_method"];
+    if (pago === "efectivo" || pago === "tarjeta") espera.pagoCotizado = pago;
     const h = huellaDe(salida);
     // Cotizacion nueva (otra huella): lo dicho hasta ahora era del resumen anterior y no cuenta para este.
     if (h !== (espera.huellaCotizada ?? null)) espera.habladoTrasCotizar = "";
@@ -140,7 +155,7 @@ export async function ejecutarHerramientas(
   while (enParalelo && racha < llamadas.length && enParalelo.has(llamadas[racha]?.nombre ?? "")) racha++;
   const resultados = racha > 1 ? await Promise.all(llamadas.slice(0, racha).map((tc) => una(tc))) : [];
   for (const r of resultados) {
-    if (regla && r.llamada.nombre === regla.cotizar) alCotizar(r.salida);
+    if (regla && r.llamada.nombre === regla.cotizar) alCotizar(r.salida, r.llamada.argsJson);
     if (regla && r.llamada.nombre === regla.confirmar) alConfirmar(r.salida);
   }
   for (let i = resultados.length; i < llamadas.length; i++) {
@@ -180,15 +195,17 @@ export async function ejecutarHerramientas(
         continue;
       }
     }
+    if (regla && tc.nombre === regla.crear) espera.cierreListo = false;
     const res = await una(tc);
     resultados.push(res);
-    if (regla && tc.nombre === regla.cotizar) alCotizar(res.salida);
+    if (regla && tc.nombre === regla.cotizar) alCotizar(res.salida, tc.argsJson);
     if (regla && tc.nombre === regla.confirmar) alConfirmar(res.salida);
     // Pedido creado: ese resumen ya se uso. Un segundo «si» (o un crear repetido) debe pasar por una confirmacion nueva; la idempotencia sigue siendo del servidor.
     if (regla?.cotizar && tc.nombre === regla.crear && !conError(res.salida)) {
       espera.huellaOida = null;
       espera.huellaUltima = null;
       espera.totalUltimo = null;
+      espera.pagoCotizado = null;
     }
   }
   return resultados;

@@ -84,6 +84,41 @@ describe("ConversacionesPage (restaurantes)", () => {
     expect(rendered.container.textContent).toContain("La conversación es tuya: el agente ya no responde.");
   });
 
+  it("PR-4: el hilo muestra la hora real de cada mensaje y su autor (cliente, agente, persona con nombre, personal de la app); los viejos sin hora no la inventan", async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (String(url).includes("/conversaciones/whatsapp/c-1")) {
+        return json({
+          canal: "whatsapp", conversationId: "c-1", transcripcionDisponible: true,
+          mensajes: [
+            { rol: "cliente", texto: "Quiero cambiar mi pedido", creadoEn: "2026-10-30T18:00:00.000Z" },
+            { rol: "agente", texto: "Claro, le paso con una persona", creadoEn: "2026-10-30T18:00:05.000Z" },
+            { rol: "humano", texto: "Soy Ana, le ayudo", creadoEn: "2026-10-30T18:05:00.000Z", autor: "Ana Pérez", autorId: "u1" },
+            { rol: "humano", texto: "Respuesta sin nombre", creadoEn: "2026-10-30T18:06:00.000Z", autor: null, autorId: null },
+            { rol: "humano_app", texto: "Ya va su pedido", creadoEn: "2026-10-30T18:09:00.000Z" },
+            { rol: "cliente", texto: "Mensaje viejo sin hora", creadoEn: null },
+          ],
+          handoff: { handoffId: "h-1", estado: "tomada", solicitadoPor: "staff", motivo: "personal_app", solicitadaEn: ITEM.solicitadaEn, tomadaPor: null, tomadaPorNombre: null }, notas: [],
+        });
+      }
+      return json({ disponible: true, total: 1, nextOffset: null, cobertura: COBERTURA, items: [ITEM] });
+    });
+    rendered = renderComponent(<ConversacionesPage {...CTX} />);
+    await esperar();
+    click(rendered.container.querySelector("ul[aria-label='Conversaciones'] button")!);
+    await esperar();
+    const lineas = Array.from(rendered.container.querySelectorAll("section[aria-label='Mensajes'] p")).map((p) => p.textContent ?? "");
+    expect(lineas).toHaveLength(6);
+    const horaEsperada = (iso: string) => new Date(iso).toLocaleString("es-MX", { dateStyle: "short", timeStyle: "short" });
+    expect(lineas[0]).toBe(`${horaEsperada("2026-10-30T18:00:00.000Z")} · Cliente: Quiero cambiar mi pedido`);
+    expect(lineas[1]).toContain("Agente: Claro, le paso con una persona");
+    expect(lineas[2]).toBe(`${horaEsperada("2026-10-30T18:05:00.000Z")} · Persona (Ana Pérez): Soy Ana, le ayudo`);
+    expect(lineas[3]).toContain("Persona del equipo: Respuesta sin nombre");
+    expect(lineas[4]).toBe(`${horaEsperada("2026-10-30T18:09:00.000Z")} · Personal (app): Ya va su pedido`);
+    expect(lineas[5]).toBe("Cliente: Mensaje viejo sin hora");
+    expect(rendered.container.textContent).toContain("El personal está atendiendo desde la app de WhatsApp Business");
+    expect(rendered.container.textContent).not.toContain("Motivo de la solicitud: personal_app");
+  });
+
   it("un 409 al tomar se muestra como aviso y no rompe la pantalla", async () => {
     fetchMock.mockImplementation(async (url: string) => {
       if (String(url).endsWith("/tomar")) return json({ message: "Esta conversación ya la tiene otra persona." }, 409);

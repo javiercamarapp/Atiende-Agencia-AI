@@ -11,7 +11,7 @@ import { PM_BASIC_COMPLEMENTS, canonicalRequestedComplement } from "../src/order
 import { extractMetaInboundMessages, STICKER_MARKER } from "../src/whatsapp/channel-config.ts";
 import { handleInboundWhatsAppMessage } from "../src/whatsapp/inbound.ts";
 import { formatLocationMessage, latestDeliveryPin, parseMapsLink, parseUbicacionEntregaNota } from "../src/whatsapp/location.ts";
-import { PM_MARGEN_LLUVIA_MINUTOS, buildPmSystemPrompt } from "../src/whatsapp/perfil-pm.ts";
+import { PM_TIEMPO_LLUVIA, buildPmSystemPrompt } from "../src/whatsapp/perfil-pm.ts";
 import { PM_CONFIG_POR_OMISION } from "../src/whatsapp/llm-turn-handler.ts";
 import type { WhatsAppTurnHandler } from "../src/whatsapp/turn-handler.ts";
 import type { BranchSummary, CreateOrderInput } from "../src/types.ts";
@@ -178,8 +178,8 @@ const CHECKS: Record<string, () => Promise<void> | void> = {
     expect(out.programadoPara).toBe("2026-10-04T20:30:00-06:00");
   },
   K16() {
-    expect(prompt()).toContain(`más unos ${PM_MARGEN_LLUVIA_MINUTOS} minutos`);
-    expect(prompt()).not.toMatch(/1 hora a 1 hora 20/);
+    expect(prompt()).toContain(`con lluvia la entrega tarda ${PM_TIEMPO_LLUVIA}`);
+    expect(prompt()).not.toMatch(/más unos \d+ minutos/);
   },
   K17() {
     expect(prompt()).toMatch(/sí, el sistema le manda un mensaje de "va en camino"/);

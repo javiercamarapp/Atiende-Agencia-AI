@@ -116,8 +116,8 @@ describe("generarVolumenDemo (motor real de pedidos)", () => {
       new Intl.DateTimeFormat("en-US", { timeZone: "America/Merida", weekday: "long" }).format(new Date(new Date(o.createdAt).getTime() - 3_600_000));
     for (const o of conPromo) {
       expect(o.canal).toBe("recoger");
-      // CR07/CR08: el dueño da el 2x1 para todas las sucursales (cuestionario l.99): vale en todas las sucursales con pedidos (T1, T3 y T7).
-      expect(["pensiones", "prol-montejo", "garcia-lavin"]).toContain(o.branchSlug);
+      // R22 #4: las promos solo valen en Francisco de Montejo, Pensiones y Galerias; entre las sucursales con pedidos (T1, T3, T7) solo Pensiones.
+      expect(o.branchSlug).toBe("pensiones");
       const codigo = /Promoción aplicada: ([A-Z0-9_-]+)/.exec(o.notes)?.[1];
       if (codigo === "LUNES2X1PM") {
         expect(diaNegocio(o)).toBe("Monday");

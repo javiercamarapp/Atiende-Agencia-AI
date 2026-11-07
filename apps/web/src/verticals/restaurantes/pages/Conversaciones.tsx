@@ -22,6 +22,15 @@ import { CallbacksPanel } from "./CallbacksPanel.tsx";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 
 
+/** Quien escribio cada mensaje del hilo: el cliente, el asistente, una persona del panel (por nombre) o el personal desde la app de WhatsApp Business. */
+function etiquetaAutor(m: { readonly rol: string; readonly autor?: string | null }): string {
+  if (m.rol === "cliente") return "Cliente";
+  if (m.rol === "agente") return "Agente";
+  if (m.rol === "humano") return m.autor ? `Persona (${m.autor})` : "Persona del equipo";
+  if (m.rol === "humano_app") return "Personal (app)";
+  return "Herramienta";
+}
+
 function hora(iso: string | null): string {
   if (!iso) return "";
   try {
@@ -258,13 +267,18 @@ function DetalleConversacion({ ctx, canal, conversationId, onCambio }: { ctx: Re
           )}
         </div>
         {h?.tomadaPorNombre && <p className="m-0 text-muted-foreground">La tiene: {h.tomadaPorNombre}</p>}
-        {h?.motivo && <p className="m-0 text-muted-foreground">Motivo de la solicitud: {h.motivo}</p>}
+        {h?.motivo === "personal_app" ? (
+          <p className="m-0 text-muted-foreground">El personal está atendiendo desde la app de WhatsApp Business: el asistente está callado en esta conversación.</p>
+        ) : (
+          h?.motivo && <p className="m-0 text-muted-foreground">Motivo de la solicitud: {h.motivo}</p>
+        )}
 
         <section aria-label="Mensajes" className="flex flex-col gap-1 max-h-[280px] overflow-auto">
           {!d.transcripcionDisponible && <p className="m-0 text-muted-foreground">La transcripción de esta llamada solo se muestra a quien la toma o a owner/admin.</p>}
           {d.mensajes.map((m, i) => (
             <p key={i} className="m-0">
-              <strong>{m.rol === "cliente" ? "Cliente" : m.rol === "humano" ? "Persona" : m.rol === "agente" ? "Agente" : "Herramienta"}:</strong> {m.texto}
+              {m.creadoEn && <span className="text-muted-foreground">{hora(m.creadoEn)} · </span>}
+              <strong>{etiquetaAutor(m)}:</strong> {m.texto}
             </p>
           ))}
         </section>

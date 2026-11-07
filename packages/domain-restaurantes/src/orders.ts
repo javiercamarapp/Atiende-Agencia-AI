@@ -12,7 +12,8 @@ import { normalizePhone, canonicalizeMexicanPhone } from "./phone.ts";
 import { ADDRESS_MASK_MARKER, ADDRESS_OMITTED_MARKER, sanitizeInlineText, sanitizeNotes } from "./text-sanitize.ts";
 import { formatUbicacionEntregaNota } from "./whatsapp/location.ts";
 import { cerrarCicloDelCliente } from "./cliente-360/memoria.ts";
-import { buildComplementNotes, buildDoubleSalsaLine, buildOrderQuoteFromProducts, DEFAULT_COMPLEMENTS, isTortillaChoice, MAX_PIEZAS_POR_RENGLON, mensajeCantidadInvalida } from "./order-quote.ts";
+import { piezasPorOrdenDe } from "./unidades-pm.ts";
+import { buildComplementNotes, buildDoubleSalsaLine, buildOrderQuoteFromProducts, DEFAULT_COMPLEMENTS, etiquetaOrdenConPiezas, isTortillaChoice, MAX_PIEZAS_POR_RENGLON, mensajeCantidadInvalida } from "./order-quote.ts";
 import { assignBranch } from "./branch-assignment.ts";
 import { exigirPinSiPmSinZonas } from "./pin-reparto.ts";
 import { aplicarReglasDeSucursal, normalizarCanal } from "./reglas-pedido.ts";
@@ -372,6 +373,8 @@ export interface PreparedOrder {
   readonly discount: number;
   /** Lineas de la comanda con la tortilla que eligio el cliente para un kilo de carne (ese renglon no exige tortilla y la descarta). */
   readonly tortillasDeKilo: readonly string[];
+  /** R22 (R4): una linea por renglon vendido por ordenes («Gringa: 1 orden (2 piezas)») para que la comanda diga cuantas piezas son. Vacio sin datos de piezas por orden. */
+  readonly piezasPorRenglon: readonly string[];
   /** D12: los renglones tal como se guardan, con las unidades regaladas por la promocion a $0 (la suma de renglones es el `total`). Sin promocion de unidades, son `orderItems`. */
   readonly renglonesPersistidos: readonly PersistedOrderItem[];
 }
@@ -436,6 +439,7 @@ export async function prepareCreateOrder(
   // QA-PM-R3-reglas-11: el kilo de carne ("Pastor — 1 kg") no exige tortilla, asi que `buildOrderQuoteFromProducts` la descarta; pero va CON tortillas y el cliente
   // elige cual ("de harina"). Esa eleccion viaja en una linea de las notas de la comanda (cocina la ve) en vez de perderse.
   const tortillasDeKilo: string[] = [];
+  const piezasPorRenglon: string[] = [];
   let total = 0;
   let containsAlcohol = false;
 
@@ -468,6 +472,8 @@ export async function prepareCreateOrder(
     if (!quote.tortilla && inputItem.tortilla && isTortillaChoice(inputItem.tortilla) && pesoDeProductoEnGramos(product.name) !== null) {
       tortillasDeKilo.push(`Tortilla (${product.name}): ${inputItem.tortilla}.`);
     }
+    const etiquetaPiezas = etiquetaOrdenConPiezas(quote.quantity, piezasPorOrdenDe(product.name, quote.packSize));
+    if (etiquetaPiezas) piezasPorRenglon.push(`${product.name}: ${etiquetaPiezas}.`);
     const lineTotal = Math.round(product.price * quote.quantity * 100) / 100;
     total = Math.round((total + lineTotal) * 100) / 100;
     orderItems.push({
@@ -577,7 +583,7 @@ export async function prepareCreateOrder(
   const payloadFinal: ValidatedCreateOrderInput =
     payload.propina === undefined && payload.propinaPorcentaje !== undefined ? { ...payload, propina: redondearACentavos((total * payload.propinaPorcentaje) / 100) } : payload;
 
-  return { payload: payloadFinal, branch, orderItems, total, containsAlcohol, appliedPromotion, discount, tortillasDeKilo, renglonesPersistidos: renglonesConPromocionAplicada(orderItems, appliedPromotion, total) };
+  return { payload: payloadFinal, branch, orderItems, total, containsAlcohol, appliedPromotion, discount, tortillasDeKilo, piezasPorRenglon, renglonesPersistidos: renglonesConPromocionAplicada(orderItems, appliedPromotion, total) };
 }
 
 /**
@@ -629,7 +635,7 @@ export async function createOrder(
 ): Promise<Order> {
   const prepared = await prepareCreateOrder(repo, rawInput);
   await options.beforePersist?.(prepared);
-  const { payload, branch, orderItems, total, containsAlcohol, appliedPromotion, discount, tortillasDeKilo, renglonesPersistidos } = prepared;
+  const { payload, branch, orderItems, total, containsAlcohol, appliedPromotion, discount, tortillasDeKilo, piezasPorRenglon, renglonesPersistidos } = prepared;
   // R-11: contra una base sin la migracion 034 el pedido programado se rechaza (503) en vez de crearse inmediato.
   if (payload.programadoPara) await assertProgramacionDisponible(repo);
 
@@ -661,6 +667,7 @@ export async function createOrder(
   // Destino de entrega (pin de WhatsApp o link de Maps) para el repartidor; solo a domicilio (recoger no lo usa).
   if (payload.ubicacionEntrega && (payload.canal ?? "domicilio") === "domicilio") canalLines.push(formatUbicacionEntregaNota(payload.ubicacionEntrega));
   canalLines.push(...tortillasDeKilo);
+  canalLines.push(...piezasPorRenglon);
   if (payload.horaRecogida) {
     // QA-PM-R6-voz-03: la comanda llevaba el ISO en UTC crudo («2026-10-06T19:40:10.057Z»); cocina lee la hora LOCAL de la sucursal.
     const instante = new Date(payload.horaRecogida);

@@ -169,4 +169,14 @@ describe("puerto LLM de voz v2", () => {
     const p = crearPuertoLlmVozV2("k", fn).completar({ ...BASE, senal: ctl.signal, onTextDelta: () => ctl.abort() });
     await expect(p).rejects.toBeDefined();
   });
+
+  it("herramientaForzada llega al gateway como tool_choice; sin ella no se manda", async () => {
+    const herramientas = [{ name: "crear_pedido", description: "x", parameters: { type: "object" as const, properties: {} } }];
+    const a = fetchSse([delta("ok"), uso]);
+    await crearPuertoLlmVozV2("k", a.fn).completar({ ...BASE, herramientas, herramientaForzada: "crear_pedido", onTextDelta: () => undefined });
+    expect(a.cuerpos[0]!.tool_choice).toEqual({ type: "function", function: { name: "crear_pedido" } });
+    const b = fetchSse([delta("ok"), uso]);
+    await crearPuertoLlmVozV2("k", b.fn).completar({ ...BASE, herramientas, onTextDelta: () => undefined });
+    expect(b.cuerpos[0]).not.toHaveProperty("tool_choice");
+  });
 });

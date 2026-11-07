@@ -44,6 +44,8 @@ export interface WhatsAppTurnHandler {
     /** B03: el turno termino mostrando el resumen de un pedido por confirmar. El webhook lo envia en UN mensaje interactivo con los botones «Confirmar pedido» y
      * «Cambiar algo» atados a esta cotizacion (huella e instante); el «si» escrito sigue valiendo. Ausente = texto solo, como siempre. */
     readonly pedirConfirmacion?: { readonly quoteHash: string; readonly quotedAtMs: number };
+    /** PM PR-2: el turno cambio algo (pedido, contacto, agregado, cancelacion, queja): su respuesta se entrega aunque el personal haya contestado desde la app a la vez. */
+    readonly accionMutante?: true;
     /** Solo `preview`: el pedido SIMULADO que devolvio `crear_pedido` (no existe en la base). */
     readonly pedidoSimulado?: unknown;
   }>;

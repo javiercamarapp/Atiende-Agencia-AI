@@ -37,7 +37,7 @@ describe("viaje: acuse al cliente mientras la toma sigue pendiente", () => {
     expect(r.escalated).toBe(false);
     expect(v.conversaciones.handoffs[0]!.estado).toBe("pendiente");
     const historial = await v.world.repo.whatsappAppendTurn(v.world.organizationId, "+5219995550111", [], null, null, null);
-    expect(historial.at(-1)).toEqual({ role: "assistant", content: ACUSE_HANDOFF_PENDIENTE });
+    expect(historial.at(-1)).toMatchObject({ role: "assistant", content: ACUSE_HANDOFF_PENDIENTE });
     expect((await v.escribe("hola?")).reply).toBeUndefined(); // R16: tope de 1 por minuto (el acuse oficial ya conto)
     avanza(min(1.1));
     expect((await v.escribe("hola?")).reply).toBe(ACUSE_HANDOFF_REPETIDO);

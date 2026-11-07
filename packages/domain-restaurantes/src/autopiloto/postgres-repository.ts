@@ -231,8 +231,8 @@ export class PostgresAutopilotoRepository implements AutopilotoRepository {
 
   async devolverHandoffsVencidos(ahora: Date, limite: number): Promise<Lectura<readonly HandoffDevuelto[]>> {
     return this.lectura<readonly HandoffDevuelto[]>("handoffs", [], async () => {
-      const { rows } = await this.db.query<Record<string, unknown>>("select handoff_id, organization_id, property_id, conversation_id, minutos, avisado from restaurantes.handoffs_devolver_vencidos($1::timestamptz, $2);", [ahora.toISOString(), limite]);
-      return rows.map((r) => ({ handoffId: String(r.handoff_id), organizationId: String(r.organization_id), propertyId: String(r.property_id), conversationId: String(r.conversation_id), minutos: num(r.minutos), avisado: r.avisado === true }));
+      const { rows } = await this.db.query<Record<string, unknown>>("select handoff_id, organization_id, property_id, conversation_id, minutos, avisado, cliente_sin_responder from restaurantes.handoffs_devolver_vencidos($1::timestamptz, $2);", [ahora.toISOString(), limite]);
+      return rows.map((r) => ({ handoffId: String(r.handoff_id), organizationId: String(r.organization_id), propertyId: String(r.property_id), conversationId: String(r.conversation_id), minutos: num(r.minutos), avisado: r.avisado === true, clienteSinResponder: r.cliente_sin_responder === true }));
     });
   }
 
