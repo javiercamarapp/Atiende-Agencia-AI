@@ -23,9 +23,9 @@
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import type { TenantDbSession } from "@atiende/core-tenancy";
+import { hoyFechaNegocio, resolverZonaHorariaNegocio, type TenantDbSession } from "@atiende/core-tenancy";
 import { isMigrationPendingError, runWithSavepointFallback } from "@atiende/db";
-import { ADMIN_ROLES, INVENTARIO_MAX_NOCHES, type GenerarInventarioResultado, type HotelesRepository, type RoomSummary, type RoomTypeSummary } from "@atiende/domain-hoteles";
+import { ADMIN_ROLES, INVENTARIO_MAX_NOCHES, type AjustarInventarioTipoResultado, type HotelesRepository, type RoomSummary, type RoomTypeSummary } from "@atiende/domain-hoteles";
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
@@ -67,22 +67,34 @@ interface GenerarInventarioBody {
 const INVENTARIO_NOCHES_POR_OMISION = 365;
 
 const sumarDias = (fecha: string, dias: number): string => new Date(Date.parse(`${fecha}T00:00:00Z`) + dias * 86_400_000).toISOString().slice(0, 10);
-const hoyUtc = (): string => new Date().toISOString().slice(0, 10);
+/** Zona del hotel cuando la propiedad no tiene `hoteles.property_config.timezone` (o la base no tiene la migracion 030). */
+const ZONA_HORARIA_HOTEL_POR_OMISION = "America/Merida";
+
+/**
+ * «Hoy» en la zona horaria de la propiedad, nunca el dia UTC del proceso: en Mexico, desde las 18:00 locales el dia UTC ya es mañana y
+ * la noche de hoy quedaria sin inventario (la primera reserva de esa noche fallaria con `sin_disponibilidad`). `findPropertyTimezone`
+ * ya degrada a null con SAVEPOINT si falta la migracion 030; un valor que no es IANA cae al default de plataforma.
+ */
+async function hoyEnPropiedad(repo: HotelesRepository, propertyId: string): Promise<string> {
+  const tz = await repo.findPropertyTimezone(propertyId);
+  return hoyFechaNegocio(resolverZonaHorariaNegocio(tz ?? ZONA_HORARIA_HOTEL_POR_OMISION));
+}
 
 function pgCode(err: unknown): string | undefined {
   return err && typeof err === "object" && "code" in err ? String((err as { code?: unknown }).code) : undefined;
 }
 
 /**
- * Onboarding P0: tras dar de alta una habitacion, el inventario del año siguiente se regenera solo (best-effort, con SAVEPOINT en la
- * sesion del request): asi la primera reserva funciona sin un paso extra. Contra una base sin la migracion 050 o ante cualquier error no
- * cambia la respuesta del alta.
+ * Onboarding P0: tras dar de alta una habitacion, el inventario de SU tipo se ajusta solo en el año siguiente (best-effort, con SAVEPOINT
+ * en la sesion del request): asi la primera reserva funciona sin un paso extra. Es incremental (+1 sobre las noches existentes, crea solo
+ * las faltantes; nunca por debajo de booked_rooms): no recalcula toda la propiedad ni pisa un total capturado a mano. Contra una base sin
+ * la migracion 050 o ante cualquier error no cambia la respuesta del alta.
  */
-async function regenerarInventarioTrasAlta(db: TenantDbSession, repo: HotelesRepository, propertyId: string): Promise<GenerarInventarioResultado | null> {
-  const desde = hoyUtc();
-  return runWithSavepointFallback<GenerarInventarioResultado | null>({
+async function ajustarInventarioTrasAlta(db: TenantDbSession, repo: HotelesRepository, propertyId: string, roomTypeId: string): Promise<AjustarInventarioTipoResultado | null> {
+  const desde = await hoyEnPropiedad(repo, propertyId);
+  return runWithSavepointFallback<AjustarInventarioTipoResultado | null>({
     session: db,
-    primary: () => repo.generarInventario({ propertyId, desde, hasta: sumarDias(desde, INVENTARIO_NOCHES_POR_OMISION - 1) }),
+    primary: () => repo.ajustarInventarioTipo({ propertyId, roomTypeId, delta: 1, desde, hasta: sumarDias(desde, INVENTARIO_NOCHES_POR_OMISION - 1) }),
     isRecoverable: () => true,
     fallback: async () => null,
   });
@@ -165,7 +177,7 @@ export function hotelesAdminCatalogoRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
 
     try {
       const room = await repo.insertRoom({ propertyId, organizationId, roomTypeId, code: codigo });
-      const inventario = await regenerarInventarioTrasAlta(c.get("db"), repo, propertyId);
+      const inventario = await ajustarInventarioTrasAlta(c.get("db"), repo, propertyId, roomTypeId);
       return c.json({ ...serializeRoom(room), inventarioGenerado: inventario !== null }, 201);
     } catch (err) {
       if (err instanceof Error && err.message.startsWith("codigo_duplicado")) throw Errors.conflict(err.message);
@@ -223,13 +235,14 @@ export function hotelesAdminCatalogoRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
   });
 
   // Onboarding P0: inventario (hoteles.availability) generado desde las habitaciones fisicas de cada tipo. Antes ningun codigo de producto
-  // escribia esa tabla y toda reserva fallaba con `sin_disponibilidad`. Idempotente: re-ejecutar recalcula total_rooms y conserva las
-  // noches ya reservadas. La autoridad real (owner/gm de la propiedad) la repite la funcion SQL (`hoteles.can_manage_catalog`).
+  // escribia esa tabla y toda reserva fallaba con `sin_disponibilidad`. Idempotente: re-ejecutar recalcula total_rooms (nunca por debajo de
+  // booked_rooms) y conserva las noches ya reservadas. Es la recalculacion explicita de toda la propiedad; `desde` por omision = hoy en la
+  // zona del hotel. La autoridad real (owner/gm de la propiedad) la repite la funcion SQL (`hoteles.can_manage_catalog`).
   app.post(inventarioPath, async (c) => {
     assertVerticalRole(c, ADMIN_ROLES);
     const propertyId = c.req.param("propertyId");
     const raw = await readJsonCapped<GenerarInventarioBody>(c.req.raw, 1024).catch(() => ({}) as GenerarInventarioBody);
-    const desde = raw.desde === undefined ? hoyUtc() : raw.desde;
+    const desde = raw.desde === undefined ? await hoyEnPropiedad(deps.hotelesRepo(c.get("db")), propertyId) : raw.desde;
     if (typeof desde !== "string" || !DATE_RE.test(desde)) throw Errors.validation("desde: formato esperado YYYY-MM-DD.");
     const hasta = raw.hasta === undefined ? sumarDias(desde, INVENTARIO_NOCHES_POR_OMISION - 1) : raw.hasta;
     if (typeof hasta !== "string" || !DATE_RE.test(hasta)) throw Errors.validation("hasta: formato esperado YYYY-MM-DD.");
