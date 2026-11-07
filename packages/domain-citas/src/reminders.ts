@@ -9,6 +9,7 @@
 // existe o el de la organización, nunca el del host). Ver diseño Fase 1 §0.4/§5.3:
 // es la pieza de mayor riesgo silencioso de todo el vertical — un bug de timezone no
 // falla ruidosamente, solo le dice al cliente la hora equivocada.
+import { zonedDateStr } from "./availability.ts";
 import { decidirEnvioProactivo, encolarCorreoListaEspera } from "./whatsapp/proactivo.ts";
 import { tryEnqueueAppointmentEmail } from "./appointment-email-notifications.ts";
 import { eventoRecordatorioFallido } from "./notification-events.ts";
@@ -286,7 +287,7 @@ function matchesWaitlistPreferences(row: WaitlistCandidateRow, providerId: strin
  */
 export async function runOptimizadorCore(repo: CitasRepository, organizationId: string, timeZone: string, event: { readonly providerId: string; readonly serviceId?: string; readonly startsAt: string }): Promise<OptimizadorResult> {
   const slotDate = new Date(event.startsAt);
-  const slotDateStr = slotDate.toISOString().slice(0, 10);
+  const slotDateStr = zonedDateStr(slotDate, timeZone);
   const window = timeWindowFor(slotDate, timeZone);
 
   // f2-citas-lista-de-espera, hallazgo (A) — TODOS los callers reales de

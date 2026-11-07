@@ -65,3 +65,17 @@ export const RUBRO_OPTIONS: readonly { readonly value: string; readonly label: s
   { value: "mecanico", label: "Taller mecánico" },
   { value: "otro", label: "Otro" },
 ];
+
+/** Zonas horarias IANA reales para el selector de Configuracion (lista cerrada, nunca texto libre). Siempre incluye `actual` (la ya guardada) para no perderla. */
+export function zonasHorariasDisponibles(actual?: string): readonly string[] {
+  let zonas: string[] = [];
+  try {
+    zonas = (Intl as unknown as { supportedValuesOf?: (k: string) => string[] }).supportedValuesOf?.("timeZone") ?? [];
+  } catch {
+    zonas = [];
+  }
+  if (zonas.length === 0) zonas = ["America/Mexico_City", "America/Merida", "America/Cancun", "America/Monterrey", "America/Chihuahua", "America/Hermosillo", "America/Mazatlan", "America/Tijuana"];
+  const lista = new Set(zonas);
+  if (actual) lista.add(actual);
+  return [...lista].sort((a, b) => a.localeCompare(b));
+}
