@@ -64,3 +64,17 @@ Base sin migrar: las lecturas responden `disponible: false` y la escritura 503; 
 ## Rollback
 
 Las instrucciones exactas están en la cabecera de cada migración (drop de funciones, triggers y columnas). Se pierde la tarifa capturada.
+
+## Tabulador, bandas de volumen, planes de lista y cotizador (0081, 0082, restaurantes 201)
+
+- **Tabulador por sucursal** (`core.plan_tramo_sucursal`): el precio por sucursal lo fija el TOTAL de sucursales activas (escalón por volumen). Cada tramo puede traer su propia bolsa por sucursal. Tramo con precio NULL = «a cotizar».
+- **Bandas de volumen** (`core.plan_banda_uso`): precio GRADUADO por minuto o conversación según el volumen mensual de la cuenta, con el **costo unitario de cada banda** (el costo también baja con el volumen). Si un plan tiene bandas para una métrica, su excedente se cobra por bandas. Banda con precio NULL = volumen a cotizar.
+- **Costos unitarios** (`core.cobro_costo_unitario`): minuto de voz, conversación de WhatsApp, fijo por sucursal, número de voz por sucursal (solo planes con voz), fijo por organización y comisión de tarjeta. Los captura el superadmin con su fuente; sin ellos el margen no se calcula (409), nunca se inventa.
+- **Margen mínimo por plan** (`core.plan.margen_minimo_pct`); sin él, el cotizador usa el piso de negociación de 55 %.
+- **Semillas** (editables; `on conflict do nothing`): planes de lista de autoservicio `restaurantes-basico`, `restaurantes-plus`, `restaurantes-pro` (1 a 2 sucursales; 3 o más = cotizar), `restaurantes-por-uso` (cuota de plataforma por sucursal y bandas) y los planes de **referencia interna** `restaurantes-referencia-*` (inactivos: piso del cotizador, no se muestran ni se asignan). El plan de 0028 `restaurantes-estandar` no se toca: desactivarlo es decisión del dueño.
+- **Cotizador** (`POST /superadmin/cotizador/calcular` y `/crear-plan`): calcula factura, costo y margen con los supuestos del cliente (llamadas × minutos por llamada, conversaciones, sucursales) y en el **peor punto** (bolsa llena). Debajo del mínimo bloquea, salvo motivo de ≥ 20 caracteres; queda en `core.cotizacion` (append-only; la regla también es un CHECK) y en la bitácora de planes. `GET /superadmin/cotizaciones/:id/documento` devuelve la cotización imprimible para el cliente, sin costos ni márgenes.
+- **Consumo** (`GET /billing/consumo`): llamadas, minutos, duración promedio, conversaciones, pedidos de los agentes, % de la bolsa, factura al corte, **proyección de cierre de mes** con rango (ritmo diario: central lineal, bajo y alto con los percentiles 25 y 75 de los días cerrados), desglose por sucursal (las conversaciones de WhatsApp no se desglosan: el evento entrante no guarda la sucursal) e historial de 6 meses.
+- **Margen por organización** (`GET /superadmin/cobro/organizaciones`): ingreso proyectado, costo con los costos unitarios y margen, marcado si queda debajo del mínimo del plan.
+- **Avisos de bolsa** (`apps/api/src/plan-topes/aviso-bolsa.ts`): al 80 %, al 100 % y al pasar el uso justo, in-app y por correo al dueño (y a superadmin al pasar el uso justo). Corre en el cron diario existente `/internal/plataforma/prueba-avisos` (no agrega cron; siguen 40 de 40). Reclamo idempotente en `core.cobro_aviso_bolsa`. **Nada se corta.**
+
+Orden de despliegue: código → `20240101000702_0081_*` → `20240101000703_201_*` → `20240101000704_0082_*`. Rollback: cabecera de cada migración.
