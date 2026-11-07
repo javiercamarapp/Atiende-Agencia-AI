@@ -36,6 +36,17 @@ Verificación contra Postgres real: `scripts/verify-planes-topes-prueba/` (45 es
 - El correo sale directo por Resend y no por el outbox de correo de una vertical: esos outboxes son por vertical y por sucursal y este
   aviso es de plataforma (uno por organización).
 
+### Con la migración 0072 (onboarding P0)
+
+- Toda organización que nace `trial` sin fecha recibe `trial_ends_at = now() + 14 días` (trigger). Las demos sembradas nacen `active`.
+- **Al terminar la prueba no se apaga nada**: `status` no cambia y la organización sigue operando (`sqlOrgOperable` = `active` o `trial`).
+  Sale un aviso único «Su prueba terminó: elija un plan» (in-app y correo al dueño, `<vertical>.plan.prueba_terminada`) y una alerta a
+  superadmin (`superadmin.plan.prueba_terminada`), hasta 30 días después de la fecha. Mismo texto neutro en las 6 verticales.
+- Las organizaciones demo (`restaurantes.demo_organization`, `citas.demo_organization`) no reciben ningún aviso de prueba.
+- **El pago activa**: `POST /billing/webhook` llama `core.organization_activate_on_payment` con `checkout.session.completed` pagado
+  (`payment_status = paid`) o `customer.subscription.created|updated` con `status = active`: `trial` → `active` y la fecha se borra.
+  Una organización suspendida no se reactiva por un pago. Pasar a `active` por la acción `cambiar_plan` también borra la fecha.
+
 ## API
 
 - `GET /billing/uso[?organizationId=]` (miembro de la organización o superadmin; otra organización = 403): consumo del mes, tope y

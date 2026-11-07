@@ -27,6 +27,10 @@ describe("emit-sql: archivo completo y autocontenido", () => {
     expect(sql).toContain(`do $seed_dc$\n${renderDemoCuentaPlpgsql(plan)}\n$seed_dc$;`);
   });
 
+  it("la organizacion demo nace 'active' explicito: no es una prueba (sin fecha de fin de la 0072 ni avisos de prueba)", () => {
+    expect(renderDemoCuentaPlpgsql(plan)).toMatch(/insert into core\.organization \(vertical, name, slug, status\) values \('restaurantes', [^\n]*'active'\) returning id into v_org;/);
+  });
+
   it("los comentarios iniciales dicen que es idempotente, que no borra nada ni toca otras organizaciones", () => {
     const cabecera = sql.slice(0, sql.indexOf("\nbegin;\n"));
     expect(cabecera).toMatch(/ES IDEMPOTENTE/);
