@@ -71,6 +71,9 @@ export interface ElevenLabsSttOpciones {
   readonly aperturaTimeoutMs?: number;
   /** Temporizador inyectable (pruebas). */
   readonly temporizador?: { readonly poner: (fn: () => void, ms: number) => unknown; readonly quitar: (id: unknown) => void };
+  /** Sin audio por este tiempo (ms) se manda una trama de silencio: Scribe cierra la sesion inactiva (codigo 1000) y la llamada caeria al respaldo. */
+  readonly keepAliveMs?: number;
+  readonly ahora?: () => number;
 }
 
 const TEMPORIZADOR_REAL = {
@@ -108,6 +111,8 @@ class SesionElevenLabsStt implements SesionStt {
   /** Parcial vigente (aun no confirmado). */
   private parcial = "";
   private tFinMin: unknown = null;
+  private tKeepAlive: unknown = null;
+  private ultimoAudio = 0;
   private tFinMax: unknown = null;
   private readonly t: NonNullable<ElevenLabsSttOpciones["temporizador"]>;
 
@@ -174,6 +179,8 @@ class SesionElevenLabsStt implements SesionStt {
           resuelta = true;
           this.lista = true;
           this.t.quitar(limite);
+          this.ultimoAudio = (this.o.ahora ?? Date.now)();
+          this.programarKeepAlive();
           resolve();
           return;
         }
@@ -214,6 +221,16 @@ class SesionElevenLabsStt implements SesionStt {
     if (this.confirmado === "") return;
     this.quitarFinMin();
     this.tFinMin = this.t.poner(() => this.cerrarTurno(), this.o.config.finTurnoMinMs);
+  }
+
+  /** Trama de 20 ms de silencio si no se mando audio en `keepAliveMs` (por omision 4 s); se reprograma sola hasta cerrar. */
+  private programarKeepAlive(): void {
+    const cada = this.o.keepAliveMs ?? 4_000;
+    this.tKeepAlive = this.t.poner(() => {
+      if (this.cerradaPorNosotros || this.caidaAvisada) return;
+      if ((this.o.ahora ?? Date.now)() - this.ultimoAudio >= cada) this.enviar(new Uint8Array((this.hz / 50) * 2), false);
+      this.programarKeepAlive();
+    }, cada);
   }
 
   private reprogramarFinMax(): void {
@@ -269,6 +286,7 @@ class SesionElevenLabsStt implements SesionStt {
 
   enviarAudio(pcm16: Uint8Array): void {
     if (this.cerradaPorNosotros || this.caidaAvisada || pcm16.byteLength === 0) return;
+    this.ultimoAudio = (this.o.ahora ?? Date.now)();
     this.enviar(pcm16, false);
   }
 
@@ -277,6 +295,7 @@ class SesionElevenLabsStt implements SesionStt {
     this.cerradaPorNosotros = true;
     this.quitarFinMin();
     this.quitarFinMax();
+    if (this.tKeepAlive !== null) this.t.quitar(this.tKeepAlive);
     try {
       this.socket.close(1000, "fin_de_llamada");
     } catch {
