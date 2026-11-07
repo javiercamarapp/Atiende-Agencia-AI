@@ -11,11 +11,14 @@
 // organizacion, los conflictos y la bitacora viven en las funciones SQL de la migracion 0053; este archivo solo valida la forma del request,
 // arma el token y el correo y traduce los rechazos. NO crea usuarios ni contrasenas: la persona define la suya en POST /auth/accept-invite.
 //
-// Correo: igual que la invitacion que hace un owner/admin (restaurantes/admin-staff.ts), se encola en `restaurantes.messaging_outbox`
-// (channel='email') con el enlace `${APP_BASE_URL}/aceptar-invitacion?token=...`. El superadmin NO es miembro de la organizacion y el guard de
+// Correo: igual que la invitacion que hace un owner/admin de cada vertical (verticals/<vertical>/admin-staff.ts), se encola en el
+// `<vertical>.messaging_outbox` de la vertical REAL de la organizacion (channel='email', event 'staff.invite') con el enlace `${APP_BASE_URL}/aceptar-invitacion?token=...`. El superadmin NO es miembro de la organizacion y el guard de
 // esa funcion lo rechazaria en su sesion, asi que el encolado corre en una sesion de sistema PROPIA (otra transaccion, despues de que la
 // invitacion ya quedo confirmada): un fallo del correo nunca revierte la invitacion y nada mas corre tras un error de Postgres en esa
 // transaccion. El token en claro se devuelve UNA sola vez en la respuesta (solo el hash persiste) por si el correo aun no esta listo.
+// Hoteles y rentas tienen outbox por PROPIEDAD: se usa la primera sucursal de la invitacion o, si es para todas, la primera de la
+// organizacion; sin ninguna propiedad no hay donde encolar y la respuesta dice `correoEncolado: false` (el token sigue en la respuesta).
+// Solo una base sin la llave `vertical` (sin 0070) cae al outbox de restaurantes, que era el unico caso posible antes de la 0070.
 //
 // Compatibilidad con la base sin migrar: sin la 0053 la lectura responde 200 `disponible: false` (con su razon) y las mutaciones 503; nunca 500.
 // Verticales: desde la migracion 0070 TODAS las verticales tienen su lista blanca (ver ROLES_INVITABLES_POR_VERTICAL de @atiende/db). Aqui solo
@@ -104,10 +107,19 @@ export function correoInvitacionSuperadmin(vertical: string | undefined, c: { re
   return correoInvitacionStaff({ ...resto, verticalRole: isRestaurantesRole(rol) ? rol : "staff" });
 }
 
-/** Vertical de la organizacion segun la lectura del equipo (misma sesion del caller); undefined si la base no la expone. */
-async function verticalDe(repo: OrgEquipoRepository, callerId: string, organizationId: string): Promise<string | undefined> {
+/** Vertical y sucursales de la organizacion segun la lectura del equipo (misma sesion del caller); vertical undefined si la base no la expone. */
+interface DestinoCorreo {
+  readonly vertical: string | undefined;
+  readonly sucursalIds: readonly string[];
+}
+async function destinoDe(repo: OrgEquipoRepository, callerId: string, organizationId: string): Promise<DestinoCorreo> {
   const r = await repo.leer(callerId, organizationId);
-  return r.ok && r.data ? r.data.vertical : undefined;
+  return r.ok && r.data ? { vertical: r.data.vertical, sucursalIds: r.data.sucursales.map((s) => s.id) } : { vertical: undefined, sucursalIds: [] };
+}
+
+/** Propiedad para los outbox por propiedad (hoteles, rentas): la primera sucursal de la invitacion o, si es para todas, la primera de la organizacion. */
+function propiedadParaOutbox(invitacion: InvitacionEquipo, destino: DestinoCorreo): string | undefined {
+  return invitacion.propertyIds?.[0] ?? destino.sucursalIds[0];
 }
 
 function serializar(i: InvitacionEquipo) {
@@ -137,8 +149,13 @@ export function superadminOrganizacionesEquipoRoutes(deps: AppDeps): Hono<CoreAu
     return id;
   }
 
-  /** Encola el correo en una sesion de sistema propia. Best-effort: devuelve si quedo encolado, nunca lanza. */
-  async function encolarCorreo(organizationId: string, invitacion: InvitacionEquipo, tokenPlain: string, vertical: string | undefined): Promise<{ readonly acceptUrl: string; readonly encolado: boolean }> {
+  /**
+   * Encola el correo en el outbox de la vertical de la organizacion, en una sesion de sistema propia (otra transaccion: un error de
+   * Postgres aqui nunca toca la invitacion ya confirmada; los `enqueue_messaging_outbox` de las 6 verticales aceptan auth.uid() null).
+   * Best-effort: devuelve si quedo encolado, nunca lanza.
+   */
+  async function encolarCorreo(organizationId: string, invitacion: InvitacionEquipo, tokenPlain: string, destino: DestinoCorreo): Promise<{ readonly acceptUrl: string; readonly encolado: boolean }> {
+    const { vertical } = destino;
     const acceptUrl = `${deps.env.appBaseUrl}/aceptar-invitacion?token=${encodeURIComponent(tokenPlain)}`;
     try {
       const correo = correoInvitacionSuperadmin(vertical, {
@@ -147,6 +164,30 @@ export function superadminOrganizacionesEquipoRoutes(deps: AppDeps): Hono<CoreAu
         acceptUrl,
         expiresAtTexto: new Intl.DateTimeFormat("es-MX", { dateStyle: "long" }).format(new Date(invitacion.expiresAt)),
       });
+      const dedupe = `staff-invite:${invitacion.id}`;
+      const payload = { to: invitacion.email, subject: correo.asunto, html: correo.html, text: correo.texto };
+      if (vertical === "hoteles" || vertical === "rentas") {
+        const propertyId = propiedadParaOutbox(invitacion, destino);
+        if (!propertyId) {
+          console.error(`superadmin-organizaciones-equipo: la organizacion de ${vertical} no tiene propiedades; el correo de invitacion no se encolo (el token va en la respuesta).`);
+          return { acceptUrl, encolado: false };
+        }
+        await deps.engine.withAppSession({ userId: null }, (db) =>
+          vertical === "hoteles"
+            ? deps.hotelesRepo(db).enqueueMessagingOutbox(propertyId, organizationId, "email", "staff.invite", dedupe, payload)
+            : deps.rentasRepo(db).enqueueMessagingOutbox(propertyId, organizationId, "email", "staff.invite", dedupe, payload),
+        );
+        return { acceptUrl, encolado: true };
+      }
+      if (vertical === "citas" || vertical === "despachos" || vertical === "licitaciones") {
+        await deps.engine.withAppSession({ userId: null }, (db) => {
+          if (vertical === "citas") return deps.citasRepo(db).enqueueMessagingOutbox(organizationId, "email", "staff.invite", dedupe, payload);
+          if (vertical === "despachos") return deps.despachosRepo(db).enqueueMessagingOutbox(organizationId, "email", "staff.invite", dedupe, payload);
+          return deps.licitacionesRepo(db).enqueueMessagingOutbox(organizationId, "email", "staff.invite", dedupe, payload);
+        });
+        return { acceptUrl, encolado: true };
+      }
+      // restaurantes, o base sin la llave `vertical` (sin 0070): outbox de restaurantes, como antes.
       const encolado = await deps.engine.withAppSession({ userId: null }, (db) => tryEnqueueStaffInviteEmail(deps.restaurantesRepo(db), organizationId, invitacion.id, invitacion.email, correo));
       return { acceptUrl, encolado };
     } catch (err) {
@@ -196,9 +237,9 @@ export function superadminOrganizacionesEquipoRoutes(deps: AppDeps): Hono<CoreAu
 
     const { tokenPlain, tokenHash } = generateInviteToken();
     let invitacion: InvitacionEquipo;
-    let vertical: string | undefined;
+    let destino: DestinoCorreo;
     try {
-      ({ invitacion, vertical } = await deps.engine.withAppSession({ userId: callerId }, async (db) => {
+      ({ invitacion, destino } = await deps.engine.withAppSession({ userId: callerId }, async (db) => {
         const r = repo(db);
         const creada = await r.invitar(callerId, {
           organizationId,
@@ -209,13 +250,13 @@ export function superadminOrganizacionesEquipoRoutes(deps: AppDeps): Hono<CoreAu
           motivo,
           confirmarSegundoOwner: raw.confirmarSegundoOwner === true,
         });
-        return { invitacion: creada, vertical: await verticalDe(r, callerId, organizationId) };
+        return { invitacion: creada, destino: await destinoDe(r, callerId, organizationId) };
       }));
     } catch (err) {
       return traducirError(err);
     }
 
-    const { acceptUrl, encolado } = await encolarCorreo(organizationId, invitacion, tokenPlain, vertical);
+    const { acceptUrl, encolado } = await encolarCorreo(organizationId, invitacion, tokenPlain, destino);
     logEvent(c, "info", "superadmin_equipo_invitacion_creada", { actorUserId: callerId, organizationId, inviteId: invitacion.id, invitedEmail: enmascararCorreoInvitado(invitacion.email), verticalRole: invitacion.verticalRole });
     return c.json({ invitacion: serializar(invitacion), inviteToken: tokenPlain, acceptUrl, correoEncolado: encolado }, 201);
   });
@@ -232,17 +273,17 @@ export function superadminOrganizacionesEquipoRoutes(deps: AppDeps): Hono<CoreAu
 
     const { tokenPlain, tokenHash } = generateInviteToken();
     let invitacion: InvitacionEquipo;
-    let vertical: string | undefined;
+    let destino: DestinoCorreo;
     try {
-      ({ invitacion, vertical } = await deps.engine.withAppSession({ userId: callerId }, async (db) => {
+      ({ invitacion, destino } = await deps.engine.withAppSession({ userId: callerId }, async (db) => {
         const r = repo(db);
         const reenviada = await r.reenviar(callerId, organizationId, inviteId, tokenHash, motivo);
-        return { invitacion: reenviada, vertical: await verticalDe(r, callerId, organizationId) };
+        return { invitacion: reenviada, destino: await destinoDe(r, callerId, organizationId) };
       }));
     } catch (err) {
       return traducirError(err);
     }
-    const { acceptUrl, encolado } = await encolarCorreo(organizationId, invitacion, tokenPlain, vertical);
+    const { acceptUrl, encolado } = await encolarCorreo(organizationId, invitacion, tokenPlain, destino);
     logEvent(c, "info", "superadmin_equipo_invitacion_reenviada", { actorUserId: callerId, organizationId, inviteId });
     return c.json({ invitacion: serializar(invitacion), inviteToken: tokenPlain, acceptUrl, correoEncolado: encolado });
   });
