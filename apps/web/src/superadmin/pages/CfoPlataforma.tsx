@@ -28,7 +28,9 @@ import {
   TabsContent,
   TabsList,
   TabsTrigger,
+  formatMoney,
   notify,
+  resolverFormato,
 } from "@atiende/ui";
 import type { DataTableColumna, StatusTone } from "@atiende/ui";
 import {
@@ -47,10 +49,14 @@ import { useCarga } from "../lib/use-carga.ts";
 type Cockpit = Extract<RespuestaCockpit, { disponible: true }>;
 
 const SIN = "—";
-const mxn = (v: number | null | undefined, dec = 0): string => (v === null || v === undefined || !Number.isFinite(v) ? SIN : `$${v.toLocaleString("es-MX", { minimumFractionDigits: dec, maximumFractionDigits: dec })}`);
-const pct = (v: number | null | undefined): string => (v === null || v === undefined ? SIN : `${v.toLocaleString("es-MX", { maximumFractionDigits: 1 })} %`);
-const num = (v: number | null | undefined, dec = 0): string => (v === null || v === undefined ? SIN : v.toLocaleString("es-MX", { minimumFractionDigits: dec, maximumFractionDigits: dec }));
-const usd = (v: number | null | undefined): string => (v === null || v === undefined ? SIN : `US$${v.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`);
+// Formato unico (PL-19): solo los formateadores canonicos de @atiende/ui (formatMoney / resolverFormato).
+const numero = resolverFormato("numero");
+const usd4 = resolverFormato("usd4");
+const fijo = (v: number, dec: number): string => (dec === 0 ? formatMoney(v, 0) : dec === 2 ? formatMoney(v, 2) : dec === 1 ? numero(Math.round(v * 10) / 10) : String(Math.round(v * 10 ** dec) / 10 ** dec));
+const mxn = (v: number | null | undefined, dec: 0 | 2 = 0): string => (v === null || v === undefined || !Number.isFinite(v) ? SIN : `$${formatMoney(v, dec)}`);
+const pct = (v: number | null | undefined): string => (v === null || v === undefined ? SIN : `${numero(Math.round(v * 10) / 10)} %`);
+const num = (v: number | null | undefined, dec = 0): string => (v === null || v === undefined ? SIN : fijo(v, dec));
+const usd = (v: number | null | undefined): string => (v === null || v === undefined ? SIN : usd4(v));
 
 function mesActual(): string {
   return new Date().toISOString().slice(0, 7);
