@@ -139,6 +139,11 @@ jobs:
       - name: Trinquete de lint (advertencias <= baseline)
         run: npm run lint:ratchet
 
+      # i18n ES/EN: en lo ya migrado (scripts/i18n-guard/config.json, `alcance`) no entran textos visibles en espanol
+      # escritos a mano; el alcance crece PR a PR (trinquete). Solo lectura, sin red ni secretos.
+      - name: Trinquete i18n (sin textos en espanol a mano en lo migrado)
+        run: npm run i18n:guard
+
       - name: Build de apps/web (Vite)
         run: npm run build --workspace apps/web
 
