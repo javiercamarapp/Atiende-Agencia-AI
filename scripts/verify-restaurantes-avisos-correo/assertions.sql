@@ -64,7 +64,13 @@ insert into restaurantes.callback_requests (id, organization_id, customer_name, 
 begin;
 set local role authenticated;
 select count(*) as avisos_deberia_ser_3 from restaurantes.avisos_para_correo(now(), 10);
+rollback;
+begin;
+set local role authenticated;
 select count(*) as urgente_marcado_deberia_ser_1 from restaurantes.avisos_para_correo(now(), 10) where urgente and id = '00000000-0000-0000-0000-0000000f19e2';
+rollback;
+begin;
+set local role authenticated;
 select count(*) as posible_baja_marcada_deberia_ser_1 from restaurantes.avisos_para_correo(now(), 10) where solo_primer_aviso and id = '00000000-0000-0000-0000-0000000f19e3';
 rollback;
 
@@ -72,6 +78,9 @@ rollback;
 begin;
 set local role authenticated;
 select count(*) as equipo_a_deberia_ser_2 from restaurantes.equipo_para_avisos_correo('00000000-0000-0000-0000-0000000f1941');
+rollback;
+begin;
+set local role authenticated;
 select count(*) as duenos_a_deberia_ser_1 from restaurantes.equipo_para_avisos_correo('00000000-0000-0000-0000-0000000f1941') where vertical_role = 'owner';
 rollback;
 
@@ -86,6 +95,9 @@ rollback;
 begin;
 set local role authenticated;
 select count(*) as equipo_b_deberia_ser_0 from restaurantes.equipo_para_avisos_correo('00000000-0000-0000-0000-0000000f1942');
+rollback;
+begin;
+set local role authenticated;
 select count(*) as correo_de_b_en_a_deberia_ser_0 from restaurantes.equipo_para_avisos_correo('00000000-0000-0000-0000-0000000f1941') where email = 'owner-b@avisoscorreo.example.com';
 rollback;
 
@@ -94,6 +106,10 @@ begin;
 update restaurantes.agent_runtime_settings set avisos_correo_escalera = false where organization_id = '00000000-0000-0000-0000-0000000f1941';
 set local role authenticated;
 select count(*) as apagada_avisos_deberia_ser_0 from restaurantes.avisos_para_correo(now(), 10);
+rollback;
+begin;
+update restaurantes.agent_runtime_settings set avisos_correo_escalera = false where organization_id = '00000000-0000-0000-0000-0000000f1941';
+set local role authenticated;
 select count(*) as apagada_equipo_deberia_ser_0 from restaurantes.equipo_para_avisos_correo('00000000-0000-0000-0000-0000000f1941');
 rollback;
 
