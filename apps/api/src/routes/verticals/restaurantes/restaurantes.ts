@@ -49,6 +49,7 @@ import { restaurantesPrivacidadRoutes } from "./privacidad.ts";
 import { restaurantesPrivacidadInternoRoutes } from "./privacidad-interno.ts";
 import { restaurantesAdminSoftRestauranteRoutes } from "./admin-softrestaurant.ts";
 import { restaurantesCfoRoutes } from "./cfo.ts";
+import { restaurantesAnaliticaRoutes } from "./analitica.ts";
 import { restaurantesCfoExportarRoutes } from "./cfo-exportar.ts";
 import { restaurantesSoftRestauranteDispatchRoutes } from "./softrestaurant-dispatch.ts";
 
@@ -141,5 +142,7 @@ export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", restaurantesCfoRoutes(deps));
   // CFO-06: exportación a Excel/PDF (GET .../admin/cfo/exportar), después de CFO-05.
   app.route("/", restaurantesCfoExportarRoutes(deps));
+  // Analítica del dueño (F7, migraciones 160-163): demanda, zonas, productos y combos, ratios; owner/admin.
+  app.route("/", restaurantesAnaliticaRoutes(deps));
   return app;
 }

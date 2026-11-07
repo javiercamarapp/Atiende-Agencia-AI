@@ -9,7 +9,10 @@
     "./softrestaurant/contract": "./src/softrestaurant/contract.ts",
     "./cfo": "./src/cfo/index.ts",
     "./cfo/postgres": "./src/cfo/repositorio-postgres.ts",
-    "./operacion": "./src/operacion/index.ts"
+    "./operacion": "./src/operacion/index.ts",
+    "./analitica": "./src/analitica/index.ts",
+    "./analitica/postgres": "./src/analitica/repositorio-postgres.ts",
+    "./analitica/servidor": "./src/analitica/servidor.ts"
   },
   "scripts": {
     "lint": "eslint .",
