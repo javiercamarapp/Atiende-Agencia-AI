@@ -62,6 +62,7 @@ export function GlobalFilter({ base, r, extra, className }: GlobalFilterProps) {
             to={urlDeRango(base, o.valor, r.pordefecto, extra)}
             replace
             preventScrollReset
+            data-ds3-segmento=""
             aria-current={activo ? "true" : undefined}
             className={cn("rounded-full px-2.5 py-1 text-xs font-medium transition-colors", activo ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}
           >

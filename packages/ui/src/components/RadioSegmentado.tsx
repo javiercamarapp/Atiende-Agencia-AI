@@ -2,7 +2,8 @@
 // spec): `role="radiogroup"` con una pildora `<label>` por opcion y un `<input type="radio"
 // class="sr-only">` real (teclado y lector de pantalla nativos, sin RadioGroup de Radix). El foco
 // se pinta en el label con la regla `label:has(> input.sr-only:focus-visible)` de index.css.
-// Activa = azul de Atiende donde Likida usa tinta; inactiva = hairline sobre tarjeta.
+// Activa = azul de Atiende donde Likida usa tinta; inactiva = hairline sobre tarjeta. Bajo ds3 (`ds3-segmentado`, ds3/contenido.css) es el
+// segmented de Rovaq: una pildora de 1 px, opciones de 28 px y la activa en azul suave, en una sola linea.
 import type { ReactNode } from "react";
 import { cn } from "../lib/utils";
 
@@ -27,7 +28,7 @@ export interface RadioSegmentadoProps<T extends string = string> {
 
 export function RadioSegmentado<T extends string = string>({ name, label, opciones, value, onChange, disabled = false, className }: RadioSegmentadoProps<T>) {
   return (
-    <div role="radiogroup" aria-label={label} className={cn("flex flex-wrap gap-2", className)}>
+    <div role="radiogroup" aria-label={label} className={cn("ds3-segmentado flex flex-wrap gap-2", className)}>
       {opciones.map((o) => {
         const activa = o.id === value;
         return (
