@@ -1607,4 +1607,212 @@ reset role;
 select count(*)::int as mensaje_humano_con_at_y_staff_deberia_ser_1 from restaurantes.whatsapp_conversations c, jsonb_array_elements(c.messages) m where c.id = '00000000-0000-0000-0000-0000000e00c1' and m ->> 'autor' = 'humano' and m ->> 'at' is not null and m ->> 'staff_id' = '00000000-0000-0000-0000-0000000e0013';
 rollback;
 
+\echo '=== N. PM R23 (migracion 120): asignar una escalada, handoff de voz con resumen/telefono y alertas del panel ==='
+\echo '--- N1. staff reparte una escalada pendiente a otra persona de la sucursal: queda tomada por ella, con quien asigno'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select restaurantes.handoff_solicitar('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', 'whatsapp', '00000000-0000-0000-0000-0000000e00c1', 'queja');
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0013', true);
+select restaurantes.handoff_asignar('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', (select id from restaurantes.conversation_handoff where conversation_id = '00000000-0000-0000-0000-0000000e00c1' and estado in ('pendiente','tomada')), '00000000-0000-0000-0000-0000000e0015') as asignada;
+reset role;
+select count(*)::int as asignada_a_15_por_13_deberia_ser_1 from restaurantes.conversation_handoff where conversation_id = '00000000-0000-0000-0000-0000000e00c1' and estado = 'tomada' and tomada_por = '00000000-0000-0000-0000-0000000e0015' and asignada_por = '00000000-0000-0000-0000-0000000e0013' and asignada_at is not null and tomada_por_app = false;
+select count(*)::int as nota_de_asignacion_deberia_ser_1 from restaurantes.conversation_note n join restaurantes.conversation_handoff h on h.id = n.handoff_id where h.conversation_id = '00000000-0000-0000-0000-0000000e00c1' and n.texto like 'Asignada a%';
+rollback;
+\echo '--- N2. asignar es idempotente: repetir con la misma persona no cambia nada (false)'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select restaurantes.handoff_solicitar('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', 'whatsapp', '00000000-0000-0000-0000-0000000e00c1', 'queja');
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0013', true);
+select restaurantes.handoff_asignar('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', (select id from restaurantes.conversation_handoff where conversation_id = '00000000-0000-0000-0000-0000000e00c1' and estado in ('pendiente','tomada')), '00000000-0000-0000-0000-0000000e0015');
+select (restaurantes.handoff_asignar('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', (select id from restaurantes.conversation_handoff where conversation_id = '00000000-0000-0000-0000-0000000e00c1' and estado in ('pendiente','tomada')), '00000000-0000-0000-0000-0000000e0015'))::int as repetida_deberia_ser_0;
+rollback;
+\echo '--- N3. no se asigna a alguien sin acceso a la sucursal (staff de A2), a un repartidor ni a alguien de otra organizacion'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select restaurantes.handoff_solicitar('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', 'whatsapp', '00000000-0000-0000-0000-0000000e00c1', 'queja');
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0013', true);
+do $$ begin
+  perform restaurantes.handoff_asignar('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', (select id from restaurantes.conversation_handoff where conversation_id = '00000000-0000-0000-0000-0000000e00c1' and estado in ('pendiente','tomada')), '00000000-0000-0000-0000-0000000e0014');
+  raise exception 'DEBIO FALLAR con 42501';
+exception when sqlstate '42501' then null; end $$;
+do $$ begin
+  perform restaurantes.handoff_asignar('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', (select id from restaurantes.conversation_handoff where conversation_id = '00000000-0000-0000-0000-0000000e00c1' and estado in ('pendiente','tomada')), '00000000-0000-0000-0000-0000000e0016');
+  raise exception 'DEBIO FALLAR con 42501';
+exception when sqlstate '42501' then null; end $$;
+do $$ begin
+  perform restaurantes.handoff_asignar('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', (select id from restaurantes.conversation_handoff where conversation_id = '00000000-0000-0000-0000-0000000e00c1' and estado in ('pendiente','tomada')), '00000000-0000-0000-0000-0000000e0017');
+  raise exception 'DEBIO FALLAR con 42501';
+exception when sqlstate '42501' then null; end $$;
+rollback;
+\echo '--- N4. quien no tiene la toma y no es admin no reasigna la toma de otra persona; un admin si'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0013', true);
+select restaurantes.handoff_tomar('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', 'whatsapp', '00000000-0000-0000-0000-0000000e00c1');
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0015', true);
+do $$ begin
+  perform restaurantes.handoff_asignar('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', (select id from restaurantes.conversation_handoff where conversation_id = '00000000-0000-0000-0000-0000000e00c1' and estado in ('pendiente','tomada')), '00000000-0000-0000-0000-0000000e0015');
+  raise exception 'DEBIO FALLAR con 42501';
+exception when sqlstate '42501' then null; end $$;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0012', true);
+select (restaurantes.handoff_asignar('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', (select id from restaurantes.conversation_handoff where conversation_id = '00000000-0000-0000-0000-0000000e00c1' and estado in ('pendiente','tomada')), '00000000-0000-0000-0000-0000000e0015'))::int as admin_reasigna_deberia_ser_1;
+rollback;
+\echo '--- N5. asignar: sucursal ajena (staff de A2) y anon rechazados (42501)'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select restaurantes.handoff_solicitar('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', 'whatsapp', '00000000-0000-0000-0000-0000000e00c1', 'queja');
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0014', true);
+do $$ begin
+  perform restaurantes.handoff_asignar('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', (select id from restaurantes.conversation_handoff where conversation_id = '00000000-0000-0000-0000-0000000e00c1' and estado in ('pendiente','tomada')), '00000000-0000-0000-0000-0000000e0015');
+  raise exception 'DEBIO FALLAR con 42501';
+exception when sqlstate '42501' then null; end $$;
+set local role anon;
+do $$ begin
+  perform restaurantes.handoff_asignar('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', '00000000-0000-0000-0000-0000000000aa', '00000000-0000-0000-0000-0000000e0015');
+  raise exception 'DEBIO FALLAR con 42501';
+exception when sqlstate '42501' then null; end $$;
+rollback;
+\echo '--- N6. voz: la llamada escalada abre un handoff pendiente con resumen y telefono del callback de ESA llamada (mismo telefono por hash)'
+begin;
+update restaurantes.voice_conversation set caller_hash = encode(sha256(convert_to('5552000001', 'UTF8')), 'hex'), resultado = 'escalado', ended_at = now() where id = '00000000-0000-0000-0000-0000000e00d1';
+update restaurantes.callback_requests set message = 'Queja por tacos frios del pedido 812' where id = '00000000-0000-0000-0000-0000000e00e1';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select restaurantes.handoff_solicitar_voz('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00d1', 'llamada_escalada') as handoff;
+reset role;
+select count(*)::int as handoff_voz_con_resumen_y_telefono_deberia_ser_1 from restaurantes.conversation_handoff where canal = 'voz' and conversation_id = '00000000-0000-0000-0000-0000000e00d1' and estado = 'pendiente' and resumen = 'Queja por tacos frios del pedido 812' and telefono_devolucion = '5552000001' and callback_id = '00000000-0000-0000-0000-0000000e00e1';
+rollback;
+\echo '--- N7. voz: idempotente (una segunda peticion no duplica el handoff abierto)'
+begin;
+update restaurantes.voice_conversation set caller_hash = encode(sha256(convert_to('5552000001', 'UTF8')), 'hex'), resultado = 'escalado', ended_at = now() where id = '00000000-0000-0000-0000-0000000e00d1';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select restaurantes.handoff_solicitar_voz('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00d1', 'llamada_escalada');
+select restaurantes.handoff_solicitar_voz('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00d1', 'llamada_escalada');
+reset role;
+select count(*)::int as un_solo_handoff_voz_deberia_ser_1 from restaurantes.conversation_handoff where canal = 'voz' and conversation_id = '00000000-0000-0000-0000-0000000e00d1';
+rollback;
+\echo '--- N8. voz: una llamada anonima (sin hash) abre el handoff pero NUNCA copia el telefono ni el resumen de un callback ajeno'
+begin;
+update restaurantes.voice_conversation set caller_hash = null, resultado = 'escalado', ended_at = now() where id = '00000000-0000-0000-0000-0000000e00d1';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select restaurantes.handoff_solicitar_voz('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00d1', 'llamada_escalada');
+reset role;
+select count(*)::int as handoff_sin_telefono_ni_resumen_deberia_ser_1 from restaurantes.conversation_handoff where canal = 'voz' and conversation_id = '00000000-0000-0000-0000-0000000e00d1' and telefono_devolucion is null and resumen is null and callback_id is null;
+rollback;
+\echo '--- N9. voz: un callback de OTRO telefono (hash distinto) no se liga a la llamada'
+begin;
+update restaurantes.voice_conversation set caller_hash = encode(sha256(convert_to('5559999999', 'UTF8')), 'hex'), resultado = 'escalado', ended_at = now() where id = '00000000-0000-0000-0000-0000000e00d1';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select restaurantes.handoff_solicitar_voz('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00d1', 'llamada_escalada');
+reset role;
+select count(*)::int as sin_callback_ajeno_deberia_ser_1 from restaurantes.conversation_handoff where canal = 'voz' and conversation_id = '00000000-0000-0000-0000-0000000e00d1' and callback_id is null and telefono_devolucion is null;
+rollback;
+\echo '--- N10. handoff_solicitar_voz es solo de sistema: un staff recibe 42501'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0013', true);
+do $$ begin
+  perform restaurantes.handoff_solicitar_voz('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00d1', 'x');
+  raise exception 'DEBIO FALLAR con 42501';
+exception when sqlstate '42501' then null; end $$;
+rollback;
+\echo '--- N11. alertas: llamada por devolver con resumen y telefono; visible a staff de A1, rechazada a staff de A2 y a anon'
+begin;
+update restaurantes.voice_conversation set caller_hash = encode(sha256(convert_to('5552000001', 'UTF8')), 'hex'), resultado = 'escalado', ended_at = now() where id = '00000000-0000-0000-0000-0000000e00d1';
+update restaurantes.callback_requests set message = 'Queja por tacos frios del pedido 812' where id = '00000000-0000-0000-0000-0000000e00e1';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select restaurantes.handoff_solicitar_voz('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00d1', 'llamada_escalada');
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0013', true);
+select count(*)::int as alerta_llamada_con_telefono_deberia_ser_1 from restaurantes.panel_alertas('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1') where tipo = 'llamada_por_devolver' and telefono = '5552000001' and resumen like 'Queja por tacos%';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0014', true);
+do $$ begin
+  perform restaurantes.panel_alertas('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1');
+  raise exception 'DEBIO FALLAR con 42501';
+exception when sqlstate '42501' then null; end $$;
+set local role anon;
+do $$ begin
+  perform restaurantes.panel_alertas('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1');
+  raise exception 'DEBIO FALLAR con 42501';
+exception when sqlstate '42501' then null; end $$;
+rollback;
+\echo '--- N12. alertas: escalada pendiente sin tomar solo alerta pasado el umbral de minutos'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select restaurantes.handoff_solicitar('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', 'whatsapp', '00000000-0000-0000-0000-0000000e00c1', 'queja');
+reset role;
+update restaurantes.conversation_handoff set solicitada_at = now() - interval '30 minutes' where conversation_id = '00000000-0000-0000-0000-0000000e00c1';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0013', true);
+select count(*)::int as sin_tomar_a_10_min_deberia_ser_1 from restaurantes.panel_alertas('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', 10) where tipo = 'sin_tomar';
+select count(*)::int as sin_tomar_a_60_min_deberia_ser_0 from restaurantes.panel_alertas('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', 60) where tipo = 'sin_tomar';
+rollback;
+\echo '--- N13. alertas: chat tomado donde el cliente escribio despues y nadie contesto alerta; una respuesta humana posterior lo apaga'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0013', true);
+select restaurantes.handoff_tomar('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', 'whatsapp', '00000000-0000-0000-0000-0000000e00c1');
+reset role;
+update restaurantes.conversation_handoff set tomada_at = now() - interval '40 minutes', ultimo_cliente_at = now() - interval '20 minutes', ultima_humana_at = null where conversation_id = '00000000-0000-0000-0000-0000000e00c1';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0013', true);
+select count(*)::int as sin_respuesta_humana_deberia_ser_1 from restaurantes.panel_alertas('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', 10) where tipo = 'sin_respuesta_humana';
+reset role;
+update restaurantes.conversation_handoff set ultima_humana_at = now() - interval '5 minutes' where conversation_id = '00000000-0000-0000-0000-0000000e00c1';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0013', true);
+select count(*)::int as tras_responder_deberia_ser_0 from restaurantes.panel_alertas('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', 10) where tipo = 'sin_respuesta_humana';
+rollback;
+\echo '--- N14. alertas: pedidos por_aprobar con total > $4,000 de ESTA sucursal (no $4,000 exactos ni los de otra sucursal)'
+begin;
+insert into restaurantes.orders (id, organization_id, property_id, customer_name, customer_phone, total, status, items) values
+  ('00000000-0000-0000-0000-0000000e0aa1', '00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', 'Cliente grande', '5553000001', 4500, 'por_aprobar', '[]'::jsonb),
+  ('00000000-0000-0000-0000-0000000e0aa2', '00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', 'Cliente justo', '5553000002', 4000, 'por_aprobar', '[]'::jsonb);
+insert into restaurantes.solicitud_aprobacion (organization_id, property_id, tipo, order_id) values ('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', 'pedido_grande', '00000000-0000-0000-0000-0000000e0aa1'), ('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', 'pedido_grande', '00000000-0000-0000-0000-0000000e0aa2');
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0013', true);
+select count(*)::int as solo_el_de_4500_deberia_ser_1 from restaurantes.panel_alertas('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1') where tipo = 'pedido_por_aprobar' and monto = 4500;
+select count(*)::int as el_de_4000_no_alerta_deberia_ser_0 from restaurantes.panel_alertas('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1') where tipo = 'pedido_por_aprobar' and monto = 4000;
+select count(*)::int as con_umbral_3000_deberia_ser_2 from restaurantes.panel_alertas('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', 10, 3000) where tipo = 'pedido_por_aprobar';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0014', true);
+do $$ begin
+  perform restaurantes.panel_alertas('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1');
+  raise exception 'DEBIO FALLAR con 42501';
+exception when sqlstate '42501' then null; end $$;
+rollback;
+\echo '--- N15. handoff_extra devuelve el resumen y el telefono a staff de la sucursal y se rechaza a staff de otra'
+begin;
+update restaurantes.voice_conversation set caller_hash = encode(sha256(convert_to('5552000001', 'UTF8')), 'hex'), resultado = 'escalado', ended_at = now() where id = '00000000-0000-0000-0000-0000000e00d1';
+update restaurantes.callback_requests set message = 'Queja por tacos frios del pedido 812' where id = '00000000-0000-0000-0000-0000000e00e1';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select restaurantes.handoff_solicitar_voz('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00d1', 'llamada_escalada');
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0013', true);
+select count(*)::int as extra_con_resumen_deberia_ser_1 from restaurantes.handoff_extra('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', (select id from restaurantes.conversation_handoff where conversation_id = '00000000-0000-0000-0000-0000000e00d1')) where resumen like 'Queja%' and telefono_devolucion = '5552000001';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000e0014', true);
+do $$ begin
+  perform restaurantes.handoff_extra('00000000-0000-0000-0000-0000000e0001', '00000000-0000-0000-0000-0000000e00a1', (select id from restaurantes.conversation_handoff where conversation_id = '00000000-0000-0000-0000-0000000e00d1'));
+  raise exception 'DEBIO FALLAR con 42501';
+exception when sqlstate '42501' then null; end $$;
+rollback;
+
 \echo 'Fin: cada escenario con "deberia_ser_N" debe devolver N; los que usan bloque DO afirman el SQLSTATE exacto (si el escenario falla, el gate lo marca).'

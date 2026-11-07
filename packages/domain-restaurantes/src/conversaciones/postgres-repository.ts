@@ -16,6 +16,7 @@ import {
   ConversacionesValidacionError,
   HANDOFF_ESTADOS,
   HandoffYaTomadoError,
+  PANEL_ALERTA_TIPOS,
   SinNumeroWhatsappError,
   VentanaWhatsappCerradaError,
 } from "./types.ts";
@@ -36,6 +37,8 @@ import type {
   HandoffEstado,
   MensajeConversacion,
   NotaInterna,
+  PanelAlerta,
+  PanelAlertaTipo,
   TurnoEntrada,
   TurnoPersonal,
 } from "./types.ts";
@@ -195,6 +198,62 @@ export class PostgresConversacionesRepository implements ConversacionesRepositor
     });
   }
 
+  /** Resumen, telefono para devolver la llamada y asignacion (migracion 120). Base sin migrar o sin permiso: sin extras (el detalle igual se ve). */
+  private async extraDeHandoff(organizationId: string, propertyId: string, handoffId: string): Promise<Partial<HandoffDetalle>> {
+    return runWithSavepointFallback<Partial<HandoffDetalle>>({
+      session: this.db,
+      savepointName: "sp_conv_detalle_extra",
+      primary: async () => {
+        const { rows } = await this.db.query<{
+          resumen: string | null; telefono_devolucion: string | null; callback_id: string | null; asignada_por: string | null;
+          asignada_por_nombre: string | null; asignada_at: Date | string | null; tomada_por_app: boolean | null;
+        }>(`select resumen, telefono_devolucion, callback_id, asignada_por, asignada_por_nombre, asignada_at, tomada_por_app from restaurantes.handoff_extra($1::uuid, $2::uuid, $3::uuid);`, [organizationId, propertyId, handoffId]);
+        const r = rows[0];
+        if (!r) return {};
+        return {
+          resumen: r.resumen, telefonoDevolucion: r.telefono_devolucion, callbackId: r.callback_id, asignadaPor: r.asignada_por,
+          asignadaPorNombre: r.asignada_por_nombre, asignadaAt: isoOrNull(r.asignada_at), tomadaPorApp: r.tomada_por_app === true,
+        };
+      },
+      isRecoverable: () => true,
+      fallback: async () => ({}),
+    });
+  }
+
+  async asignar(organizationId: string, propertyId: string, handoffId: string, userId: string): Promise<boolean> {
+    return this.escritura("sp_conv_asignar", async () => {
+      const { rows } = await this.db.query<{ ok: boolean }>(`select restaurantes.handoff_asignar($1::uuid, $2::uuid, $3::uuid, $4::uuid) as ok;`, [organizationId, propertyId, handoffId, userId]);
+      return rows[0]!.ok === true;
+    });
+  }
+
+  async listarAlertas(organizationId: string, propertyId: string, opciones: { readonly sinRespuestaMin: number; readonly montoMin: number }): Promise<ConversacionesLectura<readonly PanelAlerta[]>> {
+    return this.lectura<readonly PanelAlerta[]>("sp_conv_alertas_read", [], async () => {
+      const { rows } = await this.db.query<{
+        tipo: string; canal: string | null; conversation_id: string | null; handoff_id: string | null; order_id: string | null;
+        referencia: string; minutos: number | string; monto: number | string | null; resumen: string | null; telefono: string | null;
+      }>(
+        `select tipo, canal, conversation_id, handoff_id, order_id, referencia, minutos, monto, resumen, telefono
+           from restaurantes.panel_alertas($1::uuid, $2::uuid, $3::int, $4::numeric);`,
+        [organizationId, propertyId, opciones.sinRespuestaMin, opciones.montoMin],
+      );
+      return rows
+        .filter((r) => (PANEL_ALERTA_TIPOS as readonly string[]).includes(r.tipo))
+        .map((r): PanelAlerta => ({
+          tipo: r.tipo as PanelAlertaTipo,
+          canal: r.canal === "voz" ? "voz" : r.canal === "whatsapp" ? "whatsapp" : null,
+          conversationId: r.conversation_id,
+          handoffId: r.handoff_id,
+          orderId: r.order_id,
+          referencia: r.referencia,
+          minutos: Number(r.minutos),
+          monto: r.monto === null || r.monto === undefined ? null : Number(r.monto),
+          resumen: r.resumen,
+          telefono: r.telefono,
+        }));
+    });
+  }
+
   private escritura<T>(savepointName: string, primary: () => Promise<T>): Promise<T> {
     return runWithSavepointFallback<T>({ session: this.db, savepointName, primary, isRecoverable: esRechazoConocido, fallback: aError });
   }
@@ -274,6 +333,7 @@ export class PostgresConversacionesRepository implements ConversacionesRepositor
         : null;
       let notas: NotaInterna[] = [];
       if (handoff) {
+        Object.assign(handoff, await this.extraDeHandoff(organizationId, propertyId, handoff.handoffId));
         const n = await this.db.query<{ id: string; autor_id: string | null; autor_nombre: string | null; texto: string; created_at: Date | string }>(
           `select id, autor_id, autor_nombre, texto, created_at from restaurantes.handoff_notas($1::uuid, $2::uuid, $3::uuid);`,
           [organizationId, propertyId, handoff.handoffId],

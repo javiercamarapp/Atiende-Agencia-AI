@@ -55,6 +55,41 @@ export interface HandoffDetalle {
   readonly tomadaPor: string | null;
   readonly tomadaPorNombre: string | null;
   readonly tomadaAt: string | null;
+  /** Migracion 120 (ausentes en una base sin migrar). Voz: resumen del callback y telefono para devolver la llamada. */
+  readonly resumen?: string | null;
+  readonly telefonoDevolucion?: string | null;
+  readonly callbackId?: string | null;
+  readonly asignadaPor?: string | null;
+  readonly asignadaPorNombre?: string | null;
+  readonly asignadaAt?: string | null;
+  readonly tomadaPorApp?: boolean;
+}
+
+/** Estado de trabajo que ve el staff: nuevo (nadie la atiende), en atencion (una persona o la app) y resuelto. `devuelta` (regreso al agente) y `agente` no son trabajo del staff. */
+export type EstadoTrabajo = "nuevo" | "en_atencion" | "resuelto" | "con_agente";
+export function estadoDeTrabajo(estado: HandoffEstado): EstadoTrabajo {
+  if (estado === "pendiente") return "nuevo";
+  if (estado === "tomada") return "en_atencion";
+  if (estado === "cerrada") return "resuelto";
+  return "con_agente";
+}
+
+export type PanelAlertaTipo = "sin_tomar" | "sin_respuesta_humana" | "llamada_por_devolver" | "pedido_por_aprobar";
+export const PANEL_ALERTA_TIPOS: readonly PanelAlertaTipo[] = ["sin_tomar", "sin_respuesta_humana", "llamada_por_devolver", "pedido_por_aprobar"];
+export const ALERTA_SIN_RESPUESTA_MIN_DEFECTO = 10;
+export const ALERTA_PEDIDO_MONTO_DEFECTO = 4000;
+export interface PanelAlerta {
+  readonly tipo: PanelAlertaTipo;
+  readonly canal: ConversacionCanal | null;
+  readonly conversationId: string | null;
+  readonly handoffId: string | null;
+  readonly orderId: string | null;
+  /** Telefono del chat, `#numero` del pedido o telefono de la llamada. */
+  readonly referencia: string;
+  readonly minutos: number;
+  readonly monto: number | null;
+  readonly resumen: string | null;
+  readonly telefono: string | null;
 }
 
 export interface NotaInterna {

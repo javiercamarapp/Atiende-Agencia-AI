@@ -20,6 +20,7 @@ import type {
   HandoffEstado,
   MensajeConversacion,
   NotaInterna,
+  PanelAlerta,
   TurnoEntrada,
   TurnoPersonal,
 } from "./types.ts";
@@ -55,6 +56,11 @@ interface HandoffRow {
   tomadaPor: string | null;
   tomadaAt: string | null;
   createdAt: number;
+  /** Migracion 120. */
+  resumen?: string | null;
+  telefonoDevolucion?: string | null;
+  asignadaPor?: string | null;
+  asignadaAt?: string | null;
 }
 
 export interface InMemoryConversacionesOptions {
@@ -72,6 +78,10 @@ export class InMemoryConversacionesRepository implements ConversacionesRepositor
   readonly notas: Array<NotaInterna & { handoffId: string }> = [];
   readonly turnos: Array<{ organizationId: string; propertyId: string; turno: TurnoPersonal }> = [];
   readonly callbacks: Array<CallbackItem & { organizationId: string }> = [];
+  /** Pedidos `por_aprobar` sembrados por las pruebas (alertas del panel). */
+  readonly pedidosPorAprobar: Array<{ organizationId: string; propertyId: string; orderId: string; numero: number; total: number; solicitadaAt: string }> = [];
+  /** Personas con acceso a la sucursal a las que se puede asignar (equivale a las membresias). */
+  readonly personal = new Set<string>();
   readonly outbox: Array<{ organizationId: string; to: string; body: string }> = [];
   /** `false` simula la base sin migrar (todo degrada con el mismo contrato que Postgres). */
   disponible = true;
@@ -83,7 +93,7 @@ export class InMemoryConversacionesRepository implements ConversacionesRepositor
   /** Otra "sesion" (otra persona autenticada) sobre el MISMO almacen: lo que una escribe, la otra lo ve. */
   comoActor(actorUserId: string, actorEsAdministrador = false): InMemoryConversacionesRepository {
     const r = new InMemoryConversacionesRepository({ ...this.opts, actorUserId, actorEsAdministrador });
-    Object.assign(r, { conversaciones: this.conversaciones, handoffs: this.handoffs, notas: this.notas, turnos: this.turnos, callbacks: this.callbacks, outbox: this.outbox, numeroPorSucursal: this.numeroPorSucursal, disponible: this.disponible });
+    Object.assign(r, { conversaciones: this.conversaciones, handoffs: this.handoffs, notas: this.notas, turnos: this.turnos, callbacks: this.callbacks, pedidosPorAprobar: this.pedidosPorAprobar, personal: this.personal, outbox: this.outbox, numeroPorSucursal: this.numeroPorSucursal, disponible: this.disponible });
     return r;
   }
 
@@ -150,7 +160,7 @@ export class InMemoryConversacionesRepository implements ConversacionesRepositor
         mensajes: c.mensajes,
         transcripcionDisponible: true,
         handoff: h
-          ? { handoffId: h.id, estado: h.estado, solicitadoPor: h.solicitadoPor, motivo: h.motivo, solicitadaAt: h.solicitadaAt, ultimoClienteAt: h.ultimoClienteAt, tomadaPor: h.tomadaPor, tomadaPorNombre: this.nombre(h.tomadaPor), tomadaAt: h.tomadaAt }
+          ? { handoffId: h.id, estado: h.estado, solicitadoPor: h.solicitadoPor, motivo: h.motivo, solicitadaAt: h.solicitadaAt, ultimoClienteAt: h.ultimoClienteAt, tomadaPor: h.tomadaPor, tomadaPorNombre: this.nombre(h.tomadaPor), tomadaAt: h.tomadaAt, resumen: h.resumen ?? null, telefonoDevolucion: h.telefonoDevolucion ?? null, asignadaPor: h.asignadaPor ?? null, asignadaPorNombre: this.nombre(h.asignadaPor ?? null), asignadaAt: h.asignadaAt ?? null, tomadaPorApp: h.tomadaPorApp === true }
           : null,
         notas: h ? this.notas.filter((n) => n.handoffId === h.id) : [],
       },
@@ -212,6 +222,51 @@ export class InMemoryConversacionesRepository implements ConversacionesRepositor
     const n = { id: randomUUID(), handoffId, autorId: this.opts.actorUserId, autorNombre: this.nombre(this.opts.actorUserId), texto: texto.trim(), createdAt: this.now().toISOString() };
     this.notas.push(n);
     return n.id;
+  }
+
+  async asignar(organizationId: string, propertyId: string, handoffId: string, userId: string): Promise<boolean> {
+    this.requerirDisponible();
+    if (!this.personal.has(userId)) throw new ConversacionesRechazadaError();
+    const h = this.handoffs.find((x) => x.id === handoffId && x.organizationId === organizationId && x.propertyId === propertyId);
+    if (!h) throw new ConversacionesRechazadaError();
+    if (h.estado !== "pendiente" && h.estado !== "tomada") return false;
+    if (h.estado === "tomada" && h.tomadaPor === userId) return false;
+    if (h.estado === "tomada" && h.tomadaPor !== null && h.tomadaPor !== this.opts.actorUserId && !this.opts.actorEsAdministrador) throw new ConversacionesRechazadaError();
+    const ahora = this.now().toISOString();
+    h.estado = "tomada";
+    h.tomadaPor = userId;
+    h.tomadaPorApp = false;
+    h.tomadaAt = h.tomadaAt ?? ahora;
+    h.ultimaHumanaAt = ahora;
+    h.asignadaPor = this.opts.actorUserId;
+    h.asignadaAt = ahora;
+    this.notas.push({ id: randomUUID(), handoffId, autorId: this.opts.actorUserId, autorNombre: this.nombre(this.opts.actorUserId), texto: `Asignada a ${this.nombre(userId) ?? "otra persona"}.`, createdAt: ahora });
+    return true;
+  }
+
+  async listarAlertas(organizationId: string, propertyId: string, opciones: { readonly sinRespuestaMin: number; readonly montoMin: number }): Promise<ConversacionesLectura<readonly PanelAlerta[]>> {
+    if (!this.disponible) return { disponible: false, valor: [] };
+    const ahora = this.now().getTime();
+    const min = (iso: string) => Math.max(0, Math.floor((ahora - Date.parse(iso)) / 60_000));
+    const out: PanelAlerta[] = [];
+    for (const h of this.handoffs.filter((x) => x.organizationId === organizationId && x.propertyId === propertyId)) {
+      const conv = this.conversaciones.find((c) => c.id === h.conversationId);
+      const base = { canal: h.canal, conversationId: h.conversationId, handoffId: h.id, orderId: null, monto: null };
+      if (h.canal === "whatsapp" && h.estado === "pendiente" && min(h.solicitadaAt) >= opciones.sinRespuestaMin) {
+        out.push({ ...base, tipo: "sin_tomar", referencia: conv?.telefono ?? "chat", minutos: min(h.solicitadaAt), resumen: h.motivo, telefono: null });
+      } else if (h.canal === "whatsapp" && h.estado === "tomada" && h.ultimoClienteAt && min(h.ultimoClienteAt) >= opciones.sinRespuestaMin) {
+        const humana = Math.max(Date.parse(h.tomadaAt ?? h.solicitadaAt), Date.parse(h.ultimaHumanaAt ?? h.solicitadaAt));
+        const ultimaRespuesta = (conv?.mensajes ?? []).filter((m) => m.rol === "humano" && m.createdAt).reduce((a, m) => Math.max(a, Date.parse(m.createdAt!)), humana);
+        if (Date.parse(h.ultimoClienteAt) > Math.max(humana, ultimaRespuesta)) out.push({ ...base, tipo: "sin_respuesta_humana", referencia: conv?.telefono ?? "chat", minutos: min(h.ultimoClienteAt), resumen: h.motivo, telefono: null });
+      } else if (h.canal === "voz" && (h.estado === "pendiente" || h.estado === "tomada")) {
+        out.push({ ...base, tipo: "llamada_por_devolver", referencia: h.telefonoDevolucion ?? "sin telefono", minutos: min(h.solicitadaAt), resumen: h.resumen ?? null, telefono: h.telefonoDevolucion ?? null });
+      }
+    }
+    for (const o of this.pedidosPorAprobar.filter((x) => x.organizationId === organizationId && x.propertyId === propertyId && x.total > opciones.montoMin)) {
+      out.push({ tipo: "pedido_por_aprobar", canal: null, conversationId: null, handoffId: null, orderId: o.orderId, referencia: `#${o.numero}`, minutos: min(o.solicitadaAt), monto: o.total, resumen: null, telefono: null });
+    }
+    out.sort((a, b) => b.minutos - a.minutos);
+    return { disponible: true, valor: out.slice(0, 100) };
   }
 
   async responderWhatsapp(organizationId: string, propertyId: string, handoffId: string, texto: string): Promise<string> {
