@@ -5,7 +5,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { History } from "lucide-react";
 import type { FiltroPedidosDetalle, FilaPedidoDetalle } from "@atiende/domain-restaurantes/cfo";
-import { Button, DataTable, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, EstadoError, StatusBadge, statusTone } from "@atiende/ui";
+import { Button, DataTable, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, EstadoError, StatusBadge, statusTone, useT } from "@atiende/ui";
+import { restaurantesComun } from "@atiende/ui/i18n/restaurantes/comun";
+import { restaurantesCfo } from "@atiende/ui/i18n/restaurantes/cfo";
 import { HistorialPedidoDialogo } from "../components/HistorialPedidoDialogo.tsx";
 import { ORDER_STATUS_LABELS } from "../lib/orders-client.ts";
 import type { OrderStatus } from "../lib/orders-client.ts";
@@ -14,7 +16,7 @@ import { fetchPedidos, type ContextoCfo } from "./cfo-client.ts";
 import { describirFiltro } from "./contexto.ts";
 import { etiquetaCanal, etiquetaFormaPago, etiquetaSource, entero, minutos, pesosExactos, SIN_DATO } from "./formato.ts";
 import { etiquetaRango, type FiltrosCfo } from "./filtros-url.ts";
-import { MENSAJE_SIN_ACCESO_CFO, CfoNoDisponibleError, CfoSinAccesoError } from "./cfo-client.ts";
+import { mensajeSinAccesoCfo, CfoNoDisponibleError, CfoSinAccesoError } from "./cfo-client.ts";
 
 
 export interface PedidosDrillProps {
@@ -37,6 +39,7 @@ interface Estado {
 const VACIO: Estado = { filas: [], cursor: null, cargando: false, error: null, avisos: [] };
 
 export function PedidosDrill({ abierto, onCerrar, api, base, filtros, filtroPedidos }: PedidosDrillProps) {
+  const t = useT(restaurantesComun, restaurantesCfo);
   const [estado, setEstado] = useState<Estado>(VACIO);
   const [historial, setHistorial] = useState<FilaPedidoDetalle | null>(null);
   // Contador de petición: una respuesta de una petición anterior (otro filtro, o «Cargar más» de una lista que ya cambió) se descarta.
@@ -53,7 +56,7 @@ export function PedidosDrill({ abierto, onCerrar, api, base, filtros, filtroPedi
         if (mia !== peticion.current) return;
         setEstado((e) => ({ filas: reiniciar ? v.pedidos : [...e.filas, ...v.pedidos], cursor: v.cursor, cargando: false, error: null, avisos: v.avisos }));
       } catch (err) {
-        const mensaje = err instanceof CfoSinAccesoError ? MENSAJE_SIN_ACCESO_CFO : err instanceof CfoNoDisponibleError ? "La lista de pedidos del CFO aún no está disponible en este negocio." : err instanceof Error ? err.message : "No se pudieron cargar los pedidos.";
+        const mensaje = err instanceof CfoSinAccesoError ? mensajeSinAccesoCfo() : err instanceof CfoNoDisponibleError ? t("restaurantes.cfo.pedidos.noDisponible") : err instanceof Error ? err.message : t("restaurantes.cfo.pedidos.error");
         if (mia !== peticion.current) return;
         setEstado((e) => ({ ...e, cargando: false, error: mensaje }));
       }
@@ -72,10 +75,11 @@ export function PedidosDrill({ abierto, onCerrar, api, base, filtros, filtroPedi
       <Dialog open={abierto} onOpenChange={(o) => !o && onCerrar()}>
         <DialogContent className="max-h-[90dvh] max-w-4xl overflow-y-auto" data-testid="pedidos-drill">
           <DialogHeader>
-            <DialogTitle>Pedidos que respaldan esta cifra</DialogTitle>
+            <DialogTitle>{t("restaurantes.cfo.pedidos.titulo")}</DialogTitle>
             <DialogDescription>
               {etiquetaRango(filtros.desde, filtros.hasta)}
-              {chips.length > 0 ? ` · ${chips.join(" · ")}` : " · todos los pedidos del periodo"}. Sin nombres, teléfonos ni direcciones: el cliente aparece como un código corto.
+              {chips.length > 0 ? ` · ${chips.join(" · ")}` : t("restaurantes.cfo.pedidos.todos")}
+              {t("restaurantes.cfo.pedidos.sinPii")}
             </DialogDescription>
           </DialogHeader>
           {estado.error ? (
@@ -90,33 +94,33 @@ export function PedidosDrill({ abierto, onCerrar, api, base, filtros, filtroPedi
                 </ul>
               )}
               <DataTable<FilaPedidoDetalle>
-                etiqueta="Pedidos del periodo"
+                etiqueta={t("restaurantes.cfo.pedidos.tabla")}
                 filas={[...estado.filas]}
                 obtenerId={(p) => p.orderId}
                 estado={estado.cargando && estado.filas.length === 0 ? "loading" : undefined}
-                vacio={{ titulo: "Sin pedidos", mensaje: "No hay pedidos con ese filtro en el periodo." }}
+                vacio={{ titulo: t("restaurantes.cfo.pedidos.vacioTitulo"), mensaje: t("restaurantes.cfo.pedidos.vacio") }}
                 paginacion={false}
                 atributosFila={(p) => ({ "data-pedido": p.orderId })}
                 columnas={[
-                  { id: "numero", encabezado: "Pedido", principal: true, celda: (p) => `#${p.orderNumber}` },
-                  { id: "dia", encabezado: "Día", celda: (p) => `${p.diaNegocio} · ${p.horaLocal} h` },
-                  { id: "canal", encabezado: "Canal", celda: (p) => `${etiquetaCanal(p.canal)} · ${etiquetaSource(p.source)}` },
-                  { id: "estado", encabezado: "Estado", celda: (p) => <StatusBadge tone={statusTone(ORDER_STATUS_TONES, p.status)}>{ORDER_STATUS_LABELS[p.status as OrderStatus] ?? p.status}</StatusBadge> },
-                  { id: "pago", encabezado: "Pago", celda: (p) => (p.paymentMethod ? etiquetaFormaPago(p.paymentMethod) : SIN_DATO) },
-                  { id: "bruta", encabezado: "Bruta", alinear: "right", className: "tabular-nums", celda: (p) => pesosExactos(p.brutaCentavos) },
-                  { id: "desc", encabezado: "Desc.", alinear: "right", className: "tabular-nums", celda: (p) => pesosExactos(p.descCentavos) },
-                  { id: "neta", encabezado: "Neta", alinear: "right", className: "tabular-nums", celda: (p) => pesosExactos(p.netaCentavos) },
-                  { id: "entrega", encabezado: "Entrega", alinear: "right", className: "tabular-nums", celda: (p) => minutos(p.entregadoMin) },
-                  { id: "cliente", encabezado: "Cliente", celda: (p) => p.clienteAlias ?? SIN_DATO },
+                  { id: "numero", encabezado: t("restaurantes.cfo.pedidos.col.pedido"), principal: true, celda: (p) => `#${p.orderNumber}` },
+                  { id: "dia", encabezado: t("restaurantes.cfo.pedidos.col.dia"), celda: (p) => `${p.diaNegocio} · ${p.horaLocal} h` },
+                  { id: "canal", encabezado: t("restaurantes.cfo.pedidos.col.canal"), celda: (p) => `${etiquetaCanal(p.canal)} · ${etiquetaSource(p.source)}` },
+                  { id: "estado", encabezado: t("restaurantes.cfo.pedidos.col.estado"), celda: (p) => <StatusBadge tone={statusTone(ORDER_STATUS_TONES, p.status)}>{ORDER_STATUS_LABELS[p.status as OrderStatus] ?? p.status}</StatusBadge> },
+                  { id: "pago", encabezado: t("restaurantes.cfo.pedidos.col.pago"), celda: (p) => (p.paymentMethod ? etiquetaFormaPago(p.paymentMethod) : SIN_DATO) },
+                  { id: "bruta", encabezado: t("restaurantes.cfo.pedidos.col.bruta"), alinear: "right", className: "tabular-nums", celda: (p) => pesosExactos(p.brutaCentavos) },
+                  { id: "desc", encabezado: t("restaurantes.cfo.pedidos.col.desc"), alinear: "right", className: "tabular-nums", celda: (p) => pesosExactos(p.descCentavos) },
+                  { id: "neta", encabezado: t("restaurantes.cfo.pedidos.col.neta"), alinear: "right", className: "tabular-nums", celda: (p) => pesosExactos(p.netaCentavos) },
+                  { id: "entrega", encabezado: t("restaurantes.cfo.pedidos.col.entrega"), alinear: "right", className: "tabular-nums", celda: (p) => minutos(p.entregadoMin) },
+                  { id: "cliente", encabezado: t("restaurantes.cfo.pedidos.col.cliente"), celda: (p) => p.clienteAlias ?? SIN_DATO },
                   {
                     id: "ver",
                     encabezado: "",
                     alinear: "right",
                     ocultarEnTarjeta: false,
                     celda: (p) => (
-                      <Button type="button" size="sm" variant="ghost" className="gap-1" onClick={() => setHistorial(p)} aria-label={`Ver el historial del pedido ${p.orderNumber}`}>
+                      <Button type="button" size="sm" variant="ghost" className="gap-1" onClick={() => setHistorial(p)} aria-label={t("restaurantes.cfo.pedidos.verHistorial", { n: String(p.orderNumber) })}>
                         <History className="size-3.5" aria-hidden="true" />
-                        Historial
+                        {t("restaurantes.historial")}
                       </Button>
                     ),
                   },
@@ -124,15 +128,16 @@ export function PedidosDrill({ abierto, onCerrar, api, base, filtros, filtroPedi
               />
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-xs text-muted-foreground" data-testid="pedidos-conteo">
-                  {entero(estado.filas.length)} pedidos cargados{estado.cursor ? " · hay más" : ""}
+                  {t("restaurantes.cfo.pedidos.cargados", { n: entero(estado.filas.length) })}
+                  {estado.cursor ? t("restaurantes.cfo.pedidos.hayMas") : ""}
                 </p>
                 <div className="flex items-center gap-2">
                   <Button asChild variant="ghost" size="sm">
-                    <Link to={`${base}/historial`}>Abrir Historial</Link>
+                    <Link to={`${base}/historial`}>{t("restaurantes.cfo.pedidos.abrirHistorial")}</Link>
                   </Button>
                   {estado.cursor && (
                     <Button type="button" variant="outline" size="sm" loading={estado.cargando} disabled={estado.cargando} onClick={() => void cargar(estado.cursor, false)}>
-                      Cargar más
+                      {t("restaurantes.cfo.pedidos.cargarMas")}
                     </Button>
                   )}
                 </div>
@@ -143,7 +148,8 @@ export function PedidosDrill({ abierto, onCerrar, api, base, filtros, filtroPedi
       </Dialog>
       <HistorialPedidoDialogo
         orderId={historial?.orderId ?? null}
-        titulo={historial ? `Historial del pedido #${historial.orderNumber}` : ""}
+        titulo={historial ? t("restaurantes.cfo.pedidos.historialTitulo", { n: String(historial.orderNumber) }) : ""}
+
         onClose={() => setHistorial(null)}
         apiBaseUrl={api.apiBaseUrl}
         token={api.token}

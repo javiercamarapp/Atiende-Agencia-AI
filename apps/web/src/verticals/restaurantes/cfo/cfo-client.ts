@@ -37,24 +37,30 @@ import { RestaurantesAdminError, defaultAuthCtx } from "../lib/admin-client.ts";
 import { guardarArchivo, type ArchivoExportado } from "../lib/exportar-client.ts";
 import { VozNoDisponibleError } from "../lib/voz-client.ts";
 import { consultaApi, type FiltrosCfo } from "./filtros-url.ts";
+import { traductorActivo } from "@atiende/ui";
+import { restaurantesCfo } from "@atiende/ui/i18n/restaurantes/cfo";
+
+const tr = traductorActivo(restaurantesCfo);
 
 export { guardarArchivo };
 export type { ArchivoExportado };
 
-export const MENSAJE_SIN_ACCESO_CFO = "Tu rol no tiene acceso al CFO";
+/** Texto en espanol (referencia de pruebas); en pantalla se usa `mensajeSinAccesoCfo()`, que sigue al idioma activo. */
+export const MENSAJE_SIN_ACCESO_CFO = "Tu rol no tiene acceso al CFO"; // i18n-ignorar: espejo del catalogo (restaurantes.cfo.sinAcceso)
+export const mensajeSinAccesoCfo = (): string => tr("restaurantes.cfo.sinAcceso");
 
 /** Base sin migrar (404/503 o `disponible: false`) en una LECTURA del CFO. Hereda de VozNoDisponibleError (los estados «no disponible» la reconocen) pero con texto propio del CFO. */
 export class CfoNoDisponibleError extends VozNoDisponibleError {
   constructor(status: number) {
     super(status);
-    this.message = "El CFO todavía no está disponible en este negocio: falta aplicar la actualización de base de datos.";
+    this.message = tr("restaurantes.cfo.noDisponibleError");
   }
 }
 
 /** 403 del API: el rol no puede ver el CFO (o el alcance pedido). */
 export class CfoSinAccesoError extends Error {
   constructor() {
-    super(MENSAJE_SIN_ACCESO_CFO);
+    super(mensajeSinAccesoCfo());
     this.name = "CfoSinAccesoError";
   }
 }
@@ -62,7 +68,7 @@ export class CfoSinAccesoError extends Error {
 /** La ruta de exportación (CFO-06) todavía no existe en este despliegue (404): el botón se oculta. */
 export class CfoExportarNoDisponibleError extends Error {
   constructor() {
-    super("La exportación del CFO todavía no está disponible en este despliegue.");
+    super(tr("restaurantes.cfo.exportarNoDisponibleError"));
     this.name = "CfoExportarNoDisponibleError";
   }
 }
@@ -82,9 +88,10 @@ async function pedirCfo<T>(fetchImpl: typeof fetch, url: string, token: string, 
   if (res.status === 403 && init.method === "GET") throw new CfoSinAccesoError();
   if ((res.status === 404 || res.status === 503) && init.method === "GET") throw new CfoNoDisponibleError(res.status);
   // Escritura sobre una base sin migrar: el mensaje del servidor, o un texto propio del CFO (nunca el del servicio de voz).
-  if ((res.status === 404 || res.status === 503) && init.method !== "GET") throw new RestaurantesAdminError(await readWriteErrorMessage(res, "La captura del CFO todavía no está disponible: falta aplicar la actualización de base de datos."));
+  if ((res.status === 404 || res.status === 503) && init.method !== "GET") throw new RestaurantesAdminError(await readWriteErrorMessage(res, tr("restaurantes.cfo.capturaNoDisponible")));
   if (!res.ok) {
-    const fallback = `No se pudo completar la solicitud al CFO (${res.status}).`;
+    const fallback = tr("restaurantes.cfo.solicitudFallida", { status: res.status });
+
     throw new RestaurantesAdminError(init.method === "GET" ? await readErrorMessage(res, fallback) : await readWriteErrorMessage(res, fallback));
   }
   return (await res.json()) as T;
