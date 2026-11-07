@@ -43,6 +43,8 @@ async function menuEnIngles(page: Page): Promise<Map<string, string>> {
     if ((await botones.nth(i).getAttribute("aria-expanded")) === "false") await botones.nth(i).click();
     for (const [h, t] of await enlaces(aside.locator("nav"))) if (!todos.has(h)) todos.set(h, t);
   }
+  // Pildoras del pie (Notificaciones, Seguridad de la cuenta...), igual que `seccionesDelPanel` en espanol.
+  for (const [h, t] of await enlaces(aside)) if (!todos.has(h)) todos.set(h, t);
   return todos;
 }
 
