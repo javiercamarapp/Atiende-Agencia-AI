@@ -6,8 +6,9 @@ import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Activity, Clock, Info, PlugZap, Repeat2, TrendingDown, Users } from "lucide-react";
 import type { AfinidadAnalisis, AnalisisClientesVista, ConsentimientoMarketing, FilaIntervaloRecompra, FilaReactivacion, ParAfinidadApi, ParetoRfm, ReactivacionAnalisis, SeccionAnalisis } from "@atiende/domain-restaurantes/cfo";
-import { BarChartSimple, ChartCard, Callout, DataTable, EstadoCargando, EstadoVacio, PageContainer, Selector, StatCard, StatusBadge, TablaDatosGrafica, Popover, PopoverContent, PopoverTrigger } from "@atiende/ui";
-import type { StatusTone } from "@atiende/ui";
+import { BarChartSimple, ChartCard, Callout, DataTable, EstadoCargando, EstadoVacio, PageContainer, Selector, StatCard, StatusBadge, TablaDatosGrafica, Popover, PopoverContent, PopoverTrigger, traductorActivo, useT } from "@atiende/ui";
+import type { Clave, StatusTone } from "@atiende/ui";
+import { restaurantesCfoAnalisis } from "@atiende/ui/i18n/restaurantes/cfoAnalisis";
 import { fetchAnalisisClientes } from "./cfo-client.ts";
 import type { CfoPaginaProps } from "./contexto.ts";
 import { SIN_DATO, entero, pesos, porcentaje } from "./formato.ts";
@@ -15,15 +16,16 @@ import { AvisosCfo, CargaCfoVista } from "./piezas.tsx";
 import { claveCarga, diaCorto } from "./piezas-b.tsx";
 import { useCargaCfo } from "./use-carga-cfo.ts";
 
+const tr = traductorActivo(restaurantesCfoAnalisis);
 const LIMITES = [25, 50, 100, 200] as const;
 const decimal = (n: number | null | undefined): string => (n === null || n === undefined ? SIN_DATO : String(n));
-const dias = (n: number | null | undefined): string => (n === null || n === undefined ? SIN_DATO : `${decimal(n)} d`);
+const dias = (n: number | null | undefined): string => (n === null || n === undefined ? SIN_DATO : tr("restaurantes.cfoAnalisis.dias", { n: decimal(n) }));
 const pctDe = (parte: number, total: number): number | null => (total > 0 ? Math.round((parte / total) * 1000) / 10 : null);
 
-const CONSENTIMIENTO: Readonly<Record<ConsentimientoMarketing, { readonly texto: string; readonly tono: StatusTone }>> = {
-  otorgado: { texto: "Otorgado", tono: "success" },
-  revocado: { texto: "Revocado", tono: "danger" },
-  sin_registro: { texto: "Sin registro", tono: "neutral" },
+const CONSENTIMIENTO: Readonly<Record<ConsentimientoMarketing, { readonly clave: Clave; readonly tono: StatusTone }>> = {
+  otorgado: { clave: "restaurantes.cfoAnalisis.consent.otorgado", tono: "success" },
+  revocado: { clave: "restaurantes.cfoAnalisis.consent.revocado", tono: "danger" },
+  sin_registro: { clave: "restaurantes.cfoAnalisis.consent.sin_registro", tono: "neutral" },
 };
 
 // ---- Marco de un bloque ---------------------------------------------------------------------------------------------------------------
@@ -33,13 +35,14 @@ const CONSENTIMIENTO: Readonly<Record<ConsentimientoMarketing, { readonly texto:
  * El texto también va en el nombre accesible del botón, así que un lector de pantalla lo anuncia sin abrirlo.
  */
 function Definicion({ titulo, texto, periodo }: { readonly titulo: string; readonly texto: string; readonly periodo: string }) {
-  const completo = `${texto} Periodo: ${periodo}.`;
+  const t = useT(restaurantesCfoAnalisis);
+  const completo = t("restaurantes.cfoAnalisis.defCompleta", { texto, periodo });
   return (
     <Popover>
       <PopoverTrigger asChild>
         <button
           type="button"
-          aria-label={`Definición de ${titulo}: ${completo}`}
+          aria-label={t("restaurantes.cfoAnalisis.defAria", { titulo, completo })}
           data-testid="definicion"
           className="inline-flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
@@ -48,14 +51,15 @@ function Definicion({ titulo, texto, periodo }: { readonly titulo: string; reado
       </PopoverTrigger>
       <PopoverContent className="max-w-xs text-sm" data-testid="definicion-texto">
         <p>{texto}</p>
-        <p className="mt-1 text-muted-foreground">Periodo: {periodo}</p>
+        <p className="mt-1 text-muted-foreground">{t("restaurantes.cfoAnalisis.periodo", { periodo })}</p>
       </PopoverContent>
     </Popover>
   );
 }
 
 function NoDisponibleBloque({ motivo }: { readonly motivo: string }) {
-  return <EstadoVacio compacto icon={PlugZap} titulo="No disponible aún" mensaje={motivo} />;
+  const t = useT(restaurantesCfoAnalisis);
+  return <EstadoVacio compacto icon={PlugZap} titulo={t("restaurantes.cfoAnalisis.noDisponible")} mensaje={motivo} />;
 }
 
 interface BloqueProps<T> {
@@ -70,10 +74,11 @@ interface BloqueProps<T> {
 }
 
 function Bloque<T>({ id, titulo, subtitulo, definicion, periodo, seccion, children }: BloqueProps<T>) {
+  const t = useT(restaurantesCfoAnalisis);
   return (
     <section aria-label={titulo} data-testid={`bloque-${id}`} data-estado={seccion === null ? "cargando" : seccion.disponible ? "listo" : "no_disponible"}>
       <ChartCard titulo={titulo} {...(subtitulo ? { subtitulo } : {})} tamano="S" accion={<Definicion titulo={titulo} texto={definicion} periodo={periodo} />}>
-        {seccion === null ? <EstadoCargando etiqueta={`Cargando ${titulo.toLowerCase()}…`} /> : !seccion.disponible || seccion.datos === null ? <NoDisponibleBloque motivo={seccion.motivo ?? "No disponible aún."} /> : children(seccion.datos)}
+        {seccion === null ? <EstadoCargando etiqueta={t("restaurantes.cfoAnalisis.cargandoBloque", { titulo: titulo.toLowerCase() })} /> : !seccion.disponible || seccion.datos === null ? <NoDisponibleBloque motivo={seccion.motivo ?? t("restaurantes.cfoAnalisis.noDisponibleMotivo")} /> : children(seccion.datos)}
       </ChartCard>
     </section>
   );
@@ -82,18 +87,19 @@ function Bloque<T>({ id, titulo, subtitulo, definicion, periodo, seccion, childr
 // ---- Bloques --------------------------------------------------------------------------------------------------------------------------
 
 function Resumen({ d }: { readonly d: AnalisisClientesVista }) {
+  const t = useT(restaurantesCfoAnalisis);
   return (
-    <Bloque id="resumen" titulo="Resumen" subtitulo="Clientes con venta identificada en el periodo" definicion={d.definiciones["resumen"] ?? ""} periodo={periodoTexto(d)} seccion={d.secciones.resumen}>
+    <Bloque id="resumen" titulo={t("restaurantes.cfoAnalisis.b.resumen")} subtitulo={t("restaurantes.cfoAnalisis.b.resumenSub")} definicion={d.definiciones["resumen"] ?? ""} periodo={periodoTexto(d)} seccion={d.secciones.resumen}>
       {(r) =>
         r.clientesConVenta === 0 ? (
-          <EstadoVacio compacto icon={Users} titulo="Sin clientes con venta en este periodo" mensaje="Cuando alguien pida por WhatsApp o voz dentro del periodo elegido, aquí verás su comportamiento." />
+          <EstadoVacio compacto icon={Users} titulo={t("restaurantes.cfoAnalisis.sinVentaTitulo")} mensaje={t("restaurantes.cfoAnalisis.sinVentaMensaje")} />
         ) : (
           <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-5" data-testid="analisis-resumen">
-            <StatCard icon={Users} label="Clientes con venta" value={entero(r.clientesConVenta)} nota={`${entero(r.activos30)} compraron en los últimos 30 días del periodo`} />
-            <StatCard icon={Repeat2} label="Recompra" value={porcentaje(r.recompraPct)} nota={`${entero(r.clientesRecompra)} clientes compraron en 2 o más días distintos`} />
-            <StatCard icon={Clock} label="Intervalo mediano" value={dias(r.intervaloMedianoDias)} nota={r.intervaloMedianoDias === null ? "Menos de 5 intervalos: sin dato" : "Entre una compra y la siguiente"} />
-            <StatCard icon={TrendingDown} label="Dormidos (de cualquier segmento)" value={entero(r.dormidos)} nota="Con 2+ ventas y sin pedir más de lo habitual; incluye a campeones o leales que ya tardan" />
-            <StatCard icon={Activity} label="Venta en riesgo" value={pesos(r.ventaEnRiesgoCentavos)} nota={`De ${pesos(r.ventaTotalCentavos)} vendidos; dormidos y en riesgo de alto valor`} />
+            <StatCard icon={Users} label={t("restaurantes.cfoAnalisis.clientesVenta")} value={entero(r.clientesConVenta)} nota={t("restaurantes.cfoAnalisis.activos30", { n: entero(r.activos30) })} />
+            <StatCard icon={Repeat2} label={t("restaurantes.cfoAnalisis.recompra")} value={porcentaje(r.recompraPct)} nota={t("restaurantes.cfoAnalisis.recompraNota", { n: entero(r.clientesRecompra) })} />
+            <StatCard icon={Clock} label={t("restaurantes.cfoAnalisis.intervaloMediano")} value={dias(r.intervaloMedianoDias)} nota={t(r.intervaloMedianoDias === null ? "restaurantes.cfoAnalisis.menosDe5" : "restaurantes.cfoAnalisis.entreCompras")} />
+            <StatCard icon={TrendingDown} label={t("restaurantes.cfoAnalisis.dormidos")} value={entero(r.dormidos)} nota={t("restaurantes.cfoAnalisis.dormidosNota")} />
+            <StatCard icon={Activity} label={t("restaurantes.cfoAnalisis.ventaRiesgo")} value={pesos(r.ventaEnRiesgoCentavos)} nota={t("restaurantes.cfoAnalisis.ventaRiesgoNota", { total: pesos(r.ventaTotalCentavos) })} />
           </div>
         )
       }
@@ -104,30 +110,31 @@ function Resumen({ d }: { readonly d: AnalisisClientesVista }) {
 function Segmentos({ d }: { readonly d: AnalisisClientesVista }) {
   const totalVenta = d.secciones.resumen.datos?.ventaTotalCentavos ?? 0;
   const totalClientes = d.secciones.resumen.datos?.clientesConVenta ?? 0;
+  const t = useT(restaurantesCfoAnalisis);
   return (
-    <Bloque id="segmentos" titulo="Segmentos RFM" subtitulo="Recencia, frecuencia y monto de cada cliente" definicion={`${d.definiciones["recencia"] ?? ""} ${d.definiciones["frecuencia"] ?? ""} ${d.definiciones["monetario"] ?? ""}`.trim()} periodo={periodoTexto(d)} seccion={d.secciones.segmentos}>
+    <Bloque id="segmentos" titulo={t("restaurantes.cfoAnalisis.b.segmentos")} subtitulo={t("restaurantes.cfoAnalisis.b.segmentosSub")} definicion={`${d.definiciones["recencia"] ?? ""} ${d.definiciones["frecuencia"] ?? ""} ${d.definiciones["monetario"] ?? ""}`.trim()} periodo={periodoTexto(d)} seccion={d.secciones.segmentos}>
       {(s) =>
         totalClientes === 0 ? (
-          <EstadoVacio compacto icon={Users} titulo="Sin clientes para segmentar" mensaje="No hay ventas con cliente identificado en el periodo." />
+          <EstadoVacio compacto icon={Users} titulo={t("restaurantes.cfoAnalisis.sinSegmentar")} mensaje={t("restaurantes.cfoAnalisis.sinVentasCliente")} />
         ) : (
           <div className="space-y-2">
-            {s.pocosClientes && <Callout tone="warning" data-testid="segmentos-pocos">Con menos de 5 clientes los puntajes de recencia y monto no son estables.</Callout>}
+            {s.pocosClientes && <Callout tone="warning" data-testid="segmentos-pocos">{t("restaurantes.cfoAnalisis.pocos")}</Callout>}
             <DataTable
-              etiqueta="Segmentos RFM"
+              etiqueta={t("restaurantes.cfoAnalisis.b.segmentos")}
               filas={s.segmentos}
               obtenerId={(f) => f.segmento}
               paginacion={false}
               atributosFila={(f) => ({ "data-segmento": f.segmento })}
               columnas={[
-                { id: "s", encabezado: "Segmento", principal: true, celda: (f) => <span title={f.definicion}>{f.etiqueta}</span> },
-                { id: "c", encabezado: "Clientes", alinear: "right", className: "tabular-nums", celda: (f) => `${entero(f.clientes)} (${porcentaje(pctDe(f.clientes, totalClientes))})` },
-                { id: "v", encabezado: "Venta", alinear: "right", className: "tabular-nums", celda: (f) => `${pesos(f.ventaCentavos)} (${porcentaje(pctDe(f.ventaCentavos, totalVenta))})` },
-                { id: "t", encabezado: "Ticket", alinear: "right", className: "tabular-nums", celda: (f) => pesos(f.ticketCentavos) },
-                { id: "r", encabezado: "Recencia mediana", alinear: "right", className: "tabular-nums", celda: (f) => dias(f.recenciaMedianaDias) },
+                { id: "s", encabezado: t("restaurantes.cfoAnalisis.col.segmento"), principal: true, celda: (f) => <span title={f.definicion}>{f.etiqueta}</span> },
+                { id: "c", encabezado: t("restaurantes.cfoAnalisis.col.clientes"), alinear: "right", className: "tabular-nums", celda: (f) => `${entero(f.clientes)} (${porcentaje(pctDe(f.clientes, totalClientes))})` },
+                { id: "v", encabezado: t("restaurantes.cfoAnalisis.col.venta"), alinear: "right", className: "tabular-nums", celda: (f) => `${pesos(f.ventaCentavos)} (${porcentaje(pctDe(f.ventaCentavos, totalVenta))})` },
+                { id: "t", encabezado: t("restaurantes.cfoAnalisis.col.ticket"), alinear: "right", className: "tabular-nums", celda: (f) => pesos(f.ticketCentavos) },
+                { id: "r", encabezado: t("restaurantes.cfoAnalisis.col.recencia"), alinear: "right", className: "tabular-nums", celda: (f) => dias(f.recenciaMedianaDias) },
               ]}
             />
             <details className="text-xs text-muted-foreground" data-testid="segmentos-definiciones">
-              <summary className="inline-flex min-h-8 cursor-pointer items-center rounded-md px-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Cómo se define cada segmento</summary>
+              <summary className="inline-flex min-h-8 cursor-pointer items-center rounded-md px-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t("restaurantes.cfoAnalisis.comoSeDefine")}</summary>
               <ul className="mt-1 list-disc space-y-0.5 pl-4">
                 {s.segmentos.map((f) => (
                   <li key={f.segmento}>
@@ -135,7 +142,7 @@ function Segmentos({ d }: { readonly d: AnalisisClientesVista }) {
                   </li>
                 ))}
               </ul>
-              <p className="mt-1">Se evalúan en este orden y gana el primero que cumpla. {d.definiciones["dormido"]}</p>
+              <p className="mt-1">{t("restaurantes.cfoAnalisis.orden")} {d.definiciones["dormido"]}</p>
             </details>
           </div>
         )
@@ -145,20 +152,21 @@ function Segmentos({ d }: { readonly d: AnalisisClientesVista }) {
 }
 
 function Concentracion({ d }: { readonly d: AnalisisClientesVista }) {
+  const t = useT(restaurantesCfoAnalisis);
   return (
-    <Bloque id="concentracion" titulo="Concentración (Pareto)" subtitulo="Qué parte de la venta reúnen tus mejores clientes" definicion={d.definiciones["concentracion"] ?? ""} periodo={periodoTexto(d)} seccion={d.secciones.concentracion}>
+    <Bloque id="concentracion" titulo={t("restaurantes.cfoAnalisis.b.concentracion")} subtitulo={t("restaurantes.cfoAnalisis.b.concentracionSub")} definicion={d.definiciones["concentracion"] ?? ""} periodo={periodoTexto(d)} seccion={d.secciones.concentracion}>
       {(p: ParetoRfm) =>
         p.puntos.length === 0 ? (
-          <EstadoVacio compacto icon={Users} titulo="Sin ventas para medir la concentración" mensaje="No hay ventas con cliente identificado en el periodo." />
+          <EstadoVacio compacto icon={Users} titulo={t("restaurantes.cfoAnalisis.sinConcentracion")} mensaje={t("restaurantes.cfoAnalisis.sinVentasCliente")} />
         ) : (
           <div className="space-y-2">
             <p className="text-sm" data-testid="pareto-texto">
-              {p.clientesPara50Pct === null ? null : <span>El {porcentaje(p.clientesPara50Pct)} de tus clientes reúne el 50 % de la venta</span>}
-              {p.clientesPara80Pct === null ? null : <span>{p.clientesPara50Pct === null ? "El" : " y el"} {porcentaje(p.clientesPara80Pct)} reúne el 80 %</span>}
+              {p.clientesPara50Pct === null ? null : <span>{t("restaurantes.cfoAnalisis.pareto50", { pct: porcentaje(p.clientesPara50Pct) })}</span>}
+              {p.clientesPara80Pct === null ? null : <span>{t(p.clientesPara50Pct === null ? "restaurantes.cfoAnalisis.pareto80Solo" : "restaurantes.cfoAnalisis.pareto80Y", { pct: porcentaje(p.clientesPara80Pct) })}</span>}
               .
             </p>
-            <BarChartSimple datos={p.puntos.map((x) => ({ dia: `${x.clientesPct} %`, valor: x.ventaPct }))} etiquetaValor={(v) => porcentaje(v)} sinDatos="Sin ventas en este periodo" />
-            <TablaDatosGrafica titulo="Concentración de la venta" encabezados={["Clientes (los de mayor venta)", "Clientes", "% acumulado de la venta"]} filas={p.puntos.map((x) => [`Primeros ${x.clientesPct} %`, entero(x.clientes), porcentaje(x.ventaPct)])} />
+            <BarChartSimple datos={p.puntos.map((x) => ({ dia: t("restaurantes.cfoAnalisis.pct", { n: String(x.clientesPct) }), valor: x.ventaPct }))} etiquetaValor={(v) => porcentaje(v)} sinDatos={t("restaurantes.cfoAnalisis.sinVentas")} />
+            <TablaDatosGrafica titulo={t("restaurantes.cfoAnalisis.concentracionTabla")} encabezados={[t("restaurantes.cfoAnalisis.col.mayorVenta"), t("restaurantes.cfoAnalisis.col.clientes"), t("restaurantes.cfoAnalisis.col.pctAcumulado")]} filas={p.puntos.map((x) => [t("restaurantes.cfoAnalisis.primeros", { n: String(x.clientesPct) }), entero(x.clientes), porcentaje(x.ventaPct)])} />
           </div>
         )
       }
@@ -167,55 +175,63 @@ function Concentracion({ d }: { readonly d: AnalisisClientesVista }) {
 }
 
 function Reactivacion({ d, seccion, ocupado, limite, onLimite, base }: { readonly d: AnalisisClientesVista; readonly seccion: SeccionAnalisis<ReactivacionAnalisis>; readonly ocupado: boolean; readonly limite: number; readonly onLimite: (n: number) => void; readonly base: string }) {
+  const t = useT(restaurantesCfoAnalisis);
   return (
-    <Bloque id="reactivacion" titulo="Reactivación priorizada" subtitulo="Clientes que ya tardan más de lo habitual en volver" definicion={`${d.definiciones["reactivacion"] ?? ""} ${d.definiciones["prioridad"] ?? ""}`.trim()} periodo={periodoTexto(d)} seccion={seccion}>
+    <Bloque id="reactivacion" titulo={t("restaurantes.cfoAnalisis.b.reactivacion")} subtitulo={t("restaurantes.cfoAnalisis.b.reactivacionSub")} definicion={`${d.definiciones["reactivacion"] ?? ""} ${d.definiciones["prioridad"] ?? ""}`.trim()} periodo={periodoTexto(d)} seccion={seccion}>
       {(r) => (
         <div className="space-y-2" aria-busy={ocupado} data-testid="reactivacion-contenido">
           <Callout tone="info" data-testid="reactivacion-alcance">
-            Esta lista sirve para dimensionar cuánta venta está en juego. Por privacidad los clientes aparecen con un alias y aquí no se puede saber a quién contactar: identificar clientes y preparar campañas llegará en una fase posterior.
+            {t("restaurantes.cfoAnalisis.alcance")}
           </Callout>
           <div className="flex flex-wrap items-end justify-between gap-2">
             <p className="text-sm" data-testid="reactivacion-resumen">
-              {entero(r.totalElegibles)} clientes por reactivar · {pesos(r.ventaEnJuegoCentavos)} de venta del periodo en juego · {entero(r.dormidos)} dormidos. Consentimiento de mensajes: {entero(r.consentimiento.otorgado)} otorgado, {entero(r.consentimiento.revocado)} revocado, {entero(r.consentimiento.sinRegistro)} sin registro.
+              {t("restaurantes.cfoAnalisis.resumenReactivacion", {
+                elegibles: entero(r.totalElegibles),
+                venta: pesos(r.ventaEnJuegoCentavos),
+                dormidos: entero(r.dormidos),
+                otorgado: entero(r.consentimiento.otorgado),
+                revocado: entero(r.consentimiento.revocado),
+                sinRegistro: entero(r.consentimiento.sinRegistro),
+              })}
             </p>
             <div className="w-full sm:w-44">
               <label htmlFor="analisis-limite" className="mb-1 block text-xs text-muted-foreground">
-                Clientes por mostrar
+                {t("restaurantes.cfoAnalisis.porMostrar")}
               </label>
               <Selector id="analisis-limite" size="sm" value={String(limite)} onChange={(e) => onLimite(Number(e.target.value))} data-testid="analisis-limite">
                 {LIMITES.map((n) => (
                   <option key={n} value={String(n)}>
-                    {n} clientes
+                    {t("restaurantes.cfoAnalisis.nClientes", { n: String(n) })}
                   </option>
                 ))}
               </Selector>
             </div>
           </div>
           {r.filas.length === 0 ? (
-            <EstadoVacio compacto icon={Users} titulo="Nadie por reactivar" mensaje="Ningún cliente con 2 o más ventas supera su ritmo de recompra en este periodo." />
+            <EstadoVacio compacto icon={Users} titulo={t("restaurantes.cfoAnalisis.nadie")} mensaje={t("restaurantes.cfoAnalisis.nadieMensaje")} />
           ) : (
             <DataTable
-              etiqueta="Clientes por reactivar"
+              etiqueta={t("restaurantes.cfoAnalisis.tablaReactivar")}
               filas={r.filas}
               obtenerId={(f) => f.alias}
               paginacion={false}
               atributosFila={(f) => ({ "data-alias": f.alias })}
               columnas={[
-                { id: "a", encabezado: "Cliente (alias)", principal: true, celda: (f) => <code className="font-mono text-xs">{f.alias}</code> },
-                { id: "u", encabezado: "Última venta", alinear: "right", className: "tabular-nums", celda: (f) => diaCorto(f.ultimaVenta) },
-                { id: "ds", encabezado: "Sin pedir", alinear: "right", className: "tabular-nums", celda: (f) => dias(f.diasSinPedir) },
-                { id: "i", encabezado: "Su ritmo", alinear: "right", className: "tabular-nums", celda: (f) => (f.intervaloMedianoDias === null ? "Sin ritmo propio" : `cada ${decimal(f.intervaloMedianoDias)} d`) },
-                { id: "v", encabezado: "Venta del periodo", alinear: "right", className: "tabular-nums", celda: (f) => `${pesos(f.ventaCentavos)} · ${entero(f.ventas)} ventas` },
-                { id: "p", encabezado: "Prioridad", alinear: "right", className: "tabular-nums", celda: (f) => pesos(f.prioridadCentavos) },
-                { id: "e", encabezado: "Estado", celda: (f: FilaReactivacion) => (f.dormido ? <StatusBadge tone="warning">Dormido</StatusBadge> : <StatusBadge tone="neutral">Pasado su ritmo</StatusBadge>) },
-                { id: "k", encabezado: "Consentimiento", celda: (f: FilaReactivacion) => <StatusBadge tone={CONSENTIMIENTO[f.consentimiento].tono}>{CONSENTIMIENTO[f.consentimiento].texto}</StatusBadge> },
+                { id: "a", encabezado: t("restaurantes.cfoAnalisis.col.alias"), principal: true, celda: (f) => <code className="font-mono text-xs">{f.alias}</code> },
+                { id: "u", encabezado: t("restaurantes.cfoAnalisis.col.ultimaVenta"), alinear: "right", className: "tabular-nums", celda: (f) => diaCorto(f.ultimaVenta) },
+                { id: "ds", encabezado: t("restaurantes.cfoAnalisis.col.sinPedir"), alinear: "right", className: "tabular-nums", celda: (f) => dias(f.diasSinPedir) },
+                { id: "i", encabezado: t("restaurantes.cfoAnalisis.col.ritmo"), alinear: "right", className: "tabular-nums", celda: (f) => (f.intervaloMedianoDias === null ? t("restaurantes.cfoAnalisis.sinRitmo") : t("restaurantes.cfoAnalisis.cada", { n: decimal(f.intervaloMedianoDias) })) },
+                { id: "v", encabezado: t("restaurantes.cfoAnalisis.col.ventaPeriodo"), alinear: "right", className: "tabular-nums", celda: (f) => t("restaurantes.cfoAnalisis.ventaYVentas", { venta: pesos(f.ventaCentavos), n: entero(f.ventas) }) },
+                { id: "p", encabezado: t("restaurantes.cfoAnalisis.col.prioridad"), alinear: "right", className: "tabular-nums", celda: (f) => pesos(f.prioridadCentavos) },
+                { id: "e", encabezado: t("restaurantes.cfoAnalisis.col.estado"), celda: (f: FilaReactivacion) => (f.dormido ? <StatusBadge tone="warning">{t("restaurantes.cfoAnalisis.dormido")}</StatusBadge> : <StatusBadge tone="neutral">{t("restaurantes.cfoAnalisis.pasado")}</StatusBadge>) },
+                { id: "k", encabezado: t("restaurantes.cfoAnalisis.col.consentimiento"), celda: (f: FilaReactivacion) => <StatusBadge tone={CONSENTIMIENTO[f.consentimiento].tono}>{t(CONSENTIMIENTO[f.consentimiento].clave)}</StatusBadge> },
               ]}
             />
           )}
           <p className="text-xs text-muted-foreground" data-testid="reactivacion-nota">
-            Esta pantalla solo muestra; no envía mensajes. Para contactar a clientes con consentimiento otorgado, crea una campaña en{" "}
+            {t("restaurantes.cfoAnalisis.soloMuestra")}{" "}
             <Link to={`${base}/campanas`} className="font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-              Campañas
+              {t("restaurantes.cfoAnalisis.campanas")}
             </Link>
             .
           </p>
@@ -226,24 +242,25 @@ function Reactivacion({ d, seccion, ocupado, limite, onLimite, base }: { readonl
 }
 
 function Intervalo({ d }: { readonly d: AnalisisClientesVista }) {
-  const etiqueta = (f: FilaIntervaloRecompra): string => (f.segmento === "global" ? "Todos los clientes" : (d.secciones.segmentos.datos?.segmentos.find((s) => s.segmento === f.segmento)?.etiqueta ?? f.segmento));
+  const t = useT(restaurantesCfoAnalisis);
+  const etiqueta = (f: FilaIntervaloRecompra): string => (f.segmento === "global" ? t("restaurantes.cfoAnalisis.todos") : (d.secciones.segmentos.datos?.segmentos.find((s) => s.segmento === f.segmento)?.etiqueta ?? f.segmento));
   return (
-    <Bloque id="intervalo" titulo="Intervalo de recompra" subtitulo="Días entre una compra y la siguiente" definicion={d.definiciones["intervalo"] ?? ""} periodo={periodoTexto(d)} seccion={d.secciones.intervalo}>
+    <Bloque id="intervalo" titulo={t("restaurantes.cfoAnalisis.b.intervalo")} subtitulo={t("restaurantes.cfoAnalisis.b.intervaloSub")} definicion={d.definiciones["intervalo"] ?? ""} periodo={periodoTexto(d)} seccion={d.secciones.intervalo}>
       {(filas) => {
         const conDato = filas.filter((f) => f.intervalos > 0);
         return conDato.length === 0 ? (
-          <EstadoVacio compacto icon={Clock} titulo="Aún no hay compras repetidas" mensaje="Cuando un cliente compre en dos días distintos del periodo, aquí verás cada cuántos días vuelve." />
+          <EstadoVacio compacto icon={Clock} titulo={t("restaurantes.cfoAnalisis.sinRepetidas")} mensaje={t("restaurantes.cfoAnalisis.sinRepetidasMensaje")} />
         ) : (
           <DataTable
-            etiqueta="Intervalo de recompra por segmento"
+            etiqueta={t("restaurantes.cfoAnalisis.intervaloTabla")}
             filas={conDato}
             obtenerId={(f) => f.segmento}
             paginacion={false}
             columnas={[
-              { id: "s", encabezado: "Grupo", principal: true, celda: etiqueta },
-              { id: "n", encabezado: "Intervalos", alinear: "right", className: "tabular-nums", celda: (f) => entero(f.intervalos) },
+              { id: "s", encabezado: t("restaurantes.cfoAnalisis.col.grupo"), principal: true, celda: etiqueta },
+              { id: "n", encabezado: t("restaurantes.cfoAnalisis.col.intervalos"), alinear: "right", className: "tabular-nums", celda: (f) => entero(f.intervalos) },
               { id: "p25", encabezado: "p25", alinear: "right", className: "tabular-nums", celda: (f) => dias(f.p25) },
-              { id: "p50", encabezado: "Mediana", alinear: "right", className: "tabular-nums", celda: (f) => dias(f.p50) },
+              { id: "p50", encabezado: t("restaurantes.cfoAnalisis.col.mediana"), alinear: "right", className: "tabular-nums", celda: (f) => dias(f.p50) },
               { id: "p75", encabezado: "p75", alinear: "right", className: "tabular-nums", celda: (f) => dias(f.p75) },
               { id: "p90", encabezado: "p90", alinear: "right", className: "tabular-nums", celda: (f) => dias(f.p90) },
             ]}
@@ -255,31 +272,34 @@ function Intervalo({ d }: { readonly d: AnalisisClientesVista }) {
 }
 
 function Afinidad({ d }: { readonly d: AnalisisClientesVista }) {
+  const t = useT(restaurantesCfoAnalisis);
   return (
-    <Bloque id="afinidad" titulo="Productos que se piden juntos" subtitulo="Soporte, confianza y lift de cada par" definicion={`${d.definiciones["soporte"] ?? ""} ${d.definiciones["confianza"] ?? ""} ${d.definiciones["lift"] ?? ""}`.trim()} periodo={periodoTexto(d)} seccion={d.secciones.afinidad}>
+    <Bloque id="afinidad" titulo={t("restaurantes.cfoAnalisis.b.afinidad")} subtitulo={t("restaurantes.cfoAnalisis.b.afinidadSub")} definicion={`${d.definiciones["soporte"] ?? ""} ${d.definiciones["confianza"] ?? ""} ${d.definiciones["lift"] ?? ""}`.trim()} periodo={periodoTexto(d)} seccion={d.secciones.afinidad}>
       {(a: AfinidadAnalisis) => (
         <div className="space-y-2">
           {a.pares.length === 0 ? (
-            <EstadoVacio compacto icon={Users} titulo="Sin pares frecuentes" mensaje={`Ningún par de productos se pidió junto en ${a.minimoPedidos} o más pedidos en este periodo.`} />
+            <EstadoVacio compacto icon={Users} titulo={t("restaurantes.cfoAnalisis.sinPares")} mensaje={t("restaurantes.cfoAnalisis.sinParesMensaje", { min: a.minimoPedidos })} />
           ) : (
             <DataTable
-              etiqueta="Pares de productos con afinidad"
+              etiqueta={t("restaurantes.cfoAnalisis.afinidadTabla")}
               filas={a.pares}
               obtenerId={(f: ParAfinidadApi) => `${f.productoA}|${f.productoB}`}
               paginacion={false}
               columnas={[
-                { id: "p", encabezado: "Productos", principal: true, celda: (f: ParAfinidadApi) => `${f.nombreA} + ${f.nombreB}` },
-                { id: "j", encabezado: "Pedidos juntos", alinear: "right", className: "tabular-nums", celda: (f: ParAfinidadApi) => entero(f.pedidosJuntos) },
-                { id: "s", encabezado: "Soporte", alinear: "right", className: "tabular-nums", celda: (f: ParAfinidadApi) => porcentaje(f.soportePct) },
-                { id: "c1", encabezado: "Confianza A→B", alinear: "right", className: "tabular-nums", celda: (f: ParAfinidadApi) => porcentaje(f.confianzaAB) },
-                { id: "c2", encabezado: "Confianza B→A", alinear: "right", className: "tabular-nums", celda: (f: ParAfinidadApi) => porcentaje(f.confianzaBA) },
+                { id: "p", encabezado: t("restaurantes.cfoAnalisis.col.productos"), principal: true, celda: (f: ParAfinidadApi) => `${f.nombreA} + ${f.nombreB}` },
+                { id: "j", encabezado: t("restaurantes.cfoAnalisis.col.juntos"), alinear: "right", className: "tabular-nums", celda: (f: ParAfinidadApi) => entero(f.pedidosJuntos) },
+                { id: "s", encabezado: t("restaurantes.cfoAnalisis.col.soporte"), alinear: "right", className: "tabular-nums", celda: (f: ParAfinidadApi) => porcentaje(f.soportePct) },
+                { id: "c1", encabezado: t("restaurantes.cfoAnalisis.col.confAB"), alinear: "right", className: "tabular-nums", celda: (f: ParAfinidadApi) => porcentaje(f.confianzaAB) },
+                { id: "c2", encabezado: t("restaurantes.cfoAnalisis.col.confBA"), alinear: "right", className: "tabular-nums", celda: (f: ParAfinidadApi) => porcentaje(f.confianzaBA) },
                 { id: "l", encabezado: "Lift", alinear: "right", className: "tabular-nums", celda: (f: ParAfinidadApi) => (f.lift === null ? SIN_DATO : f.lift.toFixed(2)) },
               ]}
             />
           )}
           <p className="text-xs text-muted-foreground" data-testid="afinidad-nota">
-            Solo se muestran pares con {a.minimoPedidos} o más pedidos juntos{a.ocultosPorPrivacidad > 0 ? ` (${entero(a.ocultosPorPrivacidad)} pares con menos pedidos se ocultan por privacidad)` : ""}. A→B = de los pedidos con el primer producto, cuántos llevan también el segundo.
-            {a.multiSucursal ? " Con varias sucursales el lift y los pedidos juntos son aproximados (el top por sucursal también los recorta)." : ""}
+            {t("restaurantes.cfoAnalisis.afinidadNota", { min: a.minimoPedidos })}
+            {a.ocultosPorPrivacidad > 0 ? t("restaurantes.cfoAnalisis.ocultos", { n: entero(a.ocultosPorPrivacidad) }) : ""}
+            {t("restaurantes.cfoAnalisis.ab")}
+            {a.multiSucursal ? t("restaurantes.cfoAnalisis.multi") : ""}
           </p>
         </div>
       )}
@@ -288,30 +308,31 @@ function Afinidad({ d }: { readonly d: AnalisisClientesVista }) {
 }
 
 function Tortilla({ d }: { readonly d: AnalisisClientesVista }) {
+  const t = useT(restaurantesCfoAnalisis);
   return (
-    <Bloque id="tortilla" titulo="Tortilla en los pedidos" subtitulo="Maíz, harina o mixta" definicion={d.definiciones["tortilla"] ?? ""} periodo={periodoTexto(d)} seccion={d.secciones.tortilla}>
-      {(t) => {
-        const total = t.tortilla.reduce((s, x) => s + x.renglones, 0);
+    <Bloque id="tortilla" titulo={t("restaurantes.cfoAnalisis.b.tortilla")} subtitulo={t("restaurantes.cfoAnalisis.b.tortillaSub")} definicion={d.definiciones["tortilla"] ?? ""} periodo={periodoTexto(d)} seccion={d.secciones.tortilla}>
+      {(x) => {
+        const total = x.tortilla.reduce((s, y) => s + y.renglones, 0);
         return (
           <div className="space-y-2">
             {total === 0 ? (
-              <EstadoVacio compacto icon={Users} titulo="Sin renglones con tortilla" mensaje={`Ningún renglón del periodo trae tortilla elegida (${entero(t.pedidosConItems)} pedidos con detalle).`} />
+              <EstadoVacio compacto icon={Users} titulo={t("restaurantes.cfoAnalisis.sinTortilla")} mensaje={t("restaurantes.cfoAnalisis.sinTortillaMensaje", { n: entero(x.pedidosConItems) })} />
             ) : (
               <DataTable
-                etiqueta="Tortilla por tipo"
-                filas={t.tortilla}
+                etiqueta={t("restaurantes.cfoAnalisis.tortillaTabla")}
+                filas={x.tortilla}
                 obtenerId={(f) => f.tipo}
                 paginacion={false}
                 columnas={[
-                  { id: "t", encabezado: "Tortilla", principal: true, celda: (f) => f.etiqueta },
-                  { id: "r", encabezado: "Renglones", alinear: "right", className: "tabular-nums", celda: (f) => `${entero(f.renglones)} (${porcentaje(pctDe(f.renglones, total))})` },
-                  { id: "u", encabezado: "Unidades", alinear: "right", className: "tabular-nums", celda: (f) => entero(f.unidades) },
-                  { id: "p", encabezado: "Pedidos", alinear: "right", className: "tabular-nums", celda: (f) => entero(f.pedidos) },
+                  { id: "t", encabezado: t("restaurantes.cfoAnalisis.col.tortilla"), principal: true, celda: (f) => f.etiqueta },
+                  { id: "r", encabezado: t("restaurantes.cfoAnalisis.col.renglones"), alinear: "right", className: "tabular-nums", celda: (f) => `${entero(f.renglones)} (${porcentaje(pctDe(f.renglones, total))})` },
+                  { id: "u", encabezado: t("restaurantes.cfoAnalisis.col.unidades"), alinear: "right", className: "tabular-nums", celda: (f) => entero(f.unidades) },
+                  { id: "p", encabezado: t("restaurantes.cfoAnalisis.col.pedidos"), alinear: "right", className: "tabular-nums", celda: (f) => entero(f.pedidos) },
                 ]}
               />
             )}
             <p className="text-xs text-muted-foreground" data-testid="tortilla-salsas">
-              Salsas y omisiones: {t.salsas.motivo}
+              {t("restaurantes.cfoAnalisis.salsas", { motivo: x.salsas.motivo })}
             </p>
           </div>
         );
@@ -321,9 +342,10 @@ function Tortilla({ d }: { readonly d: AnalisisClientesVista }) {
 }
 
 function Pendientes({ d }: { readonly d: AnalisisClientesVista }) {
+  const t = useT(restaurantesCfoAnalisis);
   return (
-    <section aria-label="Lo que todavía no está disponible" data-testid="bloque-pendientes">
-      <ChartCard titulo="Todavía no disponible" subtitulo="Lo que necesita datos que hoy no se guardan; no se simula" tamano="S">
+    <section aria-label={t("restaurantes.cfoAnalisis.pendientesAria")} data-testid="bloque-pendientes">
+      <ChartCard titulo={t("restaurantes.cfoAnalisis.pendientes")} subtitulo={t("restaurantes.cfoAnalisis.pendientesSub")} tamano="S">
         <ul className="space-y-2" data-testid="pendientes-lista">
           {d.pendientes.map((p) => (
             <li key={p.clave} data-clave={p.clave} className="text-sm">
@@ -336,14 +358,15 @@ function Pendientes({ d }: { readonly d: AnalisisClientesVista }) {
   );
 }
 
-const periodoTexto = (d: AnalisisClientesVista): string => `${diaCorto(d.periodo.desde)} a ${diaCorto(d.periodo.hasta)} (${entero(d.periodo.dias)} días)`;
+const periodoTexto = (d: AnalisisClientesVista): string => tr("restaurantes.cfoAnalisis.periodoTexto", { desde: diaCorto(d.periodo.desde), hasta: diaCorto(d.periodo.hasta), n: entero(d.periodo.dias) });
 
 function Contenido({ d, props, limite, onLimite, reactivacion, ocupado }: { readonly d: AnalisisClientesVista; readonly props: CfoPaginaProps; readonly limite: number; readonly onLimite: (n: number) => void; readonly reactivacion: SeccionAnalisis<ReactivacionAnalisis>; readonly ocupado: boolean }) {
+  const t = useT(restaurantesCfoAnalisis);
   return (
     <>
       <div className="space-y-2.5">
         <Callout tone="neutral" data-testid="analisis-periodo">
-          Periodo: {periodoTexto(d)}. La recencia se mide contra el último día del periodo. Los clientes aparecen con un alias de 8 caracteres, nunca con nombre ni teléfono.
+          {t("restaurantes.cfoAnalisis.periodoCallout", { periodo: periodoTexto(d) })}
         </Callout>
         <AvisosCfo vista={d} />
         <Resumen d={d} />
@@ -361,12 +384,13 @@ function Contenido({ d, props, limite, onLimite, reactivacion, ocupado }: { read
 
 /** Esqueleto: cada bloque muestra su propia carga mientras llega la respuesta. */
 function Esqueleto() {
-  const bloques: ReadonlyArray<readonly [string, string]> = [["resumen", "Resumen"], ["segmentos", "Segmentos RFM"], ["concentracion", "Concentración (Pareto)"], ["reactivacion", "Reactivación priorizada"], ["intervalo", "Intervalo de recompra"], ["afinidad", "Productos que se piden juntos"], ["tortilla", "Tortilla en los pedidos"]];
+  const t = useT(restaurantesCfoAnalisis);
+  const bloques: ReadonlyArray<readonly [string, Clave]> = [["resumen", "restaurantes.cfoAnalisis.b.resumen"], ["segmentos", "restaurantes.cfoAnalisis.b.segmentos"], ["concentracion", "restaurantes.cfoAnalisis.b.concentracion"], ["reactivacion", "restaurantes.cfoAnalisis.b.reactivacion"], ["intervalo", "restaurantes.cfoAnalisis.b.intervalo"], ["afinidad", "restaurantes.cfoAnalisis.b.afinidad"], ["tortilla", "restaurantes.cfoAnalisis.b.tortilla"]];
   return (
     <>
       <div className="space-y-2.5" data-testid="analisis-cargando">
         {bloques.map(([id, titulo]) => (
-          <Bloque key={id} id={id} titulo={titulo} definicion="" periodo="" seccion={null}>
+          <Bloque key={id} id={id} titulo={t(titulo)} definicion="" periodo="" seccion={null}>
             {() => null}
           </Bloque>
         ))}
@@ -380,6 +404,7 @@ const LIMITE_INICIAL = 50;
 
 export function CfoAnalisisClientes(props: CfoPaginaProps) {
   const { api, filtros } = props;
+  const t = useT(restaurantesCfoAnalisis);
   const [limite, setLimite] = useState<number>(LIMITE_INICIAL);
   const { carga, recargando, recargar } = useCargaCfo(() => fetchAnalisisClientes(api, filtros, LIMITE_INICIAL), [claveCarga(filtros), api.propertyId, api.token]);
   // Reactivación con otro límite: se pide la vista y solo se toma ese bloque (el endpoint es uno solo); lo demás se conserva tal cual.
@@ -398,7 +423,7 @@ export function CfoAnalisisClientes(props: CfoPaginaProps) {
         if (!cancelado) setOtra({ limite, seccion: v.secciones.reactivacion });
       })
       .catch(() => {
-        if (!cancelado) setOtra({ limite, seccion: { disponible: false, motivo: "No se pudo actualizar esta lista. Intente de nuevo.", datos: null } });
+        if (!cancelado) setOtra({ limite, seccion: { disponible: false, motivo: tr("restaurantes.cfoAnalisis.errorLista"), datos: null } });
       })
       .finally(() => {
         if (!cancelado) setOcupado(false);
@@ -412,7 +437,7 @@ export function CfoAnalisisClientes(props: CfoPaginaProps) {
       {carga.estado === "cargando" ? (
         <Esqueleto />
       ) : (
-        <CargaCfoVista carga={carga} onReintentar={recargar} etiqueta="Cargando el análisis de clientes…">
+        <CargaCfoVista carga={carga} onReintentar={recargar} etiqueta={t("restaurantes.cfoAnalisis.cargando")}>
           {(d) => <Contenido d={d} props={props} limite={limite} onLimite={setLimite} reactivacion={otra && otra.limite === limite ? otra.seccion : d.secciones.reactivacion} ocupado={ocupado} />}
         </CargaCfoVista>
       )}
