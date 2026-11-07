@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi, beforeAll } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { SucursalesPage } from "../src/verticals/restaurantes/pages/Sucursales.tsx";
 import type { RestaurantesShellContext } from "../src/verticals/restaurantes/RestaurantesShell.tsx";
-import { changeValue, click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+import { changeValue, click, esperarHasta, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 import { elegirValor, valorDe, prepararJsdomParaRadix } from "./test-utils/seleccionar.tsx";
 
 beforeAll(prepararJsdomParaRadix);
@@ -164,6 +164,34 @@ describe("reglas de pedido por sucursal (UI)", () => {
     });
     const put = calls.find((c) => c.method === "PUT" && c.url.endsWith("/politica"))!;
     expect((put.body as { horario: unknown[] }).horario).toHaveLength(2);
+  });
+
+  it("modo simple: una fila por dia sobre los MISMOS turnos; abrir el miercoles y guardar lo junta con lunes y martes", async () => {
+    const calls: Array<{ method: string; url: string; body?: unknown }> = [];
+    stub(calls);
+    render();
+    await settle();
+    click(botonReglas()!);
+    await settle();
+    await esperarHasta(() => rendered!.container.querySelector('[data-testid="horario-simple"]') !== null, "el modo simple cargue");
+    const pestanaSimple = [...rendered!.container.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find((b) => b.textContent === "Simple")!;
+    await act(async () => {
+      pestanaSimple.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+    });
+    // En simple no se pinta el editor de turnos (ni «Agregar turno» visible): las filas por dia lo reemplazan.
+    expect(rendered!.container.querySelector("#abre-prop-1-0")).toBeNull();
+    expect((rendered!.container.querySelector("#horario-prop-1-simple-abre-1") as HTMLInputElement).value).toBe("12:00");
+    expect(rendered!.container.textContent).toContain("Cierra al día siguiente");
+    const miercoles = [...rendered!.container.querySelectorAll("input[type=checkbox]")].find((i) => i.closest("label")?.textContent === "Miércoles")!;
+    click(miercoles);
+    await act(async () => {
+      click([...rendered!.container.querySelectorAll("button")].find((b) => b.textContent === "Guardar reglas")!);
+      await flushMicrotasks();
+      await flushMicrotasks();
+      await flushMicrotasks();
+    });
+    const put = calls.find((c) => c.method === "PUT" && c.url.endsWith("/politica"))!;
+    expect((put.body as { horario: unknown }).horario).toEqual([{ dias: [1, 2, 3], abre: "12:00", cierra: "01:00" }]);
   });
 
   it("guardar el numero de WhatsApp manda PUT solo de ese numero", async () => {
