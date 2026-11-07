@@ -33,6 +33,8 @@ export type { LogoMarcaClave, LogoMarcaTamano, LogoMarcaVariante } from "./compo
 export { LogoMarcaDiferido } from "./components/LogoMarcaDiferido.js";
 export { AtiendeMark, AtiendeWordmark } from "./components/AtiendeLogo.js";
 export { ThemeSelector } from "./components/ThemeSelector.js";
+export { SelectorIdioma } from "./components/SelectorIdioma.js";
+export { CLAVE_IDIOMA, IDIOMAS, IDIOMA_CAMBIO_EVENTO, guardarIdioma, leerIdioma, type Idioma } from "./lib/idioma.js";
 export { ThemeBoot, useTemaGlobal } from "./components/ThemeBoot.js";
 export { aplicarTema, aplicarBanderaDiseno, leerTema, sincronizarDisenoOrganizacion, type Tema } from "./lib/tema.js";
 export { DISENO_DS3, disenoPorDefecto, leerDisenoDs3 } from "./lib/diseno.js";
