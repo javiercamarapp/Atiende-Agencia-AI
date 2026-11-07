@@ -441,6 +441,8 @@ export type {
   ResultadoDecision,
   SegmentoMarketing,
 } from "./marketing/campanas.ts";
+export * from "./marketing/reactivacion.ts";
+export * from "./marketing/optin.ts";
 export { AlertasDuenioNoDisponibleError, AlertasDuenioParametrosError, AlertasDuenioSinAccesoError, UMBRALES_ALERTAS_POR_OMISION, barrerSilencioWhatsapp, guardarUmbralesAlertasDuenio, leerUmbralesAlertasDuenio } from "./alertas-duenio/silencio.ts";
 export type { CandidatoSilencio, ResultadoSilencio, UmbralesAlertasDuenio } from "./alertas-duenio/silencio.ts";
 export { avisarPresupuestoIaAlDuenio } from "./alertas-duenio/presupuesto.ts";

@@ -215,6 +215,7 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
             propertyId: channel?.propertyId ?? null,
             // PM PR-9: aviso de privacidad en el primer mensaje + fast-path ARCO (opcional en tests).
             ...(deps.privacidadRepo ? { privacy: deps.privacidadRepo(db) } : {}),
+            ...(deps.optinRepo ? { optin: deps.optinRepo(db) } : {}),
             // R-21: con una toma de handoff abierta el agente calla; sin la migración 028 el gate devuelve null.
             handoffGate: deps.handoffGate?.(db),
           });
@@ -276,6 +277,7 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
               phoneNumberId: d.phoneNumberId,
               propertyId: d.propertyId,
               ...(deps.privacidadRepo ? { privacy: deps.privacidadRepo(db) } : {}),
+              ...(deps.optinRepo ? { optin: deps.optinRepo(db) } : {}),
               handoffGate: deps.handoffGate?.(db),
               finFuncionMs: inicioMs + FUNCION_MAX_MS,
               reloj: deps.relojMs ?? Date.now,

@@ -57,7 +57,7 @@ import { PostgresAgentesRepository, PostgresHotelesRepository, PostgresReservasA
 import { buildGovernedHotelesTurnHandler } from "./hoteles-agentes-gobierno.ts";
 import { DualPacCfdiPort, FinkokAdapter, SwSapienAdapter } from "@atiende/mcp-cfdi";
 import type { ObservabilidadTurno, WhatsAppTurnHandler } from "@atiende/domain-restaurantes";
-import { GeminiLiveProvider, contextoPrecargadoDeEntorno, PostgresAgregadosRepository, crearHookAgregados, PostgresAutopilotoRepository, crearHooksAutopilotoTurnoPostgres, evaluarAlertasVozDelSistema, PostgresCierreRepository, PostgresConversacionesRepository, PostgresDemoRepository, PostgresHandoffAgentGate, PostgresPrivacidadRepository, PostgresRepartidorPerfilRepository, PostgresRestaurantesRepository, PostgresVozKpiRepository, PostgresVozLlamadaRepository, PostgresVozRepository, PostgresWhatsappKpiRepository, createLlmWhatsAppTurnHandler as createRestaurantesLlmWhatsAppTurnHandler, hashTelefonoParaLogs, PostgresAjustesAgenteRepository, temperaturaEfectivaWhatsapp, normalizarBaseMenuPdf } from "@atiende/domain-restaurantes";
+import { GeminiLiveProvider, contextoPrecargadoDeEntorno, PostgresAgregadosRepository, crearHookAgregados, PostgresAutopilotoRepository, crearHooksAutopilotoTurnoPostgres, evaluarAlertasVozDelSistema, PostgresCierreRepository, PostgresConversacionesRepository, PostgresDemoRepository, PostgresHandoffAgentGate, PostgresPrivacidadRepository, crearOptInPostgres, PostgresRepartidorPerfilRepository, PostgresRestaurantesRepository, PostgresVozKpiRepository, PostgresVozLlamadaRepository, PostgresVozRepository, PostgresWhatsappKpiRepository, createLlmWhatsAppTurnHandler as createRestaurantesLlmWhatsAppTurnHandler, hashTelefonoParaLogs, PostgresAjustesAgenteRepository, temperaturaEfectivaWhatsapp, normalizarBaseMenuPdf } from "@atiende/domain-restaurantes";
 import { PostgresCfoRepository as PostgresCfoRestaurantesRepository } from "@atiende/domain-restaurantes/cfo/postgres";
 import type { GoogleOAuthPlatformConfig, ResolveCalendarPort, ResolveCalendarSyncPort, WhatsAppTurnHandler as CitasWhatsAppTurnHandler } from "@atiende/domain-citas";
 import {
@@ -416,6 +416,8 @@ export function buildProductionDeps(): AppDeps {
     repartidorPerfilRepo: (db) => new PostgresRepartidorPerfilRepository(db),
     // Privacidad (migración 030): ARCO, aviso simplificado y retención; cada operación degrada con SAVEPOINT.
     privacidadRepo: (db) => new PostgresPrivacidadRepository(db),
+    // PM R23: opt-in conversacional (migración 150); cada llamada en SAVEPOINT, apagado por omisión (bandera en reactivacion_config).
+    optinRepo: (db) => crearOptInPostgres(db),
     conversacionesRepo: (db) => new PostgresConversacionesRepository(db),
     handoffGate: (db) => new PostgresHandoffAgentGate(db),
     // R-19: marca de organizacion demo (migración 037) para el widget publico de chat sin Meta; degrada con SAVEPOINT.

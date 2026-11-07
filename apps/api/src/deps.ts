@@ -29,6 +29,7 @@ import type { TenancyEngine, TenantDbSession } from "@atiende/core-tenancy";
 import type { AuditSink } from "@atiende/core-authz";
 import type { DataChatDeps } from "./data-chat/deps.ts";
 import type { AgregadosRepository, AutopilotoRepository, CierreRepository, ResultadoAlertasVozSistema, ConversacionesRepository, RepartidorPerfilRepository, DemoRepository, HandoffAgentGate, PrivacidadRepository, PuertoNotasDeVoz, RestaurantesRepository, VoiceAgentProvider, VozKpiRepository, VozLlamadaRepository, VozRepository, WhatsAppTurnHandler, WhatsappKpiRepository, AjustesAgenteRepository } from "@atiende/domain-restaurantes";
+import type { OptInPuerto } from "@atiende/domain-restaurantes";
 import type { CfoRepository as CfoRestaurantesRepository } from "@atiende/domain-restaurantes/cfo";
 import type { ComandaOutboxStore, ResolverCodigosPos, ResolverSucursalPos, SoftRestaurantPort } from "@atiende/domain-restaurantes/softrestaurant";
 import type { HotelesRepository, GuestTicketRepository, AgentesRepository, GruposRepository, HuespedesRepository, RecepcionRepository, CambioFechasRepository, ListaEsperaRepository, ReservasAgenteRepository, HotelesWhatsAppTurnHandler, HousekeepingRepository, HousekeepingResidualRepository, HousekeepingDiaSistemaRepository, MensajeriaConfigRepository, IdentityRepository, PaymentsPort, PrivacyRepository, PublicPrivacyRepository, GuestDataRepository, ConversacionesRepository as HotelesConversacionesRepository, ConversacionesSistemaPort as HotelesConversacionesSistemaPort } from "@atiende/domain-hoteles";
@@ -210,6 +211,8 @@ export interface AppDeps {
    * comportamiento anterior (el webhook de WhatsApp no antepone aviso ni atiende ARCO) y las rutas de
    * privacidad responden 503. En produccion es `(db) => new PostgresPrivacidadRepository(db)`. */
   readonly privacidadRepo?: (db: TenantDbSession) => PrivacidadRepository;
+  /** PM R23 -- captura de opt-in de marketing en la conversacion (migracion 150, bandera `optin_conversacional` apagada por omision). OPCIONAL: ausente = el webhook no pregunta nada. */
+  readonly optinRepo?: (db: TenantDbSession) => OptInPuerto;
   readonly voiceProvider?: VoiceAgentProvider;
   /** R-21 (migración 028): bandeja de conversaciones, handoff a humano, turnos y callbacks. OPCIONALES: sin ellos las
    * rutas responden 503 honesto y el webhook de WhatsApp sigue como antes (el agente responde siempre). */
