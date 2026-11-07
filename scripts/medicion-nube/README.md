@@ -92,3 +92,40 @@ Mecanica que cambia respecto al origen (decisiones del puerto):
 - **Tiempos permitidos**: 10/25/30 del origen + los numeros de `delivery_time_text` de la cuenta real (35, 40, 45, 50, 60, 75, 90).
 - No se porta `cotiza_antes_de_crear` (no hay traza de herramientas por conversacion sin `QA_TRACE`; el servidor ya exige cotizacion confirmada).
 - Conciliacion de catalogo y adaptaciones (A1-A4): `c3-conciliar.py` y su salida `C3-CONCILIACION.md`; cada escenario adaptado lleva `_port`.
+
+## Banco principal (51 escenarios del suelto) en la Mac — mismo corredor que C3
+
+Banco PRINCIPAL del arnes suelto (`wt-medir21/scripts/medicion/escenarios/catalogo.mjs`, export `ESCENARIOS`: 51 sinteticos) con la misma mecanica y
+el mismo veredicto determinista que C3 (`verificarC3`). Referencia del suelto con Luna: 88/102 (`pm-cuenta-real/medicion-suelto/pr21/principal-1939849-luna-x2.json`).
+
+- `arnes/principal.fuente.json` — export literal a JSON (`{"banco":"principal","escenarios":[...]}`; los regex ya eran strings en el origen).
+- `arnes/principal.json` — banco PORTADO, generado por `python3 c3-conciliar.py --banco principal --seco arnes/principal-seco.json --escribir`
+  (detalle en `PRINCIPAL-CONCILIACION.md`). Con `--banco c3` (por omision) la salida de C3 queda byte-identica.
+- `QA_C3_BANCO=principal` hace que la suite `c3` cargue `principal.json` en vez de `ciego-3.json`; la ETQ por omision empieza con el banco.
+
+```
+# seco (sin LLM, sin gasto) y regenerar el banco portado
+QA_C3_BANCO=principal SECO=1 ETQ=principal-seco bash scripts/medicion-nube/correr-c3-local.sh
+python3 scripts/medicion-nube/c3-conciliar.py --banco principal --seco <OUT_BASE>/principal-seco/c3-seco.json --escribir
+# principal x2 (GASTA): 50 conversaciones por rep (S-NEW-005 excluido) x 2 = 100 conversaciones
+QA_C3_BANCO=principal REPS=2 CEREBRO_V2=1 MODO=default TOPE_USD=2.5 bash scripts/medicion-nube/correr-c3-local.sh
+```
+
+Costo esperado: ~0.012 USD por conversacion (agente + cliente simulado) => ~0.6 USD por rep, ~1.2 USD las dos. El `TOPE_USD` por omision (1.5) queda
+justo para x2; con 2.5 hay margen para reintentos sin dejar de ser un corte duro.
+
+Adaptaciones del puerto (todas en `_port` de cada escenario y en `PRINCIPAL-CONCILIACION.md`; ninguna relaja la conducta medida):
+- **X1 excluido** `S-NEW-005-sin-domicilio`: depende del override del fixture `sucursales.garcia-lavin.acepta_domicilio=false` y en la cuenta real
+  todas las sucursales entregan. `_port.excluido`; la suite no lo corre (correrlo mediria otra cosa).
+- **A5** `S-PED-013`: el nombre sintetico «Cliente Frecuente» esta en `NOMBRES_GENERICOS` del servidor destino (no deja crear el pedido); pasa a
+  «Cliente Prueba Frecuente», como los demas.
+- **A3** `S-NEW-018` (Caucel): la herramienta real asigna `fco-montejo` (4.8 km), no `pensiones`; el cliente escribe al numero de Pensiones (R1, caso cruzado).
+- **P1** `S-NEW-007`/`S-NEW-008`: el servidor destino aplica en automatico `LUNES2X1PM` al recoger (renglon de cortesia a $0). El verificador cuenta la
+  cortesia junto a su renglon pagado y no la toma como renglon de mas (`verificarC3`; sin cortesia el veredicto no cambia, tambien en C3).
+  **Riesgo** en `S-NEW-008`: el destino aplica la promo en garcia-lavin, que segun la regla del dueno no tiene promos.
+- **U1**: los bordes de monto (`S-NEW-001` 4450 > 4000, `S-NEW-002` = 4000, `S-REC-004` 5000, `S-NEW-015` 95 < 200) se conservan con la lista real.
+- **Riesgo** `S-NEW-016`/`S-NEW-017` (Kanasin, Uman): la herramienta real responde `no_reconocida` (no `fuera_de_zona`).
+- Seca: las 28 cotizaciones esperadas cotizan (26 = suma de catalogo; 2 con la promo), y las 5 semillas de clientes existentes se crean.
+- Sin portar (igual que C3): `cotiza_antes_de_crear` y `espera_s` del guion (la rafaga de `S-PED-012` se manda mensaje a mensaje esperando respuesta).
+  `escalacion_razon_re` usa los codigos del suelto (`cancelacion`, `transferencia_realizada`, `privacidad_arco`, `cobro_duplicado`): con `cerebro_v2` el
+  servidor los conserva (`cerebro-v2/avisos.ts`, prefijo `alto_riesgo:`); `modificacion` casa con `modificacion_pedido`.
