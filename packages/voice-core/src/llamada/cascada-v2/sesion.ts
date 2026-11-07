@@ -14,7 +14,7 @@
 // - Costo por COMPONENTE: `deepgram` (segundos de audio), `deepgram-aura-2` (caracteres), `openrouter:<modelo>` (costo real de OpenRouter).
 //
 // ESTADO DE VERIFICACION (honesto): se prueba contra WebSockets y un LLM FALSOS; no hay llave de Deepgram en este entorno. Ver `scripts/voz-cascada-v2-smoke/`.
-import { VOZ_PLATAFORMA, costoDeepgramAura2MicroUsd, costoDeepgramMicroUsd } from "../../config-plataforma.ts";
+import { VOZ_PLATAFORMA, costoDeepgramAura2MicroUsd, costoDeepgramMicroUsd, costoElevenLabsSttMicroUsd, costoElevenLabsTtsMicroUsd } from "../../config-plataforma.ts";
 import type { ConfigPlataformaVoz } from "../../config-plataforma.ts";
 import { VozNoConfiguradaError, VozProveedorError } from "../../provider.ts";
 import type { MensajeLlmVoz, PuertoLlmVoz, RespuestaLlmVoz } from "../cascada-openrouter.ts";
@@ -28,11 +28,23 @@ import { ColaAsync } from "./puertos.ts";
 import type { ContextoTurnoLlm, PuertoSttVoz, PuertoTtsVoz, SesionStt, SesionTts } from "./puertos.ts";
 import { crearSttDeepgram, keytermsDe } from "./deepgram-stt.ts";
 import { crearTtsDeepgram, resolverVozAura2 } from "./deepgram-tts.ts";
+import { crearSttElevenLabs } from "./elevenlabs-stt.ts";
+import { crearTtsElevenLabs, resolverVozElevenLabs } from "./elevenlabs-tts.ts";
+import { completarConPlazo } from "./plazo-llm.ts";
+import { sttConRespaldo, ttsConRespaldo } from "./respaldo.ts";
 import type { CrearSocketDeepgram } from "./socket.ts";
 
 export interface CascadaV2Opciones {
-  /** `DEEPGRAM_API_KEY`: UNA sola llave para STT y TTS. Sin ella (y sin puertos inyectados) el escalon se salta con `VozNoConfiguradaError`. */
+  /** `DEEPGRAM_API_KEY`: UNA sola llave para STT y TTS. Con ElevenLabs es el RESPALDO de cada etapa. Sin ninguna llave (y sin puertos inyectados) el escalon se salta con `VozNoConfiguradaError`. */
   readonly deepgramApiKey: string | null;
+  /** `ELEVENLABS_API_KEY`: STT Scribe v2 Realtime y TTS eleven_v4_turbo como etapas PRINCIPALES (Deepgram de respaldo si tambien hay su llave). */
+  readonly elevenlabsApiKey?: string | null;
+  /** `fetch` del TTS de ElevenLabs (pruebas). */
+  readonly fetchFn?: typeof fetch;
+  /** Plazo al primer token con peticion de respaldo (ver `plazo-llm.ts`); por omision el de `config.cascadaV2.llm`. `false` lo apaga. */
+  readonly plazoLlm?: false | { readonly plazoMs: number; readonly modeloRespaldo: string | null };
+  /** Temporizador del plazo del LLM (pruebas). */
+  readonly temporizador?: { readonly poner: (fn: () => void, ms: number) => unknown; readonly quitar: (id: unknown) => void };
   /** Puerto del LLM en streaming (en produccion `crearPuertoLlmVozV2` del worker, sobre OpenRouter). */
   readonly llm: PuertoLlmVoz;
   readonly config?: ConfigPlataformaVoz;
@@ -130,12 +142,18 @@ class SesionCascadaV2 implements VozSesionLlamada {
   constructor(
     private readonly apertura: AperturaLlamada,
     private readonly h: ManejadoresSesion,
-    private readonly o: Required<Pick<CascadaV2Opciones, "llm" | "config" | "vueltasToolMax">> & Pick<CascadaV2Opciones, "herramientasEnParalelo" | "confirmacionAntesDeCrear" | "modeloLlm" | "elegirModelo" | "log" | "ahora">,
+    private readonly o: Required<Pick<CascadaV2Opciones, "llm" | "config" | "vueltasToolMax">> & Pick<CascadaV2Opciones, "herramientasEnParalelo" | "confirmacionAntesDeCrear" | "modeloLlm" | "elegirModelo" | "log" | "ahora" | "plazoLlm" | "temporizador">,
     readonly vozTts: string,
   ) {
     this.ahora = o.ahora ?? Date.now;
     this.conKeyterms = keytermsDe(apertura.vocabulario, o.config.cascadaV2.deepgram.keytermsMax).length > 0;
   }
+
+  /** Frase de espera ya dicha en el turno en curso (solo una por turno). */
+  private esperaDicha = false;
+
+  /** Proveedor del STT al abrir (el costo de lo pendiente se atribuye a el si la sesion ya se libero). */
+  private ultimoProveedorStt: "deepgram" | "elevenlabs" = "deepgram";
 
   /** Abre STT y TTS en paralelo; si uno falla cierra el otro y propaga el error (el escalon se salta o la escalera pasa al siguiente). */
   async iniciar(stt: PuertoSttVoz, tts: PuertoTtsVoz): Promise<void> {
@@ -152,7 +170,10 @@ class SesionCascadaV2 implements VozSesionLlamada {
       ),
       tts.abrir({ voz: this.vozTts, hzSalida: c.deepgramAura2.hzSalida }),
     ]);
-    if (rs.status === "fulfilled") this.stt = rs.value;
+    if (rs.status === "fulfilled") {
+      this.stt = rs.value;
+      this.ultimoProveedorStt = rs.value.proveedor?.() ?? "deepgram";
+    }
     if (rt.status === "fulfilled") this.tts = rt.value;
     const rechazo = rs.status === "rejected" ? rs.reason : rt.status === "rejected" ? rt.reason : null;
     if (rechazo !== null) {
@@ -243,7 +264,10 @@ class SesionCascadaV2 implements VozSesionLlamada {
     this.bytesSttPendientes = 0;
     const c = this.o.config.cascadaV2;
     const segundos = bytes / 2 / c.deepgram.hzEntrada;
-    this.h.costo?.(costoDeepgramMicroUsd(segundos, this.o.config, this.conKeyterms), false, { proveedor: "deepgram", unidad: "segundo", cantidad: segundos });
+    const proveedor = this.stt?.proveedor?.() ?? this.ultimoProveedorStt;
+    const keyterms = this.stt?.conKeyterms?.() ?? this.conKeyterms;
+    if (proveedor === "elevenlabs") this.h.costo?.(costoElevenLabsSttMicroUsd(segundos, this.o.config, keyterms), false, { proveedor: "elevenlabs", unidad: "segundo", cantidad: segundos });
+    else this.h.costo?.(costoDeepgramMicroUsd(segundos, this.o.config, keyterms), false, { proveedor: "deepgram", unidad: "segundo", cantidad: segundos });
   }
 
   // ---- internos ----
@@ -278,23 +302,40 @@ class SesionCascadaV2 implements VozSesionLlamada {
     this.h.caido(codigo, null);
   }
 
-  private modeloDelTurno(vuelta: number): string {
-    const porDefecto = this.o.modeloLlm ?? this.o.config.cascadaV2.llm.modelo;
-    const elegido = this.o.elegirModelo?.({ turno: this.turnosCliente, vuelta, modeloPorDefecto: porDefecto });
+  private modeloDelTurno(vuelta: number, textoCliente: string): string {
+    // El modelo de los ajustes del agente (panel) reemplaza al PRECISO de la plataforma; el rapido sigue siendo el de la plataforma.
+    const preferidoOrg = typeof this.apertura.modeloLlm === "string" && this.apertura.modeloLlm.trim() !== "" ? this.apertura.modeloLlm.trim() : null;
+    const porDefecto = this.o.modeloLlm ?? preferidoOrg ?? this.o.config.cascadaV2.llm.modelo;
+    const pedidoEnJuego = this.esperandoAlCliente.pendiente === true || (this.esperandoAlCliente.huellaOida ?? null) !== null || (this.esperandoAlCliente.huellaUltima ?? null) !== null;
+    const contexto = { turno: this.turnosCliente, vuelta, modeloPorDefecto: porDefecto, textoCliente, pedidoEnJuego };
+    const elegido = this.o.elegirModelo ? this.o.elegirModelo(contexto) : elegirNivelModelo(contexto, this.o.config.cascadaV2.llm.modeloFacil);
     return typeof elegido === "string" && elegido.trim() !== "" ? elegido : porDefecto;
   }
 
-  private async completar(modelo: string, senal: AbortSignal, alTexto: (delta: string) => void): Promise<RespuestaLlmVoz> {
+  private async completar(modelo: string, senal: AbortSignal, alTexto: (delta: string) => void, alVencer: () => void): Promise<{ respuesta: RespuestaLlmVoz; modelo: string }> {
+    const cfgLlm = this.o.config.cascadaV2.llm;
+    const plazo = this.o.plazoLlm === false ? { plazoMs: 0, modeloRespaldo: null } : (this.o.plazoLlm ?? { plazoMs: cfgLlm.plazoPrimerTokenMs, modeloRespaldo: cfgLlm.modeloRespaldo });
     try {
-      return await this.o.llm.completar({
-        system: this.apertura.instruccion,
-        mensajes: this.mensajes,
-        herramientas: this.apertura.herramientas,
-        modeloPreferido: modelo,
-        esfuerzo: this.o.config.cascadaV2.llm.esfuerzo,
-        onTextDelta: alTexto,
-        senal,
-      });
+      const r = await completarConPlazo(
+        this.o.llm,
+        {
+          system: this.apertura.instruccion,
+          mensajes: this.mensajes,
+          herramientas: this.apertura.herramientas,
+          modeloPreferido: modelo,
+          esfuerzo: cfgLlm.esfuerzo,
+          onTextDelta: alTexto,
+          senal,
+        },
+        {
+          plazoMs: plazo.plazoMs,
+          modeloRespaldo: plazo.modeloRespaldo,
+          alVencer,
+          alGanarRespaldo: (motivo) => this.log("v2_llm_respaldo", { proveedor: plazo.modeloRespaldo ?? "", motivo }),
+          ...(this.o.temporizador ? { temporizador: this.o.temporizador } : {}),
+        },
+      );
+      return { respuesta: r.respuesta, modelo: r.modelo };
     } catch (err) {
       if (senal.aborted) throw err;
       const status = (err as { status?: unknown } | null)?.status;
@@ -319,6 +360,7 @@ class SesionCascadaV2 implements VozSesionLlamada {
     this.oidasAlInterrumpir = null;
     this.indiceRespuestaFinal = null;
     this.vueltaActual = 0;
+    this.esperaDicha = false;
     this.turnosCliente += 1;
     this.mensajes.push({ role: "user", content: texto });
     this.esperandoAlCliente.cotizoEnTurno = false;
@@ -352,16 +394,28 @@ class SesionCascadaV2 implements VozSesionLlamada {
         this.vueltaActual = vuelta;
         const segmentador = crearSegmentadorFrases(cfg.frase);
         const frasesRonda: string[] = [];
-        const modelo = this.modeloDelTurno(vuelta);
+        const modeloPedido = this.modeloDelTurno(vuelta, texto);
         const t0 = this.ahora();
         let ttft: number | null = null;
-        const r = await this.completar(modelo, senal, (delta) => {
-          if (ttft === null) ttft = this.ahora() - t0;
-          for (const f of segmentador.agregar(delta)) {
-            frasesRonda.push(f);
-            empujar({ frase: f, vuelta });
-          }
-        });
+        const { respuesta: r, modelo } = await this.completar(
+          modeloPedido,
+          senal,
+          (delta) => {
+            if (ttft === null) ttft = this.ahora() - t0;
+            for (const f of segmentador.agregar(delta)) {
+              frasesRonda.push(f);
+              empujar({ frase: f, vuelta });
+            }
+          },
+          () => {
+            // Plazo vencido sin primer token: una frase corta de espera (una por turno) mientras corre la peticion de respaldo. Se dice pero no entra al historial del modelo.
+            if (this.esperaDicha || !vigente()) return;
+            const frases = cfg.llm.frasesEspera;
+            if (frases.length === 0) return;
+            this.esperaDicha = true;
+            cola.push({ frase: frases[(this.turnosCliente + vuelta) % frases.length]!, vuelta });
+          },
+        );
         // El costo se registra SIEMPRE que el proveedor lo reporto, aunque el cliente haya interrumpido mientras tanto (una llamada abortada antes de terminar no trae uso).
         this.registrarLlm(r, modelo, ttft, this.ahora() - t0);
         if (!vigente()) break;
@@ -519,7 +573,7 @@ class SesionCascadaV2 implements VozSesionLlamada {
   private async bombearFrases(cola: ColaAsync<FraseLlm>, senal: AbortSignal, vigente: () => boolean): Promise<void> {
     const tts = this.tts;
     const turnoAudio = this.audio;
-    const hz = this.o.config.cascadaV2.deepgramAura2.hzSalida;
+    const hz = this.o.config.cascadaV2.deepgramAura2.hzSalida; // ElevenLabs entrega a la misma tasa (24 kHz)
     let primera = true;
     const t0 = this.ahora();
     for (;;) {
@@ -537,7 +591,8 @@ class SesionCascadaV2 implements VozSesionLlamada {
       const texto = lote.map((l) => l.frase).join(" ");
       // Deepgram factura por caracteres enviados: se anota al mandar el texto.
       const caracteres = cuentaDeCaracteres(texto);
-      this.h.costo?.(costoDeepgramAura2MicroUsd(caracteres, this.o.config), false, { proveedor: "deepgram-aura-2", unidad: "unidad", cantidad: caracteres });
+      if ((tts.proveedor?.() ?? "deepgram-aura-2") === "elevenlabs-tts") this.h.costo?.(costoElevenLabsTtsMicroUsd(caracteres, this.o.config), false, { proveedor: "elevenlabs-tts", unidad: "unidad", cantidad: caracteres });
+      else this.h.costo?.(costoDeepgramAura2MicroUsd(caracteres, this.o.config), false, { proveedor: "deepgram-aura-2", unidad: "unidad", cantidad: caracteres });
       const ola: OlaAudio = { frases: lote.map((l) => l.frase), chars: lote.map((l) => cuentaDeCaracteres(l.frase)), vuelta: lote[lote.length - 1]!.vuelta, inicioMs: turnoAudio.totalMs, ms: 0 };
       let empezo = false;
       try {
@@ -575,20 +630,14 @@ export function crearProveedorCascadaV2(opts: CascadaV2Opciones): ProveedorCasca
   let ultima: SesionCascadaV2 | null = null;
   const abrirSesion: AbrirSesionLlamada = async (apertura, manejadores) => {
     const config = opts.config ?? VOZ_PLATAFORMA;
-    const llave = opts.deepgramApiKey?.trim() ?? "";
-    let stt = opts.stt;
-    let tts = opts.tts;
-    if (!stt || !tts) {
-      if (llave === "") throw new VozNoConfiguradaError("Voz no configurada: falta DEEPGRAM_API_KEY para la cascada v2.");
-      const comunes = { apiKey: llave, ...(opts.crearSocket ? { crearSocket: opts.crearSocket } : {}), ...(opts.ahora ? { ahora: opts.ahora } : {}) };
-      stt ??= crearSttDeepgram({ ...comunes, config: config.cascadaV2.deepgram });
-      tts ??= crearTtsDeepgram({ ...comunes, config: config.cascadaV2.deepgramAura2 });
-    }
-    const voz = resolverVozAura2(apertura.voiceId, config.cascadaV2.deepgramAura2.voz);
+    const pila = armarPilaStt(opts, config, apertura, opts.log);
+    const stt = pila.stt;
+    const tts = pila.tts;
+    const voz = pila.voz;
     const sesion = new SesionCascadaV2(
       apertura,
       manejadores,
-      { llm: opts.llm, config, vueltasToolMax: opts.vueltasToolMax ?? 4, ...(opts.herramientasEnParalelo ? { herramientasEnParalelo: opts.herramientasEnParalelo } : {}), ...(opts.confirmacionAntesDeCrear ? { confirmacionAntesDeCrear: opts.confirmacionAntesDeCrear } : {}), ...(opts.modeloLlm ? { modeloLlm: opts.modeloLlm } : {}), ...(opts.elegirModelo ? { elegirModelo: opts.elegirModelo } : {}), ...(opts.log ? { log: opts.log } : {}), ...(opts.ahora ? { ahora: opts.ahora } : {}) },
+      { llm: opts.llm, config, vueltasToolMax: opts.vueltasToolMax ?? 4, ...(opts.plazoLlm !== undefined ? { plazoLlm: opts.plazoLlm } : {}), ...(opts.temporizador ? { temporizador: opts.temporizador } : {}), ...(opts.herramientasEnParalelo ? { herramientasEnParalelo: opts.herramientasEnParalelo } : {}), ...(opts.confirmacionAntesDeCrear ? { confirmacionAntesDeCrear: opts.confirmacionAntesDeCrear } : {}), ...(opts.modeloLlm ? { modeloLlm: opts.modeloLlm } : {}), ...(opts.elegirModelo ? { elegirModelo: opts.elegirModelo } : {}), ...(opts.log ? { log: opts.log } : {}), ...(opts.ahora ? { ahora: opts.ahora } : {}) },
       voz,
     );
     await sesion.iniciar(stt, tts);
@@ -596,4 +645,46 @@ export function crearProveedorCascadaV2(opts: CascadaV2Opciones): ProveedorCasca
     return sesion;
   };
   return { abrirSesion, inactivo: () => ultima?.inactivo() ?? Promise.resolve() };
+}
+
+/** Palabras de cortesia/saludo que no traen pedido: un turno hecho SOLO de ellas (hasta 5) va al modelo RAPIDO. */
+const PALABRAS_CORTESIA = new Set(["hola", "bueno", "buenas", "buenos", "dias", "tardes", "noches", "que", "tal", "oiga", "disculpe", "perdon", "mande", "gracias", "muchas", "eso", "es", "todo", "seria", "nada", "mas", "adios", "hasta", "luego", "bye", "ok", "okay", "va", "vale"]);
+
+const normalizarCortesia = (t: string): string => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z\s]/g, " ").replace(/\s+/g, " ").trim();
+
+/**
+ * Nivel del modelo por turno (cerebro de dos niveles, decision del dueno 6-nov-2026). RAPIDO (`modeloFacil`) solo cuando no hay nada que perder:
+ *   - el saludo (turno 1, primera vuelta), o
+ *   - una frase de pura cortesia («hola», «bueno», «gracias», «eso es todo») en la primera vuelta y SIN un resumen de pedido esperando respuesta.
+ * Todo lo demas (pedidos, direcciones, afirmaciones que pueden crear el pedido, vueltas tras una herramienta) va al PRECISO. `undefined` = el modelo por omision.
+ */
+export function elegirNivelModelo(c: ContextoTurnoLlm, modeloFacil: string): string | undefined {
+  if (c.vuelta !== 0 || c.pedidoEnJuego === true) return undefined;
+  if (c.turno === 1 && (c.textoCliente === undefined || /^[([]/.test(c.textoCliente))) return modeloFacil;
+  const palabras = normalizarCortesia(c.textoCliente ?? "").split(" ").filter((w) => w !== "");
+  return palabras.length > 0 && palabras.length <= 5 && palabras.every((w) => PALABRAS_CORTESIA.has(w)) ? modeloFacil : undefined;
+}
+
+/** Arma STT y TTS de la sesion: ElevenLabs principal con Deepgram de respaldo, o solo uno de los dos, segun las llaves. */
+function armarPilaStt(opts: CascadaV2Opciones, config: ConfigPlataformaVoz, apertura: AperturaLlamada, log?: SumideroLog): { stt: PuertoSttVoz; tts: PuertoTtsVoz; voz: string } {
+  const llaveDg = opts.deepgramApiKey?.trim() ?? "";
+  const llaveEl = opts.elevenlabsApiKey?.trim() ?? "";
+  const vozAura = resolverVozAura2(apertura.vozTelefono ?? apertura.voiceId, config.cascadaV2.deepgramAura2.voz);
+  const vozEl = resolverVozElevenLabs(apertura.vozTelefono, config.cascadaV2.elevenlabs.tts.voz);
+  if (opts.stt && opts.tts) return { stt: opts.stt, tts: opts.tts, voz: llaveEl !== "" ? vozEl : vozAura };
+  if (llaveDg === "" && llaveEl === "") throw new VozNoConfiguradaError("Voz no configurada: falta ELEVENLABS_API_KEY o DEEPGRAM_API_KEY para la cascada v2.");
+  const comunesDg = { apiKey: llaveDg, ...(opts.crearSocket ? { crearSocket: opts.crearSocket } : {}), ...(opts.ahora ? { ahora: opts.ahora } : {}) };
+  const sttDg = llaveDg !== "" ? crearSttDeepgram({ ...comunesDg, config: config.cascadaV2.deepgram }) : null;
+  const ttsDg = llaveDg !== "" ? crearTtsDeepgram({ ...comunesDg, config: config.cascadaV2.deepgramAura2 }) : null;
+  if (llaveEl === "") return { stt: opts.stt ?? sttDg!, tts: opts.tts ?? ttsDg!, voz: vozAura };
+  const sttEl = crearSttElevenLabs({ apiKey: llaveEl, config: config.cascadaV2.elevenlabs.stt, ...(opts.crearSocket ? { crearSocket: opts.crearSocket } : {}) });
+  const ttsEl = crearTtsElevenLabs({ apiKey: llaveEl, config: config.cascadaV2.elevenlabs.tts, ...(opts.fetchFn ? { fetchFn: opts.fetchFn } : {}) });
+  const avisar = (etapa: "stt" | "tts", momento: "apertura" | "caida", codigo: string): void => {
+    if (log) eventoSinPII(log, "v2_respaldo", { proveedor: etapa, motivo: momento, codigo });
+  };
+  return {
+    stt: opts.stt ?? (sttDg ? sttConRespaldo(sttEl, sttDg, avisar) : sttEl),
+    tts: opts.tts ?? (ttsDg ? ttsConRespaldo(ttsEl, ttsDg, vozAura, avisar) : ttsEl),
+    voz: vozEl,
+  };
 }

@@ -58,6 +58,12 @@ export interface DepsControlador<R extends string = string> {
   readonly ejecutor: EjecutorTools;
   readonly instruccion: string;
   readonly voiceId: string;
+  /** Nombres del menu de la sucursal: el STT de la cascada los recibe como `keyterms` (platillos que se oyen mal con ruido). */
+  readonly vocabulario?: readonly string[];
+  /** Modelo de texto de la cascada elegido en los ajustes del agente (`voice_cascade_model`); sin valor, el de la plataforma. */
+  readonly modeloLlm?: string | null;
+  /** Voz telefonica de la sucursal (ElevenLabs); sin valor, la de la plataforma. */
+  readonly vozTelefono?: string | null;
   readonly limites?: LimitesLlamada;
   /** `false` = el saludo del agente no se corta si el cliente habla encima (`branch_voice_config.mensaje_inicial_interrumpible`). Por omision `true`. */
   readonly saludoInterrumpible?: boolean;
@@ -219,7 +225,16 @@ export class ControladorLlamada<R extends string = string> {
     // Se le siembra la conversacion hasta ahora (ya redactada) para que continue donde iba.
     const historial = handle === null && this.transcripcion.length > 0 ? this.historialParaReanudar() : undefined;
     return this.deps.abrirSesion(
-      { instruccion: this.deps.instruccion, voiceId: this.deps.voiceId, herramientas: this.deps.ejecutor.definiciones(), reanudarHandle: handle, ...(historial ? { historial } : {}) },
+      {
+        instruccion: this.deps.instruccion,
+        voiceId: this.deps.voiceId,
+        herramientas: this.deps.ejecutor.definiciones(),
+        reanudarHandle: handle,
+        ...(historial ? { historial } : {}),
+        ...(this.deps.vocabulario && this.deps.vocabulario.length > 0 ? { vocabulario: this.deps.vocabulario } : {}),
+        ...(this.deps.modeloLlm ? { modeloLlm: this.deps.modeloLlm } : {}),
+        ...(this.deps.vozTelefono ? { vozTelefono: this.deps.vozTelefono } : {}),
+      },
       {
         agenteDijo: (texto) => void this.encolar(async () => {
           this.cancelarVigiaSilencio();
