@@ -50,6 +50,13 @@ Logs solo con `eventoSinPII` (lista cerrada de campos; la llamada se correlacion
 | `ATIENDE_API_URL` | sí | URL base de la API de Atiende (la del despliegue en Vercel) |
 | `INTERNAL_SECRET` | sí | El mismo de la API: registra conversaciones, costos y contexto |
 | `GEMINI_API_KEY` y/o `OPENROUTER_API_KEY` | al menos una | Escalón 1 (Gemini Live) y/o escalón 2 (cascada, misma llave del texto) |
+| `ELEVENLABS_API_KEY` | no (sí para el stack de PM) | Cascada v2 con **ElevenLabs**: STT Scribe v2 Realtime (keyterms = platillos del menú de la sucursal) y TTS `eleven_v4_turbo` (voz Regina por omisión; la sucursal elige su voz telefónica en *Agente de voz → Voz*). El TTS descuenta créditos del plan de ElevenLabs. Sin ella la cascada v2 usa solo Deepgram |
+| `DEEPGRAM_API_KEY` | no (recomendada) | Deepgram Nova-3 (STT) y Aura-2 es-MX (TTS). Con ElevenLabs queda como **respaldo automático** de cada etapa: si ElevenLabs no abre o se cae a media llamada, la etapa pasa a Deepgram sin colgar |
+| `VOZ_CASCADA_V2_HABILITADA` | no | Interruptor de la cascada v2 (`1`/`true`/`si`); apagado por omisión |
+| `VOZ_ESCALERA` | no | Orden de la escalera (escalones separados por coma: `gemini-3.8-live`, `cascada-v2`, `cascada-openrouter`). Por omisión el de la plataforma (Gemini Live primero). **PM: `cascada-v2,cascada-openrouter`** (cascada, no voz a voz) |
+| `VOZ_RUIDO` | no | Cancelación de ruido de LiveKit sobre el audio del cliente: `ninguno` (por omisión), `krisp-telefonia` (Krisp BVC telefónico) o `krisp` (NC estándar, para pedidos de grupo). Cambia el audio de TODAS las llamadas del worker: se enciende explícito después de medirlo con voz real. Requiere LiveKit Cloud; si el módulo nativo no carga se atiende sin filtro (evento `ruido_no_disponible`) |
+| `VOZ_CEREBRO_DOS_NIVELES` | no | `1` = cascada v2 con GPT-6 Luna (preciso), Gemini 3.5 Flash-Lite (saludo y cortesía) y petición de respaldo Haiku 5.5 si no hay primer token en 2.5 s (con frase de espera). Apagado por omisión (el cerebro sigue siendo Sonnet 5.5). Solo aplica al puerto LLM de OpenRouter |
+| `VOZ_LLM_PROVEEDORES_ZDR` | no | Proveedores ZDR de OpenRouter para el cerebro de voz (por omisión `google-vertex,amazon-bedrock,azure`; GPT-6 Luna solo tiene ZDR en Azure) |
 | `VOICE_COSTO_MAX_LLAMADA_USD` | no | Tope de costo por llamada (por omisión US$0.50; máximo 20). El costo es el REAL de `usageMetadata` |
 | `VOICE_VAD_SILENCIO_MS`, `VOICE_VAD_SENSIBILIDAD_FIN` | no | VAD de Gemini: silencio que cierra el turno (100-3000, por omisión 500) y sensibilidad de fin (`alta`, `baja`, `omitir`) |
 | `GEMINI_BACKEND`, `VERTEX_PROJECT`, `VERTEX_LOCATION`, `VERTEX_SERVICE_ACCOUNT_JSON` | no | `GEMINI_BACKEND=vertex` mueve el escalón 1 a Vertex AI (cuenta de servicio; sin verificar; **no activar** hasta ~10 restaurantes) |
@@ -69,6 +76,25 @@ VOICE_SECRET_FCO=<secreto de la sucursal>
 
 `modoEntrada`: `desborde` (desvío condicional del conmutador: toda llamada que llega es una que el personal no contestó), `total` o `prueba`. Si la llamada trae un
 encabezado de desvío (`Diversion` / `History-Info`) se marca `desborde` (salvo `prueba`). Alimenta el KPI «ventas recuperadas» del panel de voz.
+
+## Stack de voz de PM (6-nov-2026)
+
+Cascada (no voz a voz), decidida con la medición de `PRUEBAS-STT-TTS-NOV.md`:
+
+- **STT:** ElevenLabs Scribe v2 Realtime con los platillos del menú como `keyterms`; respaldo Deepgram Nova-3 con keyterms.
+- **Turnos:** VAD del servidor con 0.55 s de silencio, ventana mínima de 0.4 s antes de cerrar el turno (si el cliente sigue hablando se junta) y commit forzado a los
+  3.0 s con texto congelado. Es el equivalente a min/max endpointing 0.4/3.0 y Silero `min_silence_duration` 0.55 de LiveKit Agents: este worker no usa el
+  framework de Agents (puente propio con `@livekit/rtc-node`), así que el detector de turnos multilingüe de LiveKit y la interrupción adaptativa **no** aplican;
+  el barge-in es el de la cascada (se corta con el primer parcial con texto, no con un `SpeechStarted` aislado).
+- **TTS:** ElevenLabs `eleven_v4_turbo` en streaming PCM 24 kHz; respaldo Deepgram Aura-2 es-MX.
+- **Cerebro (`VOZ_CEREBRO_DOS_NIVELES=1`):** OpenRouter (ZDR) con dos niveles: `google/gemini-3.5-flash-lite` para el saludo y la cortesía sin pedido en juego, `openai/gpt-6-luna`
+  (esfuerzo `low`) para todo lo demás (o el modelo elegido en *Ajustes del agente*, que solo ofrece modelos con retención cero). Plazo de **2.5 s** al primer token: vencido, se dice una frase corta de espera
+  y se lanza en paralelo `anthropic/claude-haiku-5.5`; gana el primero que hable.
+- **Ruido:** Krisp BVC telefónico de LiveKit (`VOZ_RUIDO=krisp-telefonia`, explícito).
+- **Telefonía:** sin cambios (Twilio MX SIP -> LiveKit).
+
+Variables para encenderlo: `ELEVENLABS_API_KEY`, `DEEPGRAM_API_KEY`, `OPENROUTER_API_KEY`, `VOZ_CASCADA_V2_HABILITADA=1`, `VOZ_ESCALERA=cascada-v2,cascada-openrouter`,
+`VOZ_CEREBRO_DOS_NIVELES=1` y `VOZ_RUIDO=krisp-telefonia` (estos dos son opt-in: sin ellos el cerebro es Sonnet 5.5 sin plazo y no hay Krisp). La voz telefónica por sucursal necesita la migración 103 (`branch_voice_config.tts_voice_id`); sin ella se usa Regina.
 
 ## Pasos para la primera llamada real
 

@@ -16,6 +16,7 @@ import type { CustomerLookupResult } from "../../types.ts";
 import { APENDICE_VOZ, instruccionVozConReglas } from "../perfil-voz-pm.ts";
 import type { VozConfig } from "../types.ts";
 import { vocabularioMenuVoz } from "./vocabulario.ts";
+import { resumenSucursalesParaClientes } from "../../solo-venta-local.ts";
 
 export interface EntradaInstruccionLlamada {
   readonly organizationId: string;
@@ -45,7 +46,7 @@ export async function armarInstruccionLlamada(repo: RestaurantesRepository, e: E
   const zonaHoraria = config.timezone || PM_CONFIG_POR_OMISION.timezone;
   const editable = e.config.configurada ? e.config.comportamiento.trim() : "";
   // Secuencial a proposito: ambas consultas comparten la sesion (una sola transaccion); si alguna pasa a usar SAVEPOINT, en paralelo se entrelazarian.
-  const branches = await repo.listBranchesForOrganization(e.organizationId);
+  const branches = await resumenSucursalesParaClientes(repo, e.organizationId);
   const entrada = await repo.findBranchById(e.organizationId, e.propertyId);
   // Solo el comportamiento editado necesita al cliente en el texto: sin el, no se hace una consulta de historial que el prompt no usa.
   const cliente: CustomerLookupResult = editable !== "" && e.telefono ? await lookupCustomerConPedidoReciente(repo, e.organizationId, e.telefono, e.ahora) : { isNew: true };
