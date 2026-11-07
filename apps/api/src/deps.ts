@@ -76,6 +76,7 @@ import type { CustomerLookup, StripeBillingPortalClient, StripeClient } from "@a
 import type { ApiEnv } from "./env.ts";
 import type { PlatformSwitchGuard } from "./platform-switches.ts";
 import type { DespachadorAlertas } from "./alertas/tipos.ts";
+import type { ReportadorErrores } from "./observabilidad/errores-sentry.ts";
 import type { SuperadminCopilotoDeps } from "./superadmin-copiloto/deps.ts";
 import type { LlmRouteConfig } from "./production/llm-models.ts";
 import type { SaludMetaDeps } from "./salud/salud-meta.ts";
@@ -745,4 +746,7 @@ export interface AppDeps {
   /** Alertas salientes (correo/webhook/Sentry, piso por hora, datos redactados). Ausente = no se
    *  envia nada; `salud/with-heartbeat.ts` y el resumen diario lo usan de forma best-effort. */
   readonly alertas?: DespachadorAlertas;
+  /** Rastreo de errores no controlados (los 500 de `app.onError`) hacia Sentry, con datos redactados
+   *  (`observabilidad/errores-sentry.ts`). Ausente (sin `SENTRY_DSN`) = solo el log `apps_api_error_interno`. */
+  readonly reportadorErrores?: ReportadorErrores;
 }
