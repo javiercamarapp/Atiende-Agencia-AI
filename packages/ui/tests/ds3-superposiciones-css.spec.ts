@@ -1,6 +1,6 @@
 // ds3 / lote 4 (superposiciones): valores de referencia del Drawer/Modal en la hoja REAL `src/ds3/shell.css`. Solo AÑADE.
 import { describe, expect, it } from "vitest";
-import { keyframes, valorCss } from "./ds3-shell-css-utils";
+import { keyframes, valorCss } from "./ds3-shell-css-utils.ts";
 
 describe("ds3 — anatomia de las superposiciones", () => {
   it("cabecera 12x16 con titulo 15/600, subtitulo 12 y cerrar de 28 radio 8 (icono 14)", () => {
