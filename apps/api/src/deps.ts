@@ -16,6 +16,7 @@ import type {
   AltaPropiedadRepository,
   LoginChoferRepository,
   OrgFichaRepository,
+  OnboardingProgresoRepository,
   FichasAgenteRepository,
   ContratosRepository,
   PlataformaPrivacidadRepository,
@@ -707,6 +708,10 @@ export interface AppDeps {
    *  sesion; cada fuente corre bajo su propio SAVEPOINT. El aviso 'organizacion lista' es SOLO-SISTEMA (cron de mantenimiento, sesion propia).
    *  OPCIONAL: ausente o migracion sin aplicar -> `disponible: false` (200) o campos null con su razon, nunca un 500. */
   readonly orgFichaRepo?: (db: TenantDbSession) => OrgFichaRepository;
+  /** ds3 «Guía»: progreso del recorrido guiado por persona (packages/db/migrations/0075_onboarding_progreso.sql, routes/onboarding-progreso.ts).
+   *  Fabrica por sesion de la persona. OPCIONAL: ausente o migracion sin aplicar -> `disponible: false` (200) y la guia sigue con el
+   *  progreso del navegador, nunca un 500. */
+  readonly onboardingProgresoRepo?: (db: TenantDbSession) => OnboardingProgresoRepository;
   /** Alta del equipo inicial de una organizacion por un superadmin: invitar, reenviar, revocar y leer miembros/invitaciones (SA-L-26 minimo;
    *  ver packages/db/migrations/0053_superadmin_alta_equipo.sql y routes/superadmin-organizaciones-equipo.ts). Fabrica por sesion del caller;
    *  `aceptacionParaSistema` es SOLO-SISTEMA (sesion propia en POST /auth/accept-invite). OPCIONAL: ausente o migracion sin aplicar -> la
