@@ -359,7 +359,7 @@ export function VerticalShell({
             <button
               type="button"
               hidden
-              aria-label="Abrir más secciones"
+              aria-label={t("shell.abrirMasSecciones")}
               aria-haspopup="dialog"
               onClick={() => window.dispatchEvent(new Event(MAS_ABRIR_EVENTO))}
               className="ds3-solo ds3-movil-mas"

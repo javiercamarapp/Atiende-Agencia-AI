@@ -146,7 +146,7 @@ export function BottomNav({ items, moreSections, pie, cuenta, preguntar }: Botto
               {({ isActive }) => (
                 <>
                   <MessageCircle aria-hidden="true" className="size-[22px]" strokeWidth={isActive ? 2.25 : 1.75} />
-                  <span className={cn("max-w-full truncate px-1 text-xs", isActive ? "font-semibold" : "font-medium")}>Preguntar</span>
+                  <span className={cn("max-w-full truncate px-1 text-xs", isActive ? "font-semibold" : "font-medium")}>{t("shell.preguntar")}</span>
                 </>
               )}
             </NavLink>
@@ -225,6 +225,7 @@ function BloqueCuentaMas({ cuenta }: { cuenta: NonNullable<BottomNavProps["cuent
   const { user, onLogout, loggingOut = false } = cuenta;
   const nombre = user?.nombre?.trim() || user?.email || "";
   const rol = user?.rolEtiqueta ?? user?.rol;
+  const t = useT(shell);
   return (
     <div hidden data-testid="mas-cuenta" className="ds3-solo ds3-hoja-mas-cuenta mt-3 border-t border-border pt-3">
       <div className="ds3-hoja-mas-ajustes flex flex-col gap-2">
@@ -236,7 +237,7 @@ function BloqueCuentaMas({ cuenta }: { cuenta: NonNullable<BottomNavProps["cuent
           {(nombre.charAt(0) || "A").toUpperCase()}
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-ui font-medium">{nombre || "Sin sesión"}</span>
+          <span className="block truncate text-ui font-medium">{nombre || t("shell.sinSesion")}</span>
           {rol ? <span className="block truncate text-2xs uppercase text-faint">{rol}</span> : null}
         </span>
         <button
@@ -246,7 +247,7 @@ function BloqueCuentaMas({ cuenta }: { cuenta: NonNullable<BottomNavProps["cuent
           className="ds3-hoja-mas-salir inline-flex h-11 shrink-0 items-center gap-1.5 rounded-lg border border-border px-3 text-ui font-medium text-foreground-2"
         >
           <LogOut aria-hidden="true" className="size-4" strokeWidth={1.75} />
-          {loggingOut ? "Saliendo…" : "Salir"}
+          {loggingOut ? t("shell.saliendo") : t("shell.salir")}
         </button>
       </div>
     </div>
@@ -307,8 +308,9 @@ export interface CampanaMovilProps {
  * selector y el menu de cuenta, con contador de sin leer. Enlace a la pagina de notificaciones. Sin la bandera existe oculta.
  */
 export function CampanaMovil({ to, contador, hayNoLeidas = false }: CampanaMovilProps) {
+  const t = useT(shell);
   const n = typeof contador === "number" && contador > 0 ? contador : 0;
-  const etiqueta = n > 0 ? `Notificaciones: ${n} sin leer` : hayNoLeidas ? "Notificaciones: hay avisos sin leer" : "Notificaciones";
+  const etiqueta = n > 0 ? t("shell.notificacionesSinLeer", { n }) : hayNoLeidas ? t("shell.notificacionesConAvisos") : t("shell.notificaciones");
   return (
     <NavLink
       hidden

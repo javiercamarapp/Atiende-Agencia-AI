@@ -35,4 +35,10 @@ export const shellEn: Traduccion<typeof shell> = {
   "shell.idioma": "Interface language",
   "shell.idioma.es": "Español (ES)",
   "shell.idioma.en": "English (EN)",
+  "shell.preguntar": "Ask",
+  "shell.salir": "Sign out",
+  "shell.abrirMasSecciones": "Open more sections",
+  "shell.notificaciones": "Notifications",
+  "shell.notificacionesSinLeer": "Notifications: {n} unread",
+  "shell.notificacionesConAvisos": "Notifications: you have unread alerts",
 };
