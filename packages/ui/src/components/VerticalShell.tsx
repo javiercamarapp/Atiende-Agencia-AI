@@ -244,6 +244,11 @@ export interface VerticalShellProps {
   readonly mobileSelector?: React.ReactNode;
   /** Panel lateral derecho (p. ej. el Copiloto Cmd+J del superadmin): hermano de la columna de contenido; el propio panel anima su ancho. Sin el, nada cambia. */
   readonly panelLateral?: React.ReactNode;
+  /**
+   * Ranura del historial de «Pregúntale a tus datos» (ds3): el carril del chat monta aqui UN `Drawer` (sm, 420) con el historial; el
+   * shell solo le da un lugar unico y estable fuera del <main> (no se remonta al navegar ni al cambiar de sucursal). Sin ella no se pinta nada.
+   */
+  readonly historialChat?: React.ReactNode;
   /** `key` del <main>: al cambiar (sucursal activa) las paginas hijas se remontan. */
   readonly contentKey?: string;
   /** Nombre de la organizacion activa: en ds3 la tarjeta de cuenta del pie lo muestra junto al rol. Opcional. */
@@ -275,6 +280,7 @@ export function VerticalShell({
   sidebarPie,
   contentKey,
   panelLateral,
+  historialChat,
   organizacion,
   adminHref,
   onGuia,
@@ -387,6 +393,8 @@ export function VerticalShell({
       </div>
 
       {panelLateral}
+
+{historialChat ? <div data-testid="ranura-historial-chat" className="contents">{historialChat}</div> : null}
 
       <BottomNav items={mobileItems} moreSections={sections} pie={pie} cuenta={{ user, onLogout, loggingOut }} />
     </div>
