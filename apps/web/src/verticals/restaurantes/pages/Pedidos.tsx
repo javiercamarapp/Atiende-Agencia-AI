@@ -552,7 +552,7 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
       return;
     }
     const ok = await aplicarCambioEstado(order, nextStatus);
-    if (ok && nextStatus === "entregado") notify.success(t("restaurantes.pedidos.toast.entregado", { folio: etiquetaFolio(order) }));
+    if (ok && nextStatus === "entregado") notify.success(t("restaurantes.pedidos.exito.entregado", { folio: etiquetaFolio(order) }));
   }
 
   // «Confirmar envío» (repo suelto): asigna al repartidor Y manda el pedido a reparto. Respeta la maquina de estados real: solo un pedido en
@@ -567,11 +567,11 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
       await assignRepartidor(fetch, apiBaseUrl, token, propertyId, order.id, repartidorId, estimada);
       if (sale) await updateOrderStatus(fetch, apiBaseUrl, token, propertyId, order.id, "en_camino");
       if (sale) {
-        notify.success(t("restaurantes.pedidos.toast.enviado", { folio: etiquetaFolio(order) }));
+        notify.success(t("restaurantes.pedidos.exito.enviado", { folio: etiquetaFolio(order) }));
         setVista("enviadas");
         setSelectedOrderId(order.id);
       } else {
-        notify.success(t("restaurantes.pedidos.toast.asignado", { folio: etiquetaFolio(order) }));
+        notify.success(t("restaurantes.pedidos.exito.asignado", { folio: etiquetaFolio(order) }));
       }
       await load();
       return true;
@@ -844,7 +844,7 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
           void aplicarCambioEstado(order, "problema", { incidentNote: nota }).then((ok) => {
             if (!ok) return;
             setIncidencia(null);
-            notify.success(t("restaurantes.pedidos.toast.incidencia", { folio: etiquetaFolio(order) }));
+            notify.success(t("restaurantes.pedidos.exito.incidencia", { folio: etiquetaFolio(order) }));
           });
         }}
       />
@@ -862,7 +862,7 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
           if (!cancelando) return;
           void aplicarCambioEstado(cancelando, "cancelado", { motivo }).then((ok) => {
             if (!ok) return;
-            notify.success(t("restaurantes.pedidos.toast.cancelado", { folio: etiquetaFolio(cancelando) }));
+            notify.success(t("restaurantes.pedidos.exito.cancelado", { folio: etiquetaFolio(cancelando) }));
 
             setCancelando(null);
           });
