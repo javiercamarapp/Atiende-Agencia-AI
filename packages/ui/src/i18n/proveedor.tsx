@@ -6,6 +6,7 @@ import { cargarIdioma, idiomaListo, registrarModuloEs } from "./mensajes/index.t
 import type { ModuloEs } from "./tipos.ts";
 import { LOCALE_POR_IDIOMA } from "./tipos.ts";
 import { crearTraductor, type Traductor } from "./traducir";
+import { fijarIdiomaActivo } from "./activo.ts";
 
 export interface ContextoI18n {
   readonly idioma: Idioma;
@@ -51,6 +52,8 @@ export function IdiomaProvider({ children, idiomaInicial, persistir }: IdiomaPro
   const pedido: Idioma = ds3 ? idioma : "es";
   // El ingles es un chunk aparte: mientras llega, la consola sigue en espanol (nunca claves crudas) y cambia de golpe al llegar.
   const efectivo: Idioma = idiomaListo(pedido) ? pedido : "es";
+  // Formateadores sin hook (formatMoney, resolverFormato, fechas): se fija ANTES de que rendericen los hijos (idempotente).
+  fijarIdiomaActivo(efectivo);
 
   useEffect(() => {
     if (typeof MutationObserver === "undefined") return undefined;
@@ -93,7 +96,7 @@ export function IdiomaProvider({ children, idiomaInicial, persistir }: IdiomaPro
   }, []);
 
   useEffect(() => {
-    if (typeof document !== "undefined") document.documentElement.lang = efectivo;
+    if (typeof document !== "undefined") document.documentElement.lang = LOCALE_POR_IDIOMA[efectivo];
   }, [efectivo]);
 
   const cambiarIdioma = useCallback(

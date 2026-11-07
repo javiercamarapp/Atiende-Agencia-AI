@@ -13,6 +13,8 @@ import { registrarModuloEs } from "../src/i18n/mensajes/index.ts";
 
 registrarModuloEs(comun);
 import { CLAVE_IDIOMA, guardarIdioma } from "../src/lib/idioma";
+import { idiomaActivo } from "../src/i18n/activo.ts";
+import { formatMoney } from "../src/lib/formatMoney.ts";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -68,14 +70,14 @@ describe("IdiomaProvider", () => {
   it("por omision espanol y <html lang=es>", () => {
     const c = montar(createElement(IdiomaProvider, null, createElement(Muestra)));
     expect(c.textContent).toBe("Reintentar · 2 resultados · $5.00");
-    expect(document.documentElement.lang).toBe("es");
+    expect(document.documentElement.lang).toBe("es-MX");
   });
 
   it("respeta la preferencia guardada y ?lang= gana sobre ella", () => {
     window.localStorage.setItem(CLAVE_IDIOMA, "en");
     let c = montar(createElement(IdiomaProvider, null, createElement(Muestra)));
     expect(c.textContent).toBe("Try again · 2 results · $5.00");
-    expect(document.documentElement.lang).toBe("en");
+    expect(document.documentElement.lang).toBe("en-US");
     act(() => root?.unmount());
     c.remove();
 
@@ -88,8 +90,19 @@ describe("IdiomaProvider", () => {
     const c = montar(createElement(IdiomaProvider, null, createElement(Muestra)));
     act(() => guardarIdioma("en"));
     expect(c.textContent).toBe("Try again · 2 results · $5.00");
-    expect(document.documentElement.lang).toBe("en");
+    expect(document.documentElement.lang).toBe("en-US");
   });
+
+  it("fija el idioma activo de los formateadores sin hook (formatMoney, fechas de lib/)", () => {
+    montar(createElement(IdiomaProvider, null, createElement(Muestra)));
+    expect(idiomaActivo()).toBe("es");
+    act(() => guardarIdioma("en"));
+    expect(idiomaActivo()).toBe("en");
+    expect(formatMoney(1234.5)).toBe("1,234.50");
+    act(() => guardarIdioma("es"));
+    expect(idiomaActivo()).toBe("es");
+  });
+
 
   it("cambia cuando otra pestana guarda la preferencia", () => {
     const c = montar(createElement(IdiomaProvider, null, createElement(Muestra)));
@@ -116,13 +129,13 @@ describe("IdiomaProvider", () => {
     window.localStorage.setItem(CLAVE_IDIOMA, "en");
     const c = montar(createElement(IdiomaProvider, null, createElement(Muestra)));
     expect(c.textContent?.startsWith("Reintentar")).toBe(true);
-    expect(document.documentElement.lang).toBe("es");
+    expect(document.documentElement.lang).toBe("es-MX");
     await act(async () => {
       document.documentElement.dataset.diseno = "ds3";
       await new Promise((r) => setTimeout(r, 0));
     });
     expect(c.textContent?.startsWith("Try again")).toBe(true);
-    expect(document.documentElement.lang).toBe("en");
+    expect(document.documentElement.lang).toBe("en-US");
   });
 
   it("?lang= vale para la carga pero no se guarda sin un clic", () => {
