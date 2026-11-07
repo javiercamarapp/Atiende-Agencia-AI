@@ -170,7 +170,8 @@ export const ARCO_MENU_REPLY =
   "• Rectificación: corregir datos incorrectos.\n" +
   "• Cancelación: pedir que se supriman sus datos.\n" +
   "• Oposición: oponerse a cierto uso de sus datos.\n" +
-  "Dígame cuál desea, por ejemplo: \"quiero acceso a mis datos personales\". Solo atiendo solicitudes sobre los datos de quien escribe desde este número.";
+  "Dígame cuál desea, por ejemplo: \"quiero acceso a mis datos personales\". Solo atiendo solicitudes sobre los datos de quien escribe desde este número.\n" +
+  "Si solo quería hacer un pedido o pedir su factura, dígamelo y seguimos; su pedido en curso no se pierde.";
 
 export const ARCO_THIRD_PARTY_REPLY =
   "Por seguridad solo puedo recibir solicitudes sobre los datos personales asociados a este mismo número, hechas por su titular. " +

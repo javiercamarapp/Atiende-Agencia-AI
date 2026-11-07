@@ -55,6 +55,8 @@ export function detectArcoConfirmation(message: string): ArcoConfirmationIntent 
 // Mención de datos personales / privacidad: exigida para NO confundir "cancelar mi
 // pedido" o "actualizar mi dirección de entrega" con una solicitud ARCO.
 const PERSONAL_DATA_RE = /\b(datos personales|mis datos|mi informacion personal|informacion personal|mis datos personales|aviso de privacidad|privacidad|arco)\b/;
+const PERSONAL_DATA_EXPLICIT_RE = /\b(datos personales|mis datos personales|mi informacion personal|informacion personal|aviso de privacidad|privacidad|arco)\b/;
+const FACTURA_O_PEDIDO_RE = /\b(factur\w*|rfc|ticket|recibo|comprobante|pedido|orden|ya (te|le|les) (pase|mande|envie|di|dije)|te (pase|mande|envie)|le (pase|mande|envie))\b/;
 const THIRD_PARTY_RE =
   /\b(de|del) (mi|su|otro|otra|un|una|el|la) (esposa|esposo|pareja|mama|papa|madre|padre|hij[oa]|hermano|hermana|amig[oa]|cliente|paciente|vecin[oa]|persona|jefe|jefa|ex|novio|novia|senor|senora|familiar)\b|\bde (otra persona|alguien mas|un tercero|terceros)\b/;
 
@@ -76,7 +78,7 @@ export type ArcoIntent =
  * mensaje menciona privacidad/ARCO sin un derecho concreto, o mezcla varios
  * derechos, devuelve `menu` (se le pide elegir UNO), sin registrar nada.
  */
-export function detectArcoIntent(message: string): ArcoIntent | null {
+function detectArcoIntentBase(message: string): ArcoIntent | null {
   const normalized = normalizeArcoText(message);
   if (!normalized || !PERSONAL_DATA_RE.test(normalized)) return null;
 
@@ -90,6 +92,90 @@ export function detectArcoIntent(message: string): ArcoIntent | null {
 
   if (candidates.length === 1) return { kind: "request", right: candidates[0]! };
   return { kind: "menu" };
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------------
+// RECALL PRIMERO. Una solicitud de derechos que se pierde (la atiende el modelo, o nadie) es el error grave; un menu de mas es solo una molestia que el propio menu
+// suaviza ("si solo queria un pedido o su factura, digamelo y seguimos"). Por eso la deteccion NO se parcha mas con regex finas por caso:
+//   1. `detectArcoIntentBase` (la logica de siempre) conserva exactamente lo que ya se detectaba;
+//   2. `detectarRaizArcoAmplia` agrega RAICES amplias (borrar/eliminar/suprimir/olvidar/cancelar + datos/info/cuenta o pronombre pegado, dar de baja, oposicion,
+//      "no quiero que (tengan|guarden|usen|compartan)", "en su sistema", "que tienen de mi", acceso/rectificacion), con jerga q/k, mayusculas, sin acentos;
+//   3. todo lo que trae solo el paso 2, o lo que mezcla ARCO con pedido/factura sin nombrar privacidad, va al MENU (nunca registra una solicitud por adivinar);
+//   4. UNICO descarte: sin ninguna raiz de derechos no hay ARCO ("ya te pase mis datos, facturame" ya NO tiene raiz de derecho... y aun asi, por la regla 1, si
+//      main lo mandaba al menu lo sigue mandando: el menu lo suaviza).
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------------
+/** Normalizacion para la deteccion amplia: ademas de `normalizeArcoText`, jerga de chat ("q", "k", "kiero", "xq"). */
+function normalizarParaDeteccion(texto: string): string {
+  return normalizeArcoText(texto)
+    .replace(/\b(?:q|k|ke|xq|porq)\b/g, "que")
+    .replace(/\bk(?=[eiou])/g, "qu")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+const OBJ_DATOS = "(?:datos|informacion|info|cuenta|perfil|historial|registros?|expediente)";
+const OBJ_PERSONAL = "(?:datos|informacion|info|cuenta|perfil|historial|registros?|expediente|numero|telefono|celular|direccion|correo|nombre)";
+const VERBO_SUPRIMIR = "(?:borr|elimin|suprim|olvid|destru)\\w*";
+const PRONOMBRE = "(?:me|los|las|lo|nos)";
+const RAICES_ARCO_AMPLIAS: readonly RegExp[] = [
+  // suprimir + datos (en cualquier orden, a distancia) o con pronombre / "todo"
+  new RegExp(`\\b${VERBO_SUPRIMIR}\\b.{0,80}\\b${OBJ_PERSONAL}\\b`),
+  new RegExp(`\\b${OBJ_PERSONAL}\\b.{0,80}\\b${VERBO_SUPRIMIR}\\b`),
+  new RegExp(`\\b(?:borr|elimin|suprim|olvid|destru)\\w*${PRONOMBRE}\\b`), // borralos, bórrenme, eliminenlos, olvidenlos
+  new RegExp(`\\b${VERBO_SUPRIMIR}\\s+(?:${PRONOMBRE}|todo|todos|todas)\\b`), // borren todo, eliminen me
+  new RegExp(`\\bque\\s+${PRONOMBRE}\\s+(?:borr|elimin|suprim|olvid)\\w*`), // que me borren, que los borren
+  // cancelar solo cuenta junto a datos/cuenta o con pronombre pegado (no "cancelen mi pedido")
+  new RegExp(`\\bcancel\\w*\\b.{0,80}\\b${OBJ_DATOS}\\b`),
+  new RegExp(`\\b${OBJ_DATOS}\\b.{0,80}\\bcancel\\w*`),
+  new RegExp(`\\bcancel(?:a|e|en|ar)${PRONOMBRE}\\b`), // cancelenlos, cancelame
+  /\b(?:cancelacion|supresion|suprimir|de baja|darme de baja|dar de baja)\b/,
+  // sacar / quitar de su sistema, lista, base
+  /\b(?:saqu|quit|sac|borr|elimin)\w*\b.{0,40}\b(?:de|en) su (?:sistema|base|bases|lista|listas|registro|registros)\b/,
+  /\b(?:aparecer|figurar|estar|seguir|quedar|tener)\w*\b.{0,30}\b(?:en|de) su (?:sistema|base|bases|lista|listas|registro|registros)\b/,
+  /\bsu (?:sistema|base de datos|lista|registros?)\b.{0,30}\b(?:ya no|no)\b|\b(?:ya no|no)\b.{0,40}\bsu (?:sistema|base de datos|lista|registros?)\b/,
+  // oposicion / consentimiento / no quiero que tengan, guarden, usen, compartan
+  /\b(?:oponer\w*|opongo|oposicion|revoc\w*|no autorizo|no consiento|no doy mi consentimiento|retiro mi consentimiento|no acepto (?:el )?(?:uso|tratamiento))\b/,
+  /\bno quiero que\b.{0,25}\b(?:tengan|guarden|conserven|almacenen|usen|utilicen|traten|compartan|vendan|ocupen|cedan|sigan)\b/,
+  /\bno (?:los |lo |me )?(?:usen|compartan|traten|utilicen|vendan|ocupen|cedan|guarden|tengan)\b/,
+  /\bdejen de (?:usar|tratar|utilizar|compartir|guardar|ocupar|vender|mandar\w*|enviar\w*|contactar\w*|llamar\w*)\b/,
+  // acceso
+  /\b(?:acceso|acceder)\b.{0,25}\b(?:datos|informacion|info)\b/,
+  new RegExp(`\\b(?:ver|saber|conocer|consultar|obtener|copia|mandenme|denme|enviame|envienme|pasenme|muestrenme|entreguen\\w*|envien\\w*)\\b.{0,30}\\b${OBJ_DATOS}\\b`),
+  /\bque\b.{0,20}\b(?:tienen|saben|guardan|manejan|almacenan|registran|hay)\b.{0,12}\b(?:de|sobre) (?:mi|mis|mi persona)\b/,
+  /\bque (?:hacen|hicieron) con (?:mis )?(?:datos|info|informacion)\b/,
+  /\b(?:datos|info|informacion)\b.{0,20}\b(?:que )?(?:tienen|guardan|manejan|almacenan)\b/,
+  /\b(?:que|cuales) datos\b/,
+  // rectificacion
+  new RegExp(`\\b(?:rectific|corrij|corrig|actualiz|modific|cambi)\\w*\\b.{0,30}\\b(?:datos|informacion|info|nombre|correo|apellido|rfc)\\b`),
+  /\b(?:rectificar|rectificacion|correccion)\b/,
+  /\b(?:datos|informacion|info)\b.{0,25}\b(?:estan mal|incorrect\w*|erroneo\w*|equivocad\w*)\b/,
+  // privacidad explicita
+  /\b(?:datos personales|aviso de privacidad|privacidad|arco|derechos arco|proteccion de datos)\b/,
+];
+
+/** Hay una raiz amplia de derechos de privacidad en el mensaje (mas sensible que `detectArcoIntentBase`). */
+export function detectarRaizArcoAmplia(message: string): boolean {
+  const normalized = normalizarParaDeteccion(message);
+  return normalized !== "" && RAICES_ARCO_AMPLIAS.some((re) => re.test(normalized));
+}
+
+/**
+ * Detecta una solicitud ARCO en un mensaje libre. RECALL PRIMERO (ver arriba): nunca deja pasar al modelo un mensaje con una raiz de derechos; los casos dudosos
+ * (los que solo detecta la raiz amplia, o que mezclan ARCO con pedido/factura sin nombrar privacidad) van al MENU, que no bloquea el pedido en curso.
+ * Contrato publico sin cambios: `request` | `menu` | `third_party` | null.
+ */
+export function detectArcoIntent(message: string): ArcoIntent | null {
+  const normalized = normalizarParaDeteccion(message);
+  if (!normalized) return null;
+  const base = detectArcoIntentBase(message);
+  const amplia = base === null && RAICES_ARCO_AMPLIAS.some((re) => re.test(normalized));
+  if (base === null && !amplia) return null;
+  if (THIRD_PARTY_RE.test(normalized) && (base?.kind === "third_party" || amplia)) return { kind: "third_party" };
+  if (base !== null && base.kind === "request") {
+    // Mezcla con pedido/factura sin nombrar privacidad ("borren mis datos de mi pedido"): al menu, que deja continuar el pedido. Con privacidad explicita, la solicitud.
+    const explicita = PERSONAL_DATA_EXPLICIT_RE.test(normalized);
+    return !explicita && FACTURA_O_PEDIDO_RE.test(normalized) ? { kind: "menu" } : base;
+  }
+  return base ?? { kind: "menu" };
 }
 
 export interface ArcoFastPathResult {
