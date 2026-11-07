@@ -14,7 +14,7 @@ import { LicitacionesShell } from "../src/verticals/licitaciones/LicitacionesShe
 import type { BranchOption } from "../src/verticals/licitaciones/lib/admin-client.ts";
 import { click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 import { installMatchMediaStub, installMemoryLocalStorage } from "./test-utils/memory-storage.ts";
-import { cerrarSesionDesdeMenuMovil } from "./test-utils/menu-cuenta-movil.ts";
+import { afirmarCampanaMovil, cerrarSesionDesdeMenuMovil } from "./test-utils/menu-cuenta-movil.ts";
 import { abrirCategoria, categoriasAbiertas, categoriasSidebar, linksSidebar, tarjetaUsuario } from "./test-utils/sidebar-estructura.ts";
 
 const fetchBranchesMock = vi.fn<(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, orgSlug: string) => Promise<readonly BranchOption[]>>();
@@ -166,7 +166,7 @@ describe("LicitacionesShell — nav móvil", () => {
     expect(mains[0]!.getAttribute("tabindex")).toBe("-1");
   });
 
-  it("el encabezado móvil va sin campana ni chat; el menú de cuenta conserva cerrar sesión (campana y chat viven en Más > Cuenta)", async () => {
+  it("el encabezado móvil lleva la campana (decisión de Omar 7-nov-2026) y no el chat; el menú de cuenta conserva cerrar sesión", async () => {
     const onRequireLogin = vi.fn();
     installMatchMediaStub();
     installMemoryLocalStorage().setItem("atiende.licitaciones.session", JSON.stringify(SESSION));
@@ -182,7 +182,8 @@ describe("LicitacionesShell — nav móvil", () => {
       await flushMicrotasks();
     });
     const mobileHeader = [...rendered.container.querySelectorAll("header")].find((h) => h.className.includes("md:hidden"))!;
-    expect(mobileHeader.querySelector('[aria-label^="Notificaciones"]'), "sin campana en el encabezado movil").toBeNull();
+    afirmarCampanaMovil(mobileHeader);
+    expect(mobileHeader.textContent).not.toContain("Pregúntale a tus datos");
     const fetchMock = await cerrarSesionDesdeMenuMovil(rendered.container);
     // logout() real (apps/web/src/lib/auth-client.ts) -- POST /auth/logout con el refreshToken de la sesión.
     expect(fetchMock).toHaveBeenCalledWith("https://api.test/auth/logout", expect.objectContaining({ method: "POST", body: JSON.stringify({ refreshToken: "reftok" }) }));

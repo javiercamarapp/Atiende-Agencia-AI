@@ -35,4 +35,10 @@ export const shell = {
   "shell.idioma": "Idioma de la interfaz",
   "shell.idioma.es": "Español (ES)",
   "shell.idioma.en": "English (EN)",
+  "shell.preguntar": "Preguntar",
+  "shell.salir": "Salir",
+  "shell.abrirMasSecciones": "Abrir más secciones",
+  "shell.notificaciones": "Notificaciones",
+  "shell.notificacionesSinLeer": "Notificaciones: {n} sin leer",
+  "shell.notificacionesConAvisos": "Notificaciones: hay avisos sin leer",
 } as const satisfies ModuloEs;
