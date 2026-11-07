@@ -64,7 +64,7 @@ export function CierresPage({ apiBaseUrl, token, propertyId, role, fetchImpl }: 
     setGenerando(fecha);
     try {
       const r = await generarCierre(fetchImpl ?? fetch, apiBaseUrl, token, propertyId, tipo, fecha);
-      notify.success(t(r.estado === "creado" ? "restaurantes.cierres.toast.creado" : "restaurantes.cierres.toast.existia", { periodo: etiquetaPeriodo(r.cierre, t) }));
+      notify.success(t(r.estado === "creado" ? "restaurantes.cierres.exito.creado" : "restaurantes.cierres.exito.existia", { periodo: etiquetaPeriodo(r.cierre, t) }));
       setSeleccion(r.cierre.id);
       reintentar();
     } catch (err) {
