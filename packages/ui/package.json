@@ -11,6 +11,7 @@
     "./i18n/nav": "./src/i18n/mensajes/nav.ts",
     "./i18n/shell": "./src/i18n/mensajes/shell.ts",
     "./i18n/rol": "./src/i18n/mensajes/rol.ts",
+    "./i18n/consola": "./src/i18n/mensajes/consola.ts",
     "./tailwind-preset": "./src/tailwind-preset.ts",
     "./tailwind-ambito": "./src/tailwind-ambito.ts"
   },

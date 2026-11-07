@@ -55,6 +55,7 @@ import type { PropertyOption } from "./lib/discovery-client.ts";
 import { persistPropertyId, readPersistedPropertyId, resolveActivePropertyId } from "./lib/property-selection.ts";
 import "@atiende/ui/i18n/nav";
 import "@atiende/ui/i18n/shell";
+import "@atiende/ui/i18n/consola";
 
 /** Propiedad con el `name` que exige `useVerticalSession`; `nombre` sigue siendo el campo del API. */
 type PropiedadOption = PropertyOption & { readonly name: string };
@@ -181,14 +182,14 @@ export interface RentasShellProps {
 export function RentasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: RentasShellProps) {
   // Título de pestaña por vertical/organización. El hook va ANTES de los returns condicionales.
   const t = useT();
-  useDocumentTitle(t("shell.vertical.rentas"), orgSlug);
+  useDocumentTitle(t("consola.vertical.rentas"), orgSlug);
   const s = useVerticalSession({ adapter: RENTAS_SESSION, apiBaseUrl, orgSlug, onRequireLogin });
 
   if (s.fase === "resolviendo") return <VerticalShellEstado estado="cargando" mensaje={t("shell.cargando")} />;
   if (s.fase === "sin-sesion") return null; // onRequireLogin ya disparó la redirección
   if (s.fase === "error") return <VerticalShellEstado estado="error" mensaje={s.error ?? undefined} onReintentar={s.reintentar} />;
-  if (s.fase === "cargando") return <VerticalShellEstado estado="cargando" mensaje={t("shell.cargandoPropiedades")} />;
-  if (s.fase === "vacio") return <VerticalShellEstado estado="vacio" mensaje={t("shell.vacio.sinPropiedad")} />;
+  if (s.fase === "cargando") return <VerticalShellEstado estado="cargando" mensaje={t("consola.cargandoPropiedades")} />;
+  if (s.fase === "vacio") return <VerticalShellEstado estado="vacio" mensaje={t("consola.vacio.sinPropiedad")} />;
 
   const { session, branches, activeBranch, propertyId } = s;
   const org = session.organizations.find((o) => o.slug === orgSlug);
@@ -202,7 +203,7 @@ export function RentasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: R
   // Selector real de propiedad: lista solo con 2+ (el caso base de este vertical); con una sola se muestra su nombre. Va
   // en el bloque de cuenta del Sidebar (escritorio) y en el MobileHeader, para no perder la función en viewport angosto.
   const propiedadSelector = (idSelect: string) =>
-    <SelectorSucursal id={idSelect} etiqueta={t("shell.selector.propiedad")} valor={propertyId} onCambia={s.selectBranch} opciones={branches.map((b) => ({ valor: b.propertyId, etiqueta: b.nombre }))} />;
+    <SelectorSucursal id={idSelect} etiqueta={t("consola.selector.propiedad")} valor={propertyId} onCambia={s.selectBranch} opciones={branches.map((b) => ({ valor: b.propertyId, etiqueta: b.nombre }))} />;
 
   return (
     <VerticalShellConectado

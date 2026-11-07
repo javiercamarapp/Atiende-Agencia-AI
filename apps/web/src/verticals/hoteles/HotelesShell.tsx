@@ -53,6 +53,7 @@ import type { PropertyOption } from "./lib/discovery-client.ts";
 import { persistPropertyId, readPersistedPropertyId } from "./lib/property-selection.ts";
 import "@atiende/ui/i18n/nav";
 import "@atiende/ui/i18n/shell";
+import "@atiende/ui/i18n/consola";
 
 /** Hotel (property) con el `name` que exige `useVerticalSession`; `nombre` sigue siendo el campo del API. */
 type HotelOption = PropertyOption & { readonly name: string };
@@ -164,7 +165,7 @@ const HOUSEKEEPING_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "gm", "fro
 export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: HotelesShellProps) {
   // Título de pestaña por vertical/organización. El hook va ANTES de los returns condicionales.
   const t = useT();
-  useDocumentTitle(t("shell.vertical.hoteles"), orgSlug);
+  useDocumentTitle(t("consola.vertical.hoteles"), orgSlug);
   // Fail-closed: si la organización activa no aparece en la sesión (no debería pasar, ver decideHotelesLandingPath),
   // cae al rol operativo MÁS bajo de HOTEL_ROLES (nunca uno que active gates administrativos/de F&B de más).
   const s = useVerticalSession({ adapter: HOTELES_SESSION, apiBaseUrl, orgSlug, onRequireLogin, defaultRole: "housekeeping" });
@@ -172,8 +173,8 @@ export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: 
   if (s.fase === "resolviendo") return <VerticalShellEstado estado="cargando" mensaje={t("shell.cargando")} />;
   if (s.fase === "sin-sesion") return null; // onRequireLogin ya disparó la redirección
   if (s.fase === "error") return <VerticalShellEstado estado="error" mensaje={s.error ?? undefined} onReintentar={s.reintentar} />;
-  if (s.fase === "cargando") return <VerticalShellEstado estado="cargando" mensaje={t("shell.cargandoPropiedades")} />;
-  if (s.fase === "vacio") return <VerticalShellEstado estado="vacio" mensaje={t("shell.vacio.sinHotel")} />;
+  if (s.fase === "cargando") return <VerticalShellEstado estado="cargando" mensaje={t("consola.cargandoPropiedades")} />;
+  if (s.fase === "vacio") return <VerticalShellEstado estado="vacio" mensaje={t("consola.vacio.sinHotel")} />;
 
   const { session, branches, activeBranch, propertyId, role } = s;
 
@@ -255,7 +256,7 @@ export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: 
   // Selector real, visible solo con más de un hotel (si no, solo el nombre). Va en el bloque de cuenta del Sidebar
   // (escritorio) y en el MobileHeader, para no perder la función en viewport angosto.
   const hotelSelector = (idSelect: string) =>
-    <SelectorSucursal id={idSelect} etiqueta={t("shell.selector.hotel")} valor={propertyId} onCambia={s.selectBranch} opciones={branches.map((b) => ({ valor: b.propertyId, etiqueta: b.nombre }))} />;
+    <SelectorSucursal id={idSelect} etiqueta={t("consola.selector.hotel")} valor={propertyId} onCambia={s.selectBranch} opciones={branches.map((b) => ({ valor: b.propertyId, etiqueta: b.nombre }))} />;
 
   return (
     <VerticalShellConectado
@@ -271,7 +272,7 @@ export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: 
       user={{ email: session.email, rol: role, nombre: session.fullName, rolEtiqueta: etiquetaRol(role, t) }}
       onLogout={() => void s.logout()}
       loggingOut={s.loggingOut}
-      header={{ icon: <BedDouble className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: t("shell.titulo", { vertical: t("shell.vertical.hoteles"), nombre: orgSlug }), resumenTo: `/hoteles/${orgSlug}` }}
+      header={{ icon: <BedDouble className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: t("consola.titulo", { vertical: t("consola.vertical.hoteles"), nombre: orgSlug }), resumenTo: `/hoteles/${orgSlug}` }}
       branchSelector={hotelSelector("hoteles-hotel-activo")}
       mobileSelector={branches.length > 1 ? hotelSelector("hoteles-hotel-activo-movil") : null}
       contentKey={propertyId}

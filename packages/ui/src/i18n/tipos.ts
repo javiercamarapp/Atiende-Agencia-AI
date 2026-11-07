@@ -7,6 +7,9 @@
 /** Mismo tipo que `Idioma` de lib/idioma (la preferencia); repetido aqui para que el nucleo no dependa de `window`. */
 export type Idioma = "es" | "en";
 
+/** Locale de formato de cada idioma: Mexico (1,234.50 / 6 nov 2026) y Estados Unidos (1,234.50 / Nov 6, 2026). */
+export const LOCALE_POR_IDIOMA: Readonly<Record<Idioma, string>> = { es: "es-MX", en: "en-US" };
+
 export interface Plural {
   readonly zero?: string;
   readonly one?: string;

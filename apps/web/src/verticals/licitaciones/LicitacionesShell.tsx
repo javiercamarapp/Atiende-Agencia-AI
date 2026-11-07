@@ -29,6 +29,7 @@ import type { BranchOption } from "./lib/admin-client.ts";
 import { STAFF_NAV_ROLES, puedeVerPrivacidad } from "./roles-nav.ts";
 import "@atiende/ui/i18n/nav";
 import "@atiende/ui/i18n/shell";
+import "@atiende/ui/i18n/consola";
 
 /** Adaptador de sesión de licitaciones. DEBE ser una constante de módulo (el hook lo usa como dependencia de sus efectos). */
 const LICITACIONES_SESSION: VerticalSessionAdapter<BranchOption> = {
@@ -144,14 +145,14 @@ function buildMobileItems(t: Traductor, orgSlug: string): BottomNavItem[] {
 export function LicitacionesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: LicitacionesShellProps) {
   // Título de pestaña por vertical/organización (ver use-document-title.ts). El hook va ANTES de los returns condicionales.
   const t = useT();
-  useDocumentTitle(t("shell.vertical.licitaciones"), orgSlug);
+  useDocumentTitle(t("consola.vertical.licitaciones"), orgSlug);
   const s = useVerticalSession({ adapter: LICITACIONES_SESSION, apiBaseUrl, orgSlug, onRequireLogin, defaultRole: "viewer" });
 
   if (s.fase === "resolviendo") return <VerticalShellEstado estado="cargando" mensaje={t("shell.cargando")} />;
   if (s.fase === "sin-sesion") return null; // onRequireLogin ya disparó la redirección
   if (s.fase === "error") return <VerticalShellEstado estado="error" mensaje={s.error ?? undefined} onReintentar={s.reintentar} />;
-  if (s.fase === "cargando") return <VerticalShellEstado estado="cargando" mensaje={t("shell.cargandoOrganizacion")} />;
-  if (s.fase === "vacio") return <VerticalShellEstado estado="vacio" mensaje={t("shell.vacio.sinOrganizacion")} />;
+  if (s.fase === "cargando") return <VerticalShellEstado estado="cargando" mensaje={t("consola.cargandoOrganizacion")} />;
+  if (s.fase === "vacio") return <VerticalShellEstado estado="vacio" mensaje={t("consola.vacio.sinOrganizacion")} />;
 
   const { session, propertyId, role } = s;
   const puedeVerStaff = STAFF_NAV_ROLES.has(role);
@@ -182,7 +183,7 @@ export function LicitacionesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
       user={{ email: session.email, rol: role, nombre: session.fullName, rolEtiqueta: etiquetaRol(role, t) }}
       onLogout={() => void s.logout()}
       loggingOut={s.loggingOut}
-      header={{ icon: <FileText className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: t("shell.titulo", { vertical: t("shell.vertical.licitaciones"), nombre: orgSlug }), resumenTo: `/licitaciones/${orgSlug}/panel` }}
+      header={{ icon: <FileText className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: t("consola.titulo", { vertical: t("consola.vertical.licitaciones"), nombre: orgSlug }), resumenTo: `/licitaciones/${orgSlug}/panel` }}
       contentKey={propertyId}
     >
       {children(contexto)}

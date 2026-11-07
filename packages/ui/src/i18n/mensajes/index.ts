@@ -12,6 +12,7 @@
  */
 import type { Idioma, Mensaje, Traduccion } from "../tipos.ts";
 import { comun } from "./comun.ts";
+import type { consola } from "./consola.ts";
 import type { nav } from "./nav.ts";
 import type { rol } from "./rol.ts";
 import type { shell } from "./shell.ts";
@@ -30,6 +31,7 @@ interface ModulosDeArea {
   readonly nav: typeof nav;
   readonly shell: typeof shell;
   readonly rol: typeof rol;
+  readonly consola: typeof consola;
 }
 
 type Modulos = typeof MODULOS & ModulosDeArea;
