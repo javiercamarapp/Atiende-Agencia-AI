@@ -48,7 +48,6 @@ import { useVerticalSession } from "../../lib/useVerticalSession.ts";
 import type { VerticalSessionAdapter } from "../../lib/useVerticalSession.ts";
 import { useDocumentTitle } from "../../shell/use-document-title.ts";
 import { crearChatConexionRentas } from "./lib/data-chat-client.ts";
-import { GUIA_RENTAS, esencialesRentas, excluirRentas } from "./guia-rentas.ts";
 import { clearRentasSession, logout, readPersistedRentasSession } from "./lib/auth-client.ts";
 import type { LoginSession } from "./lib/auth-client.ts";
 import { fetchProperties } from "./lib/discovery-client.ts";
@@ -220,7 +219,7 @@ export function RentasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: R
       branchSelector={propiedadSelector("rentas-propiedad-activa")}
       mobileSelector={branches.length > 1 ? propiedadSelector("rentas-propiedad-activa-movil") : null}
       contentKey={propertyId}
-      guia={{ contenido: GUIA_RENTAS, esenciales: esencialesRentas(org?.rol ?? ""), excluir: excluirRentas(org?.rol ?? ""), primerosPasosHref: undefined }}
+      guia={{ cargar: () => import("./guia-rentas.ts").then((m) => ({ contenido: m.GUIA_RENTAS, esenciales: m.esencialesRentas(org?.rol ?? ""), excluir: m.excluirRentas(org?.rol ?? "") })) }}
     >
       {children({ apiBaseUrl, token: session.token, propertyId, setPropertyId: s.selectBranch, properties: branches, orgSlug, session })}
     </VerticalShellConectado>

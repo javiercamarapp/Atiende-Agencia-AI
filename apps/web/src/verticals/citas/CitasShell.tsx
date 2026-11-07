@@ -41,7 +41,6 @@ import type { BranchOption } from "./lib/admin-client.ts";
 import { persistPropertyId, readPersistedPropertyId } from "./lib/property-selection.ts";
 import { crearChatConexionCitas } from "./lib/data-chat-client.ts";
 import { COPILOTO_CITAS_ROLES } from "./pages/Copiloto.tsx";
-import { GUIA_CITAS, esencialesCitas } from "./guia-citas.ts";
 
 /** Adaptador de sesión de citas. DEBE ser una constante de módulo (el hook lo usa como dependencia de sus efectos). */
 const CITAS_SESSION: VerticalSessionAdapter<BranchOption> = {
@@ -194,8 +193,7 @@ export function CitasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: Ci
       copilotoHref={`/citas/${orgSlug}/copiloto`}
       ocultarChat={!COPILOTO_CITAS_ROLES.has(role)}
       guia={{
-        contenido: GUIA_CITAS,
-        esenciales: esencialesCitas(role),
+        cargar: () => import("./guia-citas.ts").then((m) => ({ contenido: m.GUIA_CITAS, esenciales: m.esencialesCitas(role) })),
         primerosPasosHref: COPILOTO_CITAS_ROLES.has(role) ? `/citas/${orgSlug}/primeros-pasos` : undefined,
       }}
     >

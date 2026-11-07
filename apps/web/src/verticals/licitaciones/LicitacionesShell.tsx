@@ -27,7 +27,6 @@ import { clearLicitacionesSession, logout, readPersistedLicitacionesSession } fr
 import { fetchBranches } from "./lib/admin-client.ts";
 import type { BranchOption } from "./lib/admin-client.ts";
 import { STAFF_NAV_ROLES, puedeVerPrivacidad } from "./roles-nav.ts";
-import { GUIA_LICITACIONES, esencialesLicitaciones } from "./guia-licitaciones.ts";
 
 /** Adaptador de sesión de licitaciones. DEBE ser una constante de módulo (el hook lo usa como dependencia de sus efectos). */
 const LICITACIONES_SESSION: VerticalSessionAdapter<BranchOption> = {
@@ -182,7 +181,7 @@ export function LicitacionesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
       loggingOut={s.loggingOut}
       header={{ icon: <FileText className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: `Licitaciones · ${orgSlug}`, resumenTo: `/licitaciones/${orgSlug}/panel` }}
       contentKey={propertyId}
-      guia={{ contenido: GUIA_LICITACIONES, esenciales: esencialesLicitaciones(role), primerosPasosHref: undefined }}
+      guia={{ cargar: () => import("./guia-licitaciones.ts").then((m) => ({ contenido: m.GUIA_LICITACIONES, esenciales: m.esencialesLicitaciones(role) })) }}
     >
       {children(contexto)}
     </VerticalShellConectado>

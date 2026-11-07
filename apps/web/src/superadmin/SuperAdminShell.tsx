@@ -13,7 +13,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useLocation } from "react-router-dom";
 import { Bell, LayoutGrid, MessageCircle } from "lucide-react";
-import { GuiaRecorrido, limpiarProgresoGuia, VerticalShell, VerticalShellEstado } from "@atiende/ui";
+import { limpiarProgresoGuia, vaciarGuardadoGuia, VerticalShell, VerticalShellEstado } from "@atiende/ui";
 import type { BottomNavItem, SidebarPiePildora, SidebarSection } from "@atiende/ui";
 import { logout } from "../lib/auth-client.ts";
 import { servidorProgresoGuia } from "../lib/guia-progreso.ts";
@@ -26,7 +26,12 @@ import { StepUpDialog } from "./components/StepUpDialog.tsx";
 import { RUTA_COPILOTO } from "./lib/copiloto-cliente.ts";
 import { COPILOTO, MOVIL_SUPERADMIN, PIE_SUPERADMIN, RESUMEN, SECCIONES } from "./rutas.ts";
 import { limpiarStepUp } from "./lib/stepup.ts";
-import { ESENCIALES_SUPERADMIN, GUIA_SUPERADMIN } from "./guia-superadmin.ts";
+import { GuiaDiferida } from "../components/GuiaDiferida.tsx";
+
+/** ds3 «Guía» de la consola: clave local de la plataforma y nombre de la marca (no se traduce). */
+const ORG_PLATAFORMA = "plataforma";
+const MARCA_PLATAFORMA = "Atiende";
+const cargarGuiaSuperadmin = () => import("./guia-superadmin.ts").then((m) => ({ contenido: m.GUIA_SUPERADMIN, esenciales: m.ESENCIALES_SUPERADMIN }));
 
 export interface SuperAdminShellProps {
   readonly apiBaseUrl: string;
@@ -79,6 +84,8 @@ export function SuperAdminShell({ apiBaseUrl, onRequireLogin, children }: SuperA
   async function handleLogout() {
     if (!session) return;
     setLoggingOut(true);
+    // ds3 «Guía»: lo pendiente del progreso sale ANTES de revocar la sesion.
+    vaciarGuardadoGuia();
     try {
       await logout(fetch, apiBaseUrl, session.refreshToken);
     } finally {
@@ -130,16 +137,15 @@ export function SuperAdminShell({ apiBaseUrl, onRequireLogin, children }: SuperA
         </div>
       </VerticalShell>
       {/* ds3 «Guía»: el recorrido sale del mismo menu (SECTIONS); el progreso se guarda por persona con la pista «superadmin». */}
-      <GuiaRecorrido
+      {/* Sin `rolEtiqueta`: la guía pone «Superadmin» desde su diccionario ES/EN. Contenido y componente se cargan solo con ds3. */}
+      <GuiaDiferida
         sections={SECTIONS}
         base="/superadmin"
         pista="superadmin"
         persona={session.email}
-        organizacion="plataforma"
-        organizacionNombre="Atiende"
-        rolEtiqueta="Superadmin"
-        contenido={GUIA_SUPERADMIN}
-        esenciales={ESENCIALES_SUPERADMIN}
+        organizacion={ORG_PLATAFORMA}
+        organizacionNombre={MARCA_PLATAFORMA}
+        cargar={cargarGuiaSuperadmin}
         servidor={servidorGuia}
       />
     </>

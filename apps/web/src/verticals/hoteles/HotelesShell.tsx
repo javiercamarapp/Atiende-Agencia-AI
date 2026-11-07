@@ -48,7 +48,6 @@ import { useDocumentTitle } from "../../shell/use-document-title.ts";
 import { clearHotelesSession, logout, readPersistedHotelesSession } from "./lib/auth-client.ts";
 import { crearChatConexionHoteles } from "./lib/data-chat-client.ts";
 import { COPILOTO_HOTELES_ROLES } from "./pages/Copiloto.tsx";
-import { GUIA_HOTELES, esencialesHoteles } from "./guia-hoteles.ts";
 import { fetchProperties, resolveActivePropertyId } from "./lib/discovery-client.ts";
 import type { PropertyOption } from "./lib/discovery-client.ts";
 import { persistPropertyId, readPersistedPropertyId } from "./lib/property-selection.ts";
@@ -280,7 +279,7 @@ export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: 
       branchSelector={hotelSelector("hoteles-hotel-activo")}
       mobileSelector={branches.length > 1 ? hotelSelector("hoteles-hotel-activo-movil") : null}
       contentKey={propertyId}
-      guia={{ contenido: GUIA_HOTELES, esenciales: esencialesHoteles(role), primerosPasosHref: undefined }}
+      guia={{ cargar: () => import("./guia-hoteles.ts").then((m) => ({ contenido: m.GUIA_HOTELES, esenciales: m.esencialesHoteles(role) })) }}
     >
       {children({ apiBaseUrl, token: session.token, propertyId, orgSlug, role, staffFullName: session.fullName, staffEmail: session.email, propertyName: activeBranch.nombre })}
     </VerticalShellConectado>
