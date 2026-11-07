@@ -2128,7 +2128,7 @@ async function dispatchTool(
       const perfilAgente = configAgente?.perfil ?? "generico";
       // Pines de Google de las sucursales (opt-in, APAGADO por omision: activarlo es decision de Javier; ver coordenadas-sucursales.ts).
       const usarPropuestas = ctx.usarCoordenadasPropuestas ?? coordenadasPropuestasActivas();
-      const match = await assignBranch(repo, {
+      let match = await assignBranch(repo, {
         organizationId,
         radioMaximoKm: radioRepartoDelPerfil(perfilAgente, configAgente?.radioRepartoKm),
         ...(usarPropuestas ? { coordenadasPropuestas: COORDENADAS_PROPUESTAS_PM } : {}),
@@ -2139,6 +2139,19 @@ async function dispatchTool(
         ...(lat !== undefined || lng !== undefined ? { lat, lng } : {}),
         ...(typeof input.max_km === "number" && Number.isFinite(input.max_km) && input.max_km > 0 ? { maxKm: input.max_km } : {}),
       });
+      // Cerebro v2 (suelto, C3 S-NEW-016/017): un municipio conocido fuera de Merida (Kanasin, Uman, Progreso…) no es «colonia no reconocida»: se mide desde su
+      // coordenada, como el suelto (merida_colonias), y queda `fuera_de_zona` para ofrecer recoger, sin pedir otra referencia ni escalar zona_no_reconocida.
+      const municipio = ctx.cerebroV2 && perfilAgente === "taqueria_pm" && match.estado === "no_reconocida" && coloniaDicha && !coordenadasValidas ? municipioFueraDeCoberturaPm(String(input.colonia)) : null;
+      if (municipio) {
+        match = await assignBranch(repo, {
+          organizationId,
+          radioMaximoKm: radioRepartoDelPerfil(perfilAgente, configAgente?.radioRepartoKm),
+          ...(usarPropuestas ? { coordenadasPropuestas: COORDENADAS_PROPUESTAS_PM } : {}),
+          sucursalesQueNoReparten: SUCURSALES_QUE_NO_REPARTEN_PM,
+          lat: municipio.lat,
+          lng: municipio.lng,
+        });
+      }
       // QA-PM-R5-whatsapp-08: una colonia ESCRITA manda sobre el pin compartido (la colonia dicha despues del pin es una correccion), pero el servidor no sabe en que orden llegaron.
       // Si el pin compartido cae en OTRA sucursal que la de la colonia, se avisa al modelo para que le pregunte al cliente cual vale en vez de asignar en silencio.
       let conflictoPin: { readonly slug: string; readonly nombre: string } | null = null;
@@ -2854,6 +2867,24 @@ async function retenerPedidoGrande(repo: RestaurantesRepository, ctx: AgentToolC
  * call y errores de negocio convertidos en una respuesta `{error}` normal, nunca en una
  * transaccion abortada ni en una excepcion que tumbe el resto del turno.
  */
+/**
+ * Cerebro v2: municipios y localidades conocidos FUERA de la cobertura de PM, con su coordenada aproximada (la del suelto: merida_colonias / COLONIAS_APROX
+ * del banco de medicion). No son colonias de known_zone, asi que sin esta lista salian `no_reconocida`. Sin acentos, minusculas.
+ */
+const MUNICIPIOS_FUERA_DE_COBERTURA_PM: ReadonlyArray<{ readonly nombres: readonly string[]; readonly lat: number; readonly lng: number }> = [
+  { nombres: ["kanasin"], lat: 20.934, lng: -89.558 },
+  { nombres: ["uman"], lat: 20.885, lng: -89.748 },
+  { nombres: ["progreso", "puerto progreso"], lat: 21.282, lng: -89.664 },
+  { nombres: ["chicxulub puerto", "chicxulub"], lat: 21.296, lng: -89.602 },
+];
+
+/** El municipio conocido fuera de cobertura que nombra la colonia dicha («Kanasín», «en Umán», «Kanasin centro»), o null. Pura. */
+export function municipioFueraDeCoberturaPm(colonia: string): { readonly lat: number; readonly lng: number } | null {
+  const plano = colonia.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+  if (!plano) return null;
+  return MUNICIPIOS_FUERA_DE_COBERTURA_PM.find((m) => m.nombres.some((n) => new RegExp(`(?:^| )${n}(?: |$)`).test(plano))) ?? null;
+}
+
 /** Razones de callback que son aviso de alergia (monorrepo: escalar_a_humano con motivo alergia_salud; suelto: alto_riesgo:alergia). */
 const RAZONES_AVISO_ALERGIA = new Set(["escalada:alergia_salud", "alto_riesgo:alergia"]);
 
