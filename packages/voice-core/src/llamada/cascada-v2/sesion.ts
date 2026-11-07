@@ -22,6 +22,7 @@ import { eventoSinPII } from "../log-sin-pii.ts";
 import type { SumideroLog } from "../log-sin-pii.ts";
 import type { AbrirSesionLlamada, AperturaLlamada, ManejadoresSesion, VozSesionLlamada } from "../sesion.ts";
 import { crearSegmentadorFrases } from "./frases.ts";
+import { TITULO_REGLAS_CONDICIONALES, reglasActivadas } from "./reglas-condicionales.ts";
 import { contieneTotal, esAfirmacion, esRechazo } from "./afirmacion.ts";
 import { compuertaAbierta, ejecutarHerramientas, type EstadoEspera, type ReglaConfirmacion } from "./herramientas.ts";
 import { ColaAsync } from "./puertos.ts";
@@ -168,6 +169,9 @@ class SesionCascadaV2 implements VozSesionLlamada {
     this.ahora = o.ahora ?? Date.now;
     this.conKeyterms = keytermsDe(apertura.vocabulario, o.config.cascadaV2.deepgram.keytermsMax).length > 0;
   }
+
+  /** Ids de las reglas condicionales ya agregadas a la conversacion. */
+  private readonly reglasActivas = new Set<string>();
 
   /** Frase de espera ya dicha en esta LLAMADA (como mucho una; ver `esperaMinMs`). */
   private esperaDicha = false;
@@ -427,7 +431,11 @@ class SesionCascadaV2 implements VozSesionLlamada {
     this.indiceRespuestaFinal = null;
     this.vueltaActual = 0;
     this.turnosCliente += 1;
-    this.mensajes.push({ role: "user", content: texto });
+    // Reglas condicionales (dieta del prompt): las del tema que el cliente toca entran UNA vez, delante de su mensaje; la instruccion no cambia (cache del proveedor).
+    const nuevas = reglasActivadas(this.apertura.reglasCondicionales, texto, this.reglasActivas);
+    for (const r of nuevas) this.reglasActivas.add(r.id);
+    if (nuevas.length > 0) this.log("v2_reglas_activadas", { cantidad: nuevas.length });
+    this.mensajes.push({ role: "user", content: nuevas.length > 0 ? `${TITULO_REGLAS_CONDICIONALES}\n${nuevas.map((r) => r.texto).join("\n")}\n\n# LO QUE DIJO EL CLIENTE\n${texto}` : texto });
     this.esperandoAlCliente.cotizoEnTurno = false;
     this.esperandoAlCliente.huellaCotizada = null;
     this.esperandoAlCliente.totalCotizado = null;
