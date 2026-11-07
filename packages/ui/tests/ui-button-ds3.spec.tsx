@@ -273,7 +273,8 @@ describe("Button ds3: estados", () => {
     expect(b.getAttribute("aria-busy")).toBe("true");
     expect(b.disabled).toBe(true);
     expect(b.classList.contains("ds3-btn")).toBe(true);
-    const aria = Array.from(b.querySelectorAll("svg")).every((s) => s.getAttribute("aria-hidden") === "true");
+    // Todo dibujo de carga es decorativo: el svg o un ancestro dentro del boton lleva aria-hidden.
+    const aria = Array.from(b.querySelectorAll("svg")).every((s) => s.closest('[aria-hidden="true"]') !== null);
     expect(aria).toBe(true);
   });
   it("loading con loadingText true usa el texto unificado como nombre", () => {
