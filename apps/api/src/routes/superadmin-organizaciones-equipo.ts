@@ -18,15 +18,22 @@
 // transaccion. El token en claro se devuelve UNA sola vez en la respuesta (solo el hash persiste) por si el correo aun no esta listo.
 //
 // Compatibilidad con la base sin migrar: sin la 0053 la lectura responde 200 `disponible: false` (con su razon) y las mutaciones 503; nunca 500.
-// Solo restaurantes tiene hoy su lista blanca de roles; las demas verticales se rechazan con 400 explicito.
+// Verticales: desde la migracion 0070 TODAS las verticales tienen su lista blanca (ver ROLES_INVITABLES_POR_VERTICAL de @atiende/db). Aqui solo
+// se valida que el rol exista en ALGUNA vertical; la base decide con la vertical real de la organizacion (400 si no corresponde). Contra una base
+// con solo la 0053, una organizacion que no es de restaurantes sigue recibiendo el 400 explicito de la base. El correo usa la plantilla de la
+// vertical (leida de la lectura del equipo, llave `vertical` de 0070); sin esa llave cae a la de restaurantes.
 import { Hono } from "hono";
 import { ApiError, generateInviteToken } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { rateLimit } from "@atiende/core-ratelimit";
-import { EquipoInvitacionError, EquipoNoDisponibleError, emitirNotificacion } from "@atiende/db";
-import type { InvitacionEquipo } from "@atiende/db";
+import { EquipoInvitacionError, EquipoNoDisponibleError, emitirNotificacion, esRolInvitableEnAlgunaVertical } from "@atiende/db";
+import type { InvitacionEquipo, OrgEquipoRepository } from "@atiende/db";
+import { correoInvitacionStaff as correoCitas, isCitasRole } from "@atiende/domain-citas";
+import { correoInvitacionStaff as correoDespachos, isDespachosRole } from "@atiende/domain-despachos";
+import { correoInvitacionStaff as correoHoteles, isHotelRole } from "@atiende/domain-hoteles";
+import { correoInvitacionStaff as correoLicitaciones, isLicitacionesRole } from "@atiende/domain-licitaciones";
+import { correoInvitacionStaff as correoRentas, isRentasVerticalRole } from "@atiende/domain-rentas";
 import { correoInvitacionStaff, isRestaurantesRole } from "@atiende/domain-restaurantes";
-import type { StaffInviteVerticalRole } from "@atiende/domain-restaurantes";
 import { Errors } from "../errors.ts";
 import { readJsonCapped, requestActor } from "../http-security.ts";
 import { logEvent } from "../logger.ts";
@@ -76,6 +83,33 @@ function traducirError(err: unknown): never {
   throw err;
 }
 
+interface CorreoArmado {
+  readonly asunto: string;
+  readonly html: string;
+  readonly texto: string;
+}
+
+/**
+ * Plantilla del correo de invitacion de la vertical de la organizacion (cada domain-<vertical> ya tiene la suya, la misma que usa la invitacion
+ * de un owner/admin). La base ya valido que el rol pertenece a ESA vertical; los type guards solo estrechan el tipo. Si la vertical no se conoce
+ * (base con solo la 0053) o el rol no encaja, cae a la plantilla de restaurantes, que era el unico caso posible antes de la 0070.
+ */
+export function correoInvitacionSuperadmin(vertical: string | undefined, c: { readonly email: string; readonly verticalRole: string; readonly acceptUrl: string; readonly expiresAtTexto: string }): CorreoArmado {
+  const { verticalRole: rol, ...resto } = c;
+  if (vertical === "citas" && isCitasRole(rol)) return correoCitas({ ...resto, verticalRole: rol });
+  if (vertical === "hoteles" && isHotelRole(rol)) return correoHoteles({ ...resto, verticalRole: rol });
+  if (vertical === "despachos" && isDespachosRole(rol)) return correoDespachos({ ...resto, verticalRole: rol });
+  if (vertical === "licitaciones" && isLicitacionesRole(rol)) return correoLicitaciones({ ...resto, verticalRole: rol });
+  if (vertical === "rentas" && isRentasVerticalRole(rol)) return correoRentas({ ...resto, verticalRole: rol });
+  return correoInvitacionStaff({ ...resto, verticalRole: isRestaurantesRole(rol) ? rol : "staff" });
+}
+
+/** Vertical de la organizacion segun la lectura del equipo (misma sesion del caller); undefined si la base no la expone. */
+async function verticalDe(repo: OrgEquipoRepository, callerId: string, organizationId: string): Promise<string | undefined> {
+  const r = await repo.leer(callerId, organizationId);
+  return r.ok && r.data ? r.data.vertical : undefined;
+}
+
 function serializar(i: InvitacionEquipo) {
   return {
     id: i.id,
@@ -104,13 +138,12 @@ export function superadminOrganizacionesEquipoRoutes(deps: AppDeps): Hono<CoreAu
   }
 
   /** Encola el correo en una sesion de sistema propia. Best-effort: devuelve si quedo encolado, nunca lanza. */
-  async function encolarCorreo(organizationId: string, invitacion: InvitacionEquipo, tokenPlain: string): Promise<{ readonly acceptUrl: string; readonly encolado: boolean }> {
+  async function encolarCorreo(organizationId: string, invitacion: InvitacionEquipo, tokenPlain: string, vertical: string | undefined): Promise<{ readonly acceptUrl: string; readonly encolado: boolean }> {
     const acceptUrl = `${deps.env.appBaseUrl}/aceptar-invitacion?token=${encodeURIComponent(tokenPlain)}`;
     try {
-      const correo = correoInvitacionStaff({
+      const correo = correoInvitacionSuperadmin(vertical, {
         email: invitacion.email,
-        // La base ya valido la lista blanca de restaurantes (owner, admin, staff, repartidor): el estrechamiento es seguro.
-        verticalRole: invitacion.verticalRole as StaffInviteVerticalRole,
+        verticalRole: invitacion.verticalRole,
         acceptUrl,
         expiresAtTexto: new Intl.DateTimeFormat("es-MX", { dateStyle: "long" }).format(new Date(invitacion.expiresAt)),
       });
@@ -150,7 +183,7 @@ export function superadminOrganizacionesEquipoRoutes(deps: AppDeps): Hono<CoreAu
 
     const raw = await readJsonCapped<InvitarBody>(c.req.raw, 4 * 1024);
     if (typeof raw.email !== "string" || !EMAIL_RE.test(raw.email.trim())) throw Errors.validation("email inválido");
-    if (typeof raw.verticalRole !== "string" || !isRestaurantesRole(raw.verticalRole)) throw Errors.validation("verticalRole inválido — se esperaba uno de: owner, admin, staff, repartidor.");
+    if (typeof raw.verticalRole !== "string" || !esRolInvitableEnAlgunaVertical(raw.verticalRole)) throw Errors.validation("verticalRole inválido — no es un rol de ninguna vertical.");
     let propertyIds: string[] | null = null;
     if (raw.propertyIds !== undefined && raw.propertyIds !== null) {
       if (!Array.isArray(raw.propertyIds) || raw.propertyIds.length === 0 || raw.propertyIds.length > 100 || raw.propertyIds.some((p) => typeof p !== "string" || !UUID_RE.test(p))) {
@@ -163,9 +196,11 @@ export function superadminOrganizacionesEquipoRoutes(deps: AppDeps): Hono<CoreAu
 
     const { tokenPlain, tokenHash } = generateInviteToken();
     let invitacion: InvitacionEquipo;
+    let vertical: string | undefined;
     try {
-      invitacion = await deps.engine.withAppSession({ userId: callerId }, (db) =>
-        repo(db).invitar(callerId, {
+      ({ invitacion, vertical } = await deps.engine.withAppSession({ userId: callerId }, async (db) => {
+        const r = repo(db);
+        const creada = await r.invitar(callerId, {
           organizationId,
           email: raw.email as string,
           verticalRole: raw.verticalRole as string,
@@ -173,13 +208,14 @@ export function superadminOrganizacionesEquipoRoutes(deps: AppDeps): Hono<CoreAu
           tokenHash,
           motivo,
           confirmarSegundoOwner: raw.confirmarSegundoOwner === true,
-        }),
-      );
+        });
+        return { invitacion: creada, vertical: await verticalDe(r, callerId, organizationId) };
+      }));
     } catch (err) {
       return traducirError(err);
     }
 
-    const { acceptUrl, encolado } = await encolarCorreo(organizationId, invitacion, tokenPlain);
+    const { acceptUrl, encolado } = await encolarCorreo(organizationId, invitacion, tokenPlain, vertical);
     logEvent(c, "info", "superadmin_equipo_invitacion_creada", { actorUserId: callerId, organizationId, inviteId: invitacion.id, invitedEmail: enmascararCorreoInvitado(invitacion.email), verticalRole: invitacion.verticalRole });
     return c.json({ invitacion: serializar(invitacion), inviteToken: tokenPlain, acceptUrl, correoEncolado: encolado }, 201);
   });
@@ -196,12 +232,17 @@ export function superadminOrganizacionesEquipoRoutes(deps: AppDeps): Hono<CoreAu
 
     const { tokenPlain, tokenHash } = generateInviteToken();
     let invitacion: InvitacionEquipo;
+    let vertical: string | undefined;
     try {
-      invitacion = await deps.engine.withAppSession({ userId: callerId }, (db) => repo(db).reenviar(callerId, organizationId, inviteId, tokenHash, motivo));
+      ({ invitacion, vertical } = await deps.engine.withAppSession({ userId: callerId }, async (db) => {
+        const r = repo(db);
+        const reenviada = await r.reenviar(callerId, organizationId, inviteId, tokenHash, motivo);
+        return { invitacion: reenviada, vertical: await verticalDe(r, callerId, organizationId) };
+      }));
     } catch (err) {
       return traducirError(err);
     }
-    const { acceptUrl, encolado } = await encolarCorreo(organizationId, invitacion, tokenPlain);
+    const { acceptUrl, encolado } = await encolarCorreo(organizationId, invitacion, tokenPlain, vertical);
     logEvent(c, "info", "superadmin_equipo_invitacion_reenviada", { actorUserId: callerId, organizationId, inviteId });
     return c.json({ invitacion: serializar(invitacion), inviteToken: tokenPlain, acceptUrl, correoEncolado: encolado });
   });
