@@ -16,6 +16,14 @@ const MAX_PANTALLAS = 4;
 
 test.beforeEach(async ({ page }) => {
   await prepararBandera(page);
+  // El idioma solo cambia con el diseno ds3 (el unico con selector ES/EN): este spec lo enciende siempre.
+  await page.addInitScript(() => {
+    try {
+      window.localStorage.setItem("atiende-diseno", "ds3");
+    } catch {
+      // Sin almacenamiento: el spec fallara al no ver ingles, que es lo correcto.
+    }
+  });
 });
 
 for (const consola of CONSOLAS) {
