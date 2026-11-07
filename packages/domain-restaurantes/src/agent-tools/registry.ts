@@ -1315,6 +1315,12 @@ async function conHoraDeRecogidaRelativa(repo: RestaurantesRepository, ctx: Agen
     const plazoCambio = plazoValido && contexto?.minutosPlazo !== undefined && contexto.minutosPlazo !== Math.round(minutos);
     if (!plazoCambio && cotizada && !Number.isNaN(Date.parse(`${cotizada}:00.000Z`))) return { ...resto, hora_recogida: `${cotizada}:00.000Z` };
   }
+  // Cerebro v2 (suelto, pm-policies validarRecoger): recoger SIN hora ni plazo nunca queda «para ya»: el plazo es RECOGER_ESPERA_POR_OMISION_MIN (30) y se marca como plazo
+  // del servidor (crear_pedido lo vuelve a contar desde que se crea el pedido, ver revalidarRecogerAlCrear).
+  if (!plazoValido && sinDato && ctx.cerebroV2 && ctx.channel === "whatsapp") {
+    const ahoraOmision = ctx.flow?.now ? ctx.flow.now() : Date.now();
+    return { ...resto, hora_recogida: new Date(ahoraOmision + RECOGER_ESPERA_POR_OMISION_MIN * 60_000).toISOString(), ...(name === "cotizar_pedido" ? { plazo_minutos_servidor: RECOGER_ESPERA_POR_OMISION_MIN } : {}) };
+  }
   if (!plazoValido) return input;
   const ahora = ctx.flow?.now ? ctx.flow.now() : Date.now();
   // En cotizar se marca el plazo (campo interno, no lo manda el modelo) para que `runWithOrderFlow` reconozca una re-cotizacion identica con el mismo plazo.
@@ -1323,6 +1329,27 @@ async function conHoraDeRecogidaRelativa(repo: RestaurantesRepository, ctx: Agen
 
 /** R22 (R3): minutos minimos entre «ahora» y la hora de recogida de hoy: cocina no alcanza a preparar antes (SIM 114, 118, 119 aceptaban 20 min). */
 export const MINUTOS_MINIMOS_RECOGER = 25;
+/** Cerebro v2 (suelto RECOGER_ESPERA_POR_OMISION_MIN): plazo de recoger cuando el cliente no da hora. */
+export const RECOGER_ESPERA_POR_OMISION_MIN = 30;
+
+/**
+ * Cerebro v2 (suelto: createOrderCore valida la hora de recoger AL CREAR con validarRecoger): la hora cotizada puede haber quedado a menos de 25 min (el pedido se crea un turno
+ * despues). Un PLAZO (minutos_para_recoger o el de omision) se cuenta desde que se crea el pedido; una hora EXACTA del cliente que ya quedo muy pronto se rechaza con el texto del
+ * suelto («Esa hora es muy pronto… Lo más temprano es HH:MM») para pedirle otra hora. Devuelve la hora (ISO) con la que se crea el pedido.
+ */
+async function revalidarRecogerAlCrear(repo: RestaurantesRepository, ctx: AgentToolContext, horaRecogida: string): Promise<string> {
+  const ms = Date.parse(horaRecogida);
+  if (Number.isNaN(ms)) return horaRecogida;
+  const ahora = ctx.flow?.now ? ctx.flow.now() : Date.now();
+  const faltan = Math.floor(ms / 60_000) - Math.floor(ahora / 60_000);
+  if (faltan >= MINUTOS_MINIMOS_RECOGER) return horaRecogida;
+  const plazo = ctx.flow ? (await repo.readOrderFlow(ctx.organizationId, ctx.flow.key).catch(() => null))?.context?.minutosPlazo : undefined;
+  if (typeof plazo === "number" && plazo >= MINUTOS_MINIMOS_RECOGER) return new Date(ahora + plazo * 60_000).toISOString();
+  const masTemprano = new Intl.DateTimeFormat("es-MX", { timeZone: "America/Merida", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(ahora + MINUTOS_MINIMOS_RECOGER * 60_000));
+  throw new OrderValidationError(
+    `Esa hora es muy pronto: para recoger se necesitan al menos ${MINUTOS_MINIMOS_RECOGER} minutos. Lo más temprano es ${masTemprano}. NO se creó el pedido: pídale al cliente otra hora (${masTemprano} o más tarde), vuelva a cotizar con esa hora y léale el resumen.`,
+  );
+}
 
 /**
  * R22 (R3): al COTIZAR un pedido para recoger por WhatsApp, la hora (dicha como hora exacta o como plazo en `minutos_para_recoger`) debe quedar a >= 25 minutos del reloj del flujo
@@ -2129,7 +2156,7 @@ async function dispatchTool(
       const perfilAgente = configAgente?.perfil ?? "generico";
       // Pines de Google de las sucursales (opt-in, APAGADO por omision: activarlo es decision de Javier; ver coordenadas-sucursales.ts).
       const usarPropuestas = ctx.usarCoordenadasPropuestas ?? coordenadasPropuestasActivas();
-      const match = await assignBranch(repo, {
+      let match = await assignBranch(repo, {
         organizationId,
         radioMaximoKm: radioRepartoDelPerfil(perfilAgente, configAgente?.radioRepartoKm),
         ...(usarPropuestas ? { coordenadasPropuestas: COORDENADAS_PROPUESTAS_PM } : {}),
@@ -2140,6 +2167,19 @@ async function dispatchTool(
         ...(lat !== undefined || lng !== undefined ? { lat, lng } : {}),
         ...(typeof input.max_km === "number" && Number.isFinite(input.max_km) && input.max_km > 0 ? { maxKm: input.max_km } : {}),
       });
+      // Cerebro v2 (suelto, C3 S-NEW-016/017): un municipio conocido fuera de Merida (Kanasin, Uman, Progreso…) no es «colonia no reconocida»: se mide desde su
+      // coordenada, como el suelto (merida_colonias), y queda `fuera_de_zona` para ofrecer recoger, sin pedir otra referencia ni escalar zona_no_reconocida.
+      const municipio = ctx.cerebroV2 && perfilAgente === "taqueria_pm" && match.estado === "no_reconocida" && coloniaDicha && !coordenadasValidas ? municipioFueraDeCoberturaPm(String(input.colonia)) : null;
+      if (municipio) {
+        match = await assignBranch(repo, {
+          organizationId,
+          radioMaximoKm: radioRepartoDelPerfil(perfilAgente, configAgente?.radioRepartoKm),
+          ...(usarPropuestas ? { coordenadasPropuestas: COORDENADAS_PROPUESTAS_PM } : {}),
+          sucursalesQueNoReparten: SUCURSALES_QUE_NO_REPARTEN_PM,
+          lat: municipio.lat,
+          lng: municipio.lng,
+        });
+      }
       // QA-PM-R5-whatsapp-08: una colonia ESCRITA manda sobre el pin compartido (la colonia dicha despues del pin es una correccion), pero el servidor no sabe en que orden llegaron.
       // Si el pin compartido cae en OTRA sucursal que la de la colonia, se avisa al modelo para que le pregunte al cliente cual vale en vez de asignar en silencio.
       let conflictoPin: { readonly slug: string; readonly nombre: string } | null = null;
@@ -2368,6 +2408,10 @@ async function dispatchTool(
       if (ctx.cerebroV2 && ctx.channel === "whatsapp" && ctx.phone && ctx.conversacionReciente) {
         const notas = await guardaAlergiaV2(repo, ctx, createInput);
         if (notas !== createInput.notes) createInput = { ...createInput, notes: notas };
+      }
+      if (ctx.cerebroV2 && ctx.channel === "whatsapp" && createInput.canal === "recoger" && !createInput.programadoPara && createInput.horaRecogida) {
+        const hora = await revalidarRecogerAlCrear(repo, ctx, createInput.horaRecogida);
+        if (hora !== createInput.horaRecogida) createInput = { ...createInput, horaRecogida: hora };
       }
       const retenido = await retenerPedidoDeReincidente(repo, ctx, createInput);
       if (retenido) return retenido;
@@ -2855,11 +2899,6 @@ async function retenerPedidoGrande(repo: RestaurantesRepository, ctx: AgentToolC
 }
 
 /**
- * Variante para turnos dentro de una transaccion compartida (WhatsApp): SAVEPOINT propio por tool
- * call y errores de negocio convertidos en una respuesta `{error}` normal, nunca en una
- * transaccion abortada ni en una excepcion que tumbe el resto del turno.
- */
-/**
  * Cerebro v2: la razon del monorrepo (`escalada:<motivo>`) con el vocabulario del suelto para avisoAbiertoQueCubre/planDeAviso: alergia/salud y
  * transferencia son `alto_riesgo:*`; una cancelacion (el resumen habla de cancelar) es `alto_riesgo:cancelacion` y el resto de cancelacion_modificacion es
  * `modificacion_pedido` (post-venta, como la queja). Pura.
@@ -2891,6 +2930,24 @@ async function planDeAvisoV2(repo: RestaurantesRepository, ctx: AgentToolContext
   if (ctx.avisoUrgente && !avisoCreadoUrgente(plan.fila.message)) return { accion: "registrar" };
   if (plan.accion === "cubierto") return { accion: "cubierto" };
   return { accion: "anexar", razonAbierta: original.get(String(plan.fila.id)) ?? reason };
+}
+
+/**
+ * Cerebro v2: municipios y localidades conocidos FUERA de la cobertura de PM, con su coordenada aproximada (la del suelto: merida_colonias / COLONIAS_APROX
+ * del banco de medicion). No son colonias de known_zone, asi que sin esta lista salian `no_reconocida`. Sin acentos, minusculas.
+ */
+const MUNICIPIOS_FUERA_DE_COBERTURA_PM: ReadonlyArray<{ readonly nombres: readonly string[]; readonly lat: number; readonly lng: number }> = [
+  { nombres: ["kanasin"], lat: 20.934, lng: -89.558 },
+  { nombres: ["uman"], lat: 20.885, lng: -89.748 },
+  { nombres: ["progreso", "puerto progreso"], lat: 21.282, lng: -89.664 },
+  { nombres: ["chicxulub puerto", "chicxulub"], lat: 21.296, lng: -89.602 },
+];
+
+/** El municipio conocido fuera de cobertura que nombra la colonia dicha («Kanasín», «en Umán», «Kanasin centro»), o null. Pura. */
+export function municipioFueraDeCoberturaPm(colonia: string): { readonly lat: number; readonly lng: number } | null {
+  const plano = colonia.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+  if (!plano) return null;
+  return MUNICIPIOS_FUERA_DE_COBERTURA_PM.find((m) => m.nombres.some((n) => new RegExp(`(?:^| )${n}(?: |$)`).test(plano))) ?? null;
 }
 
 /** Razones de callback que son aviso de alergia (monorrepo: escalar_a_humano con motivo alergia_salud; suelto: alto_riesgo:alergia). */
@@ -2938,6 +2995,11 @@ function conMarcaUrgente(mensaje: string | undefined): string {
   return sin ? `${MARCA_AVISO_URGENTE}\n${sin}` : MARCA_AVISO_URGENTE;
 }
 
+/**
+ * Variante para turnos dentro de una transaccion compartida (WhatsApp): SAVEPOINT propio por tool
+ * call y errores de negocio convertidos en una respuesta `{error}` normal, nunca en una
+ * transaccion abortada ni en una excepcion que tumbe el resto del turno.
+ */
 export async function executeAgentToolSafely(repo: RestaurantesRepository, ctx: AgentToolContext, name: string, input: Record<string, unknown>): Promise<AgentToolOutcome> {
   try {
     return await repo.runWithRowSavepoint(() => invokeAgentTool(repo, ctx, name, input, { rechazoComoResultado: true }));
