@@ -38,7 +38,14 @@ export interface ContextoLlamada {
   readonly temperatura: number | null;
   /** Nombres y apodos del menu (hasta 50) para los keyterms del STT; vacio si la API no lo manda (API vieja). */
   readonly vocabulario: readonly string[];
+  /** Voz telefonica de la sucursal (id de ElevenLabs, 20 alfanumericos); null = la de la plataforma (Regina). */
+  readonly vozTelefono: string | null;
+  /** Modelo de texto de la cascada elegido en los ajustes del agente (`voice_cascade_model`); null = el de la plataforma. */
+  readonly modeloVoz: string | null;
 }
+
+const VOZ_ELEVENLABS_RE = /^[A-Za-z0-9]{20}$/;
+const MODELO_OPENROUTER_RE = /^[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._:-]*$/;
 
 export interface SonidoLlamada {
   readonly fondo: { readonly activo: boolean; readonly volumen: number; readonly preset: PresetAmbiente };
@@ -173,6 +180,8 @@ export class ClienteApi {
       sonido: leerSonidoLlamada((r as { sonido?: unknown }).sonido),
       temperatura: temperaturaParaLlamada((r as { temperatura?: unknown }).temperatura).valor,
       vocabulario: leerVocabulario((r as { vocabulario?: unknown }).vocabulario),
+      vozTelefono: typeof (r as { vozTelefono?: unknown }).vozTelefono === "string" && VOZ_ELEVENLABS_RE.test((r as { vozTelefono: string }).vozTelefono) ? (r as { vozTelefono: string }).vozTelefono : null,
+      modeloVoz: typeof (r as { modeloVoz?: unknown }).modeloVoz === "string" && MODELO_OPENROUTER_RE.test((r as { modeloVoz: string }).modeloVoz) && (r as { modeloVoz: string }).modeloVoz.length <= 80 ? (r as { modeloVoz: string }).modeloVoz : null,
     };
   }
 

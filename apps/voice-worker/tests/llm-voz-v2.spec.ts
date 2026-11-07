@@ -48,20 +48,26 @@ describe("puerto LLM de voz v2", () => {
     expect(cuerpos[0]!.model).toBe(modelo);
   });
 
-  it("el esfuerzo de razonamiento solo se manda a modelos Anthropic (a otros, con require_parameters, dejaria la ruta sin endpoints)", async () => {
+  it("el esfuerzo de razonamiento solo se manda a modelos Anthropic y OpenAI (a otros, con require_parameters, dejaria la ruta sin endpoints)", async () => {
     const { fn, cuerpos } = fetchSse([delta("ok"), uso]);
     const puerto = crearPuertoLlmVozV2("k", fn);
     await puerto.completar({ ...BASE, modeloPreferido: "google/gemini-3.8-flash", onTextDelta: () => undefined });
     await puerto.completar({ ...BASE, modeloPreferido: "anthropic/claude-haiku-5.5", esfuerzo: "medium", onTextDelta: () => undefined });
     expect(cuerpos[0]).not.toHaveProperty("reasoning");
     expect(cuerpos[1]!.reasoning).toEqual({ effort: "medium" });
+    await puerto.completar({ ...BASE, modeloPreferido: "google/gemini-3.5-flash-lite", onTextDelta: () => undefined });
+    expect(cuerpos[2]).not.toHaveProperty("reasoning");
+    await puerto.completar({ ...BASE, modeloPreferido: "openai/gpt-6-luna", onTextDelta: () => undefined });
+    expect(cuerpos[3]!.reasoning).toEqual({ effort: "low" }); // sin esfuerzo bajo, GPT-6 Luna tardo ~6 s al primer token (medicion del 6-nov-2026)
   });
 
   it("marca el system prompt con un punto de cache explicito (solo Anthropic) y deja el resto igual", async () => {
     const { fn, cuerpos } = fetchSse([delta("ok"), uso]);
     const puerto = crearPuertoLlmVozV2("k", fn);
-    await puerto.completar({ ...BASE, onTextDelta: () => undefined });
+    await puerto.completar({ ...BASE, modeloPreferido: "anthropic/claude-haiku-5.5", onTextDelta: () => undefined });
     await puerto.completar({ ...BASE, modeloPreferido: "google/gemini-3.8-flash", onTextDelta: () => undefined });
+    await puerto.completar({ ...BASE, modeloPreferido: "openai/gpt-6-luna", onTextDelta: () => undefined });
+    expect((cuerpos[2]!.messages as { content: unknown }[])[0]!.content).toBe(BASE.system); // GPT-6 Luna: cache automatica, sin cache_control
     const m0 = cuerpos[0]!.messages as { role: string; content: unknown }[];
     expect(m0[0]).toEqual({ role: "system", content: [{ type: "text", text: BASE.system, cache_control: { type: "ephemeral" } }] });
     expect(m0[1]).toEqual({ role: "user", content: "hola" });
@@ -110,13 +116,13 @@ describe("puerto LLM de voz v2", () => {
     expect((cuerpos[0]!.tools as unknown[]).length).toBe(1);
   });
 
-  it("RETENCION CERO: toda peticion pide endpoints ZDR solo de Vertex y Bedrock, con data_collection deny y sin salirse de esa lista", async () => {
+  it("RETENCION CERO: toda peticion pide endpoints ZDR solo de Vertex, Bedrock y Azure, con data_collection deny y sin salirse de esa lista", async () => {
     const { fn, cuerpos } = fetchSse([delta("ok"), uso]);
     const puerto = crearPuertoLlmVozV2("k", fn);
     await puerto.completar({ ...BASE, onTextDelta: () => undefined });
     await puerto.completar({ ...BASE, modeloPreferido: "anthropic/claude-haiku-5.5", onTextDelta: () => undefined });
     for (const c of cuerpos) {
-      expect(c.provider).toMatchObject({ zdr: true, only: ["google-vertex", "amazon-bedrock"], allow_fallbacks: true, data_collection: "deny", require_parameters: true });
+      expect(c.provider).toMatchObject({ zdr: true, only: ["google-vertex", "amazon-bedrock", "azure"], allow_fallbacks: true, data_collection: "deny", require_parameters: true });
       expect(JSON.stringify(c.provider)).not.toContain("anthropic\"");
     }
   });

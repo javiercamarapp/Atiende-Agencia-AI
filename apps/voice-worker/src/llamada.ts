@@ -371,7 +371,10 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
     ejecutor,
     instruccion: telefonoPendiente ? `${contexto.instruccion}\n\n${INSTRUCCION_TELEFONO_NO_CONFIABLE}` : contexto.instruccion,
     voiceId: contexto.voiceId,
+    // Cascada v2: nombres del menu como keyterms del STT, modelo de los ajustes del agente y voz telefonica de la sucursal (la API vieja no los manda: valores de la plataforma).
     vocabulario: contexto.vocabulario,
+    ...(contexto.modeloVoz ? { modeloLlm: contexto.modeloVoz } : {}),
+    ...(contexto.vozTelefono ? { vozTelefono: contexto.vozTelefono } : {}),
     limites,
     vigilarSilencioAgenteMs: deps.vigilarSilencioAgenteMs ?? VIGILAR_SILENCIO_AGENTE_MS,
     reproducir: async (id) => {

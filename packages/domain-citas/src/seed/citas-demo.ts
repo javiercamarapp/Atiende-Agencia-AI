@@ -241,7 +241,8 @@ begin
       end if;
       update core.organization set name = neg->>'nombre' where id = v_org;
     else
-      insert into core.organization (vertical, name, slug) values ('citas', neg->>'nombre', neg->>'slug') returning id into v_org;
+      -- Nace 'active' explicito: una demo no es una prueba (sin trial_ends_at de la 0072, sin avisos de fin de prueba).
+      insert into core.organization (vertical, name, slug, status) values ('citas', neg->>'nombre', neg->>'slug', 'active') returning id into v_org;
     end if;
     insert into citas.demo_organization (organization_id, seed_version) values (v_org, v->>'seedVersion')
       on conflict (organization_id) do update set seed_version = excluded.seed_version;

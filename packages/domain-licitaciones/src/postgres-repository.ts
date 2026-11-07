@@ -9,7 +9,7 @@ import type { AuditTrailFilters, AuditTrailInput, AuditTrailPage } from "./audit
 import { createHash } from "node:crypto";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { hoyFechaNegocio, resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
-import { isMigrationPendingError, runWithSavepointFallback } from "@atiende/db";
+import { isMigrationPendingError, runWithSavepointFallback, sqlOrgOperable } from "@atiende/db";
 import { ApprovalRejectedError, CompanyDataDuplicateKeyError, CompanyDataNotFoundError, ContractTransitionRejectedError, ExpedienteStageNotAvailableError, IdempotencyConflictError, TenantConfigNotMigratedError, TenderResolutionRejectedError } from "./errors.ts";
 import { checkTenderResolution } from "./tender-resolution.ts";
 import * as boveda from "./postgres-boveda-revision.ts";
@@ -1472,7 +1472,9 @@ export class PostgresLicitacionesRepository implements LicitacionesRepository {
   }
 
   async listActiveOrganizations(): Promise<readonly { id: string }[]> {
-    const { rows } = await this.db.query<{ id: string }>(`select id from core.organization where vertical = 'licitaciones' and status = 'active';`);
+    // Onboarding P0: una organizacion en prueba ('trial', con o sin fecha de fin; vencer solo se avisa, 0072) recibe ingesta,
+    // recordatorios y alertas igual que una activa; antes solo 'active' contaba y toda cuenta recien dada de alta quedaba fuera.
+    const { rows } = await this.db.query<{ id: string }>(`select id from core.organization where vertical = 'licitaciones' and ${sqlOrgOperable()};`);
     return rows.map((r) => ({ id: r.id }));
   }
 
