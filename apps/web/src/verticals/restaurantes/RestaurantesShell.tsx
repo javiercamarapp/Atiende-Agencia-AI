@@ -115,7 +115,7 @@ const COPILOTO_ROLES: ReadonlySet<string> = new Set(["owner", "admin", "staff"])
 // UNI-6: categorías en el orden de Likida (Operación, Catálogo, Clientes y, solo owner/admin, Agente y Configuración) con
 // "Resumen" como raíz sin título. Mismos destinos y roles que antes: ningún link se agrega ni se quita, solo se reagrupan
 // (Agente de voz y los de gestión siguen detrás de STAFF_NAV_ROLES).
-function buildSections(orgSlug: string, canSeeStaff: boolean, canSeeCopiloto: boolean, canSeePromociones = true, canSeeCfo = false, canSeeOperacion = false, canSeeAgregados = false): SidebarSection[] {
+export function buildSections(orgSlug: string, canSeeStaff: boolean, canSeeCopiloto: boolean, canSeePromociones = true, canSeeCfo = false, canSeeOperacion = false, canSeeAgregados = false): SidebarSection[] {
   const base = `/restaurantes/${orgSlug}`;
   const sections: SidebarSection[] = [
     {
@@ -286,6 +286,11 @@ export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
       branchSelector={sucursalSelector("restaurantes-sucursal-activa")}
       mobileSelector={branches.length > 1 ? sucursalSelector("restaurantes-sucursal-activa-movil") : null}
       contentKey={propertyId}
+      guia={{
+        // Contenido diferido: solo se descarga con la bandera ds3 (GuiaDiferida).
+        cargar: () => import("./guia-restaurantes.ts").then((m) => ({ contenido: m.GUIA_RESTAURANTES, esenciales: m.esencialesRestaurantes(role) })),
+        primerosPasosHref: STAFF_NAV_ROLES.has(role) ? `/restaurantes/${orgSlug}/primeros-pasos` : undefined,
+      }}
     >
       {/* R-33: gate de onboarding (aterrizaje en "Primeros pasos" + banner en el Resumen) solo para owner/admin. */}
       <PuertaOnboarding apiBaseUrl={apiBaseUrl} token={session.token} propertyId={propertyId} orgSlug={orgSlug} role={role}>
