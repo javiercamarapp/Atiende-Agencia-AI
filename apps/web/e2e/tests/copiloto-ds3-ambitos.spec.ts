@@ -76,7 +76,7 @@ test.describe("copiloto ds3 en todos los ámbitos @copiloto @ds3", () => {
       await expect(temas).toBeVisible();
       const primerTema = temas.locator("button[aria-pressed]").first();
       await expect(primerTema).toHaveAttribute("aria-pressed", "true");
-      if (a.tema) await expect(primerTema).toHaveText(a.tema);
+      if (a.tema) await expect(primerTema).toHaveAccessibleName(a.tema);
       const pregunta = a.pregunta ? temas.getByRole("button", { name: a.pregunta, exact: true }) : temas.locator("[data-pregunta]").first();
       await expect(pregunta).toBeVisible();
       await capturar(page, `${a.nombre}-portada`, info.project.name);
