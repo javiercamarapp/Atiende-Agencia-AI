@@ -1,6 +1,6 @@
 // ds3 / lote 5.2 (sidebar): valores de referencia del sidebar en la hoja REAL `src/ds3/shell.css`. Solo AÑADE.
 import { describe, expect, it } from "vitest";
-import { valorCss } from "./ds3-shell-css-utils";
+import { valorCss } from "./ds3-shell-css-utils.ts";
 
 const ESCRITORIO = "min-width: 768px";
 
