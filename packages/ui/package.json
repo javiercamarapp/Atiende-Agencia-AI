@@ -15,6 +15,7 @@
     "./i18n/consola": "./src/i18n/mensajes/consola.ts",
     "./i18n/formato": "./src/i18n/formato-publico.ts",
     "./i18n/comun": "./src/i18n/mensajes/comun.ts",
+    "./i18n/vozIdiomas": "./src/i18n/mensajes/vozIdiomas.ts",
     "./cifra.css": "./src/cifra.css",
     "./ds3-shell.css": "./src/ds3/shell.css",
     "./ds3-copiloto.css": "./src/ds3/copiloto.css",
