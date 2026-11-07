@@ -14,6 +14,7 @@ export const SWITCHABLE_AGENT_ROLES: readonly string[] = [
   "restaurantes:whatsapp_agent",
   "restaurantes:data_chat",
   "restaurantes:transcripcion",
+  "restaurantes:whatsapp_clasificador",
   "hoteles:data_chat",
   "rentas:data_chat",
   "despachos:data_chat",

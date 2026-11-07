@@ -46,6 +46,9 @@ export const COMPACTACION_HISTORIAL_ROLE = "plataforma:compactacion_historial";
  *  Studio / Vertex (`GOOGLE_HOSTS`, en la lista permitida). Si ningun escalon acepta la peticion, el llamador conserva el comportamiento de
  *  "pedir al cliente que escriba". */
 export const RESTAURANTES_TRANSCRIPCION_ROLE = "restaurantes:transcripcion";
+/** Cerebro v2: los clasificadores del suelto en el turno de WhatsApp de restaurantes («¿aparte?» y alergia semantica). Llamadas cortas con salida
+ *  estructurada y SIEMPRE con retencion cero (escalera ZDR propia en `buildCerebroV2ZdrLadders`). */
+export const RESTAURANTES_WHATSAPP_CLASIFICADOR_ROLE = "restaurantes:whatsapp_clasificador";
 export const NEW_PLATFORM_LLM_ROLES: readonly string[] = [
   REPORTE_ANALISIS_FINANCIERO_ROLE,
   REPORTE_ANALISIS_GENERAL_ROLE,
@@ -299,6 +302,7 @@ export type ActividadLlm =
   | "reporte_redaccion"
   | "resumen_diario"
   | "tareas_cortas"
+  | "clasificacion_whatsapp"
   | "transcripcion_audio"
   | "extraccion_documentos"
   | "borradores"
@@ -331,6 +335,8 @@ export const ACTIVIDADES_LLM: Readonly<Record<ActividadLlm, ActividadLlmConfig>>
   reporte_analisis_general: { descripcion: "Reportes: etapa de analisis de datos no financieros", modalidad: "texto", decision: "precio", route: ruta({ ...LUNA_LOW, minMaxTokens: 3000 }, { ...FLASH_LITE_35, minMaxTokens: 3000 }) },
   reporte_redaccion: { descripcion: "Reportes: etapa de redaccion", modalidad: "texto", decision: "precio", route: ruta(GEMINI_38_FLASH, { ...LUNA_LOW, minMaxTokens: 4000 }) },
   resumen_diario: { descripcion: "Resumen diario de operacion para superadmin", modalidad: "texto", decision: "precio", route: ruta(GEMINI_38_FLASH, { ...LUNA_LOW, minMaxTokens: 4000 }) },
+  // El suelto midio sus dos clasificadores (intencion-pedido-aparte, clasificador-alergia) con Gemini 3.5 Flash-Lite; respaldo Luna. Ambos con endpoint ZDR.
+  clasificacion_whatsapp: { descripcion: "Clasificadores del agente de WhatsApp (cerebro v2): pedido aparte y alergia semantica", modalidad: "texto", decision: "medicion", route: ruta({ ...FLASH_LITE_35, minMaxTokens: 200 }, { ...LUNA_LOW, minMaxTokens: 1500 }) },
   tareas_cortas: { descripcion: "Clasificacion y tareas cortas: enrutador de turno, compuerta de escalamiento, titulos, compactacion", modalidad: "texto", decision: "precio", route: ruta(LUNA_LOW, FLASH_LITE_35) },
   // Bake-off 6-nov (10 notas sinteticas es-MX en m4a): Gemini 3.1 Flash-Lite WER 7.1 % (mediana 0), Gemini 3.5 Flash-Lite 10.0 %, ambos ~US$0.00017
   // por nota y p50 ~1.8-2.0 s; MiMo V2.6 Flash (DeepInfra) rechaza `input_audio` (422). Antes: Gemini 2.5 Flash-Lite, que NO tiene endpoint ZDR.
@@ -359,6 +365,7 @@ export const ACTIVIDAD_POR_ROL: Readonly<Record<string, ActividadLlm>> = {
   [TITULOS_RESUMENES_ROLE]: "tareas_cortas",
   [COMPACTACION_HISTORIAL_ROLE]: "tareas_cortas",
   [RESTAURANTES_TRANSCRIPCION_ROLE]: "transcripcion_audio",
+  [RESTAURANTES_WHATSAPP_CLASIFICADOR_ROLE]: "clasificacion_whatsapp",
   "licitaciones:requirement_extractor": "extraccion_documentos",
   "licitaciones:junta_question_agent": "borradores",
   "licitaciones:proposal_draft_agent": "borradores",

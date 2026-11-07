@@ -142,7 +142,7 @@ import { notProductionReady } from "./not-ready.ts";
 import { conAjustesDeVoz, resolverAjustesVozPostgres } from "./voz-con-ajustes.ts";
 import { buildVozTurnoPuertos } from "./voz-turno-deps.ts";
 import { conBitacoraDeTurno } from "../agentes/corridas.ts";
-import { resolveRoleRoute } from "./llm-models.ts";
+import { RESTAURANTES_WHATSAPP_CLASIFICADOR_ROLE, resolveRoleRoute } from "./llm-models.ts";
 import { buildProductionDataChat } from "../data-chat/deps.ts";
 import { buildProductionSuperadminCopiloto } from "../superadmin-copiloto/deps.ts";
 import {
@@ -181,6 +181,8 @@ export function buildRestaurantesTurnHandlerForSession(
   return createRestaurantesLlmWhatsAppTurnHandler(repo, gateway, {
     defaultRole: RESTAURANTES_WHATSAPP_AGENT_ROLE,
     escalatedRole: RESTAURANTES_WHATSAPP_AGENT_ESCALATED_ROLE,
+    // Cerebro v2: clasificadores del suelto («¿aparte?», alergia semantica) por su rol con escalera ZDR (actividad clasificacion_whatsapp). Solo corren con cerebro_v2.
+    clasificadorRole: RESTAURANTES_WHATSAPP_CLASIFICADOR_ROLE,
     encolarComanda: (pedido) => encolarComandaParaPedido(softRestaurantComandaDeps(softRestaurantDeps, db, repo), pedido),
     urlFacturacion: urlFacturacionDeEntorno(),
     // PDF del menu por sucursal (enviar_menu): sin la variable el agente comparte el enlace de la pagina oficial del menu.

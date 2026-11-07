@@ -61,7 +61,7 @@ import { emitirNotificacion } from "@atiende/db";
 import { ProductionLlmUsageRecorder, ProductionOrgMonthlyBudgetStore, ProductionRoleDailyTurnStore } from "./llm-usage-gateway-adapters.ts";
 import { RESUMEN_DIARIO_LLM_ROLE } from "../resumen-diario/redaccion.ts";
 import type { ApiEnv } from "../env.ts";
-import { COMPACTACION_HISTORIAL_ROLE, COMPUERTA_ESCALAMIENTO_ROLE, DATA_CHAT_RETRY_SUFFIX, ENRUTADOR_TURNO_ROLE, NEW_PLATFORM_LLM_ROLES, REPORTE_ANALISIS_FINANCIERO_ROLE, REPORTE_ANALISIS_GENERAL_ROLE, REPORTE_REDACCION_FINANCIERO_ROLE, REPORTE_REDACCION_GENERAL_ROLE, RESTAURANTES_TRANSCRIPCION_ROLE, TITULOS_RESUMENES_ROLE, CEREBRO_V2_ALTERNATIVAS, CEREBRO_V2_WHATSAPP_ROUTE, CEREBRO_V2_ESCALADO_ROUTE, parseLlmModelsJson, resolveRoleRoute, routingForModel, rungsDeModelosAgente, SUPERADMIN_COPILOTO_ROLE, type LlmModelsConfig, type LlmRouteConfig, type LlmRungConfig } from "./llm-models.ts";
+import { COMPACTACION_HISTORIAL_ROLE, COMPUERTA_ESCALAMIENTO_ROLE, DATA_CHAT_RETRY_SUFFIX, ENRUTADOR_TURNO_ROLE, NEW_PLATFORM_LLM_ROLES, REPORTE_ANALISIS_FINANCIERO_ROLE, REPORTE_ANALISIS_GENERAL_ROLE, REPORTE_REDACCION_FINANCIERO_ROLE, REPORTE_REDACCION_GENERAL_ROLE, RESTAURANTES_TRANSCRIPCION_ROLE, RESTAURANTES_WHATSAPP_CLASIFICADOR_ROLE, MODELOS_CON_ZDR_VERIFICADO, TITULOS_RESUMENES_ROLE, CEREBRO_V2_ALTERNATIVAS, CEREBRO_V2_WHATSAPP_ROUTE, CEREBRO_V2_ESCALADO_ROUTE, parseLlmModelsJson, resolveRoleRoute, routingForModel, rungsDeModelosAgente, SUPERADMIN_COPILOTO_ROLE, type LlmModelsConfig, type LlmRouteConfig, type LlmRungConfig } from "./llm-models.ts";
 
 export const RESTAURANTES_WHATSAPP_AGENT_ROLE = "restaurantes:whatsapp_agent";
 export const RESTAURANTES_WHATSAPP_AGENT_ESCALATED_ROLE = "restaurantes:whatsapp_agent_escalated";
@@ -127,6 +127,8 @@ export const ALL_PRODUCTION_ROLES: readonly string[] = [
   RESTAURANTES_DATA_CHAT_ROLE,
   // R-32: transcripcion de notas de voz (llamador: apps/api/src/routes/verticals/restaurantes/transcripcion-voz.ts). Apagable.
   RESTAURANTES_TRANSCRIPCION_ROLE,
+  // Cerebro v2: clasificadores del suelto («¿aparte?», alergia semantica) del turno de WhatsApp de restaurantes. Solo con zdrEstricto.
+  RESTAURANTES_WHATSAPP_CLASIFICADOR_ROLE,
   HOTELES_DATA_CHAT_ROLE,
   RENTAS_DATA_CHAT_ROLE,
   DESPACHOS_DATA_CHAT_ROLE,
@@ -285,6 +287,10 @@ export function buildCerebroV2ZdrLadders(env: ApiEnv, _models?: LlmModelsConfig)
   salida.set(RESTAURANTES_WHATSAPP_AGENT_ROLE, { ladder: principal.models.map((rung) => proveedorOpenRouter(env, openrouter, principal, rung)), alternativas });
   const escalada = ajustar(CEREBRO_V2_ESCALADO_ROUTE);
   salida.set(RESTAURANTES_WHATSAPP_AGENT_ESCALATED_ROLE, { ladder: escalada.models.map((rung) => proveedorOpenRouter(env, openrouter, escalada, rung)), alternativas: [] });
+  // Clasificadores del suelto: la ruta de su actividad (tabla central, o LLM_MODELS_JSON) sin escalones sin ZDR.
+  const rutaClasificador = resolveRoleRoute(RESTAURANTES_WHATSAPP_CLASIFICADOR_ROLE, _models);
+  const clasificador: LlmRouteConfig = { ...rutaClasificador, models: rutaClasificador.models.filter((r) => MODELOS_CON_ZDR_VERIFICADO.has(r.model)), routing: { ...(rutaClasificador.routing ?? {}), zdr: true } };
+  salida.set(RESTAURANTES_WHATSAPP_CLASIFICADOR_ROLE, { ladder: clasificador.models.map((rung) => proveedorOpenRouter(env, openrouter, clasificador, rung)), alternativas: [] });
   return salida;
 }
 
