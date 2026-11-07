@@ -1314,6 +1314,12 @@ async function conHoraDeRecogidaRelativa(repo: RestaurantesRepository, ctx: Agen
     const plazoCambio = plazoValido && contexto?.minutosPlazo !== undefined && contexto.minutosPlazo !== Math.round(minutos);
     if (!plazoCambio && cotizada && !Number.isNaN(Date.parse(`${cotizada}:00.000Z`))) return { ...resto, hora_recogida: `${cotizada}:00.000Z` };
   }
+  // Cerebro v2 (suelto, pm-policies validarRecoger): recoger SIN hora ni plazo nunca queda «para ya»: el plazo es RECOGER_ESPERA_POR_OMISION_MIN (30) y se marca como plazo
+  // del servidor (crear_pedido lo vuelve a contar desde que se crea el pedido, ver revalidarRecogerAlCrear).
+  if (!plazoValido && sinDato && ctx.cerebroV2 && ctx.channel === "whatsapp") {
+    const ahoraOmision = ctx.flow?.now ? ctx.flow.now() : Date.now();
+    return { ...resto, hora_recogida: new Date(ahoraOmision + RECOGER_ESPERA_POR_OMISION_MIN * 60_000).toISOString(), ...(name === "cotizar_pedido" ? { plazo_minutos_servidor: RECOGER_ESPERA_POR_OMISION_MIN } : {}) };
+  }
   if (!plazoValido) return input;
   const ahora = ctx.flow?.now ? ctx.flow.now() : Date.now();
   // En cotizar se marca el plazo (campo interno, no lo manda el modelo) para que `runWithOrderFlow` reconozca una re-cotizacion identica con el mismo plazo.
@@ -1322,6 +1328,27 @@ async function conHoraDeRecogidaRelativa(repo: RestaurantesRepository, ctx: Agen
 
 /** R22 (R3): minutos minimos entre «ahora» y la hora de recogida de hoy: cocina no alcanza a preparar antes (SIM 114, 118, 119 aceptaban 20 min). */
 export const MINUTOS_MINIMOS_RECOGER = 25;
+/** Cerebro v2 (suelto RECOGER_ESPERA_POR_OMISION_MIN): plazo de recoger cuando el cliente no da hora. */
+export const RECOGER_ESPERA_POR_OMISION_MIN = 30;
+
+/**
+ * Cerebro v2 (suelto: createOrderCore valida la hora de recoger AL CREAR con validarRecoger): la hora cotizada puede haber quedado a menos de 25 min (el pedido se crea un turno
+ * despues). Un PLAZO (minutos_para_recoger o el de omision) se cuenta desde que se crea el pedido; una hora EXACTA del cliente que ya quedo muy pronto se rechaza con el texto del
+ * suelto («Esa hora es muy pronto… Lo más temprano es HH:MM») para pedirle otra hora. Devuelve la hora (ISO) con la que se crea el pedido.
+ */
+async function revalidarRecogerAlCrear(repo: RestaurantesRepository, ctx: AgentToolContext, horaRecogida: string): Promise<string> {
+  const ms = Date.parse(horaRecogida);
+  if (Number.isNaN(ms)) return horaRecogida;
+  const ahora = ctx.flow?.now ? ctx.flow.now() : Date.now();
+  const faltan = Math.floor(ms / 60_000) - Math.floor(ahora / 60_000);
+  if (faltan >= MINUTOS_MINIMOS_RECOGER) return horaRecogida;
+  const plazo = ctx.flow ? (await repo.readOrderFlow(ctx.organizationId, ctx.flow.key).catch(() => null))?.context?.minutosPlazo : undefined;
+  if (typeof plazo === "number" && plazo >= MINUTOS_MINIMOS_RECOGER) return new Date(ahora + plazo * 60_000).toISOString();
+  const masTemprano = new Intl.DateTimeFormat("es-MX", { timeZone: "America/Merida", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(ahora + MINUTOS_MINIMOS_RECOGER * 60_000));
+  throw new OrderValidationError(
+    `Esa hora es muy pronto: para recoger se necesitan al menos ${MINUTOS_MINIMOS_RECOGER} minutos. Lo más temprano es ${masTemprano}. NO se creó el pedido: pídale al cliente otra hora (${masTemprano} o más tarde), vuelva a cotizar con esa hora y léale el resumen.`,
+  );
+}
 
 /**
  * R22 (R3): al COTIZAR un pedido para recoger por WhatsApp, la hora (dicha como hora exacta o como plazo en `minutos_para_recoger`) debe quedar a >= 25 minutos del reloj del flujo
@@ -2380,6 +2407,10 @@ async function dispatchTool(
       if (ctx.cerebroV2 && ctx.channel === "whatsapp" && ctx.phone && ctx.conversacionReciente) {
         const notas = await guardaAlergiaV2(repo, ctx, createInput);
         if (notas !== createInput.notes) createInput = { ...createInput, notes: notas };
+      }
+      if (ctx.cerebroV2 && ctx.channel === "whatsapp" && createInput.canal === "recoger" && !createInput.programadoPara && createInput.horaRecogida) {
+        const hora = await revalidarRecogerAlCrear(repo, ctx, createInput.horaRecogida);
+        if (hora !== createInput.horaRecogida) createInput = { ...createInput, horaRecogida: hora };
       }
       const retenido = await retenerPedidoDeReincidente(repo, ctx, createInput);
       if (retenido) return retenido;
