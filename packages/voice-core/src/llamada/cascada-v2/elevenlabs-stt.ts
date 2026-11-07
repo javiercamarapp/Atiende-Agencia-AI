@@ -264,8 +264,11 @@ class SesionElevenLabsStt implements SesionStt {
     return nivel < refs[Math.floor(refs.length / 2)]! - g.dbBajoCliente;
   }
 
+  /** Nivel del audio que origino el parcial: el MAXIMO de ventana de los ultimos 500 ms (los parciales llegan con retraso; E2E r3: un parcial tardio en linea
+   * limpia caia sobre el silencio posterior y se tomaba como fondo). */
   private nivelReciente(): number {
-    return this.ventanasDb.length ? this.ventanasDb[this.ventanasDb.length - 1]! : -Infinity;
+    const ult = this.ventanasDb.slice(-25);
+    return ult.length ? Math.max(...ult) : -Infinity;
   }
 
   /** Un segmento confirmado: `true` = era fondo (se descarta). Reinicia la medicion del segmento. */

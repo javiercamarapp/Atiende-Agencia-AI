@@ -101,7 +101,7 @@ describe("compuerta por nivel del STT de ElevenLabs (platica de fondo)", () => {
     t.r.vencer(BASE.finTurnoMaxMs);
     expect(t.sock.json.some((m) => m["commit"] === true)).toBe(true);
     t.r.vencer(1_000);
-    expect(t.vistos).toContain("final:quiero tres tacos");
+    expect(t.vistos, JSON.stringify(t.vistos)).toContain("final:quiero tres tacos");
   });
 
   it("sin referencia del cliente (primer segmento) un segmento nunca se descarta, aunque suene al nivel del piso: solo se frenan los parciales", async () => {
@@ -111,7 +111,7 @@ describe("compuerta por nivel del STT de ElevenLabs (platica de fondo)", () => {
     expect(t.vistos).toContain("final:Quiero tres tacos de pastor y una coca para recoger.");
   });
 
-  it("un parcial que llega TARDE (el cliente ya callo hace 400 ms) en linea limpia sigue siendo voz: el nivel mira los ultimos 800 ms (E2E r3: parcial_fondo en limpio)", async () => {
+  it("un parcial que llega TARDE (el cliente ya callo hace 400 ms) en linea limpia sigue siendo voz: el nivel mira los ultimos 500 ms (E2E r3: parcial_fondo en limpio)", async () => {
     const t = await abrir();
     t.audio(4, 0);
     t.audio(1, 3000);
