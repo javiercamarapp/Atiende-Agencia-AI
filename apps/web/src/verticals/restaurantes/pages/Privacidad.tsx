@@ -6,7 +6,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { ShieldCheck } from "lucide-react";
-import { Button, Callout, Card, CardContent, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, Input, Label, Selector, PageContainer, SolicitudesArcoPanel, SOLICITUD_ARCO_DERECHO_LABEL, SOLICITUD_ARCO_ESTADO_LABEL } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, Input, Label, Selector, PageContainer, PageHeader, SolicitudesArcoPanel, SOLICITUD_ARCO_DERECHO_LABEL, SOLICITUD_ARCO_ESTADO_LABEL } from "@atiende/ui";
 import type { SolicitudArcoAccion, SolicitudArcoDerecho, SolicitudArcoEstado, SolicitudArcoVista } from "@atiende/ui";
 import { actualizarEstadoSolicitudArco, fetchConfiguracionPrivacidad, fetchSolicitudesArco, guardarConfiguracionPrivacidad } from "../lib/privacidad-client.ts";
 import type { ConfiguracionPrivacidad } from "../lib/privacidad-client.ts";
@@ -198,13 +198,13 @@ export function PrivacidadPage({ apiBaseUrl, token, propertyId, role }: Restaura
   // min-w-0 en la pagina y en cada hijo: la tabla de solicitudes ARCO (min-content ancho) no debe ensanchar la pagina mas alla de 375 px.
   return (
     <PageContainer padding="none" className="min-w-0 *:min-w-0">
-      <header>
-        <h1 className="sr-only">Privacidad</h1>
+      <PageHeader titulo="Privacidad" />
+      <div>
         <p className="m-0 text-ui text-muted-foreground">
           Solicitudes de derechos ARCO (acceso, rectificación, cancelación y oposición) que tus clientes abren por WhatsApp o por llamada. El agente solo atiende al titular desde su propio número y nunca comparte datos por chat: tú los entregas tras verificar su identidad. En las solicitudes por llamada el identificador de llamada puede falsearse: verifica al titular por otra vía antes de responder.
         </p>
         <p className="m-0 mt-1 text-xs text-muted-foreground">Los plazos son una referencia operativa, no asesoría legal: valida tu aviso de privacidad y tu procedimiento con tu asesor jurídico.</p>
-      </header>
+      </div>
 
       {!puedeLeer ? (
         <Callout tone="info">
