@@ -1,0 +1,31 @@
+import type { Traduccion } from "../../tipos.ts";
+import type { consumo } from "../consumo.ts";
+
+export const consumoEn: Traduccion<typeof consumo> = {
+  "consumo.titulo": "Usage and billing",
+  "consumo.intro": "What your agents used this month against your plan's allowance, and the projected month-end bill. Everything comes from real calls and conversations.",
+  "consumo.noDisponible": "Not available yet",
+  "consumo.errorCarga": "Usage could not be loaded",
+  "consumo.mes": "Month",
+  "consumo.llamadas": "Calls",
+  "consumo.minutos": "Voice minutes",
+  "consumo.duracion": "Average duration",
+  "consumo.duracionValor": "{minutos} min per call",
+  "consumo.conversaciones": "WhatsApp conversations",
+  "consumo.pedidos": "Orders handled by the agents",
+  "consumo.bolsa": "Included in your plan",
+  "consumo.bolsaVoz": "Voice: {usado} of {incluido} minutes ({pct}%)",
+  "consumo.bolsaWa": "WhatsApp: {usado} of {incluido} conversations ({pct}%)",
+  "consumo.aviso80": "You have used 80% or more of your allowance.",
+  "consumo.aviso100": "You have used your full allowance: extra usage is billed at your plan's overage rate. Nothing is cut off.",
+  "consumo.sinPlan": "Your organization does not have a metered plan yet.",
+  "consumo.proyeccion": "Projected month-end bill",
+  "consumo.proyeccionRango": "Between {bajo} and {alto} (plus VAT); most likely {central}.",
+  "consumo.proyeccionSinRango": "Most likely {central} (plus VAT). With fewer than 3 full days there is no range yet.",
+  "consumo.proyeccionNota": "Based on the pace of the days so far ({dias} of {total}).",
+  "consumo.facturaCorte": "So far: {subtotal} + VAT {iva} = {total}",
+  "consumo.sucursales": "By branch",
+  "consumo.sucursal": "Branch",
+  "consumo.waNoDesglosa": "WhatsApp conversations are not broken down by branch.",
+  "consumo.historial": "Previous months",
+};
