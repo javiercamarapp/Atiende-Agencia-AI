@@ -5,11 +5,13 @@
 // Cada boton llama al endpoint real (idempotente: un doble clic no repite ningun efecto) y maneja carga, error y vacio. Nunca se autoaprueba: sin
 // respuesta el sistema solo escala el aviso. El dinero (devolucion) solo se registra, nunca se ejecuta.
 import { useState } from "react";
-import { Button, Callout, Card, CardContent, Checkbox, EstadoCargando, EstadoVacio, FormDialog, FormField, Selector, StatusBadge, formatMoney, notify } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, Checkbox, EstadoCargando, EstadoVacio, FormDialog, FormField, Selector, StatusBadge, formatMoney, notify, useT } from "@atiende/ui";
 import { Clock } from "lucide-react";
 import { SOLICITUD_TIPO_ETIQUETAS, mensajeResultadoSolicitud, minutosEsperando, resolverSolicitud } from "../lib/autopiloto-client.ts";
 import type { MotivoCancelacion, ResolverEntrada, Solicitud, SolicitudesRespuesta } from "../lib/autopiloto-client.ts";
 import { MotivoDialogo } from "../components/MotivoDialogo.tsx";
+import { esPorAprobarUrgente, ordenarPorAprobar } from "../lib/pedidos-por-aprobar.ts";
+import { aprobaciones } from "@atiende/ui/i18n/aprobaciones";
 
 const QUEJA_ETIQUETAS: Readonly<Record<string, string>> = { faltante: "Faltante", equivocado: "Producto equivocado", frio: "Llegó frío", tarde: "Llegó tarde", trato: "Trato", otro: "Otro" };
 
@@ -25,6 +27,7 @@ export function AprobacionesPanel({
   token,
   propertyId,
   topeDescuentoPct,
+  umbralUrgenteMin = null,
   onResuelta,
 }: {
   /** `null` = cargando. */
@@ -34,9 +37,12 @@ export function AprobacionesPanel({
   readonly token: string;
   readonly propertyId: string;
   readonly topeDescuentoPct: number;
+  /** Minutos sin respuesta a partir de los que una solicitud es urgente (`aprobacionMinutos` de la sucursal); null = el del original (30). */
+  readonly umbralUrgenteMin?: number | null;
   /** Recarga lista y pedidos tras resolver. */
   readonly onResuelta: () => Promise<void>;
 }) {
+  const t = useT(aprobaciones);
   const [procesandoId, setProcesandoId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dialogo, setDialogo] = useState<Dialogo | null>(null);
@@ -83,7 +89,8 @@ export function AprobacionesPanel({
   return (
     <div className="flex flex-col gap-2.5" data-testid="aprobaciones-lista">
       {error && !dialogo && <Callout tone="danger">{error}</Callout>}
-      {datos.solicitudes.map((s) => {
+      {/* Las urgentes primero y la mas vieja arriba (regla del suelto). */}
+      {ordenarPorAprobar(datos.solicitudes, ahoraMs, umbralUrgenteMin).map((s) => {
         const ocupada = procesandoId === s.id;
         const espera = minutosEsperando(s.solicitadaAt, ahoraMs);
         return (
@@ -98,6 +105,11 @@ export function AprobacionesPanel({
                   {s.pedido && <p className="mt-0.5 text-sm text-foreground">{s.pedido.renglones.map((r) => `${r.cantidad}× ${r.nombre}`).join(", ")}</p>}
                 </div>
                 <div className="flex flex-wrap items-start gap-1.5 self-start">
+                  {esPorAprobarUrgente(s, ahoraMs, umbralUrgenteMin) && (
+                    <StatusBadge tone="danger" data-testid={`urgente-${s.id}`}>
+                      {t("aprobaciones.urgente")}
+                    </StatusBadge>
+                  )}
                   <StatusBadge tone="warning">{SOLICITUD_TIPO_ETIQUETAS[s.tipo]}</StatusBadge>
                   {s.pedido?.canal && (
                     <StatusBadge tone="neutral" dot={false}>
