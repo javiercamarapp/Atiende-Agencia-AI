@@ -1008,7 +1008,7 @@ select (
   where o.slug = 'los-taquitos-de-pm' and c.property_id is null and c.perfil = 'taqueria_pm' and c.tone_style = 'formal_directo'
     and c.business_name = 'Los Taquitos de PM' and c.agent_name is null and c.enabled
     and c.escalation_reasons_off = '{}' and c.delivery_time_text = 'de 40 a 50 minutos para recoger y a domicilio; más en hora pico'
-    and c.promos_text ilike '%lunes 2x1%' and c.promos_text ilike '%martes nachos de pastor con 2 aguas%' and c.promos_text ilike '%solo en Francisco de Montejo, Pensiones y Galer%'
+    and c.promos_text ilike '%lunes 2x1%' and c.promos_text ilike '%martes nachos de pastor con 2 aguas%' and c.promos_text ilike '%solo en Francisco de Montejo y Pensiones%' and c.promos_text not ilike '%galer%'
     and c.salsas_text ilike '%guacamolera%' and c.reply_debounce_seconds = 6
 )::int as config_agente_deberia_ser_1;
 rollback;
