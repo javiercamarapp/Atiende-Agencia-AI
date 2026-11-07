@@ -38,6 +38,13 @@ export const ATRIBUTOS_VISIBLES: ReadonlySet<string> = new Set([
   "loadingMessage",
 ]);
 
+/** Nombres compuestos que tambien son texto visible: `volverEtiqueta`, `confirmLabel`, `tituloVacio`, `mensajeError`... */
+const SUFIJO_VISIBLE = /(label|etiqueta|titulo|title|mensaje|texto|placeholder|descripcion|subtitulo|ayuda|tooltip)$|^(label|etiqueta|titulo|title|mensaje|texto|placeholder|descripcion)[A-Z]/i;
+
+export function nombreVisible(nombre: string): boolean {
+  return ATRIBUTOS_VISIBLES.has(nombre) || SUFIJO_VISIBLE.test(nombre);
+}
+
 const ESPANOL = /[áéíóúñÁÉÍÓÚÑ¿¡]/;
 const LETRAS = /\p{L}{2,}/u;
 const FUNCIONES_TRADUCCION = new Set(["t", "traducir"]);
@@ -82,10 +89,12 @@ function esVisible(lit: ts.Node): boolean {
   if (ts.isJsxExpression(c)) {
     const padre = c.parent;
     if (ts.isJsxElement(padre) || ts.isJsxFragment(padre)) return true;
-    if (ts.isJsxAttribute(padre)) return ATRIBUTOS_VISIBLES.has(nombreDe(padre.name) ?? "");
+    if (ts.isJsxAttribute(padre)) return nombreVisible(nombreDe(padre.name) ?? "");
   }
-  if (ts.isJsxAttribute(c)) return ATRIBUTOS_VISIBLES.has(nombreDe(c.name) ?? "");
-  if (ts.isPropertyAssignment(c)) return ATRIBUTOS_VISIBLES.has(nombreDe(c.name) ?? "");
+  if (ts.isJsxAttribute(c)) return nombreVisible(nombreDe(c.name) ?? "");
+  if (ts.isPropertyAssignment(c)) return nombreVisible(nombreDe(c.name) ?? "");
+  // Valor por omision de una prop o parametro: `({ volverEtiqueta = "Volver al panel" })`.
+  if ((ts.isBindingElement(c) || ts.isParameter(c)) && ts.isIdentifier(c.name)) return nombreVisible(c.name.text);
   return false;
 }
 

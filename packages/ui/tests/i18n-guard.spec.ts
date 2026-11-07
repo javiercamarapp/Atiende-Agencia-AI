@@ -17,6 +17,10 @@ describe("detector de textos escritos a mano", () => {
     expect(textos(`const s = [{ to: "/a", label: "Pedidos", icon: X }, { title: "Operación" }];`)).toEqual(["Pedidos", "Operación"]);
   });
 
+  it("detecta nombres compuestos y valores por omision de props", () => {
+    expect(textos(`function V({ volverEtiqueta = "Volver al panel" }) { return null; }\nconst x = { confirmLabel: "Borrar" };`)).toEqual(["Volver al panel", "Borrar"]);
+  });
+
   it("detecta literales en {} hijos de JSX y en ramas de un ternario", () => {
     expect(textos(`const A = ({ ok }) => <p>{ok ? "Listo" : "Pendiente"}</p>;`)).toEqual(["Listo", "Pendiente"]);
   });
