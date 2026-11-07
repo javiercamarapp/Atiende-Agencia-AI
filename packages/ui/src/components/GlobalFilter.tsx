@@ -8,13 +8,14 @@
 import { Link } from "react-router-dom";
 import { cn } from "../lib/utils";
 import { useT } from "../i18n/proveedor";
+import "../i18n/mensajes/datos.ts";
 
 export type Rango = "7" | "30" | "todo";
 
 const OPCIONES: readonly { readonly valor: Rango; readonly etiqueta: string }[] = [
   { valor: "7", etiqueta: "7d" },
   { valor: "30", etiqueta: "30d" },
-  { valor: "todo", etiqueta: "comun.rango.todo" },
+  { valor: "todo", etiqueta: "datos.rango.todo" },
 ];
 
 export interface RangoResuelto {
@@ -55,7 +56,7 @@ export interface GlobalFilterProps {
 export function GlobalFilter({ base, r, extra, className }: GlobalFilterProps) {
   const t = useT();
   return (
-    <div role="group" aria-label={t("comun.rango.etiqueta")} className={cn("inline-flex shrink-0 items-center gap-1 rounded-full bg-canvas p-0.5", className)}>
+    <div role="group" aria-label={t("datos.rango.etiqueta")} className={cn("inline-flex shrink-0 items-center gap-1 rounded-full bg-canvas p-0.5", className)}>
       {OPCIONES.map((o) => {
         const activo = r.rango === o.valor;
         return (
@@ -67,7 +68,7 @@ export function GlobalFilter({ base, r, extra, className }: GlobalFilterProps) {
             aria-current={activo ? "true" : undefined}
             className={cn("rounded-full px-2.5 py-1 text-xs font-medium transition-colors", activo ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}
           >
-            {o.valor === "todo" ? t("comun.rango.todo") : o.etiqueta}
+            {o.valor === "todo" ? t("datos.rango.todo") : o.etiqueta}
           </Link>
         );
       })}

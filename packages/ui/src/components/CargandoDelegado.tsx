@@ -5,6 +5,7 @@ import { DISENO_DS3 } from "../lib/diseno";
 import { useCargaRetenida, type CargaTamano } from "../lib/carga-coordinador";
 import { cn } from "../lib/utils";
 import { useT } from "../i18n/proveedor";
+import "../i18n/mensajes/comun.ts";
 
 /**
  * Adaptadores de carga (ds3 / 2.2). Con la bandera APAGADA renderizan EXACTAMENTE lo que renderizaban los consumidores

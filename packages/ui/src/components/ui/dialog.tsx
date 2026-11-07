@@ -5,6 +5,7 @@ import { X } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { BOTON_CIERRE_MODAL, CAJA_MODAL, CAJA_MODAL_MOVIL, CHIP_ICONO_MODAL, OVERLAY_MODAL, TAMANOS_MODAL, type TamanoModal } from "./superficies";
 import { useT } from "../../i18n/proveedor";
+import "../../i18n/mensajes/comun.ts";
 
 const Dialog = DialogPrimitive.Root;
 const DialogTrigger = DialogPrimitive.Trigger;

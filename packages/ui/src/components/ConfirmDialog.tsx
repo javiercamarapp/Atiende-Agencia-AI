@@ -17,6 +17,7 @@ import { FormField } from "./ui/form-field";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
 import { useT } from "../i18n/proveedor";
+import "../i18n/mensajes/comun.ts";
 
 export type ConfirmTono = "default" | "danger";
 

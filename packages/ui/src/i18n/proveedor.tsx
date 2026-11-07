@@ -79,13 +79,6 @@ export function IdiomaProvider({ children, idiomaInicial, persistir }: IdiomaPro
   }, [pedido]);
 
   useEffect(() => {
-    // Un enlace con `?lang=` (p. ej. el login en ingles) deja la preferencia guardada: al entrar a la consola sigue en ese idioma.
-    try {
-      const desdeUrl = new URLSearchParams(window.location.search).get("lang");
-      if ((desdeUrl === "es" || desdeUrl === "en") && window.localStorage.getItem(CLAVE_IDIOMA) !== desdeUrl) guardarIdioma(desdeUrl);
-    } catch {
-      // Sin almacenamiento: el idioma vale solo para esta carga.
-    }
     const alCambiar = (e: Event) => {
       const nuevo = (e as CustomEvent<unknown>).detail;
       if (nuevo === "es" || nuevo === "en") setIdioma(nuevo);

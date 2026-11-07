@@ -3,6 +3,7 @@ import * as React from "react";
 import { cn } from "../../lib/utils";
 import { Label } from "./label";
 import { useT } from "../../i18n/proveedor";
+import "../../i18n/mensajes/comun.ts";
 
 /** Props que FormField inyecta al control para enlazar etiqueta, ayuda y error. */
 export interface FormFieldControlProps {

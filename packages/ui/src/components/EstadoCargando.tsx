@@ -3,6 +3,7 @@ import { RegionCargando } from "./CargandoDelegado";
 import { Skeleton } from "./ui/skeleton";
 import { cn } from "../lib/utils";
 import { useT } from "../i18n/proveedor";
+import "../i18n/mensajes/comun.ts";
 
 export type EstadoCargandoVariante = "bloque" | "pantalla" | "tabla" | "tarjeta";
 

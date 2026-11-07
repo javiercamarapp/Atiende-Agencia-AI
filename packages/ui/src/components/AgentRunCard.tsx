@@ -7,6 +7,7 @@ import { Link } from "react-router-dom";
 import { cn } from "../lib/utils";
 import { StatusBadge, type StatusTone } from "./ui/status-badge";
 import { useT } from "../i18n/proveedor";
+import "../i18n/mensajes/datos.ts";
 
 export interface AgentRunEstado {
   readonly tone: StatusTone;
@@ -44,13 +45,13 @@ export function AgentRunCard({ nombre, estado, meta, href, className }: AgentRun
             <>
               {" — "}
               <Link to={href} className="font-medium underline">
-                {t("comun.agente.verFicha")}
+                {t("datos.agente.verFicha")}
               </Link>
             </>
           )}
         </p>
       ) : (
-        <p className="mt-1 text-xs text-faint">{t("comun.agente.sinCorridas")}</p>
+        <p className="mt-1 text-xs text-faint">{t("datos.agente.sinCorridas")}</p>
       )}
     </div>
   );

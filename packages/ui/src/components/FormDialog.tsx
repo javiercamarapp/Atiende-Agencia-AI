@@ -6,6 +6,8 @@ import { AtiendeMark } from "./AtiendeLogo";
 import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./ui/dialog";
 import { useT } from "../i18n/proveedor";
+import "../i18n/mensajes/comun.ts";
+import "../i18n/mensajes/datos.ts";
 
 export interface FormDialogPaso {
   readonly id: string;
@@ -65,7 +67,7 @@ export function FormDialog({
   bloquearCierre = false,
 }: FormDialogProps) {
   const t = useT();
-  const textoBotonGuardar = textoBotonGuardarProp ?? t("comun.guardarCambios");
+  const textoBotonGuardar = textoBotonGuardarProp ?? t("datos.guardarCambios");
   const indiceActivo = pasos ? pasos.findIndex((p) => p.id === pasoActivo) : -1;
 
   const pie =
@@ -76,7 +78,7 @@ export function FormDialog({
         loading={guardando}
         disabled={guardando || guardarDeshabilitado}
       >
-        {guardando ? t("comun.guardando") : textoBotonGuardar}
+        {guardando ? t("datos.guardando") : textoBotonGuardar}
       </Button>
     );
 
@@ -119,7 +121,7 @@ export function FormDialog({
               )}
 
               {pasos && pasos.length > 0 && (
-                <ol className="mt-4 hidden space-y-2.5 md:block" aria-label={t("comun.pasos")}>
+                <ol className="mt-4 hidden space-y-2.5 md:block" aria-label={t("datos.pasos")}>
                   {pasos.map((p, i) => {
                     const activo = p.id === pasoActivo;
                     const completado = indiceActivo > i;
@@ -134,7 +136,7 @@ export function FormDialog({
               )}
               {pasos && pasos.length > 0 && indiceActivo >= 0 && (
                 <p className="mt-2 text-xs text-muted-foreground md:hidden">
-                  {t("comun.pasoDe", { actual: indiceActivo + 1, total: pasos.length, etiqueta: pasos[indiceActivo]?.etiqueta ?? "" })}
+                  {t("datos.pasoDe", { actual: indiceActivo + 1, total: pasos.length, etiqueta: pasos[indiceActivo]?.etiqueta ?? "" })}
                 </p>
               )}
             </div>

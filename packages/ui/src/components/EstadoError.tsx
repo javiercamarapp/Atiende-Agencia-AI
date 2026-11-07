@@ -2,6 +2,7 @@ import { AlertTriangle } from "lucide-react";
 
 import { cn } from "../lib/utils";
 import { useT } from "../i18n/proveedor";
+import "../i18n/mensajes/comun.ts";
 
 /**
  * `EstadoError` identico al de Likida (kit.tsx; spec UNI-3c 6.5): tarjeta p-4 con

@@ -3,6 +3,7 @@ import { AtiendeMark, AtiendeWordmark } from "./AtiendeLogo";
 import { cn } from "../lib/utils";
 import { CARGA_TOPE_MS, faseCarga, useCargaCoordinada, type CargaTamano } from "../lib/carga-coordinador";
 import { useT } from "../i18n/proveedor";
+import "../i18n/mensajes/comun.ts";
 
 export type CargandoLogoTamano = CargaTamano;
 

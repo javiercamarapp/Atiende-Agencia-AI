@@ -5,6 +5,7 @@ import * as React from "react";
 
 import { cn } from "../../lib/utils";
 import { useT } from "../../i18n/proveedor";
+import "../../i18n/mensajes/comun.ts";
 
 const Sheet = SheetPrimitive.Root;
 const SheetTrigger = SheetPrimitive.Trigger;

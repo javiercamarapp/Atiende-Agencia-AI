@@ -6,6 +6,7 @@ import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./ui/dialog";
 import { type TamanoModal } from "./ui/superficies";
 import { useT } from "../i18n/proveedor";
+import "../i18n/mensajes/datos.ts";
 
 export interface FormDialogEleganteProps {
   readonly open: boolean;
@@ -49,11 +50,11 @@ export function FormDialogElegante({
   bloquearCierre = false,
 }: FormDialogEleganteProps) {
   const t = useT();
-  const textoBotonGuardar = textoBotonGuardarProp ?? t("comun.guardarCambios");
+  const textoBotonGuardar = textoBotonGuardarProp ?? t("datos.guardarCambios");
   const pie =
     footer ?? (
       <Button type={onGuardar ? "submit" : "button"} className="w-full" loading={guardando} disabled={guardando || guardarDeshabilitado}>
-        {guardando ? t("comun.guardando") : textoBotonGuardar}
+        {guardando ? t("datos.guardando") : textoBotonGuardar}
       </Button>
     );
   const cuerpo = (

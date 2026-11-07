@@ -4,6 +4,7 @@ import { cva } from "class-variance-authority";
 
 import { cn } from "../lib/utils";
 import { useT } from "../i18n/proveedor";
+import "../i18n/mensajes/comun.ts";
 
 export const CALLOUT_TONES = ["neutral", "info", "success", "warning", "danger"] as const;
 export type CalloutTone = (typeof CALLOUT_TONES)[number];

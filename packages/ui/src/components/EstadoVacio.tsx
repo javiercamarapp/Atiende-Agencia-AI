@@ -4,6 +4,7 @@ import { Info } from "lucide-react";
 
 import { cn } from "../lib/utils";
 import { useT } from "../i18n/proveedor";
+import "../i18n/mensajes/comun.ts";
 
 type IconType = ComponentType<{ className?: string; strokeWidth?: number | string }>;
 
