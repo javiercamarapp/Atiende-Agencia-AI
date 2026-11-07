@@ -38,6 +38,7 @@ import { Errors } from "../errors.ts";
 import { ApiError } from "@atiende/core-auth";
 import { readJsonCapped, readTextCapped, requestActor } from "../http-security.ts";
 import type { AppDeps } from "../deps.ts";
+import { manejarEventoFactura } from "../cobro/factura-webhook.ts";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -151,7 +152,24 @@ const HANDLED_EVENT_TYPES = new Set([
   "customer.subscription.created",
   "customer.subscription.updated",
   "customer.subscription.deleted",
+  // Cobro por plan (0083): cobranza de pagos fallidos, CFDI de la factura pagada y reporte final del uso medido.
+  "invoice.paid",
+  "invoice.payment_failed",
+  "invoice.created",
 ]);
+
+/** Las facturas no traen `metadata.tenant_id` propio: viene en la metadata de la suscripcion que las genero
+ *  (`subscription_details.metadata`, o `parent.subscription_details.metadata` en versiones nuevas de la API). Se sigue
+ *  re-derivando y verificando igual que cualquier otro evento (verificarTenantDelWebhook). */
+function tenantDeFactura(record: Record<string, unknown>): string | null {
+  const desde = (v: unknown): string | null => {
+    if (!v || typeof v !== "object") return null;
+    const md = (v as Record<string, unknown>).metadata;
+    return md && typeof md === "object" && typeof (md as Record<string, unknown>).tenant_id === "string" ? ((md as Record<string, unknown>).tenant_id as string) : null;
+  };
+  const parent = record.parent && typeof record.parent === "object" ? (record.parent as Record<string, unknown>).subscription_details : undefined;
+  return desde(record.subscription_details) ?? desde(parent);
+}
 
 /**
  * Normaliza el JSON crudo de un evento de Stripe a `EventoWebhook` -- `null` si
@@ -176,7 +194,9 @@ function normalizeStripeEvent(raw: unknown): EventoWebhook | null {
   const tenantIdDelPayload =
     metadata && typeof metadata === "object" && typeof (metadata as Record<string, unknown>).tenant_id === "string"
       ? ((metadata as Record<string, unknown>).tenant_id as string)
-      : null;
+      : obj.type.startsWith("invoice.")
+        ? tenantDeFactura(record)
+        : null;
 
   return { id: obj.id, tipo: obj.type, creadoUnix: obj.created, tenantIdDelPayload, proveedorCustomerId: customerId, datos: record };
 }
@@ -303,6 +323,19 @@ export async function crearCheckoutDeOrganizacion(deps: AppDeps, callerId: strin
     if (err instanceof OrganizationNotFoundError) throw Errors.notFound(err.message);
     if (err instanceof OrganizationBillingAccessDeniedError) throw Errors.forbidden(err.message);
     throw err;
+  }
+
+  // Lista permitida (0083): con la migracion aplicada, el `priceId` debe ser uno de los precios fijos del plan de la
+  // organizacion (cuota fija o sucursal). Antes llegaba como texto libre. Sin la migracion se conserva el camino anterior.
+  if (deps.cobroStripeRepo) {
+    const repo = deps.cobroStripeRepo;
+    const lista = await deps.engine.withAppSession({ userId: callerId }, (db) => repo(db).preciosParaOrg(callerId, organizationId));
+    if (lista.availability === "available") {
+      const permitidos = (lista.precios?.precios ?? []).filter((p) => p.componente === "cuota_fija" || p.componente === "sucursal").map((p) => p.priceId);
+      if (!permitidos.includes(priceId)) {
+        throw Errors.validation("priceId no permitido: el cobro usa solo los precios de Stripe ligados al plan de la organización (configúralos en Planes) o POST /billing/checkout-plan.");
+      }
+    }
   }
 
   const appBaseUrl = deps.env.appBaseUrl;
@@ -541,6 +574,30 @@ export function billingRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       ordenAplicado: (entidadId) => deps.coreRepo.getBillingEntityOrder(entidadId),
       sellarOrden: (entidadId, creadoUnix) => deps.coreRepo.sealBillingEntityOrder(entidadId, creadoUnix),
     };
+
+    if (evento.tipo.startsWith("invoice.")) {
+      // Cada factura es su propia entidad para el ledger (no compite en orden con los eventos de la suscripcion del mismo
+      // customer): dedupe por id de evento y orden por factura y tipo.
+      let estadoFactura: Awaited<ReturnType<typeof aplicarConLedger<null>>>["estado"];
+      try {
+        const vertical = (await deps.coreRepo.getOrganizationBillingForWebhook(tenantId))?.vertical ?? "restaurantes";
+        const r = await aplicarConLedger<null>(ledger, {
+          eventId: evento.id,
+          entidadId: `${evento.proveedorCustomerId}:${typeof evento.datos.id === "string" ? evento.datos.id : "factura"}:${evento.tipo}`,
+          creadoUnix: evento.creadoUnix,
+          aplicar: async () => {
+            await manejarEventoFactura(deps, tenantId, vertical, evento.tipo, evento.datos);
+            return null;
+          },
+        });
+        estadoFactura = r.estado;
+      } catch (err) {
+        await registrarWebhook(deps, { providerEventId: evento.id, eventType: evento.tipo, organizationId, result: "error", reason: "error_interno" });
+        throw err;
+      }
+      await registrarWebhook(deps, { providerEventId: evento.id, eventType: evento.tipo, organizationId, result: estadoFactura === "aplicado" ? "procesado" : "ignorado", reason: estadoFactura });
+      return c.json({ ok: true, procesado: true, estado: estadoFactura });
+    }
 
     let resultado: Awaited<ReturnType<typeof aplicarConLedger<OrganizationBillingRow>>>;
     try {

@@ -331,3 +331,5 @@ export type {
   UsoFacturableRow,
 } from "./cobro-planes-medidos-repository.ts";
 export { CLAVES_COSTO_UNITARIO, InMemoryCobroPlanesRepository, mapConsumoDetalle, mapTarifaPlan, PostgresCobroPlanesRepository } from "./cobro-planes-medidos-repository.ts";
+export type { CobroStripeAvailability, CobroStripeRepository, ComponenteStripeRow, EstadoCobranza, PreciosStripeOrgRow } from "./cobro-stripe-repository.ts";
+export { COMPONENTES_STRIPE, InMemoryCobroStripeRepository, PostgresCobroStripeRepository } from "./cobro-stripe-repository.ts";

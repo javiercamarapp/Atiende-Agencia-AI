@@ -118,7 +118,8 @@ export interface ApiEnv {
    * `@atiende/billing::verificarFirmaWebhookStripe` -- `null` = webhook sin
    * configurar en este entorno, la ruta responde 503 honesto (mismo criterio
    * que `secretKey` de arriba), NUNCA procesa un evento sin firma verificada. */
-  readonly stripe: { readonly secretKey: string | null; readonly webhookSecret: string | null };
+  /** `ivaTaxRateId`: TaxRate de Stripe del IVA 16 % (exclusivo) que se pone en las suscripciones por plan (STRIPE_IVA_TAX_RATE_ID). */
+  readonly stripe: { readonly secretKey: string | null; readonly webhookSecret: string | null; readonly ivaTaxRateId?: string | null };
   /** Hallazgo de auditoría (invitación de staff sin canal de envío real) —
    * origen público real de la app (`apps/web`) para armar el enlace de
    * activación que va DENTRO del correo de invitación (`/aceptar-invitacion?
@@ -261,7 +262,7 @@ export function loadApiEnv(): ApiEnv {
       issuer: process.env.GOOGLE_STAFF_ISSUER ?? "https://accounts.google.com",
     },
     resend: { apiKey: process.env.RESEND_API_KEY ?? null, from: process.env.RESEND_FROM_EMAIL ?? "atiende <notificaciones@atiende.ai>" },
-    stripe: { secretKey: process.env.STRIPE_SECRET_KEY ?? null, webhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? null },
+    stripe: { secretKey: process.env.STRIPE_SECRET_KEY ?? null, webhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? null, ivaTaxRateId: process.env.STRIPE_IVA_TAX_RATE_ID || null },
     appBaseUrl: (process.env.APP_BASE_URL ?? "https://app.atiende.ai").replace(/\/+$/, ""),
     rentasOwnerJwtSecret: requireEnv("RENTAS_OWNER_JWT_SECRET"),
     rentasOwnerAccessTokenTtlSeconds: Number(process.env.RENTAS_OWNER_ACCESS_TOKEN_TTL_SECONDS ?? 900),

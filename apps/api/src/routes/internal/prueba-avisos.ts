@@ -16,6 +16,7 @@ import { logEvent } from "../../logger.ts";
 import { CronPartialFailureError, withHeartbeat } from "../../salud/with-heartbeat.ts";
 import { ejecutarAvisosPrueba } from "../../plan-topes/aviso-prueba.ts";
 import { ejecutarAvisosBolsa } from "../../plan-topes/aviso-bolsa.ts";
+import { ejecutarReporteUsoStripe } from "../../cobro/reporte-uso-stripe.ts";
 import type { AppDeps } from "../../deps.ts";
 
 export const PRUEBA_AVISOS_PATH = "/internal/plataforma/prueba-avisos";
@@ -35,8 +36,14 @@ export function pruebaAvisosRoutes(deps: AppDeps): Hono {
         return { disponible: true, organizaciones: 0, avisos: 0, errores: 1 };
       });
       if (bolsa.errores > 0) logEvent(c, "warn", "avisos_bolsa_con_errores", { errores: bolsa.errores });
-      const respuesta = c.json({ ok: true, ...resumen, bolsa });
-      const errores = resumen.errores + bolsa.errores;
+      // Reporte diario del excedente medido a Stripe (Billing Meters); el reporte final sale con invoice.created.
+      const usoStripe = await ejecutarReporteUsoStripe(deps).catch((err: unknown) => {
+        console.error("prueba-avisos: el reporte de uso a Stripe fallo:", err instanceof Error ? err.name : typeof err);
+        return { disponible: true, organizaciones: 0, eventos: 0, errores: 1 };
+      });
+      if (usoStripe.errores > 0) logEvent(c, "warn", "reporte_uso_stripe_con_errores", { errores: usoStripe.errores });
+      const respuesta = c.json({ ok: true, ...resumen, bolsa, usoStripe });
+      const errores = resumen.errores + bolsa.errores + usoStripe.errores;
       if (errores > 0) throw new CronPartialFailureError(`prueba-avisos: ${errores} avisos con error`, respuesta);
       return respuesta;
     })();
