@@ -235,13 +235,13 @@ export const INTEGRATIONS: readonly IntegrationDefinition[] = [
     id: "llm-openrouter",
     nombre: "Proveedor LLM — OpenRouter (primario y único por defecto)",
     habilita:
-      "Entra a la escalera de LlmGateway (data-chat de las 6 verticales, turn handlers de WhatsApp, extractores, borradores y conciliación) con SOLO la llave: los modelos por rol salen de apps/api/src/production/llm-models.ts y LLM_MODELS_JSON (opcional, aparte) los sobreescribe sin redeploy de código. Ver docs/LLM-GATEWAY.md. Sin llave (y sin el proveedor legado de OpenAI), el Copiloto/data-chat responde en modo sin IA y los turn handlers quedan notProductionReady.",
+      "Entra a la escalera de LlmGateway (data-chat de las 6 verticales, turn handlers de WhatsApp, extractores, borradores y conciliación) con SOLO la llave: los modelos por rol salen de apps/api/src/production/llm-models.ts y LLM_MODELS_JSON (opcional, aparte) los sobreescribe sin redeploy de código. Ver docs/LLM-GATEWAY.md. ZDR obligatorio en el gateway de texto (la voz va aparte). Sin llave, el Copiloto/data-chat responde en modo sin IA y los turn handlers quedan notProductionReady.",
     variables: ["OPENROUTER_API_KEY"],
   },
   {
     id: "llm-openai",
     nombre: "Proveedor LLM — OpenAI directo (LEGADO)",
-    habilita: "Solo se usa si NO hay OPENROUTER_API_KEY: entra a la escalera con API key Y modelo configurados. El proveedor directo de Anthropic se retiró; los modelos Anthropic pasan por OpenRouter.",
+    habilita: "YA NO enciende el LLM (sin ZDR garantizado): sin OPENROUTER_API_KEY el gateway queda en modo sin IA.",
     variables: ["OPENAI_API_KEY", "OPENAI_MODEL"],
   },
 
@@ -358,7 +358,7 @@ export const OPERATIONAL_ENV_VARS: readonly string[] = [
   // Rn-29 -- version de la llave del cifrado del acceso de rentas (default 1): metadato por fila para la rotacion futura.
   "RENTAS_ACCESS_KEY_VERSION",
   "OPENROUTER_COUNTRY_OF_RESIDENCE",
-  // Gateway LLM: modelos por rol (JSON) y ZDR global; opcionales, ver docs/LLM-GATEWAY.md.
+  // Gateway LLM: modelos por rol (JSON); OPENROUTER_ZDR ya no apaga nada (ZDR obligatorio en todas las rutas). Ver docs/LLM-GATEWAY.md.
   "LLM_MODELS_JSON",
   "OPENROUTER_ZDR",
   // Overrides de test/desarrollo únicamente (apuntan a un servidor OAuth falso
