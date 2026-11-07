@@ -36,6 +36,31 @@ export interface ContextoLlamada {
   readonly sonido: SonidoLlamada | null;
   /** Temperatura de la voz (0..1) de los ajustes del agente; null = la de la plataforma. */
   readonly temperatura: number | null;
+  /** Nombres de los platillos de la sucursal para los `keyterms` del STT; vacio = la API no los manda (API vieja) o no hay menu. */
+  readonly vocabulario: readonly string[];
+  /** Voz telefonica de la sucursal (id de ElevenLabs, 20 alfanumericos); null = la de la plataforma (Regina). */
+  readonly vozTelefono: string | null;
+  /** Modelo de texto de la cascada elegido en los ajustes del agente (`voice_cascade_model`); null = el de la plataforma. */
+  readonly modeloVoz: string | null;
+}
+
+const VOZ_ELEVENLABS_RE = /^[A-Za-z0-9]{20}$/;
+const MODELO_OPENROUTER_RE = /^[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._:-]*$/;
+
+/** Lista de terminos del menu: solo textos cortos, sin repetir, hasta 80 (el adaptador del STT aplica su propio tope). Cualquier otra forma = vacia. */
+export function leerVocabulario(v: unknown): string[] {
+  if (!Array.isArray(v)) return [];
+  const vistos = new Set<string>();
+  const out: string[] = [];
+  for (const t of v) {
+    if (typeof t !== "string") continue;
+    const limpio = t.replace(/\s+/g, " ").trim();
+    if (limpio === "" || limpio.length > 60 || vistos.has(limpio.toLowerCase())) continue;
+    vistos.add(limpio.toLowerCase());
+    out.push(limpio);
+    if (out.length >= 80) break;
+  }
+  return out;
 }
 
 export interface SonidoLlamada {
@@ -164,6 +189,9 @@ export class ClienteApi {
       horaLocal: r.horaLocal,
       sonido: leerSonidoLlamada((r as { sonido?: unknown }).sonido),
       temperatura: temperaturaParaLlamada((r as { temperatura?: unknown }).temperatura).valor,
+      vocabulario: leerVocabulario((r as { vocabulario?: unknown }).vocabulario),
+      vozTelefono: typeof (r as { vozTelefono?: unknown }).vozTelefono === "string" && VOZ_ELEVENLABS_RE.test((r as { vozTelefono: string }).vozTelefono) ? (r as { vozTelefono: string }).vozTelefono : null,
+      modeloVoz: typeof (r as { modeloVoz?: unknown }).modeloVoz === "string" && MODELO_OPENROUTER_RE.test((r as { modeloVoz: string }).modeloVoz) && (r as { modeloVoz: string }).modeloVoz.length <= 80 ? (r as { modeloVoz: string }).modeloVoz : null,
     };
   }
 

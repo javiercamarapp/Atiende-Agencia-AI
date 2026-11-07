@@ -1,8 +1,11 @@
 // Configuracion del worker, leida SOLO de variables de entorno. Si falta algo imprescindible el worker arranca en modo NO CONFIGURADO: registra
 // el motivo, responde 503 en /salud y NO contesta llamadas (nunca atiende a medias). Ningun valor secreto se registra ni se devuelve.
-import type { MensajeId } from "@atiende/voice-core";
+import { ESCALERA_VOZ } from "@atiende/voice-core";
+import type { EscalonVoz, MensajeId } from "@atiende/voice-core";
 
 export type ModoEntrada = "desborde" | "total" | "prueba";
+export type ModoRuido = "krisp-telefonia" | "krisp" | "ninguno";
+export const MODOS_RUIDO: readonly ModoRuido[] = ["krisp-telefonia", "krisp", "ninguno"];
 export const MODOS_ENTRADA: readonly ModoEntrada[] = ["desborde", "total", "prueba"];
 
 /** Una linea (numero marcado) de la tabla DNIS -> sucursal. El secreto NO vive en el JSON: `secretoEnv` nombra la variable que lo trae. */
@@ -40,6 +43,12 @@ export interface ConfigWorker {
   readonly deepgramApiKey: string | null;
   /** `VOZ_CASCADA_V2_HABILITADA` (1/true/si): interruptor de la cascada v2. APAGADO por omision aunque exista la llave de Deepgram. */
   readonly cascadaV2Habilitada: boolean;
+  /** `ELEVENLABS_API_KEY`: STT Scribe v2 Realtime + TTS eleven_v4_turbo como etapas principales de la cascada v2 (Deepgram queda de respaldo); null = solo Deepgram. */
+  readonly elevenlabsApiKey: string | null;
+  /** `VOZ_ESCALERA` (escalones separados por coma): orden de la escalera; null = el de la plataforma. PM usa `cascada-v2,cascada-openrouter` (cascada, no voz a voz). */
+  readonly escalera: readonly EscalonVoz[] | null;
+  /** `VOZ_RUIDO`: cancelacion de ruido de LiveKit sobre el audio del cliente. `krisp-telefonia` (BVC telefonico, por omision), `krisp` (NC estandar) o `ninguno`. */
+  readonly ruido: ModoRuido;
   /** `VOZ_LLM_PROVEEDORES_ZDR` (slugs de OpenRouter separados por coma): sobreescribe los proveedores ZDR permitidos del cerebro de voz; vacio = los de `VOZ_PLATAFORMA`. */
   readonly proveedoresZdr: readonly string[];
   /** Ajuste fino del VAD de Gemini (`VOICE_VAD_SILENCIO_MS`, `VOICE_VAD_SENSIBILIDAD_FIN`); vacio = los valores de `VOZ_PLATAFORMA.gemini.vad`. */
@@ -163,6 +172,17 @@ export function cargarConfig(env: Readonly<Record<string, string | undefined>>, 
   const gemini = lleno(env.GEMINI_API_KEY) ? env.GEMINI_API_KEY.trim() : null;
   const openrouter = lleno(env.OPENROUTER_API_KEY) ? env.OPENROUTER_API_KEY.trim() : null;
   const deepgram = lleno(env.DEEPGRAM_API_KEY) ? env.DEEPGRAM_API_KEY.trim() : null;
+  const elevenlabs = lleno(env.ELEVENLABS_API_KEY) ? env.ELEVENLABS_API_KEY.trim() : null;
+  let escalera: EscalonVoz[] | null = null;
+  if (lleno(env.VOZ_ESCALERA)) {
+    const pedidos = env.VOZ_ESCALERA.split(",").map((x) => x.trim()).filter((x) => x !== "");
+    const validos = pedidos.filter((x): x is EscalonVoz => (ESCALERA_VOZ as readonly string[]).includes(x));
+    if (validos.length !== pedidos.length || validos.length === 0 || new Set(validos).size !== validos.length) motivos.push(`VOZ_ESCALERA: escalones separados por coma, sin repetir, de entre ${ESCALERA_VOZ.join(", ")}.`);
+    else escalera = validos;
+  }
+  const ruidoCrudo = lleno(env.VOZ_RUIDO) ? env.VOZ_RUIDO.trim().toLowerCase() : "krisp-telefonia";
+  if (!(MODOS_RUIDO as readonly string[]).includes(ruidoCrudo)) motivos.push("VOZ_RUIDO debe ser krisp-telefonia, krisp o ninguno.");
+  const ruido: ModoRuido = (MODOS_RUIDO as readonly string[]).includes(ruidoCrudo) ? (ruidoCrudo as ModoRuido) : "krisp-telefonia";
   const zdrCrudo = lleno(env.VOZ_LLM_PROVEEDORES_ZDR) ? env.VOZ_LLM_PROVEEDORES_ZDR.split(",").map((x) => x.trim()).filter((x) => x !== "") : [];
   const proveedoresZdr = zdrCrudo.filter((x) => /^[a-z0-9][a-z0-9-]*(\/[a-z0-9-]+)?$/.test(x));
   if (proveedoresZdr.length !== zdrCrudo.length) motivos.push("VOZ_LLM_PROVEEDORES_ZDR: cada proveedor debe ser un slug de OpenRouter (p. ej. google-vertex o google-vertex/us).");
@@ -222,6 +242,9 @@ export function cargarConfig(env: Readonly<Record<string, string | undefined>>, 
     openrouterApiKey: openrouter,
     deepgramApiKey: deepgram,
     cascadaV2Habilitada: v2Habilitada,
+    elevenlabsApiKey: elevenlabs,
+    escalera,
+    ruido,
     proveedoresZdr,
     vad,
     costoMaxLlamadaMicroUsd: costoMax,
