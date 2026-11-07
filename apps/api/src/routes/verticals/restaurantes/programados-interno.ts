@@ -18,7 +18,7 @@
 // cancelado (la funcion SQL solo actualiza filas en `programado`). Abre su PROPIA sesion de sistema (la
 // funcion `restaurantes.promover_pedidos_programados` con organizacion nula solo la acepta esa sesion).
 import { Hono } from "hono";
-import { avisarProgramadosPromovidos, descripcionSeguraDeError, barrerAvisosOperativos, barrerAvisosUrgentesSinResolver, barrerSilencioWhatsapp, esPromocionAtrasada, generarBorradoresMarketing, promoverProgramadosTodasLasOrganizaciones } from "@atiende/domain-restaurantes";
+import { avisarProgramadosPromovidos, descripcionSeguraDeError, barrerAvisosOperativos, barrerAvisosPorCorreo, barrerAvisosUrgentesSinResolver, barrerSilencioWhatsapp, esPromocionAtrasada, generarBorradoresMarketing, promoverProgramadosTodasLasOrganizaciones } from "@atiende/domain-restaurantes";
 import type { ResultadoBarridoAvisos, ResultadoBorradores, ResultadoSilencio } from "@atiende/domain-restaurantes";
 import { encolarComandasDePromovidos } from "@atiende/domain-restaurantes/softrestaurant";
 import { Errors } from "../../../errors.ts";
@@ -27,6 +27,7 @@ import { logEvent } from "../../../logger.ts";
 import { CronPartialFailureError, withHeartbeat } from "../../../salud/with-heartbeat.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { softRestaurantComandaDeps } from "./softrestaurant-wiring.ts";
+import { INLINE_BATCH_SIZE, runRestaurantesEmailDispatch } from "./email-dispatch.ts";
 import { barrerAutopilotoTick } from "./autopiloto-tick.ts";
 import type { ResumenTickAutopiloto } from "./autopiloto-tick.ts";
 
@@ -101,6 +102,16 @@ export function restaurantesProgramadosInternoRoutes(deps: AppDeps): Hono {
         logEvent(c, "info", "restaurantes_avisos_urgentes_v2", { ...urgentes });
       } catch (err) {
         logEvent(c, "error", "restaurantes_avisos_urgentes_v2_fallidos", { error: descripcionSeguraDeError(err) });
+      }
+      // Cerebro v2 (suelto alertas-operativas + alertas-ruteo): los avisos sin atender salen del panel por CORREO con la escalera del suelto (sucursal ->
+      // recordatorio -> dueño), solo en organizaciones con cerebro_v2 y `avisos_correo_escalera` (migracion 194). Encola en el outbox de correo existente y, si
+      // encolo algo, drena un lote corto (el cron diario de correo sigue de red). Su PROPIA sesion de sistema: un fallo no toca el resto del tick.
+      try {
+        const correo = await deps.engine.withAppSession({ userId: null }, (db) => barrerAvisosPorCorreo(db, new Date()));
+        logEvent(c, "info", "restaurantes_avisos_correo_v2", { ...correo });
+        if (correo.encolados > 0) await runRestaurantesEmailDispatch(deps, INLINE_BATCH_SIZE);
+      } catch (err) {
+        logEvent(c, "error", "restaurantes_avisos_correo_v2_fallidos", { error: descripcionSeguraDeError(err) });
       }
       // Reactivacion de inactivos (autopiloto 2): arma los BORRADORES de campana (nunca envia: aprobar es un clic del dueño) y avisa en la
       // campana. Misma regla que el resto de unidades del tick: su PROPIA sesion de sistema, un fallo no toca la promocion ni las comandas.
