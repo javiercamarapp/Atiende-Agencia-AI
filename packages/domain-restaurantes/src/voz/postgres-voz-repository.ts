@@ -233,6 +233,36 @@ export class PostgresVozRepository implements VozRepository {
     });
   }
 
+  async getVozTelefono(propertyId: string): Promise<{ readonly disponible: boolean; readonly valor: string | null }> {
+    return runWithSavepointFallback<{ readonly disponible: boolean; readonly valor: string | null }>({
+      session: this.db,
+      savepointName: "sp_voz_telefono_read",
+      primary: async () => {
+        const { rows } = await this.db.query<{ tts_voice_id: string | null }>(`select tts_voice_id from restaurantes.branch_voice_config where property_id = $1;`, [propertyId]);
+        return { disponible: true, valor: rows[0]?.tts_voice_id ?? null };
+      },
+      // Base sin la 101 (42703) o sin la 025 (42P01): la voz de la plataforma, nunca un 500.
+      isRecoverable: esBaseSinMigrar,
+      fallback: async () => ({ disponible: false, valor: null }),
+    });
+  }
+
+  async setVozTelefono(organizationId: string, propertyId: string, voz: string | null): Promise<boolean> {
+    return runWithSavepointFallback<boolean>({
+      session: this.db,
+      savepointName: "sp_voz_telefono_write",
+      primary: async () => {
+        const { rows } = await this.db.query<{ property_id: string }>(
+          `update restaurantes.branch_voice_config set tts_voice_id = $3, updated_at = now() where property_id = $1 and organization_id = $2 returning property_id;`,
+          [propertyId, organizationId, voz],
+        );
+        return rows.length > 0;
+      },
+      isRecoverable: esErrorEscrituraConocido,
+      fallback: aErrorDeEscritura,
+    });
+  }
+
   async crearPreviewSession(input: { organizationId: string; propertyId: string; createdBy: string; proveedor: VozProveedorId; voiceId: string; ttlSegundos: number }): Promise<VozPreviewSesion> {
     return runWithSavepointFallback<VozPreviewSesion>({
       session: this.db,

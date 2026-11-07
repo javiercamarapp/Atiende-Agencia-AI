@@ -22,6 +22,8 @@ import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembershi
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import {
   CATALOGO_VOCES_GEMINI,
+  CATALOGO_VOCES_TELEFONO,
+  esVozTelefono,
   PREVIEW_TOKEN_TTL_POR_DEFECTO_SEGUNDOS,
   STAFF_INVITE_ROLES,
   VOZ_COMPORTAMIENTO_MAX,
@@ -64,6 +66,16 @@ interface ConfigBody {
   readonly mensajeInicial?: unknown;
   /** Opcional (migracion 053): ausente = se conserva lo guardado (un cliente anterior a la bandera no la pisa). */
   readonly mensajeInicialInterrumpible?: unknown;
+  /** Opcional (migracion 101): voz telefonica de ElevenLabs del catalogo, o null (la de la plataforma). Ausente = se conserva lo guardado. */
+  readonly vozTelefono?: unknown;
+}
+
+/** `undefined` = el cliente no la manda (se conserva); null = la de la plataforma; texto = una voz del catalogo telefonico. */
+function parseVozTelefono(raw: unknown): string | null | undefined {
+  if (raw === undefined) return undefined;
+  if (raw === null) return null;
+  if (!esVozTelefono(raw)) throw Errors.validation("vozTelefono: debe ser una voz del catálogo telefónico (GET .../admin/voz/catalogo, campo vocesTelefono) o null.");
+  return raw;
 }
 
 /** PUT reemplaza la configuración COMPLETA: cada campo es obligatorio para que un cliente
@@ -160,20 +172,26 @@ export function restaurantesVozAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
       proveedor: provider?.id ?? null,
       salud,
       voces: (provider?.catalogoVoces() ?? CATALOGO_VOCES_GEMINI).map((v) => ({ id: v.id, nombre: v.nombre, estilo: v.estilo })),
+      // Voces de la llamada telefonica (ElevenLabs, cascada v2). La primera es la de la plataforma.
+      vocesTelefono: CATALOGO_VOCES_TELEFONO.map((v) => ({ id: v.id, nombre: v.nombre, estilo: v.estilo })),
     });
   });
 
   app.get(configPath, async (c) => {
     assertVerticalRole(c, STAFF_INVITE_ROLES);
     const { propertyId } = await resolverSucursal(c);
-    const lectura = await vozRepo(c).getConfig(propertyId);
-    return c.json(serializeConfig(lectura.valor, lectura.disponible));
+    const repo = vozRepo(c);
+    const lectura = await repo.getConfig(propertyId);
+    const telefono = repo.getVozTelefono ? await repo.getVozTelefono(propertyId) : { disponible: false, valor: null };
+    return c.json({ ...serializeConfig(lectura.valor, lectura.disponible), vozTelefono: telefono.valor, vozTelefonoDisponible: telefono.disponible });
   });
 
   app.put(configPath, async (c) => {
     assertVerticalRole(c, STAFF_INVITE_ROLES);
     const { organizationId, propertyId } = await resolverSucursal(c);
-    const pedida = parseConfig(await readJsonCapped<ConfigBody>(c.req.raw, 32 * 1024));
+    const cuerpo = await readJsonCapped<ConfigBody>(c.req.raw, 32 * 1024);
+    const pedida = parseConfig(cuerpo);
+    const vozTelefonoPedida = parseVozTelefono(cuerpo.vozTelefono);
     const repo = vozRepo(c);
     const anterior = await repo.getConfig(propertyId);
     // Un cliente anterior a la bandera del saludo (053) no la manda: se conserva lo guardado en vez de pisarla con el valor por omision.
@@ -186,6 +204,19 @@ export function restaurantesVozAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
       return asServiceUnavailable(err);
     }
 
+    // Voz telefonica (101): solo si el cliente la manda. Base sin la 101 -> 503 honesto (la configuracion de arriba ya quedo guardada en la misma transaccion,
+    // que el 503 revierte: nunca se guarda a medias).
+    let telefono = repo.getVozTelefono ? await repo.getVozTelefono(propertyId) : { disponible: false, valor: null };
+    if (vozTelefonoPedida !== undefined) {
+      if (!repo.setVozTelefono) throw Errors.serviceUnavailable("La voz telefónica no está disponible aún: requiere la migración 101.");
+      try {
+        await repo.setVozTelefono(organizationId, propertyId, vozTelefonoPedida);
+      } catch (err) {
+        return asServiceUnavailable(err);
+      }
+      telefono = { disponible: true, valor: vozTelefonoPedida };
+    }
+
     logEvent(c, "info", "restaurantes_admin_voz_config_actualizada", { actorUserId: c.get("userId"), organizationId, propertyId });
     await deps.restaurantesRepo(c.get("db")).registrarAuditoria({
       organizationId,
@@ -195,9 +226,9 @@ export function restaurantesVozAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
       entityId: propertyId,
       campo: "voz",
       antes: anterior.disponible && anterior.valor.configurada ? resumenConfig(anterior.valor) : null,
-      despues: resumenConfig(guardada),
+      despues: vozTelefonoPedida === undefined ? resumenConfig(guardada) : JSON.stringify({ ...JSON.parse(resumenConfig(guardada)), vozTelefono: vozTelefonoPedida }),
     });
-    return c.json(serializeConfig(guardada, true));
+    return c.json({ ...serializeConfig(guardada, true), vozTelefono: telefono.valor, vozTelefonoDisponible: telefono.disponible });
   });
 
   app.post(previewPath, async (c) => {

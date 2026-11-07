@@ -128,6 +128,21 @@ export function restaurantesVozLlamadaRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
     return deps.vozLlamadaRepo(db);
   }
 
+  /** Nombres de los platillos disponibles (los que el cliente dice por telefono), sin repetir, hasta 50: los terminos que mas se pierden con ruido de cocina. */
+  function vocabularioDeMenu(productos: readonly { readonly name: string; readonly isAvailable: boolean }[]): string[] {
+    const vistos = new Set<string>();
+    const out: string[] = [];
+    for (const p of productos) {
+      if (!p.isAvailable) continue;
+      const nombre = p.name.replace(/\s+/g, " ").trim();
+      if (nombre === "" || nombre.length > 60 || vistos.has(nombre.toLowerCase())) continue;
+      vistos.add(nombre.toLowerCase());
+      out.push(nombre);
+      if (out.length >= 50) break;
+    }
+    return out;
+  }
+
   app.post(`${base}/llamada/contexto`, async (c) => {
     exigirSecreto(deps, c.req.raw);
     const body = await readJsonCapped<Record<string, unknown>>(c.req.raw, 4 * 1024);
@@ -166,6 +181,16 @@ export function restaurantesVozLlamadaRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
       const llamada = ajustesDeLlamada(ajustes);
       // Base sin la tabla de configuración (025): `getConfig` devuelve el valor inicial (habilitado: false) y el worker no abre sesión: honesto.
       const gasto = deps.vozLlamadaRepo ? await deps.vozLlamadaRepo(db).gastoMesMicroUsd(organizationId, ahora) : null;
+      // Cascada v2 (stack ElevenLabs): nombres del menu de la sucursal como keyterms del STT. Una falla de lectura NO tumba la llamada: va sin keyterms (SAVEPOINT, regla de la casa).
+      const vocabulario = await runWithSavepointFallback<string[]>({
+        session: db,
+        primary: async () => vocabularioDeMenu(await restaurantes.listAvailableProductsForBranch(propertyId)),
+        isRecoverable: () => true,
+        fallback: async () => [],
+      });
+      // Voz telefonica (migracion 101): base sin la columna -> null (la de la plataforma).
+      const vozRepoLlamada = deps.vozRepo!(db);
+      const vozTelefono = vozRepoLlamada.getVozTelefono ? (await vozRepoLlamada.getVozTelefono(propertyId)).valor : null;
       return c.json({
         habilitado: lectura.disponible && lectura.valor.habilitado,
         configurada: lectura.valor.configurada,
@@ -177,6 +202,10 @@ export function restaurantesVozLlamadaRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
         temperatura: temperaturaParaLlamada(llamada.temperatura).valor,
         gastoMesMicroUsd: gasto,
         horaLocal,
+        vocabulario,
+        vozTelefono,
+        // Modelo de texto de la cascada elegido en los ajustes del agente (panel); null = el de la plataforma (GPT-6 Luna).
+        modeloVoz: ajustes.vozModeloCascada ?? null,
       });
     });
   });

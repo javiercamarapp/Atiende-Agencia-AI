@@ -1,7 +1,7 @@
 // @atiende/voice-core -- esqueleto de voz compartido por las verticales (LiveKit + Gemini Live, escalera Gemini -> cascada OpenRouter -> humano/buzon).
 // Ver README.md: como una vertical monta su agente (perfil + registro de tools + guiones + repositorio).
-export { CATALOGO_VOCES_GEMINI, VOZ_POR_DEFECTO, esVozDeGemini } from "./catalogo-voces.ts";
-export type { VozCatalogoItem } from "./catalogo-voces.ts";
+export { CATALOGO_VOCES_GEMINI, CATALOGO_VOCES_TELEFONO, VOZ_POR_DEFECTO, esVozDeGemini, esVozTelefono } from "./catalogo-voces.ts";
+export type { VozCatalogoItem, VozTelefonoItem } from "./catalogo-voces.ts";
 export * from "./types.ts";
 export type { RepositorioKpiVoz, RepositorioLlamadasVoz } from "./repositorios.ts";
 export { firmarPreviewToken, verificarPreviewToken, PREVIEW_TOKEN_TTL_MAX_SEGUNDOS, PREVIEW_TOKEN_TTL_POR_DEFECTO_SEGUNDOS } from "./preview-token.ts";
