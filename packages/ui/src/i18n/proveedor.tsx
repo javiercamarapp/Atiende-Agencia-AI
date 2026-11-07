@@ -24,6 +24,9 @@ function contextoPara(idioma: Idioma, cambiarIdioma: (i: Idioma) => void): Conte
 // Sin proveedor (pruebas de componentes sueltos, catalogo) todo sale en espanol: el idioma por omision de la consola.
 const I18nContext = createContext<ContextoI18n>(contextoPara("es", (i) => guardarIdioma(i)));
 
+/** El contexto crudo, solo para componentes de clase (`static contextType`); en funciones usa `useI18n()`. */
+export const I18nContexto = I18nContext;
+
 export interface IdiomaProviderProps {
   readonly children: ReactNode;
   /** Idioma fijo inicial (pruebas, SSR). Sin esto se resuelve `?lang=` -> localStorage -> "es" (ver lib/idioma). */
