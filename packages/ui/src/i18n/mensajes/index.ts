@@ -8,9 +8,15 @@
  */
 import type { Mensaje } from "../tipos.ts";
 import { comun } from "./comun.ts";
+import { nav } from "./nav.ts";
+import { rol } from "./rol.ts";
+import { shell } from "./shell.ts";
 
 export const MODULOS = {
   comun,
+  nav,
+  shell,
+  rol,
 } as const;
 
 type Modulos = typeof MODULOS;
