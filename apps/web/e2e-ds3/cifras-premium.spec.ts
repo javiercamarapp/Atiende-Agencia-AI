@@ -76,6 +76,35 @@ for (const p of PANTALLAS) {
       expect(lectura.simboloMasChico, "signo de moneda atenuado (mas chico que el entero)").toBe(true);
     }
 
+    // Paridad Rovaq del Resumen (PARIDAD #5/#6/#18): eyebrow, H1 20/600, frase en vez del odometro, tira de KPI con borde de 3 px.
+    if (DS3) {
+      const resumen = await page.evaluate(() => {
+        const r = document.querySelector<HTMLElement>(".ds3-resumen");
+        if (!r) return null;
+        const vis = (el: Element | null) => !!el && getComputedStyle(el).display !== "none" && (el as HTMLElement).getClientRects().length > 0;
+        const h1 = r.querySelector("h1")!;
+        const celda = r.querySelector<HTMLElement>('[data-parte="kpis"] > *');
+        return {
+          eyebrow: vis(r.querySelector('[data-parte="eyebrow"]')),
+          h1: [getComputedStyle(h1).fontSize, getComputedStyle(h1).fontWeight],
+          conFrase: r.hasAttribute("data-con-frase"),
+          frase: vis(r.querySelector('[data-parte="frase"]')),
+          odometro: vis(r.querySelector('[data-testid="odometro"]')),
+          bordeKpi: celda ? getComputedStyle(celda).boxShadow : null,
+        };
+      });
+      await info.attach(`${p.nombre}-resumen`, { body: JSON.stringify(resumen, null, 1), contentType: "application/json" });
+      if (resumen) {
+        expect(resumen.eyebrow, "eyebrow «RESUMEN» visible").toBe(true);
+        expect(resumen.h1).toEqual(["20px", "600"]);
+        if (resumen.conFrase) {
+          expect(resumen.frase, "frase con cifras visible").toBe(true);
+          expect(resumen.odometro, "sin odometro bajo ds3 (no existe en Rovaq)").toBe(false);
+        }
+        if (resumen.bordeKpi !== null) expect(resumen.bordeKpi).toMatch(/inset/);
+      }
+    }
+
     const { linea } = await medir(page, info, `cifras-${p.consola}`, p.ruta());
     if (!INFORMATIVO) expect(linea, "el medidor no reporta defectos nuevos").toEqual([]);
     vigilante.verificar();
