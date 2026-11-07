@@ -445,3 +445,4 @@ export { AlertasDuenioNoDisponibleError, AlertasDuenioParametrosError, AlertasDu
 export type { CandidatoSilencio, ResultadoSilencio, UmbralesAlertasDuenio } from "./alertas-duenio/silencio.ts";
 export { avisarPresupuestoIaAlDuenio } from "./alertas-duenio/presupuesto.ts";
 export type { ResultadoAvisoPresupuesto, UmbralPresupuestoIa } from "./alertas-duenio/presupuesto.ts";
+export * as plantilla from "./plantilla/index.ts";
