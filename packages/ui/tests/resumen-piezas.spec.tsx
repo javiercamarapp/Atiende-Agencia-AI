@@ -3,8 +3,8 @@
 // UNI-5 (piezas de Resumen identicas a Likida): render, a11y y medidas contra la spec. jsdom no
 // calcula layout, asi que "<= 1 px" se comprueba donde SI es verificable: (1) las clases de cada pieza
 // son las literales de Likida (spec §6.2/§7.1), (2) esas clases resuelven, con los tokens REALES de
-// index.css, a los px medidos en Likida (11 / 12 / 13 / 20 px, 15 y 13 px de iconos) y (3) el odometro
-// pinta tableros de 33x45 / 20x27 con fuente 29 / 18 y radio 7 / 5.
+// index.css, a los px medidos en Likida (11 / 12 / 13 / 20 px, 15 y 13 px de iconos) y (3) el destacado (antes odometro)
+// pinta una sola <Cifra> de 28 / 20 px, sin el tablero estilo reloj.
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -24,7 +24,6 @@ import {
   SectionLabel,
   TileLink,
   avanceHaciaMeta,
-  ODOMETRO_VOLTEO_MS,
 } from "../src/index";
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -229,61 +228,55 @@ describe("RadioSegmentado", () => {
   });
 });
 
-describe("Odometro", () => {
-  const digitos = (el: HTMLElement) => Array.from(el.querySelectorAll<HTMLElement>('[data-testid="odometro-digito"]'));
+describe("Odometro (destacado sin estilo reloj)", () => {
+  const cifra = (el: HTMLElement) => el.querySelector<HTMLElement>('[data-testid="odometro-cifra"]');
 
-  it("lg: tableros de 33x45, fuente 29, radio 7 y prefijo de 23 px", () => {
+  it("lg: una sola <Cifra> de 28 px con el monto en es-MX; sin tableros, raya ni hoja que voltea", () => {
     const { el } = montar(<Odometro valor={1234} digitos={7} prefijo="$" etiqueta="MRR — META $1,000,000" tamano="lg" />);
-    const ds = digitos(el);
-    expect(ds.map((d) => d.textContent)).toEqual(["0", "0", "0", "1", "2", "3", "4"]);
-    for (const d of ds) {
-      expect(d.style.width).toBe("33px");
-      expect(d.style.height).toBe("45px");
-      expect(d.style.borderRadius).toBe("7px");
-      expect((d.querySelector("span") as HTMLElement).style.fontSize).toBe("29px");
-      expect(d.className).toContain("odometro-digito");
-    }
-    const prefijo = el.querySelector('[data-testid="odometro"] span[aria-hidden="true"]') as HTMLElement;
-    expect(prefijo.textContent).toBe("$");
-    expect(prefijo.style.fontSize).toBe("23px");
+    const c = cifra(el)!;
+    expect(c.textContent).toBe("$1,234");
+    expect(c.getAttribute("data-tamano")).toBe("28");
+    expect(c.className).toContain("cifra");
+    expect(c.querySelector(".cifra-simbolo")!.textContent).toBe("$");
+    expect(c.querySelector(".cifra-entero")!.textContent).toBe("1,234");
+    // Nada de ceros a la izquierda ni de tableros de digitos (estilo reloj retirado).
+    expect(el.textContent).not.toContain("0001234");
+    expect(el.querySelector('[data-testid="odometro-digito"], .odometro-raya, [data-testid="odometro-hoja"]')).toBeNull();
   });
 
-  it("md: 20x27, fuente 18, radio 5, prefijo 16", () => {
-    const { el } = montar(<Odometro valor={5} digitos={2} prefijo="$" etiqueta="X" />);
-    const d = digitos(el)[0]!;
-    expect([d.style.width, d.style.height, d.style.borderRadius]).toEqual(["20px", "27px", "5px"]);
-    expect((d.querySelector("span") as HTMLElement).style.fontSize).toBe("18px");
+  it("md: cifra de 20 px; sin prefijo es un conteo", () => {
+    const { el } = montar(<Odometro valor={5} etiqueta="X" />);
+    const c = cifra(el)!;
+    expect(c.getAttribute("data-tamano")).toBe("20");
+    expect(c.textContent).toBe("5");
+    expect(c.querySelector(".cifra-simbolo")).toBeNull();
   });
 
-  it("los tokens del tablero y la raya central existen en index.css (#262626 -> #141414, 1 px 50 %)", () => {
+  it("index.css ya no trae el tablero ni el volteo reloj-flip (los tokens --odometro-* se conservan)", () => {
     expect(css).toMatch(/--odometro-a:\s*#262626;/);
-    expect(css).toMatch(/--odometro-b:\s*#141414;/);
-    expect(css).toMatch(/\.odometro-digito\s*\{[^}]*linear-gradient\(180deg, var\(--odometro-a\), var\(--odometro-b\)\)/);
-    const { el } = montar(<Odometro valor={1} digitos={1} etiqueta="X" />);
-    const raya = el.querySelector(".odometro-raya")!;
-    expect(raya.className).toContain("h-px");
-    expect(css).toMatch(/\.odometro-raya\s*\{\s*background:\s*var\(--odometro-raya\)/);
+    expect(css).not.toMatch(/\.odometro-digito\s*\{/);
+    expect(css).not.toMatch(/@keyframes reloj-flip/);
   });
 
   it("solo en >= sm (hidden sm:flex) y rotulo de 12 px semibold mayusculas", () => {
-    const { el } = montar(<Odometro valor={10} digitos={2} etiqueta="MRR" />);
+    const { el } = montar(<Odometro valor={10} etiqueta="MRR" />);
     const raiz = el.querySelector('[data-testid="odometro"]')!;
     expect(raiz.className).toBe("hidden shrink-0 flex-col items-end gap-2 sm:flex");
     const rotulo = Array.from(raiz.querySelectorAll("span")).find((s) => s.textContent === "MRR")!;
     expect(rotulo.className).toBe("whitespace-nowrap text-xs font-semibold uppercase tracking-wide text-muted-foreground");
   });
 
-  it("a11y: un solo nombre accesible con el total y los digitos ocultos al lector", () => {
-    const { el } = montar(<Odometro valor={1000000} digitos={7} prefijo="$" etiqueta="MRR" />);
+  it("a11y: un solo nombre accesible con el total; la cifra visual va oculta al lector", () => {
+    const { el } = montar(<Odometro valor={1000000} prefijo="$" etiqueta="MRR" />);
     const raiz = el.querySelector('[data-testid="odometro"]')!;
     expect(raiz.getAttribute("role")).toBe("group");
     expect(raiz.getAttribute("aria-label")).toBe("MRR: $1,000,000");
-    for (const d of digitos(el)) expect(d.getAttribute("aria-hidden")).toBe("true");
+    expect(cifra(el)!.closest('[aria-hidden="true"]')).not.toBeNull();
   });
 
   it("valor null = '—' con el motivo; nunca un cero", () => {
-    const { el } = montar(<Odometro valor={null} digitos={7} prefijo="$" etiqueta="MRR" sinDato="algún plan sin precio" />);
-    expect(digitos(el)).toHaveLength(0);
+    const { el } = montar(<Odometro valor={null} prefijo="$" etiqueta="MRR" sinDato="algún plan sin precio" />);
+    expect(cifra(el)).toBeNull();
     expect(el.textContent).toContain("—");
     expect(el.textContent).toContain("algún plan sin precio");
     expect(el.textContent).not.toContain("0");
@@ -291,17 +284,17 @@ describe("Odometro", () => {
   });
 
   it("valores no medibles (NaN, negativo) caen al estado sin dato", () => {
-    expect(montar(<Odometro valor={Number.NaN} digitos={3} etiqueta="A" />).el.textContent).toContain("sin medir");
-    expect(montar(<Odometro valor={-5} digitos={3} etiqueta="B" />).el.textContent).toContain("sin medir");
+    expect(montar(<Odometro valor={Number.NaN} etiqueta="A" />).el.textContent).toContain("sin medir");
+    expect(montar(<Odometro valor={-5} etiqueta="B" />).el.textContent).toContain("sin medir");
   });
 
-  it("valor 0 real SI se pinta como ceros (medido) y no como sin dato", () => {
-    const { el } = montar(<Odometro valor={0} digitos={3} etiqueta="MRR" />);
-    expect(digitos(el).map((d) => d.textContent)).toEqual(["0", "0", "0"]);
+  it("valor 0 real SI se pinta (medido) y no como sin dato", () => {
+    const { el } = montar(<Odometro valor={0} etiqueta="MRR" />);
+    expect(cifra(el)!.textContent).toBe("0");
   });
 
   it("meta: barra azul con el avance real y porcentaje; sin meta no hay barra", () => {
-    const { el } = montar(<Odometro valor={250000} digitos={7} prefijo="$" etiqueta="MRR — META $1,000,000" meta={1_000_000} />);
+    const { el } = montar(<Odometro valor={250000} prefijo="$" etiqueta="MRR — META $1,000,000" meta={1_000_000} />);
     const barra = el.querySelector('[role="progressbar"]')!;
     expect(barra.getAttribute("aria-valuenow")).toBe("25");
     expect(barra.getAttribute("aria-label")).toBe("Avance hacia la meta");
@@ -309,7 +302,7 @@ describe("Odometro", () => {
     expect(relleno.className).toContain("bg-primary");
     expect(relleno.style.width).toBe("25%");
     expect(el.textContent).toContain("25% de la meta");
-    expect(montar(<Odometro valor={5} digitos={1} etiqueta="X" />).el.querySelector('[role="progressbar"]')).toBeNull();
+    expect(montar(<Odometro valor={5} etiqueta="X" />).el.querySelector('[role="progressbar"]')).toBeNull();
   });
 
   it("avanceHaciaMeta acota a 0-100", () => {
@@ -318,28 +311,11 @@ describe("Odometro", () => {
     expect(avanceHaciaMeta(333_334, 1_000_000)).toBe(33);
   });
 
-  it("el volteo de 420 ms: aparece la hoja al cambiar el digito y se retira sola", () => {
-    vi.useFakeTimers();
-    const m = montar(<Odometro valor={1} digitos={2} etiqueta="X" />);
+  it("un cambio de valor actualiza la cifra en el sitio, sin hojas que volteen", () => {
+    const m = montar(<Odometro valor={1} etiqueta="X" />);
+    m.rerender(<Odometro valor={2} etiqueta="X" />);
+    expect(cifra(m.el)!.textContent).toBe("2");
     expect(m.el.querySelector('[data-testid="odometro-hoja"]')).toBeNull();
-    m.rerender(<Odometro valor={2} digitos={2} etiqueta="X" />);
-    const hoja = m.el.querySelector('[data-testid="odometro-hoja"]')!;
-    expect(hoja.textContent).toBe("1");
-    act(() => {
-      vi.advanceTimersByTime(ODOMETRO_VOLTEO_MS - 1);
-    });
-    expect(m.el.querySelector('[data-testid="odometro-hoja"]')).not.toBeNull();
-    act(() => {
-      vi.advanceTimersByTime(1);
-    });
-    expect(m.el.querySelector('[data-testid="odometro-hoja"]')).toBeNull();
-    expect(vi.getTimerCount()).toBe(0);
-  });
-
-  it("la animacion dura 420 ms y se apaga con prefers-reduced-motion", () => {
-    expect(ODOMETRO_VOLTEO_MS).toBe(420);
-    expect(css).toMatch(/\.odometro-hoja\s*\{[^}]*animation:\s*reloj-flip 420ms/);
-    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.odometro-hoja\s*\{\s*animation:\s*none/);
   });
 });
 

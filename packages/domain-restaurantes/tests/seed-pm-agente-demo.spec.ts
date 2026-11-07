@@ -32,8 +32,8 @@ describe("configuracion del agente de WhatsApp en el seed", () => {
     expect(plan.whatsappAgent.salsasText).toContain("guacamolera");
   });
 
-  it("las promociones que anuncia el agente son SOLO las cargadas (lunes 2x1 y martes nachos con 2 aguas, solo recoger, solo en T2, T3 y T4)", () => {
-    expect(plan.whatsappAgent.promosText).toBe("lunes 2x1 en tacos al pastor y martes nachos de pastor con 2 aguas de cortesía; solo para recoger y solo en Francisco de Montejo, Pensiones y Galerías");
+  it("las promociones que anuncia el agente son SOLO las cargadas (lunes 2x1 y martes nachos con 2 aguas, solo recoger; el texto nombra T2 y T3: Galerias T4 es solo venta local)", () => {
+    expect(plan.whatsappAgent.promosText).toBe("lunes 2x1 en tacos al pastor y martes nachos de pastor con 2 aguas de cortesía; solo para recoger y solo en Francisco de Montejo y Pensiones");
     expect(plan.whatsappAgent.promosText).not.toMatch(/todas las sucursales/);
     expect(plan.promotions.map((p) => p.code)).toEqual(["LUNES2X1PM", "MARTESNACHOSPM"]);
     // Nunca se anuncia lo que la base no cargo: sin el combo cargado, mencionar el martes invalida el seed; igual con el 2x1.
@@ -74,7 +74,7 @@ describe("configuracion del agente de WhatsApp en el seed", () => {
     expect(prompt).toMatch(/Propina: nunca la pregunte/i);
     expect(prompt).toMatch(/órdenes de 3/);
     expect(prompt).toMatch(/usted/i);
-    expect(prompt).toContain("lunes 2x1 en tacos al pastor y martes nachos de pastor con 2 aguas de cortesía; solo para recoger y solo en Francisco de Montejo, Pensiones y Galerías");
+    expect(prompt).toContain("lunes 2x1 en tacos al pastor y martes nachos de pastor con 2 aguas de cortesía; solo para recoger y solo en Francisco de Montejo y Pensiones");
     expect(prompt).not.toMatch(/la confirma la sucursal al recoger|no lo prometa ni lo aplique/);
     expect(prompt).toMatch(/Combo del martes[^.\n]*lo aplica cotizar_pedido/);
     expect(prompt).toContain("Los Taquitos de PM");

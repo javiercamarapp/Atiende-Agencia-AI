@@ -2,7 +2,8 @@ import { useState, type ComponentType, type ReactNode } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
 import { ChevronDown, ChevronRight, LogOut, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { ThemeSelector } from "./ThemeSelector";
-import { AtiendeWordmark } from "./AtiendeLogo";
+import { SelectorIdioma } from "./SelectorIdioma";
+import { AtiendeMark, AtiendeWordmark } from "./AtiendeLogo";
 import { cn } from "../lib/utils";
 
 type IconType = ComponentType<{ className?: string; strokeWidth?: number | string }>;
@@ -40,6 +41,11 @@ export interface SidebarPiePildora {
   icon?: IconType;
   /** Punto de aviso (p. ej. notificaciones sin leer) junto al icono. */
   indicador?: boolean;
+  /**
+   * Conteo real de pendientes (p. ej. notificaciones sin leer). En ds3 se pinta como contador numerico al final de la fila en vez
+   * del punto; sin la bandera se conserva el punto de `indicador`. Nunca inventar un numero: omitir si no hay dato.
+   */
+  contador?: number;
   /** Solo con `onClick` que alterna un panel: relacion accesible con ese panel y su estado (`aria-pressed`, no `aria-expanded`: los grupos del acordeon usan ese). */
   ariaControls?: string;
   ariaPressed?: boolean;
@@ -70,6 +76,11 @@ export interface SidebarProps {
   storageScope?: string;
   /** Pildoras del pie, sobre el selector de tema. Sin ellas el pie solo lleva tema y usuario. */
   pie?: SidebarPiePildora[];
+  /**
+   * Nombre de la organizacion activa. En ds3 la tarjeta de cuenta muestra monograma + organizacion + rol (sin la bandera, igual que
+   * hoy: nombre del usuario + rol). Opcional: sin el, la tarjeta sigue con el nombre del usuario.
+   */
+  organizacion?: string;
 }
 
 const CLAVE_GRUPO_ABIERTO = "atiende-hoteles-sidebar-grupo-abierto";
@@ -129,9 +140,9 @@ function idSeccion(titulo: string): string {
   return `nav-seccion-${slug || "grupo"}`;
 }
 
-const CLASE_ITEM = "flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-ui transition-colors";
+const CLASE_ITEM = "ds3-nav-item flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-ui transition-colors";
 const CLASE_PILDORA =
-  "flex items-center gap-2 px-3 py-1.5 mb-1 rounded-full border border-border bg-card text-pill font-medium text-foreground-2 transition-colors hover:bg-canvas";
+  "ds3-pie-fila flex items-center gap-2 px-3 py-1.5 mb-1 rounded-full border border-border bg-card text-pill font-medium text-foreground-2 transition-colors hover:bg-canvas";
 
 function FilaItem({ item, colapsado }: { item: SidebarItem; colapsado: boolean }) {
   return (
@@ -150,8 +161,8 @@ function FilaItem({ item, colapsado }: { item: SidebarItem; colapsado: boolean }
     >
       {({ isActive }) => (
         <>
-          <item.icon className={cn("size-4 shrink-0", !isActive && "text-muted-foreground")} strokeWidth={1.75} />
-          <span className={cn("min-w-0 flex-1 truncate", colapsado ? "hidden" : "hidden lg:block")}>{item.label}</span>
+          <item.icon className={cn("ds3-nav-icono size-4 shrink-0", !isActive && "text-muted-foreground")} strokeWidth={1.75} />
+          <span className={cn("ds3-etiqueta min-w-0 flex-1 truncate", colapsado ? "hidden" : "hidden lg:block")}>{item.label}</span>
         </>
       )}
     </NavLink>
@@ -159,13 +170,21 @@ function FilaItem({ item, colapsado }: { item: SidebarItem; colapsado: boolean }
 }
 
 function PildoraPie({ pildora, colapsado }: { pildora: SidebarPiePildora; colapsado: boolean }) {
-  const { label, to, href, onClick, icon: Icono, indicador } = pildora;
+  const { label, to, href, onClick, icon: Icono, indicador, contador } = pildora;
+  const { pathname } = useLocation();
+  const activa = to !== undefined && rutaEnItem(pathname, to);
+  const conContador = typeof contador === "number" && contador > 0;
   const contenido = (
     <>
-      {Icono ? <Icono className="size-3.5 shrink-0 text-muted-foreground" strokeWidth={1.75} /> : null}
-      {indicador ? <span data-testid="pildora-indicador" aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-destructive" /> : null}
-      <span className={cn("min-w-0 flex-1 truncate", colapsado ? "hidden" : "hidden lg:block")}>{label}</span>
+      {Icono ? <Icono className="ds3-nav-icono size-3.5 shrink-0 text-muted-foreground" strokeWidth={1.75} /> : null}
+      {indicador ? <span data-testid="pildora-indicador" aria-hidden="true" className={cn("size-1.5 shrink-0 rounded-full bg-destructive", conContador && "ds3-no")} /> : null}
+      <span className={cn("ds3-etiqueta min-w-0 flex-1 truncate", colapsado ? "hidden" : "hidden lg:block")}>{label}</span>
       {Icono ? null : <span aria-hidden="true">→</span>}
+      {/* ds3: contador numerico (99+ como tope visual), pintado por CSS desde data-contador: la fila no gana texto (su nombre y su
+          contenido siguen siendo los de siempre) y el nombre accesible ya dice que hay avisos sin leer. */}
+      {conContador ? (
+        <span hidden aria-hidden="true" data-testid="pildora-contador" data-contador={contador > 99 ? "99+" : String(contador)} className="ds3-solo ds3-contador" />
+      ) : null}
     </>
   );
   const comunes = {
@@ -173,7 +192,9 @@ function PildoraPie({ pildora, colapsado }: { pildora: SidebarPiePildora; colaps
     "aria-label": indicador ? `${label}, con avisos sin leer` : label,
     className: cn(CLASE_PILDORA, colapsado ? "justify-center" : cn("justify-center", Icono ? "lg:justify-start" : "lg:justify-between")),
   };
-  if (to) return <Link to={to} {...comunes}>{contenido}</Link>;
+  // La fila del pie que lleva a la pagina actual (Notificaciones, Seguridad...) se marca como el item activo del nav (aria-current;
+  // la hoja ds3 le pone el mismo tinte y filete). Sin la bandera solo cambia el atributo accesible.
+  if (to) return <Link to={to} aria-current={activa ? "page" : undefined} {...comunes}>{contenido}</Link>;
   if (href) return <a href={href} {...comunes}>{contenido}</a>;
   if (onClick) return <button type="button" onClick={onClick} aria-controls={pildora.ariaControls} aria-pressed={pildora.ariaPressed} {...comunes} className={cn(comunes.className, "w-full text-left")}>{contenido}</button>;
   return null;
@@ -190,7 +211,7 @@ function PildoraPie({ pildora, colapsado }: { pildora: SidebarPiePildora; colaps
  * Navegacion real via react-router (`NavLink`): cada item es una ruta.
  * Solo contiene controles con destino o accion real.
  */
-export function Sidebar({ sections, user, onLogout, hotelSelector, storageScope, pie }: SidebarProps) {
+export function Sidebar({ sections, user, onLogout, hotelSelector, storageScope, pie, organizacion }: SidebarProps) {
   const location = useLocation();
   const claves = clavesSidebar(storageScope);
   const [collapsed, setCollapsed] = useState<boolean>(() => leerAlmacen(claves.colapsado) === "1");
@@ -240,15 +261,22 @@ export function Sidebar({ sections, user, onLogout, hotelSelector, storageScope,
       aria-label="Navegación principal"
       // Mantiene la paleta de Likida aunque la vertical tenga su propio ambito de tokens (index.css, [data-ambito-base]).
       data-ambito-base=""
+      data-colapsado={collapsed ? "" : undefined}
       className={cn(
-        "hidden md:flex flex-col rounded-lg border border-border bg-card shadow-card sticky top-4 h-[calc(100dvh-2rem)] overflow-hidden transition-[width] duration-base ease-brand",
+        "ds3-sidebar hidden md:flex flex-col rounded-lg border border-border bg-card shadow-card sticky top-4 h-[calc(100dvh-2rem)] overflow-hidden transition-[width] duration-base ease-brand",
         collapsed ? "w-[72px]" : "w-[72px] lg:w-[232px]",
       )}
     >
-      <div className={cn("shrink-0 px-3 py-3 flex items-center gap-1.5", collapsed ? "justify-center" : "justify-center lg:justify-start")}>
+      <div className={cn("ds3-sidebar-marca shrink-0 px-3 py-3 flex items-center gap-1.5", collapsed ? "justify-center" : "justify-center lg:justify-start")}>
         {!collapsed && (
-          <span className="hidden lg:block min-w-0">
+          <span className="ds3-sidebar-logo hidden lg:block min-w-0">
             <AtiendeWordmark tamano="sidebar" />
+          </span>
+        )}
+        {/* ds3: contraido, el simbolo de 28 px queda arriba del boton (sin la bandera el riel solo lleva el boton). */}
+        {collapsed && (
+          <span hidden className="ds3-solo ds3-sidebar-simbolo">
+            <AtiendeMark className="h-7 w-auto" />
           </span>
         )}
         <button
@@ -257,7 +285,7 @@ export function Sidebar({ sections, user, onLogout, hotelSelector, storageScope,
           aria-label={collapsed ? "Expandir barra lateral" : "Colapsar barra lateral"}
           title={collapsed ? "Expandir barra lateral" : "Colapsar barra lateral"}
           className={cn(
-            "size-7 rounded-lg flex items-center justify-center shrink-0 text-muted-foreground transition-colors hover:bg-canvas",
+            "ds3-icono-boton size-7 rounded-lg flex items-center justify-center shrink-0 text-muted-foreground transition-colors hover:bg-canvas",
             !collapsed && "lg:ml-auto",
           )}
         >
@@ -265,9 +293,10 @@ export function Sidebar({ sections, user, onLogout, hotelSelector, storageScope,
         </button>
       </div>
 
-      {!collapsed && hotelSelector && <div className="hidden lg:block px-2 pb-2">{hotelSelector}</div>}
+      {/* ds3: el selector baja al pie fijo (orden visual por CSS), como el bloque de organizacion del sistema de referencia. */}
+      {!collapsed && hotelSelector && <div className="ds3-sidebar-organizacion hidden lg:block px-2 pb-2">{hotelSelector}</div>}
 
-      <nav className="flex-1 overflow-y-auto px-2 space-y-2 pb-3">
+      <nav className="ds3-sidebar-nav flex-1 overflow-y-auto px-2 space-y-2 pb-3">
         {visibles.map((section, indice) => {
           // Raiz ("Resumen"): items a todo el ancho, sin cabecera ni acordeon.
           if (section.siempreAbierto) {
@@ -282,7 +311,7 @@ export function Sidebar({ sections, user, onLogout, hotelSelector, storageScope,
           const abierta = grupoAbierto === section.title;
           const id = idSeccion(section.title);
           return (
-            <div key={section.title} id={id}>
+            <div key={section.title} id={id} className="ds3-nav-grupo">
               {collapsed && indice > 0 && <div role="separator" className="mx-2 mb-2 border-t border-border" />}
               {!collapsed && (
                 <button
@@ -290,7 +319,7 @@ export function Sidebar({ sections, user, onLogout, hotelSelector, storageScope,
                   onClick={() => alternarGrupo(section.title)}
                   aria-expanded={abierta}
                   aria-controls={`${id}-items`}
-                  className="hidden lg:flex w-full items-center justify-between px-2.5 mb-1.5 font-mono text-2xs leading-[1.65] uppercase tracking-[0.08em] text-muted-foreground transition-colors hover:text-foreground"
+                  className="ds3-nav-grupo-toggle hidden lg:flex w-full items-center justify-between px-2.5 mb-1.5 font-mono text-2xs leading-[1.65] uppercase tracking-[0.08em] text-muted-foreground transition-colors hover:text-foreground"
                 >
                   {section.title}
                   {abierta ? <ChevronDown className="size-[13px]" strokeWidth={2} aria-hidden="true" /> : <ChevronRight className="size-[13px]" strokeWidth={2} aria-hidden="true" />}
@@ -308,32 +337,41 @@ export function Sidebar({ sections, user, onLogout, hotelSelector, storageScope,
           sumido, pildoras + tema) y zona B (tarjeta de usuario), cada una con
           su separador de 1px. Solo controles con destino o accion real. */}
       {(pildoras.length > 0 || !collapsed) && (
-        <div className="shrink-0 border-t border-border bg-canvas px-2 pt-2 pb-1.5 space-y-0.5">
+        <div className="ds3-sidebar-pie shrink-0 border-t border-border bg-canvas px-2 pt-2 pb-1.5 space-y-0.5">
           {pildoras.map((p) => (
             <PildoraPie key={p.label} pildora={p} colapsado={collapsed} />
           ))}
           {!collapsed && (
-            <div className="hidden lg:flex px-2.5 pt-1.5 justify-center">
+            <div className="ds3-sidebar-ajustes hidden lg:flex px-2.5 pt-1.5 justify-center">
               <ThemeSelector tamano="compacto" />
+              {/* ds3: tema e idioma en la misma fila (dos pildoras de 32). */}
+              <span hidden className="ds3-solo ds3-sidebar-idioma">
+                <SelectorIdioma />
+              </span>
             </div>
           )}
         </div>
       )}
 
-      <div className="shrink-0 border-t border-border px-2 pt-2 pb-2">
+      <div className="ds3-sidebar-cuenta-zona shrink-0 border-t border-border px-2 pt-2 pb-2">
         <div
           className={cn(
-            "flex min-w-0 items-center gap-2 rounded-xl border border-border bg-card p-2",
+            "ds3-cuenta flex min-w-0 items-center gap-2 rounded-xl border border-border bg-card p-2",
             collapsed ? "flex-col justify-center" : "flex-col justify-center lg:flex-row lg:justify-start",
           )}
         >
-          <div className="size-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center shrink-0 text-eyebrow font-semibold" aria-hidden="true">
+          <div className="ds3-monograma size-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center shrink-0 text-eyebrow font-semibold" aria-hidden="true">
             {(nombre.charAt(0) || "A").toUpperCase()}
           </div>
-          <div className={cn("min-w-0 flex-1", collapsed ? "hidden" : "hidden lg:block")}>
-            <p className="text-ui font-medium leading-tight truncate" title={user?.email}>
+          <div className={cn("ds3-cuenta-texto min-w-0 flex-1", collapsed ? "hidden" : "hidden lg:block")}>
+            <p className={cn("text-ui font-medium leading-tight truncate", organizacion && "ds3-no")} title={user?.email}>
               {nombre || "Sin sesión"}
             </p>
+            {organizacion ? (
+              <p hidden className="ds3-solo ds3-cuenta-organizacion text-ui font-medium leading-tight truncate" title={user?.email}>
+                {organizacion}
+              </p>
+            ) : null}
             <p className="text-2xs uppercase text-faint truncate">{rolEtiqueta ?? "—"}</p>
           </div>
           <button
@@ -341,7 +379,7 @@ export function Sidebar({ sections, user, onLogout, hotelSelector, storageScope,
             onClick={onLogout}
             aria-label="Cerrar sesión"
             title="Cerrar sesión"
-            className="size-7 rounded-lg flex items-center justify-center shrink-0 text-destructive transition-colors hover:bg-destructive-tint"
+            className="ds3-cuenta-salir size-7 rounded-lg flex items-center justify-center shrink-0 text-destructive transition-colors hover:bg-destructive-tint"
           >
             <LogOut className="size-3.5" strokeWidth={1.75} />
           </button>

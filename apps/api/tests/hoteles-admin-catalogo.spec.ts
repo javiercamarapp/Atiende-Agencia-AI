@@ -7,7 +7,7 @@
 // POST .../reservas) se prueba de punta a punta: crear tipo de habitación -> crear
 // tarifa -> crear reserva contra esa tarifa recién sembrada, sin ningún seed manual
 // del repo en memoria.
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildApp } from "../src/app.ts";
 import { buildHotelesTestContext, authedJson } from "./hoteles-fixtures.ts";
 
@@ -323,5 +323,112 @@ describe("PATCH /hoteles/:propertyId/reservas/:id/asignar-habitacion", () => {
     const habitacion = (await crearHabitacion.json()) as { id: string };
     const res = await app.request(`/hoteles/${ctx.propertyId}/reservas/${reserva.id}/asignar-habitacion`, patchedJson(ctx.staff.housekeeping.token, { roomId: habitacion.id }));
     expect(res.status).toBe(403);
+  });
+});
+
+describe("onboarding P0: inventario generado desde las habitaciones (migracion 050)", () => {
+  const dia = (offset: number) => new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
+
+  it("alta de habitacion regenera el inventario: con tipo + habitacion + tarifa ya se reserva SIN sembrar disponibilidad a mano", async () => {
+    const ctx = await buildHotelesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const tipo = (await (await app.request(`/hoteles/${ctx.propertyId}/tipos-habitacion`, authedJson(ctx.staff.owner.token, { nombre: "Habitación Terraza" }))).json()) as { id: string };
+    const hab = await app.request(`/hoteles/${ctx.propertyId}/tipos-habitacion/${tipo.id}/habitaciones`, authedJson(ctx.staff.owner.token, { codigo: "T-1" }));
+    expect(hab.status).toBe(201);
+    expect(((await hab.json()) as { inventarioGenerado: boolean }).inventarioGenerado).toBe(true);
+    const tarifa = await app.request(`/hoteles/${ctx.propertyId}/tarifas`, authedJson(ctx.staff.owner.token, { roomTypeId: tipo.id, fechaInicio: dia(1), fechaFin: dia(4), precio: 1000 }));
+    expect(tarifa.status).toBe(201);
+    const reserva = await app.request(
+      `/hoteles/${ctx.propertyId}/reservas`,
+      authedJson(ctx.staff.owner.token, { roomTypeId: tipo.id, checkInDate: dia(1), checkOutDate: dia(3) }, { "idempotency-key": "k-inventario-auto" }),
+    );
+    expect(reserva.status).toBe(201);
+    // Una sola habitacion: la segunda reserva de las mismas noches ya no cabe (sin sobreventa configurada).
+    const otra = await app.request(
+      `/hoteles/${ctx.propertyId}/reservas`,
+      authedJson(ctx.staff.owner.token, { roomTypeId: tipo.id, checkInDate: dia(1), checkOutDate: dia(3) }, { "idempotency-key": "k-inventario-lleno" }),
+    );
+    expect(otra.status).toBeGreaterThanOrEqual(400);
+    expect(otra.status).toBeLessThan(500);
+  });
+
+  it("POST .../inventario/generar: owner/gm generan (idempotente); frontdesk 403; rangos invalidos 400", async () => {
+    const ctx = await buildHotelesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const url = `/hoteles/${ctx.propertyId}/inventario/generar`;
+    const r = await app.request(url, authedJson(ctx.staff.gm.token, { desde: dia(0), hasta: dia(9) }));
+    expect(r.status).toBe(200);
+    const body = (await r.json()) as { noches: number; tiposDeHabitacion: number; filasActualizadas: number };
+    expect(body.noches).toBe(10);
+    expect(body.tiposDeHabitacion).toBeGreaterThan(0);
+    expect(body.filasActualizadas).toBeGreaterThan(0);
+    const otraVez = (await (await app.request(url, authedJson(ctx.staff.owner.token, { desde: dia(0), hasta: dia(9) }))).json()) as { filasActualizadas: number };
+    expect(otraVez.filasActualizadas).toBe(0);
+    expect((await app.request(url, authedJson(ctx.staff.frontdesk.token, {}))).status).toBe(403);
+    expect((await app.request(url, authedJson(ctx.staff.owner.token, { desde: dia(5), hasta: dia(1) }))).status).toBe(400);
+    expect((await app.request(url, authedJson(ctx.staff.owner.token, { desde: dia(0), hasta: dia(400) }))).status).toBe(400);
+    expect((await app.request(url, authedJson(ctx.staff.owner.token, { desde: "ayer" }))).status).toBe(400);
+    expect((await app.request(url, authedJson(ctx.staff.owner.token, { desde: dia(-10), hasta: dia(0) }))).status).toBe(400);
+  });
+});
+
+describe("inventario: «hoy» en la zona del hotel y ajuste incremental al dar de alta habitaciones", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  // 2026-11-07 01:30 UTC = 2026-11-06 19:30 en Mérida (UTC-6): el día UTC ya es «mañana».
+  const DESPUES_DE_LAS_18_EN_MERIDA = new Date("2026-11-07T01:30:00Z");
+
+  it("después de las 18:00 en Mérida (sin zona configurada) la noche de HOY local recibe inventario al dar de alta la habitación", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(DESPUES_DE_LAS_18_EN_MERIDA);
+    const ctx = await buildHotelesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const tipo = (await (await app.request(`/hoteles/${ctx.propertyId}/tipos-habitacion`, authedJson(ctx.staff.owner.token, { nombre: "Habitación Jardín" }))).json()) as { id: string };
+    const hab = await app.request(`/hoteles/${ctx.propertyId}/tipos-habitacion/${tipo.id}/habitaciones`, authedJson(ctx.staff.owner.token, { codigo: "J-1" }));
+    expect(hab.status).toBe(201);
+    const noches = ctx.hotelesRepo.readAvailability(ctx.propertyId, tipo.id, "2026-11-06", "2026-11-07").noches;
+    expect(noches).toEqual([
+      { date: "2026-11-06", totalRooms: 1, bookedRooms: 0 },
+      { date: "2026-11-07", totalRooms: 1, bookedRooms: 0 },
+    ]);
+    const generar = await app.request(`/hoteles/${ctx.propertyId}/inventario/generar`, authedJson(ctx.staff.owner.token, {}));
+    expect(((await generar.json()) as { desde: string }).desde).toBe("2026-11-06");
+  });
+
+  it("a las 23:59 de Mérida sigue siendo el mismo día local; a las 00:00 locales ya cambia", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-07T05:59:00Z"));
+    const ctx = await buildHotelesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const url = `/hoteles/${ctx.propertyId}/inventario/generar`;
+    expect(((await (await app.request(url, authedJson(ctx.staff.owner.token, {}))).json()) as { desde: string }).desde).toBe("2026-11-06");
+    vi.setSystemTime(new Date("2026-11-07T06:00:00Z"));
+    expect(((await (await app.request(url, authedJson(ctx.staff.owner.token, {}))).json()) as { desde: string }).desde).toBe("2026-11-07");
+  });
+
+  it("usa hoteles.property_config.timezone cuando la propiedad la tiene", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(DESPUES_DE_LAS_18_EN_MERIDA);
+    const ctx = await buildHotelesTestContext(buildApp);
+    await ctx.hotelesRepo.upsertPropertyTimezone(ctx.propertyId, ctx.organizationId, "Europe/Madrid", ctx.staff.owner.id);
+    const app = buildApp(ctx.deps);
+    const r = await app.request(`/hoteles/${ctx.propertyId}/inventario/generar`, authedJson(ctx.staff.owner.token, {}));
+    expect(((await r.json()) as { desde: string }).desde).toBe("2026-11-07");
+  });
+
+  it("dar de alta otra habitación suma 1 solo a su tipo: conserva lo vendido y un total capturado a mano, no toca otros tipos", async () => {
+    const ctx = await buildHotelesTestContext(buildApp);
+    const app = buildApp(ctx.deps);
+    const hoy = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Merida", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+    const tipo = (await (await app.request(`/hoteles/${ctx.propertyId}/tipos-habitacion`, authedJson(ctx.staff.owner.token, { nombre: "Habitación Alberca" }))).json()) as { id: string };
+    ctx.hotelesRepo.seedAvailability(ctx.propertyId, tipo.id, hoy, 5, 2);
+    ctx.hotelesRepo.seedAvailability(ctx.propertyId, ctx.roomTypeId, hoy, 9, 0);
+    const hab = await app.request(`/hoteles/${ctx.propertyId}/tipos-habitacion/${tipo.id}/habitaciones`, authedJson(ctx.staff.owner.token, { codigo: "A-1" }));
+    expect(hab.status).toBe(201);
+    expect(((await hab.json()) as { inventarioGenerado: boolean }).inventarioGenerado).toBe(true);
+    expect(ctx.hotelesRepo.readAvailability(ctx.propertyId, tipo.id, hoy, hoy).noches).toEqual([{ date: hoy, totalRooms: 6, bookedRooms: 2 }]);
+    expect(ctx.hotelesRepo.readAvailability(ctx.propertyId, ctx.roomTypeId, hoy, hoy).noches).toEqual([{ date: hoy, totalRooms: 9, bookedRooms: 0 }]);
   });
 });
