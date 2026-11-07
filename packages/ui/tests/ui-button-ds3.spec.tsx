@@ -10,7 +10,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import postcss, { type AtRule, type Container, type Rule } from "postcss";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { Button } from "../src/components/ui/button";
+import { Button, clasesAmbitoOverrides } from "../src/components/ui/button";
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 declare global {
@@ -84,11 +84,23 @@ function px(valor: string | undefined): number {
 
 /** Alto (px) que daria el navegador a un boton con esa clase de tamano. */
 function altoDe(claseTamano: string): number {
-  const alto = declarada(`${BANDERA} .ds3-btn.${claseTamano}`, "height");
+  // Los tamanos de texto (xs/sm/md/lg) ceden ante un alto de operacion (ambito-ov-alto); los de icono no.
+  const alto = declarada(`${BANDERA} .ds3-btn.${claseTamano}:not([class~="ambito-ov-alto"])`, "height") ?? declarada(`${BANDERA} .ds3-btn.${claseTamano}`, "height");
   const m = alto?.match(/^var\((--control-[a-z]+)\)$/);
   if (!m) return Number.NaN;
   return px(variable(m[1]!));
 }
+
+describe("Button ds3: objetivos tactiles de operacion (56 px o mas)", () => {
+  it("un alto de 56 px o mas pedido por quien llama se marca y la escala compacta no lo encoge; los intermedios no", () => {
+    for (const c of ["h-14 w-full text-lg", "h-auto min-h-14 w-full", "h-16"]) expect(clasesAmbitoOverrides(c), c).toContain("ambito-ov-alto");
+    for (const c of ["h-8", "h-10 px-3", "h-12", "min-h-11", "h-[56px]"]) expect(clasesAmbitoOverrides(c), c).not.toContain("ambito-ov-alto");
+    for (const k of ["xs", "sm", "md", "lg"]) {
+      expect(declarada(`${BANDERA} .ds3-btn.ds3-btn-${k}`, "height"), k).toBeUndefined();
+      expect(declarada(`${BANDERA} .ds3-btn.ds3-btn-${k}:not([class~="ambito-ov-alto"])`, "height"), k).toBe(`var(--control-${k})`);
+    }
+  });
+});
 
 // ---- montaje ----------------------------------------------------------------------------------------------------------------------------
 let raices: Array<{ root: Root; el: HTMLElement }> = [];
