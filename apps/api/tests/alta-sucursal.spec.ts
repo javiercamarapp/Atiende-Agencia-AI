@@ -13,6 +13,7 @@ const MOTIVO = "Alta asistida de la primera sucursal durante el onboarding.";
 const ORG_HOTEL = "11111111-1111-4111-8111-111111111111";
 const ORG_LICI = "22222222-2222-4222-8222-222222222222";
 const ORG_DESP = "33333333-3333-4333-8333-333333333333";
+const ORG_RESTO = "44444444-4444-4444-8444-444444444444";
 
 async function setup(opciones: { sinRepo?: boolean; noMigrado?: boolean } = {}) {
   const s = await seguridadSetup();
@@ -20,12 +21,14 @@ async function setup(opciones: { sinRepo?: boolean; noMigrado?: boolean } = {}) 
   repo.seedOrganizacion({ id: ORG_HOTEL, slug: "hotel-centro", vertical: "hoteles", status: "trial" });
   repo.seedOrganizacion({ id: ORG_LICI, slug: "licitante-uno", vertical: "licitaciones", status: "trial" });
   repo.seedOrganizacion({ id: ORG_DESP, slug: "despacho-uno", vertical: "despachos" });
+  repo.seedOrganizacion({ id: ORG_RESTO, slug: "resto-uno", vertical: "restaurantes", propiedades: ["De plataforma"] });
   if (opciones.noMigrado) repo.seedNoMigrado();
   const app = buildApp({ ...s.deps, ...(opciones.sinRepo ? {} : { altaPropiedadRepo: () => repo }) });
   const dueno = await s.staff();
   repo.seedGestor(ORG_HOTEL, dueno.id);
   repo.seedGestor(ORG_LICI, dueno.id);
   repo.seedGestor(ORG_DESP, dueno.id);
+  repo.seedGestor(ORG_RESTO, dueno.id);
   const ajeno = await s.staff();
   return { s, repo, app, dueno, ajeno };
 }
@@ -37,10 +40,12 @@ describe("alta de sucursal por el dueño", () => {
     expect((await t.app.request(url, jsonRequestInit({ nombre: "Hotel Centro" }))).status).toBe(401);
     const res = await t.app.request(url, jsonRequestInit({ nombre: "Hotel Centro", zonaHoraria: "America/Merida" }, bearer(t.dueno.token)));
     expect(res.status).toBe(201);
-    const body = (await res.json()) as { propertyId: string; slug: string | null };
+    const body = (await res.json()) as { propertyId: string; slug: string | null; status: string };
     expect(body.slug).toBeNull();
-    expect(t.repo.propiedadesDe(ORG_HOTEL)).toEqual([{ id: body.propertyId, nombre: "Hotel Centro" }]);
-    expect(t.repo.bitacora).toEqual([expect.objectContaining({ organizationId: ORG_HOTEL, origen: "dueno", actor: t.dueno.id, motivo: null })]);
+    // Nace inactiva: no recibe reservas/pedidos hasta la activacion explicita.
+    expect(body.status).toBe("inactive");
+    expect(t.repo.propiedadesDe(ORG_HOTEL)).toEqual([{ id: body.propertyId, nombre: "Hotel Centro", status: "inactive" }]);
+    expect(t.repo.bitacora).toEqual([expect.objectContaining({ organizationId: ORG_HOTEL, origen: "dueno", accion: "alta", actor: t.dueno.id, motivo: null })]);
   });
 
   it("quien no es dueño/admin de toda la organizacion -> 403; organizacion de otra vertical o inexistente -> 404", async () => {
@@ -74,6 +79,67 @@ describe("alta de sucursal por el dueño", () => {
     expect((await sinRepo.app.request("/v1/hoteles/hotel-centro/admin/alta-propiedad", jsonRequestInit({ nombre: "Hotel" }, bearer(sinRepo.dueno.token)))).status).toBe(503);
     const noMigrado = await setup({ noMigrado: true });
     expect((await noMigrado.app.request("/v1/hoteles/hotel-centro/admin/alta-propiedad", jsonRequestInit({ nombre: "Hotel" }, bearer(noMigrado.dueno.token)))).status).toBe(503);
+  });
+});
+
+describe("slug de restaurantes", () => {
+  it("nunca termina en '-' aunque el corte a 60 caiga en un guion, ni empieza con '-'", async () => {
+    const t = await setup();
+    const url = "/v1/restaurantes/resto-uno/admin/alta-sucursal";
+    const largo = (await (await t.app.request(url, jsonRequestInit({ nombre: `${"a".repeat(59)} b` }, bearer(t.dueno.token)))).json()) as { slug: string };
+    expect(largo.slug).toBe("a".repeat(59));
+    const signos = (await (await t.app.request(url, jsonRequestInit({ nombre: "¡¡Centro!!" }, bearer(t.dueno.token)))).json()) as { slug: string };
+    expect(signos.slug).toBe("centro");
+  });
+});
+
+describe("activacion explicita de la sucursal por el dueño", () => {
+  async function conSucursal() {
+    const t = await setup();
+    const res = await t.app.request("/v1/restaurantes/resto-uno/admin/alta-sucursal", jsonRequestInit({ nombre: "Sucursal Norte" }, bearer(t.dueno.token)));
+    const { propertyId } = (await res.json()) as { propertyId: string };
+    return { ...t, propertyId, url: `/v1/restaurantes/resto-uno/admin/alta-sucursal/${propertyId}/activar` };
+  }
+
+  it("con pasos pendientes -> 409 configuracion_incompleta con la lista; la sucursal sigue inactiva", async () => {
+    const t = await conSucursal();
+    t.repo.seedPasosPendientes(t.propertyId, ["menu", "horario", "zona_de_entrega"]);
+    const res = await t.app.request(t.url, jsonRequestInit({}, bearer(t.dueno.token)));
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { code: string; message: string; faltantes: string[] };
+    expect(body.code).toBe("configuracion_incompleta");
+    expect(body.faltantes).toEqual(["menu", "horario", "zona_de_entrega"]);
+    expect(body.message).toContain("faltan pasos obligatorios");
+    expect(t.repo.propiedadesDe(ORG_RESTO).find((p) => p.id === t.propertyId)?.status).toBe("inactive");
+    expect(t.repo.bitacora.filter((b) => b.accion === "activacion")).toHaveLength(0);
+  });
+
+  it("configuracion completa -> 200 active con bitacora 'activacion'; repetir es idempotente (sin otra fila)", async () => {
+    const t = await conSucursal();
+    const res = await t.app.request(t.url, jsonRequestInit({}, bearer(t.dueno.token)));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ propertyId: t.propertyId, status: "active", yaEstabaActiva: false });
+    expect(t.repo.propiedadesDe(ORG_RESTO).find((p) => p.id === t.propertyId)?.status).toBe("active");
+    const otra = await t.app.request(t.url, jsonRequestInit({}, bearer(t.dueno.token)));
+    expect(await otra.json()).toEqual({ propertyId: t.propertyId, status: "active", yaEstabaActiva: true });
+    expect(t.repo.bitacora.filter((b) => b.accion === "activacion")).toEqual([expect.objectContaining({ propertyId: t.propertyId, origen: "dueno", actor: t.dueno.id })]);
+  });
+
+  it("sin token 401; quien no es dueño/admin 403; propiedad de otra organizacion o id invalido 404; sucursal de plataforma 403", async () => {
+    const t = await conSucursal();
+    expect((await t.app.request(t.url, jsonRequestInit({}))).status).toBe(401);
+    expect((await t.app.request(t.url, jsonRequestInit({}, bearer(t.ajeno.token)))).status).toBe(403);
+    // La propiedad es de resto-uno: por la organizacion del hotel no existe.
+    expect((await t.app.request(`/v1/hoteles/hotel-centro/admin/alta-propiedad/${t.propertyId}/activar`, jsonRequestInit({}, bearer(t.dueno.token)))).status).toBe(404);
+    expect((await t.app.request("/v1/restaurantes/resto-uno/admin/alta-sucursal/no-uuid/activar", jsonRequestInit({}, bearer(t.dueno.token)))).status).toBe(404);
+    const dePlataforma = t.repo.propiedadesDe(ORG_RESTO).find((p) => p.nombre === "De plataforma")!;
+    expect((await t.app.request(`/v1/restaurantes/resto-uno/admin/alta-sucursal/${dePlataforma.id}/activar`, jsonRequestInit({}, bearer(t.dueno.token)))).status).toBe(403);
+    expect(t.repo.propiedadesDe(ORG_RESTO).every((p) => p.status === "inactive")).toBe(true);
+  });
+
+  it("sin la migracion 0071 -> 503 honesto", async () => {
+    const t = await setup({ noMigrado: true });
+    expect((await t.app.request(`/v1/licitaciones/licitante-uno/admin/alta-propiedad/${randomUUID()}/activar`, jsonRequestInit({}, bearer(t.dueno.token)))).status).toBe(503);
   });
 });
 
