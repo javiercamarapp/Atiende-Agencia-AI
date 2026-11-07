@@ -88,8 +88,11 @@ test.describe("UNI-MARCO restaurantes: una sola barra, un solo juego de controle
       await expect(page.locator("main#contenido-principal").getByRole("link", { name: /Pregúntale a tus datos/ }), `${nombre}: sin pildora «Pregúntale a tus datos» en el cuerpo`).toHaveCount(0);
       if (!esMovil(page)) {
         const barra = page.getByTestId("barra-pagina");
-        await expect(barra, `${nombre}: exactamente una barra visible`).toHaveCount(1);
-        await expect(barra).toBeVisible();
+        await expect(barra, `${nombre}: exactamente una barra`).toHaveCount(1);
+        // La pantalla de chat (Copiloto) va sin encabezado en escritorio; el resto lleva la barra visible.
+        const sinCabecera = nombre === "copiloto";
+        if (sinCabecera) await expect(barra, `${nombre}: la pantalla de chat va sin encabezado`).toBeHidden();
+        else await expect(barra).toBeVisible();
         await expect(page.getByTestId("barra-pagina-titulo"), `${nombre}: titulo de la pagina en la barra`).toHaveText(/\S/);
         // Orden del dueno: la barra va delgada. Sin "Pregúntale a tus datos", sin campana, sin fecha (ni en la barra ni en el cuerpo).
         const chat = await contarChat(page);
@@ -101,7 +104,8 @@ test.describe("UNI-MARCO restaurantes: una sola barra, un solo juego de controle
         expect(chat.enMain, `${nombre}: ningun "Pregúntale a tus datos" dentro del cuerpo de la pagina`).toBe(0);
         await expect(barra.locator('[aria-label^="Notificaciones"]'), `${nombre}: sin campana en la barra`).toHaveCount(0);
         await expect(page.getByTestId("barra-pagina-fecha"), `${nombre}: sin chip de fecha`).toHaveCount(0);
-        expect(((await barra.boundingBox())?.height ?? 99), `${nombre}: barra delgada (~44 px)`).toBeLessThanOrEqual(48);
+        // La barra se aplana (display: contents) dentro de la zona del encabezado del marco: se mide la zona (44 px).
+        if (!sinCabecera) expect(((await page.locator(".ds3-cabecera-zona").boundingBox())?.height ?? 99), `${nombre}: barra delgada (~44 px)`).toBeLessThanOrEqual(48);
         // Las funciones siguen accesibles desde el pie del menu lateral.
         await expect(page.locator("aside").getByRole("link", { name: "Notificaciones" }), `${nombre}: Notificaciones en el pie del menu`).toHaveCount(1);
         await expect(page.getByTestId("mobile-header"), `${nombre}: el encabezado movil no se ve en escritorio`).toBeHidden();

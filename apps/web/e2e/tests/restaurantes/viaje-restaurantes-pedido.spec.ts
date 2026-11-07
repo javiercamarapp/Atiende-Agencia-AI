@@ -72,7 +72,7 @@ test.describe("restaurantes: viaje completo de un pedido @viaje", () => {
 
     // 6. Consulta el Copiloto.
     await ir(page, "/copiloto");
-    await page.getByRole("button", { name: "¿Cuánto vendí esta semana?" }).click();
+    await page.getByRole("button", { name: "¿Cuánto vendí por día en los últimos 7 días?" }).click();
     await expect(page.getByText("En los últimos 7 días vendiste")).toBeVisible();
 
     // 7. Cierra sesion y vuelve al login de restaurantes.
