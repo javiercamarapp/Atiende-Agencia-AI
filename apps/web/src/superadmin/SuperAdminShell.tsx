@@ -28,6 +28,7 @@ import { CLAVE_SECCION_SUPERADMIN, claveRutaSuperadmin } from "./rutas-i18n.ts";
 import { limpiarStepUp } from "./lib/stepup.ts";
 import "@atiende/ui/i18n/nav";
 import "@atiende/ui/i18n/shell";
+import "@atiende/ui/i18n/consola";
 
 export interface SuperAdminShellProps {
   readonly apiBaseUrl: string;
@@ -114,7 +115,7 @@ export function SuperAdminShell({ apiBaseUrl, onRequireLogin, children }: SuperA
   if (!resuelto) return <VerticalShellEstado estado="cargando" mensaje={t("shell.cargando")} />;
   if (!session) return null; // onRequireLogin ya disparó la redirección
 
-  const rotuloRol = loggingOut ? t("shell.saliendo") : t("shell.superadmin");
+  const rotuloRol = loggingOut ? t("shell.saliendo") : t("consola.superadmin");
   const user = { email: session.email, rol: rotuloRol, nombre: session.fullName, rolEtiqueta: rotuloRol };
   // La campana del encabezado se quito: la pildora "Notificaciones" del pie (escritorio y "Mas" > "Cuenta" en movil) lleva el punto de sin leer.
   // El panel lateral del Copiloto (antes el boton "Pregúntale a tus datos" de la barra) se abre desde la pildora del pie (y con Cmd+J).
@@ -133,7 +134,7 @@ export function SuperAdminShell({ apiBaseUrl, onRequireLogin, children }: SuperA
       user={user}
       onLogout={() => void handleLogout()}
       loggingOut={loggingOut}
-      header={{ icon: <LayoutGrid className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: t("shell.consolaAtiende"), resumenTo: "/superadmin" }}
+      header={{ icon: <LayoutGrid className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: t("consola.consolaAtiende"), resumenTo: "/superadmin" }}
       panelLateral={<CopilotoPanel abierto={copilotoAbierto && !enPaginaCopiloto} onCerrar={cerrarCopiloto} apiBaseUrl={apiBaseUrl} token={session.token} />}
     >
       <div className="grid min-w-0 gap-4">

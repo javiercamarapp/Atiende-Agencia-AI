@@ -43,6 +43,7 @@ import { crearChatConexionCitas } from "./lib/data-chat-client.ts";
 import { COPILOTO_CITAS_ROLES } from "./pages/Copiloto.tsx";
 import "@atiende/ui/i18n/nav";
 import "@atiende/ui/i18n/shell";
+import "@atiende/ui/i18n/consola";
 
 /** Adaptador de sesión de citas. DEBE ser una constante de módulo (el hook lo usa como dependencia de sus efectos). */
 const CITAS_SESSION: VerticalSessionAdapter<BranchOption> = {
@@ -166,8 +167,8 @@ export function CitasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: Ci
   if (s.fase === "resolviendo") return <VerticalShellEstado estado="cargando" mensaje={t("shell.cargando")} />;
   if (s.fase === "sin-sesion") return null; // onRequireLogin ya disparó la redirección
   if (s.fase === "error") return <VerticalShellEstado estado="error" mensaje={s.error ?? undefined} onReintentar={s.reintentar} />;
-  if (s.fase === "cargando") return <VerticalShellEstado estado="cargando" mensaje={t("shell.cargandoSucursales")} />;
-  if (s.fase === "vacio") return <VerticalShellEstado estado="vacio" mensaje={t("shell.vacio.sinSucursal")} />;
+  if (s.fase === "cargando") return <VerticalShellEstado estado="cargando" mensaje={t("consola.cargandoSucursales")} />;
+  if (s.fase === "vacio") return <VerticalShellEstado estado="vacio" mensaje={t("consola.vacio.sinSucursal")} />;
 
   const { session, branches, propertyId, orgId, role } = s;
   const user = { email: session.email, rol: role, nombre: session.fullName, rolEtiqueta: etiquetaRol(role, t) };
@@ -175,7 +176,7 @@ export function CitasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: Ci
   // Selector real, visible solo cuando hay más de una sucursal (si no, solo el nombre). Se ofrece en el bloque
   // de cuenta del Sidebar (escritorio) y en el MobileHeader, para no perder la función en viewport angosto.
   const branchSelector = (idSelect: string) =>
-    <SelectorSucursal id={idSelect} etiqueta={t("shell.selector.sucursal")} valor={propertyId} onCambia={s.selectBranch} opciones={branches.map((b) => ({ valor: b.propertyId, etiqueta: b.name }))} />;
+    <SelectorSucursal id={idSelect} etiqueta={t("consola.selector.sucursal")} valor={propertyId} onCambia={s.selectBranch} opciones={branches.map((b) => ({ valor: b.propertyId, etiqueta: b.name }))} />;
 
   return (
     <VerticalShellConectado
@@ -188,7 +189,7 @@ export function CitasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: Ci
       user={user}
       onLogout={() => void s.logout()}
       loggingOut={s.loggingOut}
-      header={{ icon: <CalendarClock className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: t("shell.titulo", { vertical: t("shell.vertical.citas"), nombre: orgSlug }), resumenTo: `/citas/${orgSlug}/resumen` }}
+      header={{ icon: <CalendarClock className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: t("consola.titulo", { vertical: t("consola.vertical.citas"), nombre: orgSlug }), resumenTo: `/citas/${orgSlug}/resumen` }}
       branchSelector={branchSelector("citas-sucursal-activa")}
       mobileSelector={branches.length > 1 ? branchSelector("citas-sucursal-activa-movil") : null}
       contentKey={propertyId}

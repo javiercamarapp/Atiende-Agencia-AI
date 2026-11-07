@@ -4,6 +4,7 @@
  */
 import type { ModulosTraducidos } from "../index.ts";
 import { comunEn } from "./comun.ts";
+import { consolaEn } from "./consola.ts";
 import { navEn } from "./nav.ts";
 import { rolEn } from "./rol.ts";
 import { shellEn } from "./shell.ts";
@@ -13,4 +14,5 @@ export const MODULOS_EN = {
   nav: navEn,
   shell: shellEn,
   rol: rolEn,
+  consola: consolaEn,
 } as const satisfies ModulosTraducidos;

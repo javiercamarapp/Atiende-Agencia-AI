@@ -61,6 +61,7 @@ import { PuertaOnboarding } from "./PuertaOnboarding.tsx";
 import { BannerAgregados } from "./components/operacion/BannerAgregados.tsx";
 import "@atiende/ui/i18n/nav";
 import "@atiende/ui/i18n/shell";
+import "@atiende/ui/i18n/consola";
 
 /** Adaptador de sesión de restaurantes. DEBE ser una constante de módulo (el hook lo usa como dependencia de sus efectos). */
 const RESTAURANTES_SESSION: VerticalSessionAdapter<BranchOption> = {
@@ -229,7 +230,7 @@ function buildMobileItems(t: Traductor, orgSlug: string): BottomNavItem[] {
 export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: RestaurantesShellProps) {
   // Título de pestaña por vertical/organización (ver use-document-title.ts). El hook va ANTES de los returns condicionales.
   const t = useT();
-  useDocumentTitle(t("shell.vertical.restaurantes"), orgSlug);
+  useDocumentTitle(t("consola.vertical.restaurantes"), orgSlug);
   // Ambito visual del repo suelto (UNI-R0b): tokens, botones en pildora y overlays; el sidebar conserva su paleta.
   useAmbitoVertical("restaurantes");
   const s = useVerticalSession({ adapter: RESTAURANTES_SESSION, apiBaseUrl, orgSlug, onRequireLogin });
@@ -237,8 +238,8 @@ export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
   if (s.fase === "resolviendo") return <VerticalShellEstado estado="cargando" mensaje={t("shell.cargando")} />;
   if (s.fase === "sin-sesion") return null; // onRequireLogin ya disparó la redirección
   if (s.fase === "error") return <VerticalShellEstado estado="error" mensaje={s.error ?? undefined} onReintentar={s.reintentar} />;
-  if (s.fase === "cargando") return <VerticalShellEstado estado="cargando" mensaje={t("shell.cargandoSucursales")} />;
-  if (s.fase === "vacio") return <VerticalShellEstado estado="vacio" mensaje={t("shell.vacio.sinSucursal")} />;
+  if (s.fase === "cargando") return <VerticalShellEstado estado="cargando" mensaje={t("consola.cargandoSucursales")} />;
+  if (s.fase === "vacio") return <VerticalShellEstado estado="vacio" mensaje={t("consola.vacio.sinSucursal")} />;
 
   const { session, branches, activeBranch, propertyId, role } = s;
 
@@ -268,7 +269,7 @@ export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
   // propio id y su propio <label for>, para que no haya ids duplicados y el select visible tenga nombre accesible
   // (QA-restaurantes-R1-botones-03).
   const sucursalSelector = (idSelect: string) => (
-    <SelectorSucursal id={idSelect} etiqueta={t("shell.selector.sucursal")} valor={propertyId} onCambia={s.selectBranch} opciones={branches.map((b) => ({ valor: b.propertyId, etiqueta: b.name }))} />
+    <SelectorSucursal id={idSelect} etiqueta={t("consola.selector.sucursal")} valor={propertyId} onCambia={s.selectBranch} opciones={branches.map((b) => ({ valor: b.propertyId, etiqueta: b.name }))} />
   );
 
   return (
@@ -285,7 +286,7 @@ export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
       user={{ email: session.email, rol: role, nombre: session.fullName, rolEtiqueta: etiquetaRol(role, t) }}
       onLogout={() => void s.logout()}
       loggingOut={s.loggingOut}
-      header={{ icon: <UtensilsCrossed className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: t("shell.titulo", { vertical: t("shell.vertical.restaurantes"), nombre: orgSlug }), resumenTo: `/restaurantes/${orgSlug}` }}
+      header={{ icon: <UtensilsCrossed className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: t("consola.titulo", { vertical: t("consola.vertical.restaurantes"), nombre: orgSlug }), resumenTo: `/restaurantes/${orgSlug}` }}
       branchSelector={sucursalSelector("restaurantes-sucursal-activa")}
       mobileSelector={branches.length > 1 ? sucursalSelector("restaurantes-sucursal-activa-movil") : null}
       contentKey={propertyId}

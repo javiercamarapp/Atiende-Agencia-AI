@@ -60,6 +60,7 @@ import { AltaPrimerCliente } from "./pages/Cartera.tsx";
 import { COPILOTO_DESPACHOS_ROLES } from "./pages/Copiloto.tsx";
 import "@atiende/ui/i18n/nav";
 import "@atiende/ui/i18n/shell";
+import "@atiende/ui/i18n/consola";
 
 /** Adaptador de sesión de despachos. DEBE ser una constante de módulo (el hook lo usa como dependencia de sus efectos). */
 const DESPACHOS_SESSION: VerticalSessionAdapter<BranchOption> = {
@@ -197,20 +198,20 @@ function buildMobileItems(t: Traductor, orgSlug: string): BottomNavItem[] {
 export function DespachosShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: DespachosShellProps) {
   // Título de pestaña por vertical/organización (ver use-document-title.ts). El hook va ANTES de los returns condicionales.
   const t = useT();
-  useDocumentTitle(t("shell.vertical.despachos"), orgSlug);
+  useDocumentTitle(t("consola.vertical.despachos"), orgSlug);
   const s = useVerticalSession({ adapter: DESPACHOS_SESSION, apiBaseUrl, orgSlug, onRequireLogin, defaultRole: "readonly" });
 
   if (s.fase === "resolviendo") return <VerticalShellEstado estado="cargando" mensaje={t("shell.cargando")} />;
   if (s.fase === "sin-sesion") return null; // onRequireLogin ya disparó la redirección
   if (s.fase === "error") return <VerticalShellEstado estado="error" mensaje={s.error ?? undefined} onReintentar={s.reintentar} />;
-  if (s.fase === "cargando") return <VerticalShellEstado estado="cargando" mensaje={t("shell.cargandoContribuyentes")} />;
+  if (s.fase === "cargando") return <VerticalShellEstado estado="cargando" mensaje={t("consola.cargandoContribuyentes")} />;
   if (s.fase === "vacio") {
     // Un despacho sin ningun cliente no tiene contribuyente activo: quien puede dar de alta (admin/contador) captura el primero aqui.
     const rolVacio = s.session?.organizations.find((o) => o.slug === orgSlug)?.rol;
     if (s.session && (rolVacio === "admin" || rolVacio === "contador")) {
       return <AltaPrimerCliente apiBaseUrl={apiBaseUrl} token={s.session.token} orgSlug={orgSlug} onCreado={s.reintentar} />;
     }
-    return <VerticalShellEstado estado="vacio" mensaje={t("shell.vacio.sinContribuyente")} />;
+    return <VerticalShellEstado estado="vacio" mensaje={t("consola.vacio.sinContribuyente")} />;
   }
 
   const { session, branches, activeBranch, propertyId, role } = s;
@@ -224,7 +225,7 @@ export function DespachosShell({ apiBaseUrl, orgSlug, onRequireLogin, children }
   // Selector real de CONTRIBUYENTE, visible solo cuando hay más de uno (con uno solo se muestra su nombre). Se ofrece
   // en el bloque de cuenta del Sidebar (escritorio) y en el MobileHeader, para no perder la función en viewport angosto.
   const contribuyenteSelector = (idSelect: string) =>
-    <SelectorSucursal id={idSelect} etiqueta={t("shell.selector.contribuyente")} valor={propertyId} onCambia={s.selectBranch} opciones={branches.map((b) => ({ valor: b.propertyId, etiqueta: b.name }))} />;
+    <SelectorSucursal id={idSelect} etiqueta={t("consola.selector.contribuyente")} valor={propertyId} onCambia={s.selectBranch} opciones={branches.map((b) => ({ valor: b.propertyId, etiqueta: b.name }))} />;
 
   return (
     <VerticalShellConectado
@@ -240,7 +241,7 @@ export function DespachosShell({ apiBaseUrl, orgSlug, onRequireLogin, children }
       user={{ email: session.email, rol: role, nombre: session.fullName, rolEtiqueta: etiquetaRol(role, t) }}
       onLogout={() => void s.logout()}
       loggingOut={s.loggingOut}
-      header={{ icon: <Briefcase className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: t("shell.titulo", { vertical: t("shell.vertical.despachos"), nombre: activeBranch.name }), resumenTo: `/despachos/${orgSlug}/dashboard` }}
+      header={{ icon: <Briefcase className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: t("consola.titulo", { vertical: t("consola.vertical.despachos"), nombre: activeBranch.name }), resumenTo: `/despachos/${orgSlug}/dashboard` }}
       branchSelector={contribuyenteSelector("despachos-contribuyente-activo")}
       mobileSelector={contribuyenteSelector("despachos-contribuyente-activo-movil")}
       contentKey={propertyId}
