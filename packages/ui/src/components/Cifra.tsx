@@ -38,8 +38,10 @@ export interface CifraTextoProps extends ComunesCifra {
 /** Valor numerico tal como se ve (el cuerpo de la cifra, ya compactado) y sus decimales: lo que el conteo recorre. */
 function cuerpoNumerico(p: PartesCifra): { n: number; dec: number } | null {
   if (p.valor === null) return null;
-  const n = Number(`${p.entero.replace(/,/g, "")}${p.decimales}`);
-  if (!Number.isFinite(n)) return null;
+  const abs = Number(`${p.entero.replace(/,/g, "")}${p.decimales}`);
+  if (!Number.isFinite(abs)) return null;
+  // Con signo: asi se detecta una transicion que cruza el cero (no se cuenta).
+  const n = p.signo === "-" || p.signo === "−" ? -abs : abs;
   return { n, dec: p.decimales ? p.decimales.length - 1 : 0 };
 }
 
@@ -76,10 +78,20 @@ function useConteo(raiz: React.RefObject<HTMLElement>, entero: React.RefObject<H
       mostrado.current = objetivo;
       return;
     }
+    // Cruzar el cero contaria numeros negativos con el signo final pintado: sin conteo en ese caso.
+    if (Math.sign(desde) !== Math.sign(objetivo) && desde !== 0) {
+      mostrado.current = objetivo;
+      return;
+    }
     const finalEntero = entero.current?.firstChild?.nodeValue ?? "";
     const finalDec = decimales.current?.firstChild?.nodeValue ?? "";
-    // Reserva el ancho de la cifra final mientras cuenta: el texto intermedio nunca empuja el layout.
-    const ancho = el.getBoundingClientRect().width;
+    // Reserva el MAYOR ancho entre la cifra de partida y la final (el conteo es monotono, los extremos son los mas anchos):
+    // el texto intermedio nunca empuja el layout, ni al subir ni al bajar de magnitud.
+    const anchoFinal = el.getBoundingClientRect().width;
+    const inicial = reescribirNumero(Math.abs(desde), dec);
+    escribir(entero.current, inicial.entero);
+    escribir(decimales.current, inicial.decimales);
+    const ancho = Math.max(anchoFinal, el.getBoundingClientRect().width);
     if (ancho > 0) el.style.minWidth = `${ancho}px`;
     const inicio = performance.now();
     let raf = 0;
@@ -108,7 +120,7 @@ function useConteo(raiz: React.RefObject<HTMLElement>, entero: React.RefObject<H
   }, [objetivo, dec]);
 }
 
-function Piezas({ partes, vacia, tamano, animar = true, as = "span", className, titulo, motivo, ...resto }: ComunesCifra & { partes: PartesCifra; vacia: boolean; titulo?: string; motivo?: string }) {
+function Piezas({ partes, vacia, tamano, animar = true, as = "span", className, titulo, motivo, abrev, ...resto }: ComunesCifra & { partes: PartesCifra; vacia: boolean; titulo?: string; motivo?: string; abrev?: string }) {
   const raiz = useRef<HTMLElement>(null);
   const entero = useRef<HTMLSpanElement>(null);
   const decimales = useRef<HTMLSpanElement>(null);
@@ -119,6 +131,7 @@ function Piezas({ partes, vacia, tamano, animar = true, as = "span", className, 
       ref={raiz}
       className={cn("cifra", vacia && "cifra-vacia", className)}
       data-tamano={tamano}
+      data-abrev={abrev}
       data-testid={resto["data-testid"]}
       title={titulo}
     >
@@ -154,5 +167,21 @@ export function Cifra({ valor, variante, moneda, decimales, locale, conSigno, co
 export function CifraTexto({ texto, ...comunes }: CifraTextoProps) {
   const p = partirTextoCifra(texto);
   const partes: PartesCifra = p ?? { signo: "", simbolo: "", entero: texto, decimales: "", sufijo: "", texto, completo: texto, valor: null };
-  return <Piezas partes={partes} vacia={texto.trim() === "—"} {...comunes} animar={p ? comunes.animar : false} />;
+  const abrev = p ? abreviatura(p) : undefined;
+  return <Piezas partes={partes} vacia={texto.trim() === "—"} abrev={abrev} titulo={abrev ? partes.texto : undefined} {...comunes} animar={p ? comunes.animar : false} />;
+}
+
+/** Desde cuantos caracteres una cifra protagonista se abrevia en movil (Rovaq `data-abrev`): «$12,345,678.90» -> «$12.3 M». */
+export const CIFRA_ABREVIAR_DESDE = 11;
+
+/**
+ * Forma compacta para pantallas angostas (nunca se corta un numero con «…», que se leeria como otra cantidad). Solo montos en
+ * pesos/dolares o conteos de 10 000 o mas, sin sufijo. cifra.css la muestra con `content: attr(data-abrev) / ""` bajo ds3 en movil;
+ * el texto completo sigue en el DOM (lector de pantalla) y en el titulo.
+ */
+export function abreviatura(p: PartesCifra): string | undefined {
+  if (p.valor === null || p.texto.length < CIFRA_ABREVIAR_DESDE || p.sufijo || Math.abs(p.valor) < 10_000) return undefined;
+  if (p.simbolo && p.simbolo !== "$" && p.simbolo !== "US$") return undefined;
+  const moneda = p.simbolo === "US$" ? "USD" : p.simbolo === "$" ? "MXN" : undefined;
+  return partesCifra(p.valor, { variante: "compacto", moneda }).texto;
 }

@@ -22,12 +22,10 @@ html[data-diseno="ds3"] { --cifra-conteo: 1; }
 }
 
 /* Sans proporcional de la casa (Hanken Grotesk) con cifras tabulares solo dentro de la cifra (alinea KPI y evita que el conteo
-   baile); nunca mono ni tracking abierto. inline-block para la entrada fade-rise y para recortar con elipsis como el contenedor. */
+   baile); nunca mono ni tracking abierto. inline-block para la entrada fade-rise. Una cifra NUNCA se corta con «…» (se leeria
+   como otra cantidad): el KPI ajusta la letra al ancho de su tarjeta y en movil se abrevia (data-abrev, mas abajo). */
 html[data-diseno="ds3"] .cifra {
   display: inline-block;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
   vertical-align: bottom;
   font-family: var(--font-sans);
@@ -161,15 +159,23 @@ html[data-diseno="ds3"] .ds3-resumen [data-parte="kpis"] :is(.ds3-stat-label, .d
   background-color: hsl(var(--kpi-color));
 }
 
-/* Valor KPI de Rovaq en toda tarjeta ds3: 26/700, tracking -0.52 px (movil: 18-21 px, una linea). */
+/* Valor KPI de Rovaq en toda tarjeta ds3: 26/700, tracking -0.52 px; baja con el ancho de la tarjeta (container query) en vez de
+   cortarse con «…» (movil: tope 21 px, una linea). */
+html[data-diseno="ds3"] .ds3-stat { container-type: inline-size; }
 html[data-diseno="ds3"] :is(.ds3-stat-valor, .ds3-kpi-valor) {
-  font-size: 26px;
-  line-height: 28.6px;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: nowrap;
+  font-size: min(26px, 10cqi);
+  line-height: 1.1;
   font-weight: 700;
   letter-spacing: -0.52px;
 }
 @media (max-width: 639.98px) {
-  html[data-diseno="ds3"] :is(.ds3-stat-valor, .ds3-kpi-valor) { font-size: clamp(18px, 5.2vw, 21px); line-height: 1.15; }
+  html[data-diseno="ds3"] :is(.ds3-stat-valor, .ds3-kpi-valor) { font-size: min(21px, 11cqi); line-height: 1.15; }
+  /* Rovaq movil-contenido.css: la cifra larga se ve abreviada; el texto completo queda en el DOM (lector) y en el titulo. */
+  html[data-diseno="ds3"] .cifra[data-abrev] > span { font-size: 0 !important; }
+  html[data-diseno="ds3"] .cifra[data-abrev]::after { content: attr(data-abrev); content: attr(data-abrev) / ""; }
 }
 
 /* Sello de clase «● Observado · fuente · cuando» (Rovaq KindBadge), solo cuando la pagina lo trae. */
