@@ -101,6 +101,42 @@ describe("RestaurantesPrimerosPasosPage", () => {
     expect(enlaces).not.toContain("/restaurantes/demo/productos");
   });
 
+  it("con la bandera ds3: patrón /setup de Rovaq (quién lo cierra, en espera, avance propio, recomendado) y «Hacer el recorrido»", async () => {
+    document.documentElement.setAttribute("data-diseno", "ds3");
+    try {
+      fetchMock.mockResolvedValue(json(CHECKLIST));
+      rendered = renderComponent(
+        <MemoryRouter>
+          <RestaurantesPrimerosPasosPage {...CTX} />
+        </MemoryRouter>,
+      );
+      await esperar();
+      const t = rendered.container.textContent ?? "";
+      expect(t).toContain("Listo para operar");
+      expect(t).toContain("Quién lo cierra: Dueño");
+      expect(t).toContain("Quién lo cierra: Meta (WhatsApp Business)");
+      expect(t).toContain("En espera");
+      expect(t).toContain("0 de 2 que puedes hacer ahora");
+      expect(t).toContain("1 en espera");
+      expect(rendered.container.querySelector('[data-guia-paso="coordenadas"]')?.hasAttribute("data-siguiente")).toBe(true);
+      expect(Array.from(rendered.container.querySelectorAll("button")).some((b) => b.textContent === "Hacer el recorrido")).toBe(true);
+    } finally {
+      document.documentElement.removeAttribute("data-diseno");
+    }
+  });
+
+  it("sin la bandera ds3: la lista de siempre y sin «Hacer el recorrido» (la guía no existe sin ds3)", async () => {
+    fetchMock.mockResolvedValue(json(CHECKLIST));
+    rendered = renderComponent(
+      <MemoryRouter>
+        <RestaurantesPrimerosPasosPage {...CTX} />
+      </MemoryRouter>,
+    );
+    await esperar();
+    expect(rendered.container.querySelector(".guia-pp")).toBeNull();
+    expect(rendered.container.textContent).not.toContain("Hacer el recorrido");
+  });
+
   it("bloqueado: avisa los obligatorios pendientes", async () => {
     fetchMock.mockResolvedValue(json({ ...CHECKLIST, listoParaOperar: false, resumen: { hechos: 1, total: 4, obligatoriosPendientes: 2 } }));
     rendered = renderComponent(
