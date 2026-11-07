@@ -4,7 +4,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { invokeAgentTool } from "../src/agent-tools/registry.ts";
 import { resetOrderFlowWarningForTests } from "../src/agent-tools/order-flow.ts";
 import { CIERRE_MAQUINA_ENV } from "../src/agent-tools/cierre-maquina.ts";
-import { adaptarPromptPmV2 } from "../src/whatsapp/cerebro-v2/prompt-v2.ts";
+import { PM_POLICY_RULES_V2, adaptarPromptPmV2 } from "../src/whatsapp/cerebro-v2/prompt-v2.ts";
+import { quitarAlgoMasRepetido } from "../src/whatsapp/cerebro-v2/texto-final.ts";
+import { PM_PROMOS_POR_OMISION } from "../src/whatsapp/perfil-pm.ts";
 import { PM_CONFIG_POR_OMISION, buildSystemPrompt } from "../src/whatsapp/llm-turn-handler.ts";
 import { buildRestaurantFixture } from "./fixtures.ts";
 
@@ -47,5 +49,34 @@ describe("propina con cerebro v2: nunca se agrega", () => {
     expect(base).toMatch(/terminal \(con tarjeta\)|en la terminal \(tarjeta\)/);
     const v2 = adaptarPromptPmV2(base);
     expect(v2).not.toMatch(/se da en la terminal|en la terminal \(tarjeta\)/);
+  });
+});
+
+// Conflictos base vs v2 (defaults del dueño, 7-nov): «¿algo más?» UNA vez por pedido, justo antes del resumen (en el mismo mensaje); promociones con UNA sola fuente (las políticas v2).
+describe("«¿algo más?» una sola vez por pedido y promociones de una sola fuente (cerebro v2)", () => {
+  const base = () => buildSystemPrompt(PM_CONFIG_POR_OMISION, [], { isNew: true }, new Date());
+  it("la regla v2 de cierre ya no prohíbe el «¿algo más?» del resumen: lo limita a una vez por pedido", () => {
+    expect(PM_POLICY_RULES_V2).not.toContain("no pregunte «¿desea agregar algo más?»");
+    expect(PM_POLICY_RULES_V2).toMatch(/«¿algo más\?» UNA sola vez por pedido/);
+  });
+  it("el prompt v2 no vuelve a pedir «¿algo más?» al cerrar un cambio de un pedido ya creado", () => {
+    expect(base()).toContain('al terminar pregunte "¿algo más?" antes de cerrar');
+    expect(adaptarPromptPmV2(base())).not.toContain('al terminar pregunte "¿algo más?" antes de cerrar');
+  });
+  it("promociones: sin la orden de ofrecerlas (v2 manda no ofrecerlas por iniciativa propia) y sin la lista repetida", () => {
+    const v2 = adaptarPromptPmV2(base());
+    expect(v2).not.toContain("ofrézcalas UNA sola vez");
+    expect(v2.split(PM_PROMOS_POR_OMISION).length - 1).toBe(1);
+  });
+  it("quitarAlgoMasRepetido: si ya se preguntó en este pedido, el servidor quita la segunda pregunta", () => {
+    const hist = [
+      { role: "user" as const, content: "dos cocas" },
+      { role: "assistant" as const, content: "Resumen... Total $90. ¿Es correcto o desea agregar algo más?" },
+      { role: "user" as const, content: "con tarjeta" },
+    ];
+    expect(quitarAlgoMasRepetido("Perfecto, con tarjeta. ¿Desea agregar algo más?", hist)).toBe("Perfecto, con tarjeta.");
+    expect(quitarAlgoMasRepetido("Perfecto. ¿Desea agregar algo más?", hist.slice(0, 1))).toBe("Perfecto. ¿Desea agregar algo más?");
+    const trasCrear = [...hist, { role: "assistant" as const, content: "Su pedido ya quedó registrado." }, { role: "user" as const, content: "quiero otro pedido" }];
+    expect(quitarAlgoMasRepetido("Claro. ¿Algo más?", trasCrear)).toBe("Claro. ¿Algo más?");
   });
 });
