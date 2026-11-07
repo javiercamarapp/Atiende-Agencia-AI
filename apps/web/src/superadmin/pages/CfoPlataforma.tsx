@@ -498,12 +498,14 @@ export function SuperAdminCfoPlataformaPage({ apiBaseUrl, token }: { readonly ap
     return out;
   }, []);
 
-  async function exportarCsv() {
+  async function exportar(tipo: "csv" | "xlsx" | "pdf") {
     setExportando(true);
+    const ruta = tipo === "pdf" ? "informe.pdf" : `export.${tipo}`;
+    const nombre = tipo === "csv" ? `cfo-economia-clientes-${mes}.csv` : tipo === "xlsx" ? `cfo-plataforma-${mes}.xlsx` : `resumen-inversionistas-${mes}.pdf`;
     try {
-      await descargar(apiBaseUrl, token, `/superadmin/cfo/cockpit/export.csv?mes=${encodeURIComponent(mes)}`, `cfo-economia-clientes-${mes}.csv`);
+      await descargar(apiBaseUrl, token, `/superadmin/cfo/cockpit/${ruta}?mes=${encodeURIComponent(mes)}`, nombre);
     } catch {
-      notify.error("No se pudo exportar el CSV.");
+      notify.error("No se pudo descargar el archivo.");
     } finally {
       setExportando(false);
     }
@@ -518,8 +520,14 @@ export function SuperAdminCfoPlataformaPage({ apiBaseUrl, token }: { readonly ap
           </option>
         ))}
       </NativeSelect>
-      <Button size="sm" variant="outline" onClick={() => void exportarCsv()} disabled={exportando}>
+      <Button size="sm" variant="outline" onClick={() => void exportar("csv")} disabled={exportando}>
         <Download className="size-4" /> CSV
+      </Button>
+      <Button size="sm" variant="outline" onClick={() => void exportar("xlsx")} disabled={exportando}>
+        <Download className="size-4" /> Excel
+      </Button>
+      <Button size="sm" variant="outline" onClick={() => void exportar("pdf")} disabled={exportando}>
+        <Download className="size-4" /> Resumen para inversionistas (PDF)
       </Button>
     </div>
   );
