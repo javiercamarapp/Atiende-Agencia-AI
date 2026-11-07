@@ -57,6 +57,19 @@ describe("armarInstruccionLlamada: perfil de PM por omision", () => {
 describe("armarInstruccionLlamada: comportamiento editado por el dueno", () => {
   const EDITADA: VozConfig = { ...CONFIG_VACIA, comportamiento: "  Hable siempre de usted y sea breve.  ", mensajeInicial: " Hola, le atiende el asistente virtual. " };
 
+  it("dieta del prompt: las reglas vivas por tema viajan aparte (reglasCondicionales) y no dentro de la instruccion", async () => {
+    const r = await armarInstruccionLlamada(repoConSucursales(), { organizationId: ORG, propertyId: PROP, telefono: null, config: EDITADA, ahora: AHORA });
+    const ids = r.reglasCondicionales.map((x) => x.id);
+    for (const id of ["kilos", "ordenes_2_5", "combo_martes", "estado_rellamada"]) expect(ids).toContain(id);
+    expect(r.instruccion).not.toContain("KILOS Y FRACCIONES");
+    expect(r.instruccion).toContain("TRAS EL «SÍ»");
+  });
+
+  it("sin comportamiento editado (perfil por omision, sin reglas vivas en la instruccion) no hay reglas condicionales que mandar", async () => {
+    const r = await armarInstruccionLlamada(repoConSucursales(), { organizationId: ORG, propertyId: PROP, telefono: null, config: CONFIG_VACIA, ahora: AHORA });
+    expect(r.reglasCondicionales).toEqual([]);
+  });
+
   it("el texto del dueno manda como base y se le anexa el contexto de la llamada y el primer mensaje", async () => {
     const r = await armarInstruccionLlamada(repoConSucursales(), { organizationId: ORG, propertyId: PROP, telefono: null, config: EDITADA, ahora: AHORA });
     expect(r.instruccion.startsWith("Hable siempre de usted y sea breve.")).toBe(true);
