@@ -325,6 +325,9 @@ export const MODELOS_CON_ZDR_VERIFICADO: ReadonlySet<string> = new Set([
 
 /** Escalera v2 del agente de WhatsApp de restaurantes: Luna -> Haiku 5.5, ambas con ZDR. */
 export const CEREBRO_V2_WHATSAPP_ROUTE: LlmRouteConfig = { models: [LUNA_LOW, HAIKU_55], routing: { allowFallbacks: true, zdr: true } };
+/** Escalado v2 (decision del 6-nov, BARRIDO-MODELOS-NOV: en la prueba de recuperacion tras fallo forzado de crear_pedido Luna recupero 14/20 pedidos y
+ *  gpt-6.1-terra 0/20): Luna -> Haiku 5.5, sin Terra. */
+export const CEREBRO_V2_ESCALADO_ROUTE: LlmRouteConfig = { models: [LUNA_LOW, HAIKU_55], routing: { allowFallbacks: true, zdr: true } };
 /** Alternativas ZDR elegibles por `preferredModel` dentro del cerebro v2 (el rapido de voz y Haiku de primario). */
 export const CEREBRO_V2_ALTERNATIVAS: readonly LlmRungConfig[] = [FLASH_LITE_35, HAIKU_55, LUNA_LOW];
 

@@ -1,7 +1,7 @@
 // Cerebro v2 (bandera por organizacion, migracion 190): modelos Luna -> Haiku 5.5 y retencion cero (ZDR) en cada escalon.
 import { describe, expect, it } from "vitest";
 import { MODELOS_AGENTE, MODELO_PRINCIPAL_CEREBRO_V2_ID, MODELO_RESPALDO_CEREBRO_V2_ID, MODELO_VOZ_RAPIDO_CEREBRO_V2_ID, modeloAlternoParaTope } from "@atiende/domain-restaurantes";
-import { CEREBRO_V2_ALTERNATIVAS, CEREBRO_V2_WHATSAPP_ROUTE, DEFAULT_ROUTE, MODELOS_CON_ZDR_VERIFICADO, routingForModel, rutaZdrCerebroV2 } from "../src/production/llm-models.ts";
+import { CEREBRO_V2_ALTERNATIVAS, CEREBRO_V2_ESCALADO_ROUTE, CEREBRO_V2_WHATSAPP_ROUTE, DEFAULT_ROUTE, MODELOS_CON_ZDR_VERIFICADO, routingForModel, rutaZdrCerebroV2 } from "../src/production/llm-models.ts";
 
 describe("cerebro v2: modelos y ZDR", () => {
   it("la escalera v2 del agente es Luna -> Haiku 5.5 y cada escalon sale con provider.zdr=true y proveedores de EE.UU.", () => {
@@ -25,6 +25,11 @@ describe("cerebro v2: modelos y ZDR", () => {
       expect(MODELOS_CON_ZDR_VERIFICADO.has(m)).toBe(true);
       expect(routingForModel(v2, m, false).zdr).toBe(true);
     }
+  });
+
+  it("el escalado v2 es Luna -> Haiku 5.5 con ZDR (sin Terra)", () => {
+    expect(CEREBRO_V2_ESCALADO_ROUTE.models.map((m) => m.model)).toEqual([MODELO_PRINCIPAL_CEREBRO_V2_ID, MODELO_RESPALDO_CEREBRO_V2_ID]);
+    for (const rung of CEREBRO_V2_ESCALADO_ROUTE.models) expect(routingForModel(CEREBRO_V2_ESCALADO_ROUTE, rung.model, false).zdr).toBe(true);
   });
 
   it("las alternativas v2 (rapido de voz, Haiku, Luna) tienen ZDR verificado", () => {
