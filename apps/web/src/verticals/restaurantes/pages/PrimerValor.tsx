@@ -48,7 +48,7 @@ export function RestaurantesPrimerValorPage({ apiBaseUrl, token, propertyId, org
       <h1 className="sr-only">Tu restaurante listo en 30 minutos</h1>
       <div className="flex justify-end">
         <Button type="button" variant="outline" size="sm" onClick={cargar} disabled={estado === "cargando"}>
-          <RefreshCw className={estado === "cargando" ? "animate-spin" : undefined} />
+          <RefreshCw />
           Actualizar
         </Button>
       </div>
