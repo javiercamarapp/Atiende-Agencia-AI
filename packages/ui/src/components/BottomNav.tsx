@@ -69,6 +69,9 @@ export function useTecladoAbierto(): void {
   }, []);
 }
 
+/** Evento que abre la hoja «Más» desde fuera de la barra (boton «Más» de la cabecera movil ds3). */
+export const MAS_ABRIR_EVENTO = "atiende:mas:abrir";
+
 /** Maximo de destinos curados de la barra; el 5.o lugar es "Mas" (spec UNI-1 §5.2). */
 export const BOTTOM_NAV_MAX_DESTINOS = 4;
 
@@ -91,6 +94,11 @@ const claseTituloGrupo = "mb-1.5 px-2.5 py-1 font-mono text-2xs uppercase tracki
 export function BottomNav({ items, moreSections, pie, cuenta }: BottomNavProps) {
   const [masAbierto, setMasAbierto] = useState(false);
   useTecladoAbierto();
+  useEffect(() => {
+    const abrir = () => setMasAbierto(true);
+    window.addEventListener(MAS_ABRIR_EVENTO, abrir);
+    return () => window.removeEventListener(MAS_ABRIR_EVENTO, abrir);
+  }, []);
   const { pathname } = useLocation();
   const destinos = items.slice(0, BOTTOM_NAV_MAX_DESTINOS);
   const hayMas = Boolean(moreSections && moreSections.length > 0);

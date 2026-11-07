@@ -582,6 +582,20 @@ html[data-diseno="ds3"] [data-carga-tamano="pantalla"] .carga-logo { visibility:
     background-color: hsl(var(--card));
     color: hsl(var(--foreground));
   }
+  /* «Más» de 44 (borde, radio 12) a la derecha de la cabecera. */
+  html[data-diseno="ds3"] .ds3-movil-mas.ds3-solo[hidden] {
+    position: relative;
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    color: hsl(var(--foreground));
+  }
+  html[data-diseno="ds3"] .ds3-movil-mas.ds3-solo[hidden] { border: 1px solid hsl(var(--border)); background-color: hsl(var(--card)); }
+  html[data-diseno="ds3"] .ds3-movil-mas svg { width: 20px; height: 20px; }
   html[data-diseno="ds3"] .ds3-shell-contenido.ds3-shell-contenido {
     padding: calc(56px + var(--safe-area-top, 0px) + 16px) 16px calc(64px + max(10px, env(safe-area-inset-bottom)) + 24px);
   }

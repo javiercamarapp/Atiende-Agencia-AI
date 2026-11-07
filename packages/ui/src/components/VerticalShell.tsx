@@ -13,9 +13,9 @@
 import * as React from "react";
 import { flushSync } from "react-dom";
 import { Link, useLocation } from "react-router-dom";
-import { CircleHelp, Compass, ShieldCheck } from "lucide-react";
+import { CircleHelp, Compass, Ellipsis, ShieldCheck } from "lucide-react";
 import { AtiendeWordmark } from "./AtiendeLogo";
-import { BottomNav, MobileHeader, type BottomNavItem } from "./BottomNav";
+import { BottomNav, MAS_ABRIR_EVENTO, MobileHeader, type BottomNavItem } from "./BottomNav";
 import { BarraPagina } from "./BarraPagina";
 import { EstadoCargando } from "./EstadoCargando";
 import { EstadoError } from "./EstadoError";
@@ -353,7 +353,22 @@ export function VerticalShell({
         action={
           <div className="flex items-center gap-1 min-w-0">
             {mobileSelector ? <div className="min-w-0 max-w-[48vw]">{mobileSelector}</div> : null}
-            <MobileAccountMenu user={user} onLogout={onLogout} loggingOut={loggingOut} />
+            {/* ds3: «Más» de 44 en la cabecera abre la hoja con el sidebar completo (cuenta, tema y salir incluidos); el menu de cuenta del
+                diseno actual se oculta. Sin campana: regla vigente del dueno «el encabezado movil va sin campana ni chat»
+                (test-utils/menu-cuenta-movil.ts); las notificaciones con su contador viven en «Más». */}
+            <button
+              type="button"
+              hidden
+              aria-label="Abrir más secciones"
+              aria-haspopup="dialog"
+              onClick={() => window.dispatchEvent(new Event(MAS_ABRIR_EVENTO))}
+              className="ds3-solo ds3-movil-mas"
+            >
+              <Ellipsis aria-hidden="true" strokeWidth={1.75} />
+            </button>
+            <span className="ds3-no contents">
+              <MobileAccountMenu user={user} onLogout={onLogout} loggingOut={loggingOut} />
+            </span>
           </div>
         }
       />
