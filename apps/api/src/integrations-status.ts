@@ -332,6 +332,9 @@ export const OPERATIONAL_ENV_VARS: readonly string[] = [
   "META_APP_ID",
   "WHATSAPP_WABA_IDS",
   "WHATSAPP_ES_CONFIG_ID",
+  // Alta autoservicio: Embedded Signup por sucursal (usuario de sistema de la plataforma + interruptor). Opcionales.
+  "WHATSAPP_SYSTEM_USER_ID",
+  "WHATSAPP_EMBEDDED_SIGNUP",
   // MFA del superadmin (ver docs/CREDENCIALES.md): ambas son opcionales y nunca
   // bloquean el arranque.
   "SUPERADMIN_MFA_REQUIRED",

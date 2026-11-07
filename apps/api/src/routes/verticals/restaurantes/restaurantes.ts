@@ -30,6 +30,7 @@ import { restaurantesRepartidorLicenciasInternoRoutes } from "./repartidor-licen
 import { restaurantesAuditoriaRoutes } from "./auditoria.ts";
 import { restaurantesAdminConfigRoutes } from "./admin-config.ts";
 import { restaurantesAdminModeloPmRoutes } from "./admin-modelo-pm.ts";
+import { restaurantesWhatsappEmbeddedSignupRoutes } from "./whatsapp-embedded-signup.ts";
 import { restaurantesAdminConocimientoRoutes } from "./admin-conocimiento.ts";
 import { restaurantesAdminOnboardingRoutes } from "./admin-onboarding.ts";
 import { restaurantesResumenConfigRoutes } from "./resumen-config.ts";
@@ -102,6 +103,7 @@ export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", restaurantesAdminConfigRoutes(deps));
   // Modelo PM (migración 023) — política/cobertura/WhatsApp por sucursal y marcas no_domicilio.
   app.route("/", restaurantesAdminModeloPmRoutes(deps));
+  app.route("/", restaurantesWhatsappEmbeddedSignupRoutes(deps));
   app.route("/", restaurantesAdminConocimientoRoutes(deps));
   // R-33: checklist de onboarding calculado con datos reales (solo lectura, owner/admin).
   app.route("/", restaurantesAdminOnboardingRoutes(deps));
