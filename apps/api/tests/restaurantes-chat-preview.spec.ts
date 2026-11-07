@@ -7,7 +7,8 @@ import type { LlmCompletionRequest, LlmCompletionResult } from "@atiende/agent-c
 import { createLlmWhatsAppTurnHandler } from "@atiende/domain-restaurantes";
 import { buildApp } from "../src/app.ts";
 import type { AppDeps } from "../src/deps.ts";
-import { authedJson, buildRestaurantesKpiTestContext } from "./restaurantes-admin-kpis-fixtures.ts";
+import { InMemoryTenancyEngine } from "@atiende/db";
+import { authedGet, authedJson, buildRestaurantesKpiTestContext } from "./restaurantes-admin-kpis-fixtures.ts";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Resp = Omit<Response, "json"> & { json(): Promise<any> };
@@ -82,6 +83,29 @@ describe("POST .../admin/agente-whatsapp/preview/mensaje", () => {
     expect(espiaConversacion).not.toHaveBeenCalled();
     expect(espiaLedger).not.toHaveBeenCalled();
     expect(espiaCallback).not.toHaveBeenCalled();
+  });
+
+  it("onboarding: cuando la prueba llega al pedido simulado queda el hito verificable y el checklist marca «Probar el agente» como hecho", async () => {
+    const t = await construir();
+    const owner = t.ctx.staff.owner.token;
+    const engine = t.ctx.deps.engine as InMemoryTenancyEngine;
+    const checklist = async () =>
+      ((await (await t.app.request(`/v1/restaurantes/${t.ctx.propertyIdA}/admin/onboarding`, authedGet(owner))).json()) as { items: { id: string; estado: string; obligatorio: boolean }[] }).items.find((i) => i.id === "prueba_agente");
+
+    expect(await checklist()).toMatchObject({ estado: "pendiente", obligatorio: false });
+    // Un mensaje que no llega a pedido no registra nada.
+    const r1 = await t.enviar(owner, [usuario("cotiza dos cocas")]);
+    expect(r1.status).toBe(200);
+    expect(engine.onboardingEventos.size).toBe(0);
+
+    const h1 = [usuario("cotiza dos cocas")];
+    const h2 = [...h1, agente((await r1.json()).respuesta), usuario("confirmo")];
+    const r2 = await t.enviar(owner, h2);
+    const h3 = [...h2, agente((await r2.json()).respuesta), usuario("crea el pedido")];
+    const r3 = await (await t.enviar(owner, h3)).json();
+    expect(r3.pedidoSimulado.id.startsWith("PRUEBA-")).toBe(true);
+    expect([...engine.onboardingEventos]).toEqual([`${t.ctx.organizationId}:restaurantes:prueba_agente_whatsapp:${t.ctx.propertyIdA}`]);
+    expect(await checklist()).toMatchObject({ estado: "hecho" });
   });
 
   it("sin proveedor LLM responde 503 honesto 'requiere OPENROUTER_API_KEY' (nunca una respuesta inventada)", async () => {
