@@ -452,6 +452,11 @@ export const MAX_PASADAS_RAFAGA = 3;
  * mensajes del telefono se absorben sin respuesta. 45 s cubre la vida maxima de la funcion (30 s) y, si el dueno muere, se libera pronto: el siguiente mensaje
  * del cliente toma el turno y contesta TODO lo pendiente (el historial ya tiene los mensajes absorbidos). Tope del SQL: 300. */
 export const LEASE_RAFAGA_SEGUNDOS = 45;
+/** Lease del turno ASINCRONO (cerebro v2 / `WHATSAPP_TURNO_ASINCRONO`): la fase B corre despues del 200 a Meta con la vida extendida de la funcion
+ * (`FUNCION_ASINCRONA_MAX_MS`, 60 s), asi que el turno debe seguir tomado mientras la funcion pueda estar viva (si no, un mensaje nuevo lo tomaria y se
+ * contestaria dos veces). 90 s = 60 de funcion + holgura; si la funcion muere, el barredor de turnos huerfanos lo retoma pasado este lease. El lease del
+ * MENSAJE (claim_whatsapp_message, 'processing' reclamable a los 5 min) ya cubre los 60 s. */
+export const LEASE_TURNO_ASINCRONO_SEGUNDOS = 90;
 /** Una toma de handoff `pendiente` que nadie atiende: el agente calla (R-21), pero el cliente no puede quedarse horas sin NINGUNA respuesta. PM Ronda 12 (Q2): el
  * primer mensaje nuevo del cliente (pasado `ACUSE_PENDIENTE_ESPERA_MIN`) recibe UN acuse breve y fijo; despues el agente sigue callando y el acuse no se repite hasta
  * `ACUSE_PENDIENTE_REPETIR_MIN` (maximo uno por toma pendiente cada 15 min). El tiempo y la unicidad los decide la base (migracion 045, que acota la espera a >= 1 min:
@@ -642,8 +647,13 @@ export function abreTomaDeHandoff(motivo: string, mensajes: readonly Conversatio
   return !delCliente.slice(idx + 1).some((m) => retractaPeticionDePersona(m.content));
 }
 
-/** Vida maxima de la funcion del webhook (`maxDuration` de vercel.json). */
+/** Vida del camino SINCRONO del webhook: el turno corre dentro de la peticion de Meta y se dimensiona como siempre (30 s), aunque `maxDuration` de
+ * vercel.json ya sea 60 para el modo asincrono. Las organizaciones sin cerebro v2 conservan exactamente estos tiempos. */
 export const FUNCION_MAX_MS = 30_000;
+/** Vida de la funcion en el modo ASINCRONO (`maxDuration` 60 de vercel.json, plan Pro): la fase B corre tras el 200 a Meta (`waitUntil`) o, sin contexto de
+ * Vercel (local / arnes de medicion), de forma sincrona pero con este mismo presupuesto. El objetivo de latencia para el cliente sigue siendo p95 <= 18 s: el
+ * margen extra es para no matar el turno lento, no para alargarlo. */
+export const FUNCION_ASINCRONA_MAX_MS = 60_000;
 /** Tiempo que se le deja a la fase B (hasta 3 turnos del agente + envio) DESPUES de esperar. */
 export const RESERVA_FASE_B_MS = 15_000;
 
@@ -727,7 +737,16 @@ export function analizarHistorial(
 
 export async function recibirMensajeConEspera(
   repo: RestaurantesRepository,
-  args: { readonly organizationId: string; readonly messageId: string; readonly phone: string; readonly body: string; readonly transcripcion?: TranscripcionDeEntrada; readonly botonId?: string },
+  args: {
+    readonly organizationId: string;
+    readonly messageId: string;
+    readonly phone: string;
+    readonly body: string;
+    readonly transcripcion?: TranscripcionDeEntrada;
+    readonly botonId?: string;
+    /** Vigencia del turno de responder; por omision `LEASE_RAFAGA_SEGUNDOS`. El modo asincrono pasa `LEASE_TURNO_ASINCRONO_SEGUNDOS`. */
+    readonly leaseSegundos?: number;
+  },
 ): Promise<RecepcionConEspera> {
   const { organizationId, messageId, phone } = args;
   const phoneHash = actorHash(phone);
@@ -737,7 +756,7 @@ export async function recibirMensajeConEspera(
     return await repo.runWithRowSavepoint(async (): Promise<RecepcionConEspera> => {
       const body = limitarLargoDelMensaje(await resolverCuerpoConNotaDeVoz(repo, { organizationId, phone, body: args.body, transcripcion: args.transcripcion }));
       await repo.appendWhatsAppUserMessageOnce(organizationId, phone, { role: "user", content: contenidoDeMensajeConToque(redactSensitiveInfo(sanearTexto(body)), args.botonId), at: ahoraIso() });
-      const turno = await repo.claimWhatsAppConversation(organizationId, phoneHash, messageId, LEASE_RAFAGA_SEGUNDOS);
+      const turno = await repo.claimWhatsAppConversation(organizationId, phoneHash, messageId, args.leaseSegundos ?? LEASE_RAFAGA_SEGUNDOS);
       if (!turno) {
         await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "processed", null);
         return { estado: "absorbido" };
@@ -769,9 +788,12 @@ export async function responderTrasEspera(
     readonly reloj?: () => number;
     /** Instante (ms) en que el cliente envio el mensaje que tomo el turno (ver `handleInboundWhatsAppMessage`). */
     readonly recibidoEnMs?: number;
+    /** Modo asincrono: el turno del agente usa como tope solo `finFuncionMs - MARGEN_CIERRE_TURNO_MS` y el turno de responder se re-toma con el lease largo. */
+    readonly turnoAsincrono?: boolean;
   },
 ): Promise<InboundMessageOutcome> {
   const { organizationId, messageId, phone, phoneNumberId, propertyId, handoffGate, privacy } = args;
+  const leaseSegundos = args.turnoAsincrono ? LEASE_TURNO_ASINCRONO_SEGUNDOS : LEASE_RAFAGA_SEGUNDOS;
   const reloj = args.reloj ?? Date.now;
   const deliverReply = args.deliverReply !== false;
   const phoneHash = actorHash(phone);
@@ -790,7 +812,7 @@ export async function responderTrasEspera(
         await repo.finishWhatsAppMessage(organizationId, owner, phoneHash, "processed", falloDelSistema ? CLASE_FALLA_DEL_SISTEMA : null);
         if (analizarHistorial(await leerHistorial(), respondidos).pendientes.length === 0) return ultimo;
         owner = `${messageId}:p${pasada + 1}`;
-        if (!(await repo.claimWhatsAppConversation(organizationId, phoneHash, owner, LEASE_RAFAGA_SEGUNDOS))) return ultimo; // otro mensaje tomo el turno: lo contestara
+        if (!(await repo.claimWhatsAppConversation(organizationId, phoneHash, owner, leaseSegundos))) return ultimo; // otro mensaje tomo el turno: lo contestara
         continue;
       }
       if (pasada > 1 && args.finFuncionMs !== undefined && reloj() + PASADA_ESTIMADA_MS > args.finFuncionMs) {
@@ -842,6 +864,7 @@ export async function responderTrasEspera(
                 propertyId: propertyId ?? null,
                 messageId,
                 ...(args.finFuncionMs !== undefined ? { finTurnoMs: args.finFuncionMs - MARGEN_CIERRE_TURNO_MS } : {}),
+                ...(args.turnoAsincrono ? { turnoAsincrono: true as const } : {}),
               });
         // PM PR-2 (carrera): el personal pudo contestar desde la app mientras el modelo pensaba; se mira otra vez justo antes de guardar/enviar (ver la ruta directa).
         if (!arco && !apagado && !turn.orderId && !turn.escalacion && !turn.accionMutante && handoffGate?.tomaPorEcoDeApp && (await handoffGate.tomaPorEcoDeApp(organizationId, phone).catch(() => false))) {

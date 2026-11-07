@@ -1,4 +1,5 @@
 import { buildDemoAgents } from "../demo-agents/production.ts";
+import { turnoAsincronoDeEntorno } from "../en-segundo-plano.ts";
 // buildProductionDeps — ensambla el `AppDeps` real que consume el handler de Vercel
 // (`../../api/index.ts` en la raíz del repo). Ver `not-ready.ts` para el detalle
 // completo de qué NO es un adaptador de producción todavía y por qué.
@@ -375,7 +376,8 @@ export function buildProductionDeps(): AppDeps {
   // arriba: la ruta que lo consume (routes/internal/whatsapp-dispatch.ts) responde
   // 503 explícito en vez de fingir un envío. Ningún token real de Meta se usa en
   // tests/CI — este constructor solo corre en producción real.
-  const whatsAppDispatcher = env.whatsappAccessToken ? new WhatsAppOutboundDispatcher({ graphClient: new MetaGraphWhatsAppClient({ accessToken: env.whatsappAccessToken, approvedTemplates: env.whatsappApprovedTemplates, ...(env.whatsappGraphApiVersion ? { apiVersion: env.whatsappGraphApiVersion } : {}) }) }) : undefined;
+  const whatsAppGraphClient = env.whatsappAccessToken ? new MetaGraphWhatsAppClient({ accessToken: env.whatsappAccessToken, approvedTemplates: env.whatsappApprovedTemplates, ...(env.whatsappGraphApiVersion ? { apiVersion: env.whatsappGraphApiVersion } : {}) }) : undefined;
+  const whatsAppDispatcher = whatsAppGraphClient ? new WhatsAppOutboundDispatcher({ graphClient: whatsAppGraphClient }) : undefined;
 
   // Vigilancia de salud de Meta (token por vencer, timeouts del agente): el lector del token existe solo con WHATSAPP_ACCESS_TOKEN; sin el no se llama a Meta.
   const saludMeta: SaludMetaDeps = {
@@ -670,6 +672,11 @@ export function buildProductionDeps(): AppDeps {
     resumenDiarioLlmGateway,
     superadminCopiloto: buildProductionSuperadminCopiloto(superadminCopilotoLlmGateway),
     whatsAppDispatcher,
+    // Turno asincrono del webhook de WhatsApp de restaurantes: organizaciones con cerebro v2 (lectura con SAVEPOINT; sin la 190 = apagada) o todas con
+    // `WHATSAPP_TURNO_ASINCRONO`. El webhook acusa a Meta tras la fase A y corre el turno con `waitUntil` (60 s de vida; ver vercel.json).
+    turnoAsincrono: async (db, organizationId) => turnoAsincronoDeEntorno() || (await leerCerebroV2(db, organizationId)),
+    // «Escribiendo» + leido al tomar un turno asincrono; sin token de Meta no hay (el webhook lo omite).
+    ...(whatsAppGraphClient ? { escribiendoWhatsApp: (a: { readonly phoneNumberId: string; readonly messageId: string }) => whatsAppGraphClient.marcarLeidoYEscribiendo(a) } : {}),
     saludMeta,
     notasDeVoz,
     // Suscripción SaaS propia de Atiende (auditoría de 22 rubros, hallazgo P1

@@ -640,6 +640,11 @@ export async function createOrder(
      * `por_aprobar`): no sale el aviso "nuevo pedido" ni el correo de confirmacion (todavia no esta confirmado) y el pedido devuelto lleva ese estado. Si lanza,
      * la transaccion (o el SAVEPOINT de la herramienta) revierte tambien el pedido: nunca queda un pedido grande en `pending` rumbo a cocina. */
     readonly retener?: (order: Order, prepared: PreparedOrder) => Promise<boolean>;
+    /** Turno asincrono de WhatsApp (cerebro v2): id del mensaje de Meta que disparo el turno. Con el, la llave de idempotencia y la huella salen de
+     * (mensaje, sucursal, renglones canonicos del catalogo: producto, cantidad y tortilla), NO del texto libre: un turno re-ejecutado para el mismo mensaje
+     * (reintento de Meta o barredor de turnos huerfanos) devuelve el MISMO pedido aunque el modelo redacte distinto las notas o la direccion. Una llave
+     * explicita del payload (voz) manda sobre esta. Ausente = la huella por contenido de siempre. */
+    readonly idempotenciaDeMensaje?: string;
   } = {},
 ): Promise<Order> {
   const prepared = await prepareCreateOrder(repo, rawInput);
@@ -710,7 +715,20 @@ export async function createOrder(
       ...(payload.programadoPara ? { programado_para: payload.programadoPara } : {}),
     }),
   );
-  const idempotencyKey = payload.idempotencyKey ? sha256Hex(`${payload.organizationId}:${payload.idempotencyKey}`) : null;
+  // La huella de la llave por mensaje es la misma base canonica: misma llave => misma huella, asi create_order_idempotent devuelve el pedido existente
+  // en vez de rechazarlo como «misma llave, contenido distinto» (PT409) cuando solo cambiaron las notas.
+  const huellaDeMensaje =
+    options.idempotenciaDeMensaje && !payload.idempotencyKey
+      ? sha256Hex(
+          JSON.stringify({
+            organization_id: payload.organizationId,
+            mensaje: options.idempotenciaDeMensaje,
+            property_id: branch.propertyId,
+            items: itemsOrdenados.map((item) => [item.id, item.quantity, item.tortilla ?? null]).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))),
+          }),
+        )
+      : null;
+  const idempotencyKey = payload.idempotencyKey ? sha256Hex(`${payload.organizationId}:${payload.idempotencyKey}`) : huellaDeMensaje ? sha256Hex(`${payload.organizationId}:wa-mensaje:${huellaDeMensaje}`) : null;
 
   // create_order_idempotent (ver migrations/003) nunca lanza en el camino feliz de un
   // reintento: si ya existe un pedido con la misma idempotencyKey o el mismo
@@ -742,7 +760,7 @@ export async function createOrder(
       // Migracion 034: con valor, create_order_idempotent lo crea en `programado` (ya verificado arriba).
       programadoPara: payload.programadoPara ?? null,
     },
-    dedupeFingerprint,
+    huellaDeMensaje ?? dedupeFingerprint,
     idempotencyKey,
   );
 
