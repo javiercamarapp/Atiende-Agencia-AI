@@ -224,6 +224,7 @@ html[data-diseno="ds3"] .ds3-shell-pagina.ds3-shell-pagina {
     line-height: 1;
     font-variant-numeric: tabular-nums;
   }
+  html[data-diseno="ds3"] .ds3-contador.ds3-solo[hidden]::before { content: attr(data-contador); }
   html[data-diseno="ds3"] .ds3-sidebar[data-colapsado] .ds3-contador.ds3-solo[hidden] { display: none; }
 
   /* Tema e idioma: dos pildoras de 32 con celdas de 26 e iconos de 16, en la misma fila. */

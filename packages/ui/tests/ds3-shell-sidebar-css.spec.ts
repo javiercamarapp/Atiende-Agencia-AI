@@ -52,6 +52,10 @@ describe("ds3 — sidebar (hoja del shell)", () => {
     expect(valorCss(".ds3-monograma.ds3-monograma", "border-radius", ESCRITORIO)).toBe("8px");
   });
 
+  it("el contador numerico sale de data-contador (sin texto en el DOM)", () => {
+    expect(valorCss(".ds3-contador.ds3-solo[hidden]::before", "content", ESCRITORIO)).toBe("attr(data-contador)");
+  });
+
   it("forced-colors: el activo se marca con un borde del sistema (el box-shadow no se pinta en alto contraste)", () => {
     expect(valorCss('.ds3-nav-item[aria-current="page"]', "border-left", "forced-colors: active")).toBe("2px solid Highlight");
   });
