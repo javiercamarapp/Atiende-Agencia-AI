@@ -82,12 +82,14 @@ export {
   RutaBoundary,
   construirMigas,
   VERTICAL_SHELL_MAIN_ID,
+  GUIA_ABRIR_EVENTO,
   type VerticalMiga,
   type VerticalNoEncontradoProps,
   type VerticalShellEstadoProps,
   type VerticalShellProps,
 } from "./components/VerticalShell.js";
 export { BarraPagina, type BarraPaginaProps } from "./components/BarraPagina.js";
+export { BarraAlcance, BarraAlcanceEspaciador, BotonFiltros, ChipFiltro, type BarraAlcanceProps, type BotonFiltrosProps, type ChipFiltroProps } from "./components/BarraAlcance.js";
 export {
   ChatDatosDialog,
   formatChatCell,

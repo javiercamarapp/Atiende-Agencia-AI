@@ -22,13 +22,13 @@ export interface BarraPaginaProps {
 export function BarraPagina({ icon, title, acciones, comoH1 = false, className }: BarraPaginaProps) {
   return (
     <header data-testid="barra-pagina" className={cn("flex items-center justify-between h-11 px-5 gap-3 shrink-0 border-b border-border bg-card", className)}>
-      <div className="flex items-center gap-2 text-ui font-medium min-w-0 text-foreground">
+      <div className="ds3-cabecera-titulo flex items-center gap-2 text-ui font-medium min-w-0 text-foreground">
         {icon}
         <p data-testid="barra-pagina-titulo" role={comoH1 ? "heading" : undefined} aria-level={comoH1 ? 1 : undefined} className="truncate">
           {title}
         </p>
       </div>
-      {acciones ? <div className="flex items-center gap-2 shrink-0">{acciones}</div> : null}
+      {acciones ? <div className="ds3-cabecera-acciones flex items-center gap-2 shrink-0">{acciones}</div> : null}
     </header>
   );
 }
