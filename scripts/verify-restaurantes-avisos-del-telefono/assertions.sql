@@ -90,4 +90,37 @@ select public.t_esperar_error($q$select * from restaurantes.avisos_del_telefono(
 select public.t_esperar_error($q$select * from restaurantes.avisos_del_telefono('00000000-0000-0000-0000-0000000f1901', '+5219990000001', null)$q$, '22023');
 rollback;
 
+\echo '=== D. avisos_urgentes_sin_resolver: solo URGENTE sin resolver de organizaciones con cerebro_v2, pasado el umbral y dentro de 24 h ==='
+insert into restaurantes.agent_runtime_settings (organization_id, cerebro_v2) values ('00000000-0000-0000-0000-0000000f1901', true)
+on conflict (organization_id) do update set cerebro_v2 = true;
+-- u1: urgente abierta hace 30 min (sale); u2: urgente RESUELTA (no); u3: urgente hace 3 min (no: antes del umbral); u4: no urgente (no); u5: urgente en ORG B sin cerebro_v2 (no).
+insert into restaurantes.callback_requests (id, organization_id, customer_name, customer_phone, reason, message, source, resolved, created_at) values
+  ('00000000-0000-0000-0000-0000000f19d1', '00000000-0000-0000-0000-0000000f1901', 'Cliente', '+5219990000003', 'escalada:alergia_salud', 'URGENTE: el cliente pide atención inmediata.' || chr(10) || 'alergia', 'whatsapp', false, now() - interval '30 minutes'),
+  ('00000000-0000-0000-0000-0000000f19d2', '00000000-0000-0000-0000-0000000f1901', 'Cliente', '+5219990000003', 'escalada:alergia_salud', 'URGENTE: ya resuelta', 'whatsapp', true, now() - interval '30 minutes'),
+  ('00000000-0000-0000-0000-0000000f19d3', '00000000-0000-0000-0000-0000000f1901', 'Cliente', '+5219990000004', 'escalada:alergia_salud', 'URGENTE: reciente', 'whatsapp', false, now() - interval '3 minutes'),
+  ('00000000-0000-0000-0000-0000000f19d4', '00000000-0000-0000-0000-0000000f1901', 'Cliente', '+5219990000005', 'escalada:queja', 'no urgente', 'whatsapp', false, now() - interval '30 minutes'),
+  ('00000000-0000-0000-0000-0000000f19d5', '00000000-0000-0000-0000-0000000f1902', 'Cliente', '+5219990000006', 'escalada:alergia_salud', 'URGENTE: otra org', 'whatsapp', false, now() - interval '30 minutes');
+
+begin;
+set local role authenticated;
+select count(*) as urgentes_deberia_ser_1 from restaurantes.avisos_urgentes_sin_resolver(now(), 10);
+select count(*) as es_u1_deberia_ser_1 from restaurantes.avisos_urgentes_sin_resolver(now(), 10) where id = '00000000-0000-0000-0000-0000000f19d1';
+rollback;
+
+\echo '=== D2. RECHAZADO: autenticado -> 42501; anon -> 42501; umbral fuera de rango -> 22023 ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f1911', true);
+select public.t_esperar_error($q$select * from restaurantes.avisos_urgentes_sin_resolver(now(), 10)$q$, '42501');
+rollback;
+begin;
+set local role anon;
+select public.t_esperar_error($q$select * from restaurantes.avisos_urgentes_sin_resolver(now(), 10)$q$, '42501');
+rollback;
+begin;
+set local role authenticated;
+select public.t_esperar_error($q$select * from restaurantes.avisos_urgentes_sin_resolver(now(), 0)$q$, '22023');
+select public.t_esperar_error($q$select * from restaurantes.avisos_urgentes_sin_resolver(null, 10)$q$, '22023');
+rollback;
+
 \echo 'Todos los escenarios terminan con la expectativa del propio archivo: RECHAZADO = sin ERROR dentro de t_esperar_error (el helper exige el SQLSTATE exacto); alias deberia_ser_N = valor exacto.'
