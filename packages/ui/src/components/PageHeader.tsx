@@ -7,7 +7,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 
 /**
  * Grupo del menu de la pantalla activa (lo provee `VerticalShell`). Con la bandera ds3 el PageHeader lo muestra como antetitulo cuando la
- * pantalla no pasa `eyebrow` propio. Se pinta por CSS (data-eyebrow) para no duplicar el texto del menu en el DOM.
+ * pantalla no pasa `eyebrow` propio. Es texto real (no un `::before`): el lector de pantalla y el i18n lo ven y nunca queda un `<p>` vacio.
  */
 export const GrupoNavContext = React.createContext<string | null>(null);
 
@@ -91,7 +91,9 @@ export function PageHeader({ titulo, descripcion, acciones, migas, atras, meta, 
           {eyebrow !== undefined ? (
             <p className="ds3-encabezado-eyebrow text-xs font-semibold uppercase tracking-[0.06em] text-muted-foreground">{eyebrow}</p>
           ) : grupoNav ? (
-            <p hidden data-eyebrow={grupoNav} data-testid="encabezado-eyebrow-derivado" className="ds3-solo ds3-encabezado-eyebrow ds3-eyebrow-derivado" />
+            <p hidden data-eyebrow={grupoNav} data-testid="encabezado-eyebrow-derivado" className="ds3-solo ds3-encabezado-eyebrow ds3-eyebrow-derivado">
+              {grupoNav}
+            </p>
           ) : null}
           <h1 className="ds3-encabezado-titulo font-display text-xl font-semibold truncate text-foreground">{titulo}</h1>
           {descripcion !== undefined && <p className="ds3-encabezado-descripcion text-ui text-muted-foreground mt-1 truncate">{descripcion}</p>}

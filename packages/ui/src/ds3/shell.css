@@ -396,9 +396,8 @@ html[data-diseno="ds3"] .ds3-encabezado-fila.ds3-encabezado-fila {
   gap: 12px 24px;
 }
 html[data-diseno="ds3"] .ds3-encabezado-texto.ds3-encabezado-texto { flex: 1 1 320px; }
-/* Antetitulo derivado del grupo del menu (cuando la pantalla no trae uno propio): texto por CSS desde data-eyebrow. */
+/* Antetitulo derivado del grupo del menu (cuando la pantalla no trae uno propio): texto real dentro del <p>. */
 html[data-diseno="ds3"] .ds3-eyebrow-derivado.ds3-solo[hidden] { display: block; }
-html[data-diseno="ds3"] .ds3-eyebrow-derivado.ds3-solo[hidden]::before { content: attr(data-eyebrow); }
 html[data-diseno="ds3"] .ds3-encabezado-eyebrow.ds3-encabezado-eyebrow {
   margin: 0 0 5px;
   font-size: 12px;
