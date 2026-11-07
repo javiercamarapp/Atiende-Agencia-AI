@@ -18,9 +18,19 @@ export function CopilotoTemas({ categorias, onElegir, ocupado = false }: { categ
     <section hidden className="ds3-solo ds3-copiloto-temas" aria-label={t("temasAria")} data-testid="copiloto-temas">
       <div className="ds3-copiloto-temas-fila" role="group" aria-label={t("temasAria")}>
         {temas.map((x, k) => (
-          <button key={x.titulo} type="button" className="ds3-copiloto-ctl ds3-copiloto-tema" data-serie={(k % 8) + 1} aria-pressed={k === i} onClick={() => setI(k)}>
+          // Igual que las preguntas: el titulo se pinta por CSS (::after desde data-titulo) y se anuncia por aria-label, para que el
+          // DOM del diseno actual no tenga un segundo texto con el nombre de cada categoria.
+          <button
+            key={x.titulo}
+            type="button"
+            className="ds3-copiloto-ctl ds3-copiloto-tema"
+            data-serie={(k % 8) + 1}
+            data-titulo={x.titulo}
+            aria-label={x.titulo}
+            aria-pressed={k === i}
+            onClick={() => setI(k)}
+          >
             <i aria-hidden="true" />
-            <span>{x.titulo}</span>
           </button>
         ))}
       </div>

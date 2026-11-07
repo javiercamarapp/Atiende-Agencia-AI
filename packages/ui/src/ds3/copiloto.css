@@ -188,6 +188,7 @@ html[data-diseno="ds3"] [data-ds3="chips"] > button {
   white-space: normal;
 }
 html[data-diseno="ds3"] .ds3-copiloto-pregunta.ds3-copiloto-pregunta::before { content: attr(data-pregunta); }
+html[data-diseno="ds3"] .ds3-copiloto-tema.ds3-copiloto-tema::before { content: attr(data-titulo); order: 1; }
 html[data-diseno="ds3"] [data-ds3="chips"] { gap: 8px; max-width: var(--ds3-col-chat, 46rem); margin-top: 14px; }
 html[data-diseno="ds3"] [data-ds3="chips"] > button:hover { background-color: hsl(var(--soft)); }
 
