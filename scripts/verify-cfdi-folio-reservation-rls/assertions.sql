@@ -1,6 +1,6 @@
 -- Verifica contra Postgres REAL la migración
 -- packages/mcp-servers/cfdi/migrations/002_folio_stamp_reservation_rls.sql
--- (espejo supabase/migrations/20240101000630_002_folio_stamp_reservation_rls.sql):
+-- (espejo supabase/migrations/20240101000631_002_folio_stamp_reservation_rls.sql):
 -- `mcp_cfdi.folio_stamp_reservation` con RLS y acceso SOLO para la sesión de sistema
 -- (rol authenticated + auth.uid() null), que es exactamente como la usa
 -- ProductionCfdiFolioReservationStore (engine.withAppSession({ userId: null })).

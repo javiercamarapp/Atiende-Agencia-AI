@@ -27,6 +27,7 @@ alter table mcp_cfdi.folio_stamp_reservation enable row level security;
 -- Seguridad: `for all` cubre el `insert ... on conflict do update ... returning`,
 -- el `select`, el `update` y el `delete` del store; `auth.uid() is null` en USING y
 -- WITH CHECK limita las cuatro operaciones a la sesión de sistema. Nunca `using (true)`.
+drop policy if exists "solo sesion de sistema reserva folios" on mcp_cfdi.folio_stamp_reservation;
 create policy "solo sesion de sistema reserva folios" on mcp_cfdi.folio_stamp_reservation
   for all to authenticated
   using (auth.uid() is null)

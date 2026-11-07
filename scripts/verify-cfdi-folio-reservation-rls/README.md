@@ -1,7 +1,7 @@
 # verify-cfdi-folio-reservation-rls
 
 Verifica contra Postgres real `packages/mcp-servers/cfdi/migrations/002_folio_stamp_reservation_rls.sql`
-(espejo `supabase/migrations/20240101000630_002_folio_stamp_reservation_rls.sql`).
+(espejo `supabase/migrations/20240101000631_002_folio_stamp_reservation_rls.sql`).
 
 ## Qué cambia la migración
 

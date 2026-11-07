@@ -23,7 +23,7 @@ PGPORT=55630
 PGDATA="$WORKDIR/pgdata"
 LOG="$WORKDIR/postgres.log"
 SKIP_FIX="${FOLIO_RLS_SKIP_FIX:-0}"
-SKIP_FILE="20240101000630_002_folio_stamp_reservation_rls.sql"
+SKIP_FILE="20240101000631_002_folio_stamp_reservation_rls.sql"
 
 cleanup() {
   pg_ctl -D "$PGDATA" -m fast stop >/dev/null 2>&1 || true
