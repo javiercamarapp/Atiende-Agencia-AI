@@ -24,7 +24,8 @@ function elegirPlural(idioma: Idioma, plural: Plural, count: number | undefined)
  * Traduce sin React (servicios, pruebas, `document.title`). Orden de respaldo: idioma pedido (si su catalogo ya se descargo,
  * ver `cargarIdioma`) -> espanol -> la propia clave
  * (visible a proposito: con claves tipadas no deberia pasar nunca, y si pasa se nota en vez de dejar un hueco).
- * `{variable}` se reemplaza; los numeros salen con el formato del idioma (1,234 / 1,234). Una variable que no llego se deja
+ * `{variable}` se reemplaza; en ingles los numeros salen con su formato (1,234) y en espanol tal cual, como el texto que
+ * reemplazan (1234), para no cambiar ni un byte de lo que ya se ve. Una variable que no llego se deja
  * tal cual (`{nombre}`) para que el error se vea en pantalla y en las pruebas.
  */
 export function traducir(idioma: Idioma, clave: Clave, variables?: Variables): string {
@@ -36,7 +37,9 @@ export function traducir(idioma: Idioma, clave: Clave, variables?: Variables): s
   return texto.replace(/\{(\w+)\}/g, (completo, nombre: string) => {
     const valor = variables[nombre];
     if (valor === undefined) return completo;
-    return typeof valor === "number" ? conCache(numeros, idioma, (l) => new Intl.NumberFormat(l)).format(valor) : valor;
+    if (typeof valor !== "number") return valor;
+    // En espanol el numero sale tal cual (como el texto que reemplaza: byte a byte igual); en ingles, con su formato (1,234).
+    return idioma === "es" ? String(valor) : conCache(numeros, idioma, (l) => new Intl.NumberFormat(l)).format(valor);
   });
 }
 
