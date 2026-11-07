@@ -504,6 +504,8 @@ export interface WhatsAppLlmAgentOptions {
   /** Ajustes del agente de la organizacion (modelo elegido y temperatura efectiva). Ausente o `null` = el modelo y la temperatura de siempre. Nunca debe
    * lanzar: un fallo aqui no puede tumbar el turno (el llamador degrada a los valores de siempre). */
   readonly leerAjustes?: (organizationId: string) => Promise<{ readonly modelo: string | null; readonly temperatura: number } | null>;
+  /** Cerebro v2 (migracion 190): bandera por organizacion. Ausente o error de lectura = apagada (el agente de siempre). */
+  readonly leerCerebroV2?: (organizationId: string) => Promise<boolean>;
   /** Autopiloto: cancelaciones gestionadas por el agente (detras de la bandera por organizacion) y quejas ligadas al pedido. Ausente = comportamiento anterior. */
   readonly autopiloto?: AutopilotoTurnoHooks;
   /** Agregados por validar (migracion 099): habilita `solicitar_agregado_pedido` con solicitud real y la regla del prompt que lo manda usar. Ausente = el agente escala como siempre. */
@@ -711,6 +713,8 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       const modoCtx = preview ? { modo: "preview" as const, previewCustomerId: previewCustomerId ?? null } : {};
       // Modelo y temperatura que eligio la organizacion (ajustes del agente). Si falla la lectura, el turno sigue con los de siempre.
       const ajustes = options.leerAjustes ? await options.leerAjustes(organizationId).catch(() => null) : null;
+      // Cerebro v2: reglas medidas del repo suelto + Luna -> Haiku 5.5 con retencion cero. Nunca en la vista previa del panel (sin efectos ni costo extra).
+      const cerebroV2 = !preview && options.leerCerebroV2 ? await options.leerCerebroV2(organizationId).catch(() => false) : false;
       const perfil: PerfilAgenteWhatsApp = config.perfil ?? "generico";
       // El flujo de PM encadena mas llamadas por turno (cliente, zona, un producto por renglon, cotizar).
       const maxToolUseTurns = options.maxToolUseTurns ?? (perfil === "taqueria_pm" ? 8 : 4);
@@ -1175,6 +1179,8 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             role,
             // El modelo elegido solo aplica al rol por defecto: el reintento tras un fallo real de `crear_pedido` (rol escalado) sigue siendo el de la plataforma.
             ...(modelo ? { preferredModel: modelo } : {}),
+            // Cerebro v2: solo escalones con retencion cero (escalera ZDR del rol); sin ella la llamada falla cerrada.
+            ...(cerebroV2 ? { zdrEstricto: true } : {}),
             request: { system: systemFinal, messages: working, tools: [...TOOLS], temperature: ajustes && esRolPorDefecto ? ajustes.temperatura : 0, signal },
           });
           const modeloElegido = ajustes?.modelo && esRolPorDefecto ? ajustes.modelo : undefined;
@@ -1191,7 +1197,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             const modeloActual = esRolPorDefecto && modeloRespaldo !== null ? modeloRespaldo : modeloElegido;
             // Un solo respaldo por turno: con el alterno ya en uso (o un modelo no economico) la llamada lleva todo el presupuesto restante. Con 10 a 16 s restantes el segundo
             // respaldo no cabria de todos modos (el primer tope siempre deja <= 7 s al siguiente).
-            const siguiente: string | null = esRolPorDefecto && modeloRespaldo === null && modeloAdmiteRespaldoPorTope(modeloElegido) ? modeloAlternoParaTope(modeloElegido ?? MODELO_PREDETERMINADO_ID) : null;
+            const siguiente: string | null = esRolPorDefecto && modeloRespaldo === null && modeloAdmiteRespaldoPorTope(modeloElegido) ? modeloAlternoParaTope(modeloElegido ?? MODELO_PREDETERMINADO_ID, cerebroV2) : null;
             // PM-R21 (hedging, apagable con WHATSAPP_LLM_HEDGE_MS=0): el alterno se lanza EN PARALELO cuando el primario pasa de ~5.5 s sin contestar, en vez de cortarlo a los 9-11 s y
             // dejar al alterno 7 s o menos (en R20 el respaldo secuencial tambien se quedo sin contestar en 71 de 113 turnos con error). Gana el primero que conteste; la otra se aborta.
             const retrasoHedge = siguiente !== null && hedgeMs !== null && tele.hedgesLlm < HEDGES_MAX_POR_TURNO ? hedgeLlmRetrasoEfectivoMs(deadline - Date.now(), hedgeMs) : null;
