@@ -7,7 +7,7 @@
 // `Input`/`Label` para el formulario de edición y `Button` para Editar/Guardar/
 // Cancelar. Toda la lógica de carga/edición/guardado de abajo es la MISMA.
 import { useEffect, useState } from "react";
-import { Button, Callout, Card, CardContent, EstadoCargando, EstadoError, FormField, Input, Label, PageContainer, StatusBadge } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, EstadoCargando, EstadoError, FormField, Input, Label, PageContainer, PageHeader, StatusBadge } from "@atiende/ui";
 import { ExternalLink, MapPin, Pencil } from "lucide-react";
 import { fetchBranchTimezone } from "../lib/config-client.ts";
 import { fetchAdminBranches, updateBranchDetail } from "../lib/branches-client.ts";
@@ -128,7 +128,7 @@ export function SucursalesPage({ apiBaseUrl, token, propertyId, role, orgSlug }:
   const sinCoordenadas = (branches ?? []).filter((b) => b.status === "active" && (b.lat === null || b.lng === null));
   return (
     <PageContainer padding="none">
-      <h1 className="sr-only">Sucursales</h1>
+      <PageHeader titulo="Sucursales" />
       <Callout tone="info">
         Crear una sucursal nueva o darla de baja no está disponible aún desde este panel: es una operación de plataforma que afecta tu plan y facturación. Pídela a tu contacto de Atiende; consulta tu plan en{" "}
         <Link to={`/restaurantes/${orgSlug}/plan`} className="underline">Plan y uso</Link>. Sí puedes encender o apagar aquí el agente de voz y el de WhatsApp de cada sucursal.

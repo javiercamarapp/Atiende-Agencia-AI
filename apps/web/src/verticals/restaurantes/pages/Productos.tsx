@@ -25,6 +25,7 @@ import {
   Input,
   Selector,
   PageContainer,
+  PageHeader,
   Textarea,
   formatMoney,
   notify,
@@ -251,22 +252,27 @@ export function ProductosPage({ apiBaseUrl, token, propertyId, role }: Restauran
 
   return (
     <PageContainer padding="none">
-      <h1 className="sr-only">Productos y categorías</h1>
+      <PageHeader
+        titulo="Productos y categorías"
+        acciones={
+          puedeEditarCatalogo ? (
+            <>
+              <Button type="button" variant="outline" onClick={abrirCategoria}>
+                <FolderPlus />
+                Nueva categoría
+              </Button>
+              <Button type="button" onClick={abrirProducto}>
+                <Plus />
+                Nuevo producto
+              </Button>
+            </>
+          ) : undefined
+        }
+      />
 
       {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
 
-      {puedeEditarCatalogo ? (
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <Button type="button" variant="outline" onClick={abrirCategoria}>
-            <FolderPlus />
-            Nueva categoría
-          </Button>
-          <Button type="button" onClick={abrirProducto}>
-            <Plus />
-            Nuevo producto
-          </Button>
-        </div>
-      ) : (
+      {puedeEditarCatalogo ? null : (
         <Callout tone="info">Puedes marcar productos como agotados o disponibles en esta sucursal. Solo el dueño o un administrador cambia precios y edita el catálogo.</Callout>
       )}
 
