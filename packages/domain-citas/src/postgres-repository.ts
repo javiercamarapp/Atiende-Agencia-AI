@@ -18,7 +18,7 @@ import type { PlantillaWhatsappAprobada } from "./whatsapp/proactivo.ts";
 import type { PlantillaWhatsappInput, PlantillaWhatsappRecord } from "./whatsapp/plantillas.ts";
 import { actorHash } from "./rate-limit.ts";
 import type { MensajeConfigGuardado, WhatsappMessageConfig, WhatsappMessageConfigHistoryEntry, WhatsappMessageConfigRecord } from "./whatsapp/message-config.ts";
-import { emitirNotificacion, isMigrationPendingError, isUndefinedFunctionError, runWithSavepointFallback } from "@atiende/db";
+import { emitirNotificacion, isMigrationPendingError, isUndefinedFunctionError, runWithSavepointFallback, sqlOrgOperable, sqlOrgOperableSinFecha } from "@atiende/db";
 import type {
   ConfirmDataRightsOutcome,
   DataRightsEventRow,
@@ -446,13 +446,31 @@ function sqlState(err: unknown): string | undefined {
 export class PostgresCitasRepository implements CitasRepository {
   constructor(private readonly db: TenantDbSession) {}
 
+  // Onboarding P0: una organizacion en prueba ('trial') opera como activa hasta su `trial_ends_at` (sin fecha = prueba vigente). Antes solo
+  // `status = 'active'` contaba, y como el alta del superadmin crea `trial`, un cliente en prueba recibia 404 en el panel, la reserva publica,
+  // las citas y la voz. `trial_ends_at` es de la 0046: contra una base sin ella (42703) el SAVEPOINT cae a "trial cuenta como activa".
   async findOrganizationBySlug(slug: string): Promise<{ id: string; name: string; slug: string; isActive: boolean } | null> {
-    const { rows } = await this.db.query<{ id: string; name: string; slug: string; status: "trial" | "active" | "suspended" }>(
-      `select id, name, slug, status from core.organization where slug = $1 and vertical = 'citas';`,
-      [slug],
-    );
+    type Fila = { id: string; name: string; slug: string; is_active: boolean };
+    const rows = await runWithSavepointFallback<readonly Fila[]>({
+      session: this.db,
+      primary: async () =>
+        (
+          await this.db.query<Fila>(
+            `select id, name, slug, ${sqlOrgOperable()} as is_active from core.organization where slug = $1 and vertical = 'citas';`,
+            [slug],
+          )
+        ).rows,
+      isRecoverable: (err) => isMigrationPendingError(err),
+      fallback: async () =>
+        (
+          await this.db.query<Fila>(
+            `select id, name, slug, ${sqlOrgOperableSinFecha()} as is_active from core.organization where slug = $1 and vertical = 'citas';`,
+            [slug],
+          )
+        ).rows,
+    });
     const row = rows[0];
-    return row ? { id: row.id, name: row.name, slug: row.slug, isActive: row.status === "active" } : null;
+    return row ? { id: row.id, name: row.name, slug: row.slug, isActive: row.is_active === true } : null;
   }
 
   // Fase 5 §1 — `core.property` no tiene columna propia de vertical citas (a
@@ -1142,11 +1160,18 @@ export class PostgresCitasRepository implements CitasRepository {
   }
 
   async listActiveOrganizations(): Promise<readonly { id: string; timezone: string }[]> {
-    const { rows } = await this.db.query<{ id: string; default_timezone: string }>(
+    // Prueba vigente = activa (ver findOrganizationBySlug): una organizacion en prueba tambien recibe recordatorios.
+    type Fila = { id: string; default_timezone: string };
+    const consulta = (operable: string) =>
       `select o.id, tc.default_timezone from core.organization o
        join citas.tenant_config tc on tc.organization_id = o.id
-       where o.vertical = 'citas' and o.status = 'active';`,
-    );
+       where o.vertical = 'citas' and ${operable};`;
+    const rows = await runWithSavepointFallback<readonly Fila[]>({
+      session: this.db,
+      primary: async () => (await this.db.query<Fila>(consulta(sqlOrgOperable("o")))).rows,
+      isRecoverable: (err) => isMigrationPendingError(err),
+      fallback: async () => (await this.db.query<Fila>(consulta(sqlOrgOperableSinFecha("o")))).rows,
+    });
     return rows.map((r) => ({ id: r.id, timezone: r.default_timezone }));
   }
 
