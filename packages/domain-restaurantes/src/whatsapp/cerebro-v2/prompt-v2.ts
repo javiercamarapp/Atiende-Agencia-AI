@@ -30,11 +30,19 @@ export const PM_H17_V2 =
 const PM_B4_V2 =
   "B4. OTRA SUCURSAL. Si la zona del cliente le toca a otra sucursal, tome el pedido aquí mismo con el branch_slug de esa sucursal y dígale al cliente que se lo entrega esa sucursal y en cuánto tiempo (el tiempo que trae la herramienta). No le dé otro teléfono para pedir ni le diga que llame. Si ninguna sucursal cubre la zona, ofrezca recoger.";
 
+const PASO5_PIEZAS_SIN_BANDERA =
+  "Si dice piezas de algo que se vende por orden (gringas y mestizas de 2; alambres, suizos en tacos y papadzules de 5), haga UNA sola pregunta y nunca decida usted cuántas órdenes son: «Las gringas se venden por orden y cada orden trae 2. ¿Cuántas órdenes le anoto? 3 órdenes serían 6 gringas» (con alambres, suizos o papadzules cambie el nombre y 2 por 5, y pregunte también con o sin queso en el alambre).";
+const PASO5_PIEZAS_V2 =
+  "GRINGAS Y MESTIZAS: cada gringa o mestiza que pide el cliente («dos gringas de costilla», «una mestiza de pastor») es UNA orden (platillo de 2 tacos) al precio de la orden: requested_quantity = 2 × lo que dijo (una mestiza = 2, dos gringas = 4) y dígalo como órdenes; NO pregunte si son piezas u órdenes ni diga que no se venden sueltas, salvo que el cliente hable explícitamente de tacos o piezas sueltas. Si dice piezas de algo que se vende por orden (alambres, suizos en tacos y papadzules de 5), haga UNA sola pregunta y nunca decida usted cuántas órdenes son: «Los alambres se venden por orden y cada orden trae 5. ¿Cuántas órdenes le anoto?» (pregunte también con o sin queso en el alambre).";
+
 /** Prompt de PM con las reglas de sucursal cruzada del cerebro v2 en lugar de H17 / paso 4 / B4. Pura e idempotente; SOLO se llama con la bandera cerebro_v2. */
 export function adaptarPromptPmV2(prompt: string): string {
   return prompt
     .replace(`H17. ${PM_H17_WHATSAPP}`, `H17. ${PM_H17_V2}`)
     .replace("solo pregunte si quiere otra (si es otra, H17).", "solo pregunte si quiere otra (si es otra, tómelo para esa sucursal: H17).")
     .replace("Confirme con el cliente la sucursal que corresponde a su zona (si no es la de este chat, H17).", "Dígale al cliente la sucursal que corresponde a su zona y tome el pedido para ella aunque no sea la de este chat (H17).")
-    .replace(/B4\. OTRA SUCURSAL\. Si la zona del cliente le toca a otra sucursal: no tome el domicilio ahí;[^\n]*/, PM_B4_V2);
+    .replace(/B4\. OTRA SUCURSAL\. Si la zona del cliente le toca a otra sucursal: no tome el domicilio ahí;[^\n]*/, PM_B4_V2)
+    // C3 PED-13: gringas y mestizas se piden por platillo (cada una es una orden de 2 tacos); el paso 5 mandaba preguntar piezas y el cliente acababa quitando la mestiza.
+    .replace(PASO5_PIEZAS_SIN_BANDERA, PASO5_PIEZAS_V2)
+    .replace("Quesadillas y bistec van en órdenes de 3; gringas y mestizas en órdenes de 2.", "Quesadillas y bistec van en órdenes de 3; cada gringa o mestiza es una orden de 2 tacos.");
 }

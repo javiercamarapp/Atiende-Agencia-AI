@@ -30,7 +30,7 @@ import { mismosRenglones, VENTANA_PEDIDO_IGUAL_MIN } from "../pedido-igual-recie
 import { PROPINA_PORCENTAJE_MAX } from "../whatsapp/guards.ts";
 import { composicionParaProducto, pesoPedidoEnConsulta } from "../peso-composicion.ts";
 import { pesoDeProductoEnGramos, unidadDeVenta } from "../product-search.ts";
-import { avisoUnidadPorTabla, ordenesInterpretadasSinPreguntar, piezasPorOrdenDe } from "../unidades-pm.ts";
+import { avisoUnidadPorTabla, ordenesInterpretadasSinPreguntar, piezasEsperadasDeGringaOMestiza, piezasPorOrdenDe } from "../unidades-pm.ts";
 import { canonicalRequestedComplement, complementosExcluidosEnNotas, COMPLEMENTOS_PEDIBLES, DEFAULT_COMPLEMENTS, etiquetaComplementoResumen, isTortillaChoice, normalizarTortilla, PM_BASIC_COMPLEMENTS } from "../order-quote.ts";
 import { componentesLocales, estaAbiertoAhora, aperturaConExcepciones, evaluarUltimoPedido, fechaLocal, fraseUltimoPedido, horaHablada, horaLegible, tieneUltimoPedidoPorTipo } from "../horarios.ts";
 import { evaluarDomicilioSucursal } from "../domicilio-sucursal.ts";
@@ -1312,6 +1312,18 @@ async function exigirAclararOrdenesOPiezas(repo: RestaurantesRepository, ctx: Ag
       const p = products.find((x) => x.id === r.productId);
       if (!p) continue;
       const porOrden = piezasPorOrdenDe(p.name, p.packSize);
+      // C3 PED-13 (cerebro v2): «dos gringas de costilla» / «una mestiza de pastor» son ordenes (platillos), no piezas: sin pregunta; si el modelo cotizo las piezas tal cual, se corrige.
+      const esperado = ctx.cerebroV2 && porOrden !== null ? piezasEsperadasDeGringaOMestiza(ultimo, p.name) : null;
+      if (esperado !== null) {
+        const pedido = items[idx]!.requested_quantity as number;
+        if (pedido !== esperado) {
+          const ordenes = esperado / porOrden!;
+          throw new OrderValidationError(
+            `El cliente pidió ${ordenes} ${ordenes === 1 ? "orden" : "órdenes"} de ${p.name} (cada gringa o mestiza que nombra es un platillo de ${porOrden} tacos): cotice ${p.name} con requested_quantity ${esperado} y dígalo como ${ordenes} ${ordenes === 1 ? "orden" : "órdenes"}. NO pregunte si son piezas u órdenes ni diga que no se vende suelta.`,
+          );
+        }
+        continue;
+      }
       const n = ordenesInterpretadasSinPreguntar(ultimo, p.name, porOrden, items[idx]!.requested_quantity as number);
       if (n !== null && porOrden !== null) {
         throw new OrderValidationError(
@@ -1320,7 +1332,7 @@ async function exigirAclararOrdenesOPiezas(repo: RestaurantesRepository, ctx: Ag
       }
     }
   } catch (e) {
-    if (e instanceof OrderValidationError && e.message.startsWith("El cliente dijo «")) throw e;
+    if (e instanceof OrderValidationError && (e.message.startsWith("El cliente dijo «") || e.message.startsWith("El cliente pidió "))) throw e;
   }
 }
 

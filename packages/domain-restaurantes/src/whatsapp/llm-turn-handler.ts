@@ -39,7 +39,7 @@ import { asistentePidioConfirmarResumen, bloqueCotizacionVigente, QUOTE_TTL_MS, 
 import { cierreMaquinaActiva, clasificarRespuestaCierre, componerRespuestaConResumen, corregirHoraDeRecogidaEnRespuesta, datosDeCierreDeContexto, estadoDeCierre, pagoConVistoBuenoAlResumen, type DatosDeCierre } from "../agent-tools/cierre-maquina.ts";
 import { MENSAJE_PEDIDO_GRANDE_PENDIENTE, executeAgentToolSafely, toolDefinitionsForChannel } from "../agent-tools/registry.ts";
 import { planCierreDeterminista } from "../agent-tools/cierre-determinista.ts";
-import { bloqueCantidadNoMultiplo, bloqueProductoNoManejado } from "../unidades-pm.ts";
+import { bloqueCantidadNoMultiplo, bloqueGringasYMestizasComoOrdenes, bloqueProductoNoManejado } from "../unidades-pm.ts";
 import { bloquePedidoPendienteTrasFalla } from "./falla-pendiente.ts";
 import { CONTADOR_AGENTE_UMBRAL, COPY_ESCALACION_CONTADOR, contarAgente, pideRepetir } from "./contadores-agente.ts";
 import { bloqueDatosYaConsultados } from "./datos-ya-consultados.ts";
@@ -1023,7 +1023,10 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       // R10 P1: lo que el servidor ya consulto y daria el mismo resultado que la herramienta se le dice al modelo (una vuelta menos). Vacio = prompt identico al de antes.
       const datosYaConsultadosBloque = bloqueDatosYaConsultados(customer, { perfil, preview });
       // R19 (G4 / T7-012): «4 tacos de bistec» / «3 gringas» no son ordenes exactas; el servidor le fija al modelo que explique y ofrezca las opciones con precio. Solo los mensajes sin responder.
-      const cantidadNoMultiploBloque = perfil === "taqueria_pm" && !preview ? bloqueCantidadNoMultiplo(mensajesSinResponder(messages).map((m) => m.content)) : "";
+      // C3 PED-13: con cerebro v2 cada gringa/mestiza contada es una ORDEN (no una pieza que «no se vende suelta»): sale de esta regla y la dice su propio bloque.
+      const cantidadNoMultiploBloque = perfil === "taqueria_pm" && !preview
+        ? [bloqueCantidadNoMultiplo(mensajesSinResponder(messages).map((m) => m.content), cerebroV2 ? { gringasYMestizasPorOrden: true } : {}), cerebroV2 ? bloqueGringasYMestizasComoOrdenes(mensajesSinResponder(messages).map((m) => m.content)) : ""].filter((b) => b !== "").join("\n\n")
+        : "";
       // R11 A (bandera apagada por omision): contexto precargado + llamadas en lote. Solo PM, nunca en preview.
       const precargaActiva = options.contextoPrecargado === true && perfil === "taqueria_pm" && !preview;
       // R21 (T7-008): un producto que el menu no tiene (chistorra, longaniza, salchichas...) se rechaza con la alternativa correcta, no con un platillo inventado.
