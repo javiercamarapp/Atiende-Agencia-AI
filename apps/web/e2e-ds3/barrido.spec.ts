@@ -67,7 +67,7 @@ for (const consola of CONSOLAS) {
           await expect(dialogo).toBeHidden();
         }
       }
-      // Foco: Tab x60; cada elemento enfocado debe mostrar anillo, quedar a la vista y no estar tapado; ningun tabindex > 0.
+      // Foco: Tab x60; cada elemento enfocado debe mostrar anillo (>= 3:1 contra su fondo), quedar a la vista y no estar tapado; ningun tabindex > 0.
       await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
       for (let n = 0; n < 60; n++) {
         await page.keyboard.press("Tab");
@@ -75,6 +75,7 @@ for (const consola of CONSOLAS) {
         if (!f) continue;
         if (f.sinAnillo) defectos.push(`${href} [foco] ${f.el} — sin anillo de foco (outline y box-shadow ausentes)`);
         if (f.tapadoPor) defectos.push(`${href} [foco] ${f.el} — tapado por ${f.tapadoPor}`);
+        if (f.anilloContraste !== null && f.anilloContraste < 3) defectos.push(`${href} [foco] ${f.el} — anillo de foco ${f.anilloContraste}:1 (< 3:1)`);
         if (f.tabindexPositivo) defectos.push(`${href} [foco] ${f.el} — tabindex positivo`);
       }
     }
