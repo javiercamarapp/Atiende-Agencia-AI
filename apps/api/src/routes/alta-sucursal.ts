@@ -8,6 +8,11 @@
 //   POST /v1/licitaciones/:orgSlug/admin/alta-propiedad      { nombre }                  (una sola propiedad por organizacion)
 //   POST /superadmin/organizaciones/:organizationId/propiedades { nombre, zonaHoraria?, motivo }   alta asistida (step-up, SENSITIVE_ROUTES)
 //
+// La sucursal/propiedad NACE INACTIVA (no recibe pedidos ni aparece al cliente). El dueño/administrador la activa EXPLICITAMENTE con
+//   POST <ruta de alta de su vertical>/:propertyId/activar     (core.activar_propiedad_organizacion)
+// que responde 409 `configuracion_incompleta` con `faltantes` (ids de paso: menu, horario, zona_de_entrega, servicio, proveedor,
+// habitaciones, tarifas) mientras falte configuracion obligatoria. Licitaciones no tiene pasos: la activacion pasa directo.
+//
 // Despachos (cartera: POST /v1/despachos/:org/admin/cartera) y rentas (catalogo: rentas.crear_propiedad) ya tienen su propio alta con datos
 // de su vertical; la base los rechaza aqui con 400.
 //
@@ -19,7 +24,7 @@ import { authMiddleware, dbSession } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { rateLimit } from "@atiende/core-ratelimit";
 import { AltaPropiedadError, AltaPropiedadNoDisponibleError } from "@atiende/db";
-import type { PropiedadCreada } from "@atiende/db";
+import type { PropiedadActivada, PropiedadCreada } from "@atiende/db";
 import { Errors } from "../errors.ts";
 import { readJsonCapped, requestActor } from "../http-security.ts";
 import { logEvent } from "../logger.ts";
@@ -69,13 +74,20 @@ function traducir(err: unknown): never {
         throw Errors.conflict(err.message);
       case "tope":
         throw Errors.conflict(err.message);
+      case "incompleta":
+        // La ruta de activacion responde el 409 con `faltantes` antes de llegar aqui; por si otra ruta lo recibe, mismo codigo HTTP.
+        throw Errors.conflict(err.message);
     }
   }
   throw err;
 }
 
 function serializar(p: PropiedadCreada) {
-  return { propertyId: p.propertyId, slug: p.slug };
+  return { propertyId: p.propertyId, slug: p.slug, status: p.status };
+}
+
+function serializarActivada(p: PropiedadActivada) {
+  return { propertyId: p.propertyId, status: p.status, yaEstabaActiva: p.yaEstabaActiva };
 }
 
 export function altaSucursalRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
@@ -104,6 +116,30 @@ export function altaSucursalRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       }
       logEvent(c, "info", "alta_propiedad_dueno", { actorUserId: callerId, vertical, propertyId: creada.propertyId });
       return c.json(serializar(creada), 201);
+    });
+
+    const activar = `${path}/:propertyId/activar`;
+    app.use(activar, authMiddleware(deps.env), dbSession(deps.engine));
+    app.post(activar, async (c) => {
+      const orgSlug = c.req.param("orgSlug") ?? "";
+      const propertyId = c.req.param("propertyId") ?? "";
+      if (!SLUG_RE.test(orgSlug) || !UUID_RE.test(propertyId)) throw Errors.notFound("Sucursal no encontrada.");
+      const repo = deps.altaPropiedadRepo;
+      if (!repo) throw Errors.serviceUnavailable(NO_DISPONIBLE);
+      const callerId = c.get("userId");
+      await limitar(c.req.raw, callerId);
+      let activada: PropiedadActivada;
+      try {
+        activada = await repo(c.get("db")).activarComoDueno(callerId, { orgSlug, vertical, propertyId });
+      } catch (err) {
+        if (err instanceof AltaPropiedadError && err.codigo === "incompleta") {
+          return c.json({ code: "configuracion_incompleta", message: `No se puede activar todavía: ${err.message}`, faltantes: err.faltantes }, 409);
+        }
+        if (err instanceof AltaPropiedadError && err.codigo === "not_found") throw Errors.notFound("Sucursal no encontrada.");
+        return traducir(err);
+      }
+      if (!activada.yaEstabaActiva) logEvent(c, "info", "activacion_propiedad_dueno", { actorUserId: callerId, vertical, propertyId: activada.propertyId });
+      return c.json(serializarActivada(activada), 200);
     });
   }
 

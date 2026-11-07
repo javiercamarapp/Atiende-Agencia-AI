@@ -297,6 +297,9 @@ export {
   AltaPropiedadNoDisponibleError,
   InMemoryAltaPropiedadRepository,
   PostgresAltaPropiedadRepository,
+  slugSucursal,
+  TOPE_PROPIEDADES_POR_ORGANIZACION,
+  topePropiedadesPorOrganizacion,
   traducirErrorAltaPropiedad,
 } from "./alta-propiedad-repository.ts";
-export type { AltaPropiedadCodigo, AltaPropiedadInput, AltaPropiedadRepository, PropiedadCreada } from "./alta-propiedad-repository.ts";
+export type { AltaPropiedadCodigo, AltaPropiedadInput, AltaPropiedadRepository, PropiedadActivada, PropiedadCreada } from "./alta-propiedad-repository.ts";
