@@ -12,12 +12,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { KeyboardEvent } from "react";
 import { BookOpen, CheckCircle2, Circle, PlayCircle, Wrench } from "lucide-react";
-import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, EstadoVacio, PageContainer, Textarea, VistaPreviaLlamada, StatusBadge, useAccionesBarra, useMarcoShell } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, EstadoVacio, PageContainer, Selector, Textarea, VistaPreviaLlamada, StatusBadge, useAccionesBarra, useMarcoShell } from "@atiende/ui";
 import { VozNoDisponibleError, crearSesionPreviewVoz, ejecutarHerramientaPreviewVoz, fetchConversacionesVoz, fetchConversacionVoz, fetchSaludVoz, fetchVozConfig, updateVozConfig } from "../lib/voz-client.ts";
 import { pedidoSimuladoDe } from "../lib/voz-client.ts";
 import type { ConversacionVoz, PedidoSimulado, VozConfig, VozConfigInput } from "../lib/voz-client.ts";
 import { TarjetaPedidoSimulado } from "../preview/TarjetaPedidoSimulado.tsx";
 import { buscarVoz } from "../lib/voz-catalogo.ts";
+import { VOCES_TELEFONO } from "../lib/voz-telefono-catalogo.ts";
 import { crearFabricaGeminiLive } from "../../../lib/voz/adaptador-gemini-live.ts";
 import type { EntornoVoz } from "../../../lib/voz/adaptador-gemini-live.ts";
 import { entornoNavegador } from "../../../lib/voz/entorno-navegador.ts";
@@ -61,11 +62,13 @@ export function mencionaAsistenteVirtual(texto: string): boolean {
 }
 
 function aBorrador(c: VozConfig | null): VozConfigInput {
-  return c ? { vozId: c.vozId, promptSistema: c.promptSistema, mensajeInicial: c.mensajeInicial, mensajeInicialInterrumpible: c.mensajeInicialInterrumpible, habilitado: c.habilitado } : BORRADOR_VACIO;
+  return c
+    ? { vozId: c.vozId, promptSistema: c.promptSistema, mensajeInicial: c.mensajeInicial, mensajeInicialInterrumpible: c.mensajeInicialInterrumpible, habilitado: c.habilitado, vozTelefono: c.vozTelefono ?? null, vozTelefonoDisponible: c.vozTelefonoDisponible === true }
+    : BORRADOR_VACIO;
 }
 
 function iguales(a: VozConfigInput, b: VozConfigInput): boolean {
-  return a.vozId === b.vozId && a.promptSistema === b.promptSistema && a.mensajeInicial === b.mensajeInicial && a.mensajeInicialInterrumpible === b.mensajeInicialInterrumpible && a.habilitado === b.habilitado;
+  return a.vozId === b.vozId && a.promptSistema === b.promptSistema && a.mensajeInicial === b.mensajeInicial && a.mensajeInicialInterrumpible === b.mensajeInicialInterrumpible && a.habilitado === b.habilitado && (a.vozTelefono ?? null) === (b.vozTelefono ?? null);
 }
 
 export interface AgenteVozPageProps extends RestaurantesShellContext {
@@ -225,6 +228,29 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, role, nombreSucur
                 label="Agente habilitado para recibir llamadas en esta sucursal"
               />
               <SelectorVoz vozId={borrador.vozId} onElegir={(id) => setBorrador({ ...borrador, vozId: id })} baseUrl={import.meta.env.BASE_URL} crearAudio={crearAudio} />
+              <div>
+                <label htmlFor="voz-telefono" className="block text-sm font-medium text-foreground mb-1.5">
+                  Voz de la llamada telefónica
+                </label>
+                {borrador.vozTelefonoDisponible === true ? (
+                  <>
+                    <Selector id="voz-telefono" data-testid="selector-voz-telefono" value={borrador.vozTelefono ?? VOCES_TELEFONO[0]!.id} onChange={(e) => setBorrador({ ...borrador, vozTelefono: e.target.value === VOCES_TELEFONO[0]!.id ? null : e.target.value })}>
+                      {VOCES_TELEFONO.map((v) => (
+                        <option key={v.id} value={v.id}>
+                          {v.nombre} — {v.estilo}
+                        </option>
+                      ))}
+                    </Selector>
+                    <p className="mt-1 text-xs text-muted-foreground">Es la voz con la que el agente contesta el teléfono. La vista previa del panel usa la voz de arriba.</p>
+                  </>
+                ) : (
+                  <p role="note" data-testid="aviso-voz-telefono" className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                    {config.estado === "listo" && config.datos === null
+                      ? "Guarde primero la configuración de voz de esta sucursal para elegir la voz telefónica. Mientras tanto se usa Regina, la voz de la plataforma."
+                      : "No disponible aún: requiere la migración 101 en la base. Mientras tanto la llamada usa Regina, la voz de la plataforma."}
+                  </p>
+                )}
+              </div>
             </div>
           ) : null}
 

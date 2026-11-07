@@ -20,6 +20,10 @@ export interface VozConfig {
   readonly mensajeInicialInterrumpible: boolean;
   /** Si el agente está encendido para esta sucursal. */
   readonly habilitado: boolean;
+  /** Voz de la llamada telefónica (ElevenLabs, ver voz-telefono-catalogo.ts); null = la de la plataforma. Ausente = la API no la conoce. */
+  readonly vozTelefono?: string | null;
+  /** La base ya tiene la columna de la voz telefónica (migración 101). Sin ella el panel no la ofrece (estado honesto). */
+  readonly vozTelefonoDisponible?: boolean;
 }
 
 export type VozConfigInput = VozConfig;
@@ -95,10 +99,21 @@ interface ConfigWire {
   readonly mensajeInicial: string;
   /** Migración 053; una API anterior no lo manda (= interrumpible, como siempre). */
   readonly mensajeInicialInterrumpible?: boolean;
+  /** Migración 101; una API anterior no los manda. */
+  readonly vozTelefono?: string | null;
+  readonly vozTelefonoDisponible?: boolean;
 }
 
 function configDesdeWire(w: ConfigWire): VozConfig {
-  return { vozId: w.configurada && w.voiceId ? w.voiceId : null, promptSistema: w.comportamiento, mensajeInicial: w.mensajeInicial, mensajeInicialInterrumpible: w.mensajeInicialInterrumpible !== false, habilitado: w.habilitado };
+  return {
+    vozId: w.configurada && w.voiceId ? w.voiceId : null,
+    promptSistema: w.comportamiento,
+    mensajeInicial: w.mensajeInicial,
+    mensajeInicialInterrumpible: w.mensajeInicialInterrumpible !== false,
+    habilitado: w.habilitado,
+    vozTelefono: typeof w.vozTelefono === "string" ? w.vozTelefono : null,
+    vozTelefonoDisponible: w.vozTelefonoDisponible === true,
+  };
 }
 
 /** `null` = el servicio existe pero esta sucursal todavía no tiene configuración guardada. Base sin migrar (`disponible: false`) = VozNoDisponibleError. */
@@ -111,7 +126,16 @@ export async function fetchVozConfig(fetchImpl: typeof fetch, apiBaseUrl: string
 /** El PUT de la API reemplaza la config completa y exige una voz: sin voz elegida no se puede guardar. */
 export async function updateVozConfig(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, input: VozConfigInput): Promise<VozConfig> {
   if (input.vozId === null) throw new RestaurantesAdminError("Elige una voz antes de guardar.");
-  const body = { habilitado: input.habilitado, proveedor: PROVEEDOR_VOZ_PANEL, voiceId: input.vozId, comportamiento: input.promptSistema, mensajeInicial: input.mensajeInicial, mensajeInicialInterrumpible: input.mensajeInicialInterrumpible };
+  const body = {
+    habilitado: input.habilitado,
+    proveedor: PROVEEDOR_VOZ_PANEL,
+    voiceId: input.vozId,
+    comportamiento: input.promptSistema,
+    mensajeInicial: input.mensajeInicial,
+    mensajeInicialInterrumpible: input.mensajeInicialInterrumpible,
+    // La voz telefónica solo viaja si la base ya la admite (migración 101): contra la base sin migrar el guardado de siempre sigue funcionando.
+    ...(input.vozTelefonoDisponible === true && input.vozTelefono !== undefined ? { vozTelefono: input.vozTelefono } : {}),
+  };
   return configDesdeWire(await pedir<ConfigWire>(fetchImpl, `${base(apiBaseUrl, propertyId)}/config`, token, { method: "PUT", body }));
 }
 
