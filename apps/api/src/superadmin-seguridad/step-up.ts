@@ -27,6 +27,7 @@ interface SensitiveRoute {
 
 export const SENSITIVE_ROUTES: readonly SensitiveRoute[] = [
   { method: "POST", pattern: /^\/superadmin\/impersonacion\/sesiones$/, label: "iniciar impersonacion" },
+  { method: "POST", pattern: /^\/superadmin\/soporte\/entrar$/, label: "entrar al panel de un cliente (sesion de soporte)" },
   { method: "POST", pattern: /^\/superadmin\/break-glass\/sesiones$/, label: "abrir break-glass" },
   { method: "POST", pattern: /^\/superadmin\/acciones\/intents\/[^/]+\/confirmar$/, label: "confirmar accion sugerida" },
   { method: "PUT", pattern: /^\/superadmin\/gasto-api\/organizaciones\/[^/]+\/tope$/, label: "cambiar tope de gasto de una organizacion" },

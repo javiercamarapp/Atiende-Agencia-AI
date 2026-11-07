@@ -25,6 +25,21 @@ import { buildTestDeps, jsonRequestInit } from "./fixtures.ts";
  *  activa sin la tabla, así que bloquear sería un falso "estás
  *  impersonando"). */
 class NotMigratedImpersonationRepository implements ImpersonationRepository {
+  async startSupportSession() {
+    return { availability: "not_migrated" as const, kind: null, session: null };
+  }
+  async elevateSupportSession() {
+    return { availability: "not_migrated" as const, entry: null };
+  }
+  async getSupportState() {
+    return { availability: "not_migrated" as const, state: null };
+  }
+  async grantSupportMembership() {
+    return { availability: "not_migrated" as const, granted: false };
+  }
+  async revokeSupportMemberships() {
+    return { availability: "not_migrated" as const, revoked: 0 };
+  }
   async startSession() {
     return { availability: "not_migrated" as const, session: null };
   }

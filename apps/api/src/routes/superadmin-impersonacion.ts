@@ -148,7 +148,12 @@ export function superadminImpersonacionRoutes(deps: AppDeps): Hono<CoreAuthHonoE
     const sessionId = c.req.param("id");
 
     try {
-      const result = await deps.engine.withAppSession({ userId: callerId }, (db) => deps.impersonationRepo(db).endSession(callerId, sessionId));
+      const result = await deps.engine.withAppSession({ userId: callerId }, async (db) => {
+        const repo = deps.impersonationRepo(db);
+        // Sesión de soporte con concesión temporal de membresía: se revoca al terminar (no-op si no hay; 0058 sin aplicar: se omite).
+        await repo.revokeSupportMemberships(callerId, sessionId);
+        return repo.endSession(callerId, sessionId);
+      });
       if (result.availability === "not_migrated") {
         throw Errors.serviceUnavailable(MENSAJE_NO_MIGRADO);
       }
