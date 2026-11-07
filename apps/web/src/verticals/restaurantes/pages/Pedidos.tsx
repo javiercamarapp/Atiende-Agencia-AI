@@ -23,6 +23,8 @@ import { guardarSonido, idsNuevos, leerSonido, etiquetaActualizado, reproducirAv
 import { useSondeoPedidos } from "../lib/use-sondeo-pedidos.ts";
 import { ProgramadosPanel, sigueProgramado } from "./ProgramadosPanel.tsx";
 import { AprobacionesPanel } from "./AprobacionesPanel.tsx";
+import { AvisoPorAprobar } from "../components/pedidos/AvisoPorAprobar.tsx";
+import { resumenPorAprobar } from "../lib/pedidos-por-aprobar.ts";
 import { AutopilotoReglasDialogo } from "../components/AutopilotoReglasDialogo.tsx";
 import { HistorialPedidoDialogo } from "../components/HistorialPedidoDialogo.tsx";
 import { MotivoDialogo } from "../components/MotivoDialogo.tsx";
@@ -617,6 +619,9 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
   };
   const cargandoLista = vista === "programadas" ? programados === null : orders === null;
   const porAprobar = aprobaciones?.solicitudes.length ?? 0;
+  // Urgencia de aprobacion (regla del suelto): umbral = el de escalacion de la sucursal; sin reglas cargadas, el del original.
+  const umbralUrgenteMin = autoConfig?.config.aprobacionMinutos ?? null;
+  const resumenAprobar = resumenPorAprobar(aprobaciones?.solicitudes ?? [], ahoraMs, umbralUrgenteMin);
   const textoTiempos = tiempos
     ? `Tiempo prometido hoy: domicilio ${tiempos.domicilio.texto}; recoger ${tiempos.recoger.texto}${
         tiempos.domicilio.origen === "aprendido" || tiempos.recoger.origen === "aprendido" ? " (aprendido de las entregas recientes; nunca menos que el tiempo que fijó el dueño)" : " (el tiempo que fijó el dueño; aún no hay entregas suficientes para aprender)"
@@ -687,6 +692,11 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
                 >
                   <Icono className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
                   {etiqueta}
+                  {id === "recibidas" && porAprobar > 0 && (
+                    <StatusBadge tone={resumenAprobar.urgentes > 0 ? "danger" : "warning"} dot={false} className="px-1.5 py-0 text-2xs" data-testid="insignia-recibidas-por-aprobar">
+                      {porAprobar}
+                    </StatusBadge>
+                  )}
                 </button>
               ))}
             </div>
@@ -716,6 +726,8 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
             </div>
           )}
 
+          {vista === "recibidas" && filtro !== "por_aprobar" && <AvisoPorAprobar resumen={resumenAprobar} onRevisar={() => setFiltro("por_aprobar")} />}
+
           {avisoImpresion && (
             <p role="alert" className="m-0 text-xs text-destructive">
               {avisoImpresion}
@@ -736,6 +748,7 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
               token={token}
               propertyId={propertyId}
               topeDescuentoPct={autoConfig?.config.compensacionTopePct ?? 20}
+              umbralUrgenteMin={umbralUrgenteMin}
               onResuelta={async () => {
                 await loadAprobaciones();
                 await loadRef.current();
