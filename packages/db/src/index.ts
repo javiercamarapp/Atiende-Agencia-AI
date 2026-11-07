@@ -292,3 +292,11 @@ export {
 } from "./superadmin-alta-equipo-repository.ts";
 export { PostgresLoginChoferRepository, InMemoryLoginChoferRepository, LoginChoferNoDisponibleError, LoginChoferTelefonoError } from "./login-chofer-repository.ts";
 export type { LoginChoferRepository, LoginChoferCuenta, LoginChoferCodigoReservado, LoginChoferLimites, LoginChoferEventoTipo, LoginChoferTelefonoListado, LoginChoferLecturaCore, ResultadoLimite } from "./login-chofer-repository.ts";
+export {
+  AltaPropiedadError,
+  AltaPropiedadNoDisponibleError,
+  InMemoryAltaPropiedadRepository,
+  PostgresAltaPropiedadRepository,
+  traducirErrorAltaPropiedad,
+} from "./alta-propiedad-repository.ts";
+export type { AltaPropiedadCodigo, AltaPropiedadInput, AltaPropiedadRepository, PropiedadCreada } from "./alta-propiedad-repository.ts";
