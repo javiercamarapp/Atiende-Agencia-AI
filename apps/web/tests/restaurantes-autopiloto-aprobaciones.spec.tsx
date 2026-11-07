@@ -127,6 +127,43 @@ async function abrirPorAprobar(role = "owner") {
   await esperar();
 }
 
+describe("Pedidos: urgencia de aprobacion en Órdenes recibidas (regla del suelto)", () => {
+  it("en «Todos» avisa cuántos esperan aprobación, marca la urgente y «Revisar ahora» abre el filtro con la urgente arriba", async () => {
+    // Umbral de la sucursal = aprobacionMinutos (10): GRANDE espera 12 min -> urgente; la cancelacion recien llegada no.
+    const RECIENTE = { ...CANCELACION, solicitadaAt: new Date(Date.now() - 60_000).toISOString() };
+    stub({ solicitudes: [RECIENTE, GRANDE], disponible: true });
+    rendered = renderComponent(<PedidosPage {...ctx()} />);
+    await esperar();
+    const aviso = document.body.querySelector('[data-testid="aviso-por-aprobar"]')!;
+    expect(aviso.textContent).toContain("2 pedidos esperan tu aprobación");
+    expect(aviso.textContent).toContain("1 urgente · el más antiguo espera hace 12 min");
+    expect(aviso.getAttribute("data-tone")).toBe("danger");
+    expect(document.body.querySelector('[data-testid="insignia-recibidas-por-aprobar"]')?.textContent).toBe("2");
+    click(boton("Revisar ahora")!);
+    await esperar();
+    expect(document.body.querySelector('[data-testid="aviso-por-aprobar"]')).toBeNull();
+    const tarjetas = [...document.body.querySelectorAll('[data-testid^="solicitud-"]')].map((n) => n.getAttribute("data-testid"));
+    expect(tarjetas).toEqual([`solicitud-${GRANDE.id}`, `solicitud-${RECIENTE.id}`]);
+    expect(document.body.querySelector(`[data-testid="urgente-${GRANDE.id}"]`)?.textContent).toBe("Urgente");
+    expect(document.body.querySelector(`[data-testid="urgente-${RECIENTE.id}"]`)).toBeNull();
+  });
+
+  it("sin urgentes el aviso es de advertencia; sin solicitudes no hay aviso ni insignia", async () => {
+    stub({ solicitudes: [{ ...GRANDE, solicitadaAt: new Date(Date.now() - 3 * 60_000).toISOString() }], disponible: true });
+    rendered = renderComponent(<PedidosPage {...ctx()} />);
+    await esperar();
+    const aviso = document.body.querySelector('[data-testid="aviso-por-aprobar"]')!;
+    expect(aviso.getAttribute("data-tone")).toBe("warning");
+    expect(aviso.textContent).toContain("El más antiguo espera hace 3 min");
+    rendered.unmount();
+    stub({ solicitudes: [], disponible: true });
+    rendered = renderComponent(<PedidosPage {...ctx()} />);
+    await esperar();
+    expect(document.body.querySelector('[data-testid="aviso-por-aprobar"]')).toBeNull();
+    expect(document.body.querySelector('[data-testid="insignia-recibidas-por-aprobar"]')).toBeNull();
+  });
+});
+
 describe("Pedidos: pestana Por aprobar", () => {
   it("el chip lleva la insignia con las aprobaciones pendientes y la lista muestra pedido, total, espera y botones del tipo", async () => {
     stub({ solicitudes: [GRANDE, CANCELACION, COMPENSACION], disponible: true });
