@@ -49,7 +49,7 @@ export function VerticalShellConectado({ apiBaseUrl, token, notificacionesHref, 
   const pie: SidebarPiePildora[] = [
     ...(shell.sidebarPie ?? []),
     // La campana del encabezado se quito: las notificaciones (y su punto de "sin leer") viven aqui, en escritorio y en "Mas" > "Cuenta".
-    { label: "Notificaciones", to: notificacionesHref, icon: Bell, indicador: notif.hayNoLeidas },
+    { label: "Notificaciones", to: notificacionesHref, icon: Bell, indicador: notif.hayNoLeidas, contador: notif.unreadCount },
     ...(yaEnNavegacion ? [] : [{ label: "Seguridad de la cuenta", to: seguridadHref, icon: ShieldCheck }]),
     ...(chat && chatDisponible ? [copilotoHref ? { label: "Pregúntale a tus datos", to: copilotoHref, icon: MessageCircle } : { label: "Pregúntale a tus datos", onClick: () => setChatAbierto(true), icon: MessageCircle }] : []),
   ];
