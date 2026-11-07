@@ -135,6 +135,12 @@ describe("buildPmSeedPlan", () => {
     expect(sql).toContain('"deTemporada" boolean, horario jsonb)');
   });
 
+  it("con --demo la organizacion nace 'active' (no es una prueba); sin --demo conserva 'trial' como siempre", () => {
+    const sql = renderPmSeedPlpgsql(plan);
+    expect(sql).toContain("insert into core.organization (vertical, name, slug, status)");
+    expect(sql).toContain("case when v->'demo' is not null and v->'demo' <> 'null'::jsonb then 'active' else 'trial' end");
+  });
+
   it("un horario propio invalido (abre = cierra) aborta el plan", () => {
     const d = clone(data) as unknown as { sucursales: Array<Record<string, unknown>> };
     d.sucursales.find((b) => b.id === "T3")!.horario = [{ dias: [1], abre: "18:00", cierra: "18:00" }];
