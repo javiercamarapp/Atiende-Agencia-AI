@@ -106,6 +106,8 @@ for (const vertical of VERTICALES) {
     expect(await page.evaluate(() => document.scrollingElement!.scrollWidth <= window.innerWidth)).toBe(true);
 
     if (escritorio) {
+      // Pantalla de acceso sin scroll vertical en escritorio (regla de Javier del 3-oct).
+      expect(await page.evaluate(() => document.scrollingElement!.scrollHeight - window.innerHeight)).toBeLessThanOrEqual(0);
       const panel = await caja(page, ".ld3-visual");
       const columna = await caja(page, ".ld3-columna");
       const ancho = page.viewportSize()!.width;

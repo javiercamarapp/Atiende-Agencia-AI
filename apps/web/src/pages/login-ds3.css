@@ -124,14 +124,25 @@
   .login-ds3 .ld3-visual { display: flex; flex-direction: column; grid-column: 1; grid-row: 1; min-height: 100vh; min-height: 100dvh; padding: 12px 0 12px 12px; }
   .login-ds3 .ld3-copia { padding: 32px 0; }
 }
+/* Hasta 900 px de alto (1440x900): un renglon mas de bajada (licitaciones) no debe pedir scroll. */
+@media (min-width: 1024px) and (max-height: 900px) {
+  .login-ds3 .ld3-copia { padding: 20px 0; }
+}
 /* Pantallas de escritorio bajas: todo se compacta para no pedir scroll (Rovaq login.css:61-70). */
 @media (min-width: 1024px) and (max-height: 820px) {
   .login-ds3 .ld3-columna { padding-block: 16px; }
   .login-ds3 .ld3-copia { padding: 24px 0; }
   .login-ds3 .ld3-titulo { font-size: 34px; margin: 14px 0; }
-  .login-ds3 .ld3-divisor, .login-ds3 .ld3-google { margin-top: 24px; }
-  .login-ds3 .ld3-separador { margin-block: 20px; }
+  .login-ds3 .ld3-divisor, .login-ds3 .ld3-google { margin-top: 18px; }
+  .login-ds3 .ld3-separador { margin-block: 14px; }
   .login-ds3 .ld3-estado { min-height: 32px; }
+  /* Atiende agrega «¿Olvidaste tu contraseña?» y los enlaces legales: se aprietan las separaciones del pie para que
+     1024x768, 1366x768 y 1280x720 sigan sin scroll (regla de Javier del 3-oct para las pantallas de acceso). */
+  .login-ds3 .ld3-copia { padding: 12px 0; }
+  .login-ds3 .ld3-ayuda { margin-top: 4px; }
+  .login-ds3 .ld3-ayuda p { margin: 4px 0 8px; }
+  .login-ds3 .ld3-invitacion { margin-top: 12px; }
+  .login-ds3 .ld3-nota { margin-top: 16px; }
   .login-ds3 .ld3-panel-copia { padding-top: 32px; }
   .login-ds3 .ld3-panel-copia h2 { font-size: clamp(32px, 3.15vw, 48px); }
 }
