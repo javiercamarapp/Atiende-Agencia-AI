@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest";
 import type { TenancyEngine, TenantDbSession } from "@atiende/core-tenancy";
 import { buildApp } from "../src/app.ts";
-import { runSmoke } from "../../../scripts/smoke-post-deploy/smoke.ts";
+import { describirRedireccion, runSmoke } from "../../../scripts/smoke-post-deploy/smoke.ts";
 import { buildTestDeps } from "./fixtures.ts";
 
 async function appFetch() {
@@ -53,6 +53,28 @@ describe("scripts/smoke-post-deploy", () => {
   it("detecta que falta la SPA cuando se pide comprobarla", async () => {
     const results = await runSmoke("https://smoke.test", { fetchImpl: await appFetch(), checkSpa: true });
     expect(results.find((r) => r.name.includes("SPA"))?.ok).toBe(false);
+  });
+
+  it("la proteccion de despliegues de Vercel (302 a vercel.com/sso-api, causa del rojo desde el 6-oct) se nombra en cada fallo", async () => {
+    const protegido = () =>
+      Promise.resolve(new Response(null, { status: 302, headers: { location: "https://vercel.com/sso-api?url=https%3A%2F%2Fx.vercel.app%2Fhealth&nonce=abc" } }));
+    const results = await runSmoke("https://atiende-abc123.vercel.app", { fetchImpl: protegido, checkSpa: true });
+    expect(results.every((r) => !r.ok)).toBe(true);
+    for (const r of results.filter((x) => !x.name.startsWith("POST /auth/login con"))) {
+      expect(r.detail, r.name).toContain("proteccion de despliegues de Vercel");
+      // nunca se imprime la query de la redireccion (trae la URL del despliegue y un nonce)
+      expect(r.detail, r.name).not.toContain("nonce");
+    }
+  });
+
+  it("describirRedireccion: solo 3xx; Vercel por host; otras redirecciones sin query", () => {
+    const r = (status: number, location?: string) => ({ status, headers: new Headers(location ? { location } : {}) });
+    expect(describirRedireccion(r(200))).toBeNull();
+    expect(describirRedireccion(r(401))).toBeNull();
+    expect(describirRedireccion(r(307, "https://vercel.com/login?next=x"))).toContain("Vercel");
+    expect(describirRedireccion(r(302, "https://otro.example/entrar?token=secreto"))).toBe("status 302 (redireccion a /entrar)");
+    expect(describirRedireccion(r(308, "/nueva"))).toBe("status 308 (redireccion a /nueva)");
+    expect(describirRedireccion(r(302))).toBe("status 302 (redireccion a ?)");
   });
 
   it("un fallo de red se reporta como comprobacion fallida, no como excepcion", async () => {

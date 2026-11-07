@@ -33,9 +33,31 @@ async function check(name: string, fn: () => Promise<string>): Promise<SmokeChec
   }
 }
 
+/**
+ * Una redireccion inesperada casi siempre es la proteccion de despliegues de Vercel (SSO / contrasena): la URL
+ * unica del despliegue (`*.vercel.app`) responde 302 hacia `vercel.com/sso-api` o `vercel.com/login`. Fue la causa
+ * del smoke en rojo desde el 6-oct. Se nombra la causa en vez de un "302" mudo.
+ */
+export function describirRedireccion(res: Pick<Response, "status" | "headers">): string | null {
+  if (res.status < 300 || res.status >= 400) return null;
+  const destino = res.headers.get("location") ?? "";
+  let host = "";
+  try {
+    host = new URL(destino).hostname;
+  } catch {
+    // relativa o vacia: no es la proteccion de Vercel
+  }
+  if (host === "vercel.com" || host.endsWith(".vercel.com")) {
+    return `status ${res.status} hacia ${host}: la URL esta detras de la proteccion de despliegues de Vercel; usa el alias de produccion (PROD_BASE_URL), no la URL unica del despliegue`;
+  }
+  return `status ${res.status} (redireccion a ${destino ? new URL(destino, "https://x.invalid").pathname : "?"})`;
+}
+
 function expectStatus(res: Response, expected: number | readonly number[]): void {
   const lista = typeof expected === "number" ? [expected] : expected;
-  if (!lista.includes(res.status)) throw new Error(`status ${res.status}, se esperaba ${lista.join(" o ")}`);
+  if (lista.includes(res.status)) return;
+  const redireccion = describirRedireccion(res);
+  throw new Error(redireccion ? `${redireccion}; se esperaba ${lista.join(" o ")}` : `status ${res.status}, se esperaba ${lista.join(" o ")}`);
 }
 
 export async function runSmoke(baseUrl: string, options: SmokeOptions = {}): Promise<SmokeCheck[]> {
@@ -65,6 +87,7 @@ export async function runSmoke(baseUrl: string, options: SmokeOptions = {}): Pro
   results.push(
     await check("cabeceras de seguridad en la API (nosniff, HSTS, anti-framing)", async () => {
       const res = await doFetch(`${base}/health`);
+      expectStatus(res, [200, 503]);
       const faltan = ["x-content-type-options", "strict-transport-security", "x-frame-options"].filter((h) => !res.headers.get(h));
       if (faltan.length > 0) throw new Error(`faltan: ${faltan.join(", ")}`);
       return "presentes";
