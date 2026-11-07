@@ -13,6 +13,7 @@
 import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
+import { registrarOnboardingEvento } from "@atiende/db";
 import { DAY_SECONDS, STAFF_INVITE_ROLES, getCustomerDetailById, telefonoFicticioPreview, validarConfigAgenteWhatsapp } from "@atiende/domain-restaurantes";
 import type { ConversationMessage, WhatsAppAgentConfigInput } from "@atiende/domain-restaurantes";
 import { Errors } from "../../../errors.ts";
@@ -115,6 +116,12 @@ export function restaurantesAgentePreviewRoutes(deps: AppDeps): Hono<CoreAuthHon
       previewCustomerId: clienteSimuladoId,
       configBorrador: borrador,
     });
+    // Onboarding: la prueba llego a un pedido simulado (PRUEBA-xxxx) => hito verificable `prueba_agente_whatsapp` (core.onboarding_evento,
+    // migracion 0073). Idempotente y best-effort: corre con SAVEPOINT en la sesion del owner/admin; sin la 0073 o ante cualquier error no
+    // cambia la respuesta de la prueba. Sin datos de la conversacion: solo la sucursal.
+    if (turno.pedidoSimulado !== undefined && turno.pedidoSimulado !== null) {
+      await registrarOnboardingEvento(c.get("db"), { organizationId, vertical: "restaurantes", tipo: "prueba_agente_whatsapp", propertyId });
+    }
     logEvent(c, "info", "restaurantes_admin_agente_preview_mensaje", { actorUserId: staffId, organizationId, propertyId, conBorrador: borrador !== null, clienteSimulado: clienteSimuladoId !== null });
     return c.json({ respuesta: turno.reply, escalado: turno.escalacion !== undefined, pedidoSimulado: turno.pedidoSimulado ?? null });
   });
