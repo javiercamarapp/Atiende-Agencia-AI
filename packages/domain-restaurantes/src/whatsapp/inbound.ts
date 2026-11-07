@@ -4,6 +4,8 @@
 // (claim_whatsapp_conversation, evita que mensajes casi-simultáneos del mismo
 // teléfono corrompan el historial), append atómico (whatsapp_append_turn), y
 // redacción de datos sensibles ANTES de guardar cualquier mensaje real del cliente.
+import { interruptorApagadoSeguro } from "../interruptor-emergencia.ts";
+import type { InterruptorEmergenciaPort } from "../interruptor-emergencia.ts";
 import { redactarDatosDePago } from "@atiende/core-pii";
 import { actorHash, consumeRateLimit } from "../rate-limit.ts";
 import { lookupCustomerConPedidoReciente } from "../customers.ts";
@@ -144,12 +146,16 @@ export const AGENTE_APAGADO_AVISO_VENTANA_SEGUNDOS = 6 * 3600;
  * todavia apagado) y hay que volver a abrir una toma para que regrese a la bandeja (QA R2 caos-01: antes el limitador de 6 h callaba al cliente tras
  * un "Devolver" y la conversacion quedaba huerfana). Sin compuerta el limitador de aviso es la unica red contra repetir el texto.
  */
-async function decisionAgenteApagado(repo: RestaurantesRepository, organizationId: string, phone: string, propertyId: string | null | undefined, puedeAbrirToma: boolean): Promise<"responder" | "callar" | null> {
-  if (!propertyId) return null;
-  try {
-    if (await repo.findAgenteWhatsappActivo(propertyId)) return null;
-  } catch {
-    return null; // un fallo al leer el interruptor nunca deja a un cliente sin respuesta: el agente atiende como hasta hoy
+async function decisionAgenteApagado(repo: RestaurantesRepository, organizationId: string, phone: string, propertyId: string | null | undefined, puedeAbrirToma: boolean, interruptor?: InterruptorEmergenciaPort): Promise<"responder" | "callar" | null> {
+  // Interruptor de emergencia unificado (103): apaga TODAS las sucursales de la organizacion aunque el mensaje no traiga sucursal resuelta.
+  const emergencia = await interruptorApagadoSeguro(interruptor, organizationId, propertyId ?? null);
+  if (!emergencia) {
+    if (!propertyId) return null;
+    try {
+      if (await repo.findAgenteWhatsappActivo(propertyId)) return null;
+    } catch {
+      return null; // un fallo al leer el interruptor nunca deja a un cliente sin respuesta: el agente atiende como hasta hoy
+    }
   }
   if (puedeAbrirToma) return "responder";
   try {
@@ -171,7 +177,8 @@ async function recordatorioPermitido(repo: RestaurantesRepository, organizationI
 }
 
 /** R16: ¿el interruptor de la sucursal tiene al agente APAGADO? Ahi la toma es del equipo por decision del negocio: el texto fijo sale una vez y despues se calla (no se responde cada mensaje). */
-async function agenteApagadoEnSucursal(repo: RestaurantesRepository, propertyId: string | null | undefined): Promise<boolean> {
+async function agenteApagadoEnSucursal(repo: RestaurantesRepository, propertyId: string | null | undefined, organizationId?: string, interruptor?: InterruptorEmergenciaPort): Promise<boolean> {
+  if (organizationId && (await interruptorApagadoSeguro(interruptor, organizationId, propertyId ?? null))) return true;
   if (!propertyId) return false;
   try {
     return !(await repo.findAgenteWhatsappActivo(propertyId));
@@ -211,6 +218,8 @@ export async function handleInboundWhatsAppMessage(
     readonly botonId?: string;
     /** Instante (ms) en que el cliente envio el mensaje: con mas de ~23 h ya no se encolan botones (ventana de 24 h de WhatsApp). Ausente = acaba de escribir. */
     readonly recibidoEnMs?: number;
+    /** Interruptor de emergencia unificado (103). Ausente = no se consulta (comportamiento anterior). */
+    readonly interruptor?: InterruptorEmergenciaPort;
   },
 ): Promise<InboundMessageOutcome> {
   const { organizationId, messageId, phone, phoneNumberId, propertyId, handoffGate, privacy } = args;
@@ -268,9 +277,9 @@ export async function handleInboundWhatsAppMessage(
           if (handoff === "pendiente") await avisarQuejaConTomaPendiente(repo, { organizationId, phone, body, messageId, propertyId: propertyId ?? null });
           const acuseBase = handoff === "pendiente" && handoffGate.acusePendiente ? await handoffGate.acusePendiente(organizationId, phone, ACUSE_PENDIENTE_ESPERA_MIN, ACUSE_PENDIENTE_REPETIR_MIN) : false;
           // R16: con la toma pendiente SIEMPRE se contesta (la base solo marca el acuse "oficial"); con la toma tomada atiende la persona y el bot calla.
-          const textoEstado = handoff === "pendiente" && handoffGate.acusePendiente !== undefined ? await estadoDePedidoParaToma(repo, organizationId, phone, body, propertyId) : null;
+          const textoEstado = handoff === "pendiente" && handoffGate.acusePendiente !== undefined ? await estadoDePedidoParaToma(repo, organizationId, phone, body, propertyId, args.interruptor) : null;
           const permitido = textoEstado !== null || (handoff === "pendiente" && handoffGate.acusePendiente !== undefined ? await recordatorioPermitido(repo, organizationId, phone) : false);
-          const acuse = permitido && (textoEstado !== null || acuseBase || !(await agenteApagadoEnSucursal(repo, propertyId)));
+          const acuse = permitido && (textoEstado !== null || acuseBase || !(await agenteApagadoEnSucursal(repo, propertyId, organizationId, args.interruptor)));
           const textoAcuse = textoEstado !== null ? textoEstado : acuse ? textoParaTomaPendiente(body, acuseBase, acuseBase ? await textoDelAcuse(repo, organizationId, propertyId) : ACUSE_HANDOFF_PENDIENTE) : ACUSE_HANDOFF_PENDIENTE;
           if (acuse) {
             await repo.whatsappAppendTurn(organizationId, phone, [{ role: "assistant", content: textoAcuse, at: ahoraIso() }], null, null, null);
@@ -292,7 +301,7 @@ export async function handleInboundWhatsAppMessage(
       // sucursal (compartido por todos sus clientes). Pasado el tope no se llama al modelo: se avisa UNA vez por ventana y despues se calla (el
       // mensaje ya quedo en el historial para quien atienda). El ARCO (obligacion legal) no se limita.
       // Interruptor duro de la sucursal (053): antes del limite y del modelo, sin costo de IA. El ARCO (obligacion legal) corre aunque el agente este apagado.
-      const apagado = arco ? null : await decisionAgenteApagado(repo, organizationId, phone, propertyId, handoffGate !== undefined);
+      const apagado = arco ? null : await decisionAgenteApagado(repo, organizationId, phone, propertyId, handoffGate !== undefined, args.interruptor);
       if (apagado === "callar") {
         await repo.finishWhatsAppMessage(organizationId, messageId, phoneHash, "processed", null);
         return { ok: true, retryable: false };
@@ -533,10 +542,10 @@ export function esPreguntaDeEstadoSegura(mensaje: string): boolean {
 }
 
 /** Texto de estado para una toma PENDIENTE, o null (= camino de siempre). Respeta R16: exige `acusePendiente` en la compuerta y el agente encendido en la sucursal; sin riesgo detectado por el clasificador. */
-async function estadoDePedidoParaToma(repo: RestaurantesRepository, organizationId: string, phone: string, mensaje: string, propertyId: string | null | undefined): Promise<string | null> {
+async function estadoDePedidoParaToma(repo: RestaurantesRepository, organizationId: string, phone: string, mensaje: string, propertyId: string | null | undefined, interruptor?: InterruptorEmergenciaPort): Promise<string | null> {
   try {
     if (!esPreguntaDeEstadoSegura(mensaje)) return null;
-    if (await agenteApagadoEnSucursal(repo, propertyId)) return null;
+    if (await agenteApagadoEnSucursal(repo, propertyId, organizationId, interruptor)) return null;
     const cliente = await lookupCustomerConPedidoReciente(repo, organizationId, phone);
     if (classifyHighRiskIntent(mensaje, contextoDeCliente(cliente)) !== null || matchesHighRiskOtherThan(mensaje, "privacidad_arco", contextoDeCliente(cliente))) return null;
     const texto = textoEstadoEnTomaPendiente(mensaje, cliente.isNew ? null : cliente.pedidoReciente);
@@ -769,6 +778,8 @@ export async function responderTrasEspera(
     readonly reloj?: () => number;
     /** Instante (ms) en que el cliente envio el mensaje que tomo el turno (ver `handleInboundWhatsAppMessage`). */
     readonly recibidoEnMs?: number;
+    /** Interruptor de emergencia unificado (103). */
+    readonly interruptor?: InterruptorEmergenciaPort;
   },
 ): Promise<InboundMessageOutcome> {
   const { organizationId, messageId, phone, phoneNumberId, propertyId, handoffGate, privacy } = args;
@@ -810,9 +821,9 @@ export async function responderTrasEspera(
             // PM R18 (G7-8-10): esta es la ruta de produccion (espera de mensajes). Con la toma pendiente por OTRO motivo una queja con detalle tambien deja su aviso `queja` (antes solo lo hacia la ruta directa).
             if (handoff === "pendiente") await avisarQuejaConTomaPendiente(repo, { organizationId, phone, body: textoPendiente, messageId: pasada === 1 ? messageId : `${messageId}:p${pasada}`, propertyId: propertyId ?? null });
             const acuseBase = handoff === "pendiente" && handoffGate.acusePendiente ? await handoffGate.acusePendiente(organizationId, phone, ACUSE_PENDIENTE_ESPERA_MIN, ACUSE_PENDIENTE_REPETIR_MIN) : false;
-            const textoEstado = handoff === "pendiente" && handoffGate.acusePendiente ? await estadoDePedidoParaToma(repo, organizationId, phone, textoPendiente, propertyId) : null;
+            const textoEstado = handoff === "pendiente" && handoffGate.acusePendiente ? await estadoDePedidoParaToma(repo, organizationId, phone, textoPendiente, propertyId, args.interruptor) : null;
             const permitido = textoEstado !== null || (handoff === "pendiente" && handoffGate.acusePendiente ? await recordatorioPermitido(repo, organizationId, phone) : false);
-            if (!permitido || (textoEstado === null && !acuseBase && (await agenteApagadoEnSucursal(repo, propertyId)))) return { salida: { ok: true, retryable: false }, silencio: true };
+            if (!permitido || (textoEstado === null && !acuseBase && (await agenteApagadoEnSucursal(repo, propertyId, organizationId, args.interruptor)))) return { salida: { ok: true, retryable: false }, silencio: true };
             const textoAcuse = textoEstado ?? textoParaTomaPendiente(textoPendiente, acuseBase, acuseBase ? await textoDelAcuse(repo, organizationId, propertyId) : ACUSE_HANDOFF_PENDIENTE);
             await repo.whatsappAppendTurn(organizationId, phone, [{ role: "assistant", content: textoAcuse, at: ahoraIso() }], null, null, null);
             if (deliverReply) {
@@ -827,7 +838,7 @@ export async function responderTrasEspera(
           }
         }
         // Interruptor duro de la sucursal (053): sin modelo, texto fijo + toma de handoff; las pasadas siguientes las calla la propia toma abierta.
-        const apagado = arco ? null : await decisionAgenteApagado(repo, organizationId, phone, propertyId, handoffGate !== undefined);
+        const apagado = arco ? null : await decisionAgenteApagado(repo, organizationId, phone, propertyId, handoffGate !== undefined, args.interruptor);
         if (apagado === "callar") return { salida: { ok: true, retryable: false }, silencio: true };
         if (!arco && (await stickerSobraTrasPedidoCerrado(repo, organizationId, phone, textoPendiente))) return { salida: { ok: true, retryable: false }, silencio: true };
         const turn = arco

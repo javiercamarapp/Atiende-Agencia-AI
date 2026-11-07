@@ -217,6 +217,8 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
             ...(deps.privacidadRepo ? { privacy: deps.privacidadRepo(db) } : {}),
             // R-21: con una toma de handoff abierta el agente calla; sin la migración 028 el gate devuelve null.
             handoffGate: deps.handoffGate?.(db),
+            // Interruptor de emergencia unificado (103): apaga el agente de la sucursal o de toda la organizacion (base sin migrar = encendido).
+            ...(deps.interruptorEmergencia ? { interruptor: deps.interruptorEmergencia(db) } : {}),
           });
         // El envío real de `outcome.reply` vía Graph API ya no vive fuera de fase:
         // `handleInboundWhatsAppMessage` lo encola en `restaurantes.messaging_outbox`
@@ -277,6 +279,7 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
               propertyId: d.propertyId,
               ...(deps.privacidadRepo ? { privacy: deps.privacidadRepo(db) } : {}),
               handoffGate: deps.handoffGate?.(db),
+              ...(deps.interruptorEmergencia ? { interruptor: deps.interruptorEmergencia(db) } : {}),
               finFuncionMs: inicioMs + FUNCION_MAX_MS,
               reloj: deps.relojMs ?? Date.now,
               ...(d.recibidoEnMs !== undefined ? { recibidoEnMs: d.recibidoEnMs } : {}),

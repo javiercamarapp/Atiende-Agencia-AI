@@ -34,6 +34,8 @@ import {
   canonicalizeMexicanPhone,
   diaLocalSucursal,
   instruccionConAjustes,
+  agenteDebeAtender,
+  interruptorApagadoSeguro,
 } from "@atiende/domain-restaurantes";
 import type { FranjaVoz, ModoEntradaVoz, VozLlamadaRepository, VozModoEntradaKpiDia } from "@atiende/domain-restaurantes";
 import { emitirNotificacion, runWithSavepointFallback } from "@atiende/db";
@@ -167,7 +169,8 @@ export function restaurantesVozLlamadaRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
       // Base sin la tabla de configuración (025): `getConfig` devuelve el valor inicial (habilitado: false) y el worker no abre sesión: honesto.
       const gasto = deps.vozLlamadaRepo ? await deps.vozLlamadaRepo(db).gastoMesMicroUsd(organizationId, ahora) : null;
       return c.json({
-        habilitado: lectura.disponible && lectura.valor.habilitado,
+        // Interruptor de emergencia unificado (103): apagado = el worker no abre sesion y dice el saludo pregrabado + callback (la llamada llega a una persona).
+        habilitado: agenteDebeAtender(lectura.disponible && lectura.valor.habilitado, await interruptorApagadoSeguro(deps.interruptorEmergencia?.(db), organizationId, propertyId)),
         configurada: lectura.valor.configurada,
         voiceId: lectura.valor.voiceId || VOZ_POR_DEFECTO,
         instruccion,

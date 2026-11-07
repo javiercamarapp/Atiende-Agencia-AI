@@ -5,6 +5,9 @@
 import type { Context } from "hono";
 import {
   aplicarAvancesPos,
+  barrerAlertas,
+  crearAlertasOutbox,
+  crearAlertasPanel,
   barrerAgregadosSla,
   aplicarEstadosSinClic,
   consultarEstadosPos,
@@ -102,6 +105,19 @@ export async function barrerAutopilotoTick(deps: AppDeps, c: Context, ahora: Dat
     } catch (err) {
       resumen.errores++;
       logEvent(c, "error", "restaurantes_autopiloto_paso_fallido", { paso: "agregados_sla", error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+  // Alertas de WhatsApp al gerente (migracion 103, PM PR-3): mismo tick de 5 min, SIN cron nuevo, en su PROPIA sesion de sistema. Solo encola en el outbox (el
+  // despachador existente envia) o degrada al panel con el motivo; una falla aqui nunca afecta los demas pasos. No cambia la forma del resumen devuelto.
+  if (deps.alertasRepo) {
+    const alertasFactory = deps.alertasRepo;
+    try {
+      const alertas = await deps.engine.withAppSession({ userId: null }, (db) => barrerAlertas({ repo: alertasFactory(db), outbox: crearAlertasOutbox(deps.restaurantesRepo(db)), panel: crearAlertasPanel(db) }, ahora));
+      if (alertas.errores > 0) resumen.errores++;
+      if (alertas.encoladas > 0 || alertas.degradadas > 0 || alertas.errores > 0) logEvent(c, "info", "restaurantes_alertas_whatsapp", { ...alertas });
+    } catch (err) {
+      resumen.errores++;
+      logEvent(c, "error", "restaurantes_autopiloto_paso_fallido", { paso: "alertas_whatsapp", error: err instanceof Error ? err.message : String(err) });
     }
   }
   const evaluarVoz = deps.vozAlertasSistema;

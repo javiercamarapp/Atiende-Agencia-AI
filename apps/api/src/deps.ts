@@ -28,7 +28,7 @@ import type {
 import type { TenancyEngine, TenantDbSession } from "@atiende/core-tenancy";
 import type { AuditSink } from "@atiende/core-authz";
 import type { DataChatDeps } from "./data-chat/deps.ts";
-import type { AgregadosRepository, AutopilotoRepository, CierreRepository, ResultadoAlertasVozSistema, ConversacionesRepository, RepartidorPerfilRepository, DemoRepository, HandoffAgentGate, PrivacidadRepository, PuertoNotasDeVoz, RestaurantesRepository, VoiceAgentProvider, VozKpiRepository, VozLlamadaRepository, VozRepository, WhatsAppTurnHandler, WhatsappKpiRepository, AjustesAgenteRepository } from "@atiende/domain-restaurantes";
+import type { AgregadosRepository, AutopilotoRepository, CierreRepository, ResultadoAlertasVozSistema, ConversacionesRepository, RepartidorPerfilRepository, DemoRepository, HandoffAgentGate, AlertasRepositorio, InterruptorEmergenciaPort, PrivacidadRepository, PuertoNotasDeVoz, RestaurantesRepository, VoiceAgentProvider, VozKpiRepository, VozLlamadaRepository, VozRepository, WhatsAppTurnHandler, WhatsappKpiRepository, AjustesAgenteRepository } from "@atiende/domain-restaurantes";
 import type { CfoRepository as CfoRestaurantesRepository } from "@atiende/domain-restaurantes/cfo";
 import type { ComandaOutboxStore, ResolverCodigosPos, ResolverSucursalPos, SoftRestaurantPort } from "@atiende/domain-restaurantes/softrestaurant";
 import type { HotelesRepository, GuestTicketRepository, AgentesRepository, GruposRepository, HuespedesRepository, RecepcionRepository, CambioFechasRepository, ListaEsperaRepository, ReservasAgenteRepository, HotelesWhatsAppTurnHandler, HousekeepingRepository, HousekeepingResidualRepository, HousekeepingDiaSistemaRepository, MensajeriaConfigRepository, IdentityRepository, PaymentsPort, PrivacyRepository, PublicPrivacyRepository, GuestDataRepository, ConversacionesRepository as HotelesConversacionesRepository, ConversacionesSistemaPort as HotelesConversacionesSistemaPort } from "@atiende/domain-hoteles";
@@ -215,6 +215,10 @@ export interface AppDeps {
    * rutas responden 503 honesto y el webhook de WhatsApp sigue como antes (el agente responde siempre). */
   readonly conversacionesRepo?: (db: TenantDbSession) => ConversacionesRepository;
   readonly handoffGate?: (db: TenantDbSession) => HandoffAgentGate;
+  /** Interruptor de emergencia unificado (103): lo leen el webhook de WhatsApp y el contexto de llamada de voz. OPCIONAL: ausente = canales encendidos como hasta hoy. */
+  /** Alertas de WhatsApp al gerente (103): el tick de 5 min barre escalaciones y clientes sin respuesta. OPCIONAL: ausente = no hay alertas. */
+  readonly alertasRepo?: (db: TenantDbSession) => AlertasRepositorio;
+  readonly interruptorEmergencia?: (db: TenantDbSession) => InterruptorEmergenciaPort;
   /** R-19 -- marca de organizacion demo (migracion 037) para el widget publico de chat sin Meta. OPCIONAL: sin ella el
    * widget responde "no disponible" (404) en vez de atender cualquier organizacion. En produccion es
    * `(db) => new PostgresDemoRepository(db)` (degrada con SAVEPOINT a "no es demo" contra la base sin migrar). */
