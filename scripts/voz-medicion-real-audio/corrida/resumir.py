@@ -32,6 +32,7 @@ def resumen(rs):
     # < 250 ms = el agente ya estaba sonando cuando el cliente termino (traslape), no es una respuesta: se excluye y se cuenta aparte.
     lat_all = [x for r in val for x in (r.get("latenciasMs") or [])]
     lat = [x for x in lat_all if x >= 250]
+    lat_r = [x for r in val for x in (r.get("latenciasRespuestaMs") or []) if x >= 250]
     mins = [r["durS"] / 60 for r in val if r.get("durS")]
     tts_chars = []; el_cred = []; or_agente = []; or_cj = []; worker_usd = []
     for r in val:
@@ -42,20 +43,20 @@ def resumen(rs):
         if r.get("creditosEl") is not None: el_cred.append(r["creditosEl"])
         or_cj.append(r.get("clienteJuezUsd") or 0)
     tot_min = sum(mins)
-    return dict(n_ag=len(ag), k_ag=k_ag, w_ag=wilson(k_ag, len(ag)), n=n, exc=len(rs) - n, k=k, w=wilson(k, n), p50=pct(lat, .5), p95=pct(lat, .95), nlat=len(lat), ntras=len(lat_all) - len(lat),
+    return dict(n_ag=len(ag), k_ag=k_ag, w_ag=wilson(k_ag, len(ag)), n=n, exc=len(rs) - n, k=k, w=wilson(k, n), p50=pct(lat, .5), p95=pct(lat, .95), r50=pct(lat_r, .5), r95=pct(lat_r, .95), nlat=len(lat), ntras=len(lat_all) - len(lat),
                 min_ll=tot_min / n if n else 0, tot_min=tot_min, turnos=sum(r.get("turnosCliente", 0) for r in val) / n if n else 0,
                 tts=sum(tts_chars) / n if n else 0, el=sum(el_cred), el_n=len(el_cred), or_ag=sum(or_agente), or_cj=sum(or_cj),
                 worker=sum(worker_usd), lk_min=2 * tot_min)
 
 def main():
     a = [x for x in sys.argv[1:] if not x.startswith("--")]; d, etqs = a[0], a[1:]
-    print("| condicion | llamadas (exc) | aprobadas | Wilson 95 % | sin infra (Wilson) | p50/p95 s (turnos) | min/llamada | turnos/llamada | caracteres TTS/llamada | ElevenLabs creditos/llamada (/min) | OpenRouter agente USD/llamada | OpenRouter cliente+juez USD/llamada | costo worker USD/min · /llamada | LiveKit min-participante |")
-    print("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
+    print("| condicion | llamadas (exc) | aprobadas | Wilson 95 % | sin infra (Wilson) | p50/p95 s (turnos) | respuesta (no relleno) p50/p95 s | min/llamada | turnos/llamada | caracteres TTS/llamada | ElevenLabs creditos/llamada (/min) | OpenRouter agente USD/llamada | OpenRouter cliente+juez USD/llamada | costo worker USD/min · /llamada | LiveKit min-participante |")
+    print("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
     for e in etqs:
         rs = cargar(d, e); s = resumen(rs); n = s["n"] or 1
         f = lambda v: "-" if v is None else f"{v/1000:.1f}"
         elpl = s["el"] / s["el_n"] if s["el_n"] else float("nan")
-        print(f"| {e} | {s['n']} ({s['exc']}) | {s['k']}/{s['n']} = {100*s['k']/n:.0f} % | {100*s['w'][0]:.0f}–{100*s['w'][1]:.0f} % | {s['k_ag']}/{s['n_ag']} ({100*s['w_ag'][0]:.0f}–{100*s['w_ag'][1]:.0f} %) | {f(s['p50'])} / {f(s['p95'])} ({s['nlat']}; {s['ntras']} traslapes) | {s['min_ll']:.2f} | {s['turnos']:.1f} | {s['tts']:.0f} | {elpl:.0f} ({s['el']/s['tot_min'] if s['tot_min'] else 0:.0f}) | {s['or_ag']/n:.4f} | {s['or_cj']/n:.4f} | {s['worker']/s['tot_min'] if s['tot_min'] else 0:.4f} · {s['worker']/n:.3f} | {s['lk_min']:.1f} |")
+        print(f"| {e} | {s['n']} ({s['exc']}) | {s['k']}/{s['n']} = {100*s['k']/n:.0f} % | {100*s['w'][0]:.0f}–{100*s['w'][1]:.0f} % | {s['k_ag']}/{s['n_ag']} ({100*s['w_ag'][0]:.0f}–{100*s['w_ag'][1]:.0f} %) | {f(s['p50'])} / {f(s['p95'])} ({s['nlat']}; {s['ntras']} traslapes) | {f(s['r50'])} / {f(s['r95'])} | {s['min_ll']:.2f} | {s['turnos']:.1f} | {s['tts']:.0f} | {elpl:.0f} ({s['el']/s['tot_min'] if s['tot_min'] else 0:.0f}) | {s['or_ag']/n:.4f} | {s['or_cj']/n:.4f} | {s['worker']/s['tot_min'] if s['tot_min'] else 0:.4f} · {s['worker']/n:.3f} | {s['lk_min']:.1f} |")
     if "--fallas" in sys.argv:
         for e in etqs:
             print(f"\n### {e}")

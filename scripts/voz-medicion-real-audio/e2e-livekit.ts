@@ -197,7 +197,7 @@ async function correrLlamada(e: Escenario, phone: string) {
     return performance.now();
   };
   const hist: { who: "cliente" | "agente"; text: string }[] = [];
-  const registro: any[] = []; const latencias: number[] = [];
+  const registro: any[] = []; const latencias: number[] = []; const latenciasRespuesta: number[] = [];
   // Saludo del agente.
   await esperarAgente(t0, 25_000);
   let marca = performance.now();
@@ -218,7 +218,18 @@ async function correrLlamada(e: Escenario, phone: string) {
     const tFin = await hablar(dicho);
     const primera = await esperarAgente(tFin, 30_000);
     if (primera !== null) latencias.push(Math.round(primera - tFin));
-    const texto = await textoDesde(marca === 0 ? tFin : tFin);
+    let texto = await textoDesde(marca === 0 ? tFin : tFin);
+    let respuestaEn: number | null = primera;
+    // Paciencia de una persona real (r3): si lo ultimo que dijo el agente es una frase de espera («Déjeme ver.», «Un momento.», «Permítame.»), el cliente
+    // espera a que siga en vez de contestar a los 1.4 s de silencio (antes contestaba «Sí, gracias» encima y gastaba turnos). Hasta 2 veces, 12 s cada una.
+    for (let espera = 0; espera < 2 && !colgo && /(d[eé]jeme (ver|checar|revisar)|un momento|un segundito|perm[ií]tame|lo reviso)[.!…\s]*$/i.test(texto.trim()); espera += 1) {
+      const sigue = await esperarAgente(performance.now(), 12_000);
+      if (sigue === null) break;
+      respuestaEn = sigue;
+      texto = await textoDesde(tFin);
+    }
+    // Latencia a la RESPUESTA (no al relleno): primer audio despues de la ultima frase de espera.
+    if (respuestaEn !== null) latenciasRespuesta.push(Math.round(respuestaEn - tFin));
     marca = performance.now();
     const ultVoz = [...vozDesde(tFin)].reverse().find((a) => a.voz)?.t ?? null;
     registro.push({ quien: "cliente", dicho }, { quien: "agente", texto, msPrimerAudio: primera === null ? null : Math.round(primera - tFin), tp0: primera, tp1: ultVoz });
@@ -235,7 +246,7 @@ async function correrLlamada(e: Escenario, phone: string) {
   const n0 = worker.resumenes.length;
   await room.disconnect().catch(() => undefined);
   const lim = Date.now() + 30_000; while (worker.resumenes.length === n0 && Date.now() < lim) await esperar(200);
-  return { registro, latencias, durS, resumen: worker.resumenes.at(-1) ?? null, colgoAgente: colgo, grabar };
+  return { registro, latencias, latenciasRespuesta, durS, resumen: worker.resumenes.at(-1) ?? null, colgoAgente: colgo, grabar };
 }
 
 function evaluar(c: Chk, i: { orders: any[]; callbacks: any[]; agenteTexto: string }): string | null {
@@ -303,7 +314,7 @@ for (const e of ESCENARIOS) {
   Object.assign(rec, {
     veredicto: hard.length === 0 && jr.veredicto === "PASA" ? "PASA" : "FALLA", juez: jr.veredicto, motivo: jr.motivo, causa: jr.causa, hard,
     resultado: ll.resumen?.resultado ?? null, costoWorkerMicroUsd: ll.resumen?.costoMicroUsd ?? null, durS: Math.round(ll.durS * 10) / 10,
-    latenciasMs: ll.latencias, latenciasWorkerMs: ll.resumen?.latenciasMs ?? [], turnosCliente: ll.registro.filter((x: any) => x.quien === "cliente").length,
+    latenciasMs: ll.latencias, latenciasRespuestaMs: ll.latenciasRespuesta, latenciasWorkerMs: ll.resumen?.latenciasMs ?? [], turnosCliente: ll.registro.filter((x: any) => x.quien === "cliente").length,
     pedidos: orders.map((o: any) => ({ total: o.total, canal: o.canal, items: o.items.map((i: any) => `${i.quantity}x ${i.name}@${i.price}`) })), callbacks: callbacks.map((c: any) => c.reason),
     llm: v2llm.map((c) => ({ m: c.proveedor, ttft: c.ttftMs, ti: c.tokensEntrada, to: c.tokensSalida })), respaldos: evs.filter((x) => x.evento === "v2_respaldo" || x.evento === "v2_llm_respaldo").map((x) => `${x.evento}:${x.campos?.proveedor ?? ""}:${x.campos?.motivo ?? ""}`),
     caidas: evs.filter((x) => /caida/.test(x.evento)).map((x) => `${x.evento}:${x.campos?.codigo ?? ""}`), turnos: ll.registro,
