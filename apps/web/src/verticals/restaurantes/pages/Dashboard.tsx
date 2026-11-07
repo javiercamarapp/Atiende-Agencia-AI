@@ -17,11 +17,13 @@ import {
   AgentRunCard,
   Button,
   Card,
+  ConInfoCalculo,
   EstadoCargando,
   EstadoError,
   EstadoVacio,
   FormDialog,
   FormField,
+  InfoCalculo,
   Input,
   notify,
   Odometro,
@@ -30,6 +32,7 @@ import {
   RadioSegmentado,
   ResumenLayout,
   ResumenSeccion,
+  type InfoCalculoDatos,
   type ResumenAtencionItem,
   type ResumenEstadoDato,
   SectionLabel,
@@ -277,47 +280,106 @@ export function RestaurantesDashboardPage({
   const horas = horasAhorradas(conversaciones, minutos);
   const puedeConfigurar = ROLES_VOZ.has(role);
 
+  const etiquetaPeriodo = PERIOD_OPTIONS.find((o) => o.id === period)?.label ?? period;
+  // ds3: (i) «Cómo se calculó» de los KPI principales. Solo lo que el calculo hace de verdad (getSalesKpis / getChannelKpis de
+  // domain-restaurantes): ventas netas sin cancelados, no recogidos, programados ni por aprobar; alcance = las sucursales de la membresia.
+  const alcance = "Las sucursales de tu organización a las que tienes acceso.";
+  const fueraDeAtiende = "Ventas que no pasaron por Atiende (mostrador sin captura u otras apps de pedidos).";
+  const info: Record<"ordenes" | "promedio" | "pedidosIa" | "ingresosIa" | "ventas", InfoCalculoDatos> = {
+    ordenes: {
+      titulo: "Número de órdenes",
+      como: "Pedidos del periodo que cuentan como venta: no entran los cancelados, los no recogidos, los programados ni los que esperan aprobación.",
+      fuente: "Pedidos registrados en Atiende",
+      periodo: etiquetaPeriodo,
+      alcance,
+      queNoSabemos: [fueraDeAtiende],
+      clase: "observado",
+    },
+    promedio: {
+      titulo: "Valor promedio",
+      como: "Ventas netas del periodo ÷ número de órdenes (los mismos pedidos que cuentan como venta).",
+      fuente: "Pedidos registrados en Atiende",
+      periodo: etiquetaPeriodo,
+      alcance,
+      queNoSabemos: [fueraDeAtiende],
+      clase: "observado",
+    },
+    pedidosIa: {
+      titulo: "Pedidos por agentes IA",
+      como: "Pedidos que tomó el agente de WhatsApp más los que tomó el agente de voz.",
+      fuente: "Pedidos de Atiende por canal",
+      periodo: periodoCanales,
+      alcance,
+      clase: "observado",
+    },
+    ingresosIa: {
+      titulo: "Ingresos por agentes IA",
+      como: "Importe de los pedidos de WhatsApp y de voz, sin los cancelados.",
+      fuente: "Pedidos de Atiende por canal",
+      periodo: periodoCanales,
+      alcance,
+      clase: "observado",
+    },
+    ventas: {
+      titulo: "Ventas ($)",
+      como: "Ventas netas por tramo del periodo (mismos pedidos que cuentan como venta).",
+      fuente: "Pedidos registrados en Atiende",
+      periodo: etiquetaPeriodo,
+      alcance,
+      queNoSabemos: [fueraDeAtiende],
+      clase: "observado",
+    },
+  };
+
   const kpis = [
-    <StatCard
-      key="ordenes"
-      variante="neutra"
-      icon={ClipboardList}
-      label="Número de órdenes"
-      value={formatInt(sales.orders)}
-      delta={historico ? undefined : deltaDe(sales.ordersChangePct)}
-      deltaNota={deltaNota}
-      nota={historico ? sales.periodLabel : undefined}
-    />,
-    <StatCard
-      key="promedio"
-      variante="neutra"
-      icon={Receipt}
-      label="Valor promedio"
-      value={formatMoney(sales.averageOrder)}
-      delta={historico ? undefined : deltaDe(sales.avgOrderChangePct)}
-      deltaNota={deltaNota}
-      nota={historico ? sales.periodLabel : undefined}
-    />,
-    <StatCard
-      key="pedidos-ia"
-      variante="neutra"
-      icon={Bot}
-      label="Pedidos por agentes IA"
-      value={formatInt(pedidosIa)}
-      nota={`${
-        channels.aiAdoptionPct === null
-          ? `Voz y WhatsApp · ${periodoCanales}`
-          : `${channels.aiAdoptionPct.toFixed(0)}% de los pedidos · ${periodoCanales}`
-      }${metaPedidos === null ? "" : ` · Tu meta: ${metaPedidos}%`}`}
-    />,
-    <StatCard
-      key="ingresos-ia"
-      variante="neutra"
-      icon={Sparkles}
-      label="Ingresos por agentes IA"
-      value={formatMoney(ingresosIa)}
-      nota={`Voz y WhatsApp, sin cancelados · ${periodoCanales}${metaIngresos === null ? "" : ` · Tu meta: ${metaIngresos}%`}`}
-    />,
+    <ConInfoCalculo key="ordenes" datos={info.ordenes}>
+      <StatCard
+        key="ordenes"
+        variante="neutra"
+        icon={ClipboardList}
+        label="Número de órdenes"
+        value={formatInt(sales.orders)}
+        delta={historico ? undefined : deltaDe(sales.ordersChangePct)}
+        deltaNota={deltaNota}
+        nota={historico ? sales.periodLabel : undefined}
+      />
+    </ConInfoCalculo>,
+    <ConInfoCalculo key="promedio" datos={info.promedio}>
+      <StatCard
+        key="promedio"
+        variante="neutra"
+        icon={Receipt}
+        label="Valor promedio"
+        value={formatMoney(sales.averageOrder)}
+        delta={historico ? undefined : deltaDe(sales.avgOrderChangePct)}
+        deltaNota={deltaNota}
+        nota={historico ? sales.periodLabel : undefined}
+      />
+    </ConInfoCalculo>,
+    <ConInfoCalculo key="pedidos-ia" datos={info.pedidosIa}>
+      <StatCard
+        key="pedidos-ia"
+        variante="neutra"
+        icon={Bot}
+        label="Pedidos por agentes IA"
+        value={formatInt(pedidosIa)}
+        nota={`${
+          channels.aiAdoptionPct === null
+            ? `Voz y WhatsApp · ${periodoCanales}`
+            : `${channels.aiAdoptionPct.toFixed(0)}% de los pedidos · ${periodoCanales}`
+        }${metaPedidos === null ? "" : ` · Tu meta: ${metaPedidos}%`}`}
+      />
+    </ConInfoCalculo>,
+    <ConInfoCalculo key="ingresos-ia" datos={info.ingresosIa}>
+      <StatCard
+        key="ingresos-ia"
+        variante="neutra"
+        icon={Sparkles}
+        label="Ingresos por agentes IA"
+        value={formatMoney(ingresosIa)}
+        nota={`Voz y WhatsApp, sin cancelados · ${periodoCanales}${metaIngresos === null ? "" : ` · Tu meta: ${metaIngresos}%`}`}
+      />
+    </ConInfoCalculo>,
     <StatCard
       key="whatsapp"
       variante="neutra"
@@ -381,7 +443,6 @@ export function RestaurantesDashboardPage({
     ? cuandoEnZona(extras.ultimaVoz, extras.zona)
     : null;
 
-  const etiquetaPeriodo = PERIOD_OPTIONS.find((o) => o.id === period)?.label ?? period;
   // ds3: franja de estado de los datos (Rovaq «Fuentes con datos · Datos hasta»). Solo lo que la API ya devolvio; lo que no se pudo leer no
   // se pinta (nunca un valor inventado).
   const estadoDatos: ResumenEstadoDato[] = [
@@ -436,6 +497,7 @@ export function RestaurantesDashboardPage({
               <div className="mb-2 flex items-center gap-2">
                 <span aria-hidden="true" className="size-3 rounded-full bg-primary" />
                 <span className="text-ui font-medium text-foreground">Ventas ($)</span>
+                <InfoCalculo datos={info.ventas} className="ml-auto" />
               </div>
               <GraficaTendencia
                 puntos={trend.map((p) => ({ etiqueta: p.label, valor: p.revenue }))}
