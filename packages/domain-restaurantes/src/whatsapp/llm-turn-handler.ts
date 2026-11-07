@@ -68,6 +68,7 @@ import { normalizePhone } from "../phone.ts";
 import { consultasDeMenuParaPromesa, corregirPromesaSinBuscar, guardiaTextoFinal, MOTIVO_PEDIDO_NO_REGISTRADO, promesaDeProductoSinBuscar, quitarAlgoMasRepetido } from "./cerebro-v2/texto-final.ts";
 import { esTextoEnIngles } from "./cerebro-v2/salud.ts";
 import { herramientaParaElHilo, hiloDelSuelto } from "./cerebro-v2/hilo-herramientas.ts";
+import { cambioNoAplicadoEnTurno } from "./cerebro-v2/pedido-aparte.ts";
 import type { HerramientaDelHilo } from "../repository.ts";
 import { buscarEnCatalogo } from "./cerebro-v2/busqueda.ts";
 import { PM_AGENT_NAME_POR_OMISION, PM_COPY, buildPmSystemPrompt, saludoPorHora } from "./perfil-pm.ts";
@@ -831,6 +832,8 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       let resumenCanonicoDelTurno: { texto: string; total: number } | null = null;
       // Cerebro v2 (bloque 4): las herramientas del turno que leen las guardas de sesion del suelto; se guardan en el mensaje del asistente (hilo-herramientas.ts).
       const herramientasV2: HerramientaDelHilo[] = [];
+      // Cerebro v2 (suelto ~7946): el primer crear_pedido EXITOSO del turno (entrada y resultado): un segundo crear_pedido en el turno devuelve este resultado.
+      let primerCrearV2: { readonly input: Record<string, unknown>; readonly result: unknown } | null = null;
       const done = <R extends { readonly reply: string }>(r: R): R & { readonly escalacion?: { readonly motivo: string }; readonly pedirUbicacion?: true; readonly pedirConfirmacion?: { readonly quoteHash: string; readonly quotedAtMs: number }; readonly pedidoSimulado?: unknown; readonly accionMutante?: true } => ({
         ...r,
         ...(escalarMotivo ? { escalacion: { motivo: escalarMotivo } } : {}),
@@ -1660,6 +1663,11 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             if (pct !== null) input = { ...input, propina_porcentaje: pct };
           }
           // Cerebro v2: la misma lectura que el servidor precargo en este turno (mismos argumentos equivalentes) devuelve el MISMO resultado sin otra consulta a la base.
+          // Cerebro v2 (suelto ~7946-7959): dentro del turno el pedido ya existe; otro crear_pedido no vuelve a crear y, si trae algo distinto, lo dice (cambio_no_aplicado).
+          if (result === undefined && cerebroV2 && call.name === "crear_pedido" && orderId && primerCrearV2) {
+            const cambio = cambioNoAplicadoEnTurno(primerCrearV2.input, input);
+            result = cambio && primerCrearV2.result && typeof primerCrearV2.result === "object" ? { ...(primerCrearV2.result as Record<string, unknown>), cambio_no_aplicado: cambio } : primerCrearV2.result;
+          }
           const firmaPrecargada = result === undefined && lecturasPrecargadas.size > 0 ? firmaDeLecturaPrecargable(call.name, input, zonaDeColonia) : null;
           const memo = firmaPrecargada !== null && lecturasPrecargadas.has(firmaPrecargada) ? { result: lecturasPrecargadas.get(firmaPrecargada) } : null;
           if (result === undefined) {
@@ -1707,6 +1715,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
               }
             }
             if (executed.orderId) {
+              if (call.name === "crear_pedido" && !primerCrearV2 && !isToolErrorResult(result)) primerCrearV2 = { input, result };
               orderId = executed.orderId;
               propertyId = executed.propertyId;
               if (call.name === "crear_pedido" && options.encolarComanda && executed.raw && !executed.pedidoRetenido) {
