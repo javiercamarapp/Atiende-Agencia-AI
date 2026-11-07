@@ -16,6 +16,7 @@ import { OrderValidationError } from "./errors.ts";
 import { rankBranchesByKm } from "./branch-assignment.ts";
 import type { RestaurantesRepository } from "./repository.ts";
 import type { Branch, CanalPedido } from "./types.ts";
+import { sucursalesParaClientes } from "./solo-venta-local.ts";
 
 export interface UbicacionCompartida {
   readonly lat: number;
@@ -45,7 +46,7 @@ export async function exigirPinSiPmSinZonas(repo: RestaurantesRepository, args: 
   const pin = args.ubicacion;
   if (!pin || !Number.isFinite(pin.lat) || !Number.isFinite(pin.lng)) throw new OrderValidationError(PM_SIN_ZONAS_PEDIR_PIN_MENSAJE);
 
-  const activas = (await repo.listBranchesForOrganizationAdmin(branch.organizationId)).filter((b) => b.status === "active");
+  const activas = await sucursalesParaClientes(repo, branch.organizationId);
   const masCercana = rankBranchesByKm(pin.lat, pin.lng, activas)[0];
   if (!masCercana) throw new OrderValidationError(PM_SIN_ZONAS_PEDIR_PIN_MENSAJE);
   if (masCercana.branch.propertyId !== branch.propertyId) {
