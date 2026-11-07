@@ -8,6 +8,12 @@ import { consolaEn } from "./consola.ts";
 import { navEn } from "./nav.ts";
 import { notifEn } from "./notif.ts";
 import { MODULOS_EN_RESTAURANTES } from "./restaurantes/index.ts";
+import { MODULOS_EN_RENTAS } from "./rentas/index.ts";
+import { MODULOS_EN_LICITACIONES } from "./licitaciones/index.ts";
+import { MODULOS_EN_DESPACHOS } from "./despachos/index.ts";
+import { MODULOS_EN_HOTELES } from "./hoteles/index.ts";
+import { MODULOS_EN_CITAS } from "./citas/index.ts";
+import { MODULOS_EN_SUPERADMIN } from "./superadmin/index.ts";
 import { rolEn } from "./rol.ts";
 import { shellEn } from "./shell.ts";
 
@@ -19,4 +25,10 @@ export const MODULOS_EN = {
   consola: consolaEn,
   notif: notifEn,
   ...MODULOS_EN_RESTAURANTES,
+  ...MODULOS_EN_RENTAS,
+  ...MODULOS_EN_LICITACIONES,
+  ...MODULOS_EN_DESPACHOS,
+  ...MODULOS_EN_HOTELES,
+  ...MODULOS_EN_CITAS,
+  ...MODULOS_EN_SUPERADMIN,
 } as const satisfies ModulosTraducidos;
