@@ -7,7 +7,7 @@ import { Suspense, useCallback } from "react";
 import type { ComponentProps, ComponentType, LazyExoticComponent, ReactElement, ReactNode } from "react";
 import { REDIRECCIONES_SUPERADMIN } from "./superadmin/rutas.ts";
 import { cargaPerezosa, ErrorBoundaryRaiz } from "./lib/carga-perezosa.tsx";
-import { EstadoCargando, EstadoError, Toaster, VerticalNoEncontrado } from "@atiende/ui";
+import { EstadoCargando, EstadoError, Toaster, VerticalNoEncontrado } from "@atiende/ui/arranque";
 import { puedeVerPrivacidad as licitacionesPuedeVerPrivacidad } from "./verticals/licitaciones/roles-nav.ts";
 
 // R-37: cada pantalla es su propio chunk (ver lib/carga-perezosa.tsx: reintento, recarga protegida y ErrorBoundary raíz).
