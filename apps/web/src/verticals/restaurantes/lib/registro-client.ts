@@ -82,3 +82,12 @@ export function tokenDelFragmento(hash: string): string | null {
   const m = /(?:^#|&)token=([A-Za-z0-9_-]{20,128})(?:&|$)/.exec(hash.startsWith("#") ? hash : `#${hash}`);
   return m ? m[1]! : null;
 }
+
+/** Forma minima de correo en tiempo lineal (sin la regex polinomial clasica); el servidor vuelve a validar. */
+export function correoConForma(correo: string): boolean {
+  const arroba = correo.indexOf("@");
+  if (correo.length < 5 || correo.length > 254 || /\s/.test(correo) || arroba < 1 || arroba !== correo.lastIndexOf("@")) return false;
+  const dominio = correo.slice(arroba + 1);
+  const punto = dominio.lastIndexOf(".");
+  return punto > 0 && punto < dominio.length - 1;
+}

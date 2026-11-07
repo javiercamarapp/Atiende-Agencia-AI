@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Button, Callout, Card, CardContent, GoogleIcon, Input, Label } from "@atiende/ui";
-import { ERRORES_REGISTRO, fetchRegistroEstado, iniciarRegistro, RegistroError } from "../lib/registro-client.ts";
+import { correoConForma, ERRORES_REGISTRO, fetchRegistroEstado, iniciarRegistro, RegistroError } from "../lib/registro-client.ts";
 import type { RegistroEstado } from "../lib/registro-client.ts";
 
 export interface RestaurantesRegistroPageProps {
@@ -58,7 +58,7 @@ export function RestaurantesRegistroPage({ apiBaseUrl, fetchImpl = fetch, irA = 
       setError("Escribe el nombre del restaurante, de tu primera sucursal y el tuyo (mínimo 2 letras).");
       return;
     }
-    if (metodo === "correo" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo.trim())) {
+    if (metodo === "correo" && !correoConForma(correo.trim())) {
       setError("Escribe un correo válido.");
       return;
     }

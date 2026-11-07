@@ -13,6 +13,17 @@ import { slugSucursal } from "./alta-propiedad-repository.ts";
 /** Rutas publicas fijas de /restaurantes/* en la SPA (espejo de 0077): un slug asi quedaria tapado por la ruta. */
 export const SLUGS_RESERVADOS: ReadonlySet<string> = new Set(["login", "registro", "auth", "acceso-repartidor", "restablecer-contrasena", "verificar-correo", "demo"]);
 
+/** Forma minima de correo (algo@dominio.tld, sin espacios, <= 254) en tiempo lineal y sin regex: la regex clasica
+ *  `^[^\s@]+@[^\s@]+\.[^\s@]+$` es polinomial (ReDoS, CodeQL js/polynomial-redos) con entradas largas de puntos. */
+export function correoConFormaValida(correo: string): boolean {
+  if (correo.length < 5 || correo.length > 254 || /\s/.test(correo)) return false;
+  const arroba = correo.indexOf("@");
+  if (arroba < 1 || arroba !== correo.lastIndexOf("@")) return false;
+  const dominio = correo.slice(arroba + 1);
+  const punto = dominio.lastIndexOf(".");
+  return punto > 0 && punto < dominio.length - 1;
+}
+
 export type RegistroAutoservicioCodigo = "tope" | "validation" | "enlace_invalido" | "cuenta_existente" | "forbidden";
 
 export class RegistroAutoservicioError extends Error {
@@ -201,7 +212,7 @@ export class InMemoryRegistroAutoservicioRepository implements RegistroAutoservi
     if (!this.disponible) this.noMigrado();
     const ahora = this.ahora();
     const correo = input.metodo === "correo" ? (input.correo ?? "").trim().toLowerCase() : null;
-    if (input.metodo === "correo" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo ?? "")) throw new RegistroAutoservicioError("validation", "Revisa los datos del registro.");
+    if (input.metodo === "correo" && !correoConFormaValida(correo ?? "")) throw new RegistroAutoservicioError("validation", "Revisa los datos del registro.");
     for (const n of [input.nombreNegocio, input.nombreSucursal, input.nombreCompleto]) {
       const t = n.trim().length;
       if (t < 2 || t > 120) throw new RegistroAutoservicioError("validation", "Revisa los datos del registro.");

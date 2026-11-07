@@ -36,7 +36,7 @@ import {
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { botonPildoraHtml, escapeHtml, renderCorreo } from "@atiende/core-email";
 import { rateLimit } from "@atiende/core-ratelimit";
-import { emitirNotificacion, RegistroAutoservicioError, RegistroAutoservicioNoDisponibleError } from "@atiende/db";
+import { correoConFormaValida, emitirNotificacion, RegistroAutoservicioError, RegistroAutoservicioNoDisponibleError } from "@atiende/db";
 import type { RegistroCompletado } from "@atiende/db";
 import { Errors } from "../errors.ts";
 import { readJsonCapped, requestActor } from "../http-security.ts";
@@ -77,7 +77,6 @@ export const DOMINIOS_DESECHABLES: ReadonlySet<string> = new Set([
   "tempail.com",
 ]);
 
-const CORREO_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ENLACE_RE = /(https?:\/\/|www\.|\.(com|net|org|ru|xyz|top)\b)/i;
 
 interface IniciarBody {
@@ -115,7 +114,7 @@ export function validarCapturaRegistro(body: IniciarBody): CapturaRegistroValida
   if (!metodo) throw Errors.validation("metodo debe ser 'correo' o 'google'.");
   let correo: string | null = null;
   if (metodo === "correo") {
-    if (typeof body.correo !== "string" || !CORREO_RE.test(body.correo.trim()) || body.correo.trim().length > 254) throw Errors.validation("Escribe un correo válido.");
+    if (typeof body.correo !== "string" || !correoConFormaValida(body.correo.trim())) throw Errors.validation("Escribe un correo válido.");
     correo = body.correo.trim().toLowerCase();
     const dominio = correo.slice(correo.lastIndexOf("@") + 1);
     if (DOMINIOS_DESECHABLES.has(dominio)) throw Errors.validation("Usa un correo permanente de tu negocio o personal: los correos temporales no se aceptan.");
@@ -263,7 +262,7 @@ async function completar(deps: AppDeps, c: Context, tokenPlain: string, correoVe
 export async function completarRegistroConGoogle(
   deps: AppDeps,
   c: Context,
-  input: { readonly registroToken: string; readonly correo: string; readonly sub: string },
+  input: { readonly registroNonce: string; readonly correo: string; readonly sub: string },
 ): Promise<URL> {
   const login = (error: string) => {
     const url = new URL("/restaurantes/registro", deps.env.appBaseUrl);
@@ -275,7 +274,7 @@ export async function completarRegistroConGoogle(
     // Ya tiene cuenta (por correo o por Google): no se crea otra; entra a la suya.
     const existente = (await deps.coreRepo.findStaffByGoogleSub(input.sub)) ?? (await deps.coreRepo.findStaffByEmail(correo));
     if (existente) return login("cuenta_existente");
-    const registro = await completar(deps, c, input.registroToken, correo);
+    const registro = await completar(deps, c, input.registroNonce, correo);
     await deps.coreRepo.linkGoogleIdentity({ staffId: registro.staffId, sub: input.sub, email: correo });
     const url = new URL("/restaurantes/auth/google/callback", deps.env.appBaseUrl);
     url.searchParams.set("code", await codigoDeIntercambio(deps, registro.staffId));
@@ -326,7 +325,7 @@ export function registroRestaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
       const codeVerifier = generateCodeVerifier();
       const nonce = generateNonce();
       const redirectUri = `${google.redirectBaseUrl}/auth/google/callback`;
-      const state = await signOAuthState({ purpose: "signup", vertical: "restaurantes", nonce, codeVerifier, redirectUri, registroToken: tokenPlain }, deps.env.jwtSecret);
+      const state = await signOAuthState({ purpose: "signup", vertical: "restaurantes", nonce, codeVerifier, redirectUri, registroNonce: tokenPlain }, deps.env.jwtSecret);
       const url = buildAuthorizationUrl({ authBaseUrl: deps.env.googleStaffAuth.authBaseUrl, clientId: google.clientId, redirectUri, state, nonce, codeChallenge: computeCodeChallenge(codeVerifier) });
       return c.json({ ok: true, metodo: "google", url }, 200);
     }

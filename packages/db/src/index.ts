@@ -309,6 +309,7 @@ export {
 } from "./alta-propiedad-repository.ts";
 export type { AltaPropiedadCodigo, AltaPropiedadInput, AltaPropiedadRepository, PropiedadActivada, PropiedadCreada } from "./alta-propiedad-repository.ts";
 export {
+  correoConFormaValida,
   InMemoryRegistroAutoservicioRepository,
   PostgresRegistroAutoservicioRepository,
   RegistroAutoservicioError,
