@@ -593,7 +593,7 @@ describe("herramientas financieras: step-up, rol finanzas y huella en core.cfo_a
     expect(ctx.zona.entries().map((e) => [e.accion, e.recurso])).toEqual([["consulta", "copiloto/mrr"]]);
   });
 
-  it("con SUPERADMIN_MFA_REQUIRED las financieras exigen step-up aunque no haya factor (403) y nada se lee", async () => {
+  it("con SUPERADMIN_MFA_REQUIRED un superadmin sin factor no llega al Copiloto (403 de la compuerta de enrolamiento) y nada se lee", async () => {
     const s = await seguridadSetup({ env: { superadminMfaRequired: true } });
     const zona = new InMemoryCfoZoneRepository();
     const cfo = new InMemoryCfoRepository();
@@ -606,7 +606,8 @@ describe("herramientas financieras: step-up, rol finanzas y huella en core.cfo_a
     const res = await app.request("/superadmin/copiloto", jsonRequestInit({ tool: "mrr" }, bearer(sa.token)));
     expect(res.status).toBe(403);
     expect(JSON.stringify(await res.json())).toMatch(/mfa_enrollment_required/);
-    expect(zona.entries().map((e) => e.accion)).toEqual(["denegado"]);
+    // `mfaEnrollmentGate` corta TODA ruta /superadmin/* antes del handler: ninguna herramienta financiera corre, asi que no hay consulta que registrar.
+    expect(zona.entries()).toEqual([]);
   });
 
   it("finanzas SIN MFA enrolada: 403 mfa_enrollment_required en el chat (no admite degradarse) y huella 'denegado'", async () => {
