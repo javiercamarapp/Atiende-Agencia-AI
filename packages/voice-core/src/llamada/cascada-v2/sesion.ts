@@ -166,8 +166,21 @@ class SesionCascadaV2 implements VozSesionLlamada {
     this.conKeyterms = keytermsDe(apertura.vocabulario, o.config.cascadaV2.deepgram.keytermsMax).length > 0;
   }
 
-  /** Frase de espera ya dicha en el turno en curso (solo una por turno). */
+  /** Frase de espera ya dicha en esta LLAMADA (como mucho una; ver `esperaMinMs`). */
   private esperaDicha = false;
+
+  private temporizador(): { readonly poner: (fn: () => void, ms: number) => unknown; readonly quitar: (id: unknown) => void } {
+    return (
+      this.o.temporizador ?? {
+        poner: (fn, ms) => {
+          const id = setTimeout(fn, ms);
+          (id as { unref?: () => void }).unref?.();
+          return id;
+        },
+        quitar: (id) => clearTimeout(id as ReturnType<typeof setTimeout>),
+      }
+    );
+  }
 
   /** Proveedor del STT al abrir (el costo de lo pendiente se atribuye a el si la sesion ya se libero). */
   private ultimoProveedorStt: "deepgram" | "elevenlabs" = "deepgram";
@@ -407,7 +420,6 @@ class SesionCascadaV2 implements VozSesionLlamada {
     this.oidasAlInterrumpir = null;
     this.indiceRespuestaFinal = null;
     this.vueltaActual = 0;
-    this.esperaDicha = false;
     this.turnosCliente += 1;
     this.mensajes.push({ role: "user", content: texto });
     this.esperandoAlCliente.cotizoEnTurno = false;
@@ -435,6 +447,19 @@ class SesionCascadaV2 implements VozSesionLlamada {
       control.abort();
     });
     const cfg = this.o.config.cascadaV2;
+    // Frase de espera (solo con el plazo del LLM encendido): si en `esperaMinMs` no hubo ni audio ni texto del modelo, UNA frase corta, una sola vez por llamada.
+    // No depende del plazo del hedge (2.5 s): ahi sonaba casi en cada turno e invitaba al cliente a hablar encima de la respuesta.
+    const reloj = this.temporizador();
+    const turnoAudioEspera = this.audio;
+    const tEspera =
+      this.o.plazoLlm && !this.esperaDicha && cfg.llm.frasesEspera.length > 0
+        ? reloj.poner(() => {
+            if (this.esperaDicha || !vigente() || habladoTurno.trim() !== "" || (turnoAudioEspera?.t0 ?? null) !== null) return;
+            this.esperaDicha = true;
+            this.log("v2_frase_espera", { ms: cfg.llm.esperaMinMs });
+            cola.push({ frase: cfg.llm.frasesEspera[this.turnosCliente % cfg.llm.frasesEspera.length]!, vuelta: this.vueltaActual, espera: true });
+          }, cfg.llm.esperaMinMs)
+        : null;
     let errorLlm: unknown = null;
     try {
       let vuelta = 0;
@@ -458,12 +483,7 @@ class SesionCascadaV2 implements VozSesionLlamada {
             }
           },
           () => {
-            // Plazo vencido sin primer token: una frase corta de espera (una por turno) mientras corre la peticion de respaldo. Se dice pero no entra al historial del modelo.
-            if (this.esperaDicha || !vigente()) return;
-            const frases = cfg.llm.frasesEspera;
-            if (frases.length === 0) return;
-            this.esperaDicha = true;
-            cola.push({ frase: frases[(this.turnosCliente + vuelta) % frases.length]!, vuelta, espera: true });
+            // Plazo del hedge vencido: corre la peticion de respaldo en silencio (la frase de espera tiene su propio plazo, `esperaMinMs`).
           },
           forzarCrear,
         );
@@ -523,6 +543,7 @@ class SesionCascadaV2 implements VozSesionLlamada {
     } catch (err) {
       errorLlm = err;
     }
+    if (tEspera !== null) reloj.quitar(tEspera);
     cola.cerrar();
     await bombeo;
 
