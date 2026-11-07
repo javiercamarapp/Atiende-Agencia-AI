@@ -23,23 +23,31 @@ export interface ModeloAgente {
   readonly aceptaTemperatura: boolean;
   /** Es el primer escalon de la plataforma (lo que corre si la organizacion no elige nada). */
   readonly predeterminado: boolean;
+  /** Tiene endpoint de RETENCION CERO en OpenRouter entre los proveedores de voz permitidos (Vertex, Bedrock, Azure): solo estos sirven para la voz, que se
+   * enruta con `provider.zdr` (sin endpoint ZDR cada turno da 404). Leido de /api/v1/endpoints/zdr el 6-nov-2026. */
+  readonly vozZdr: boolean;
 }
 
 export const MODELOS_AGENTE: readonly ModeloAgente[] = Object.freeze([
-  { id: "openai/gpt-6-luna", etiqueta: "GPT-6 Luna", nivel: "economico", descripcion: "El predeterminado de la plataforma: rapido y barato; sigue bien las reglas.", aceptaTemperatura: false, predeterminado: true },
-  { id: "deepseek/deepseek-v4.1-flash", etiqueta: "DeepSeek V4.1 Flash", nivel: "economico", descripcion: "Economico, servido solo desde proveedores de EE.UU. con retencion cero.", aceptaTemperatura: true, predeterminado: false },
-  { id: "google/gemini-2.5-flash-lite", etiqueta: "Gemini 2.5 Flash-Lite", nivel: "economico", descripcion: "El mas barato; respuestas cortas y directas.", aceptaTemperatura: true, predeterminado: false },
-  { id: "meta/muse-spark-1.3", etiqueta: "Muse Spark 1.3", nivel: "equilibrado", descripcion: "Equilibrado entre costo y calidad de redaccion.", aceptaTemperatura: true, predeterminado: false },
-  { id: "google/gemini-3.8-flash", etiqueta: "Gemini 3.8 Flash", nivel: "equilibrado", descripcion: "Mejor comprension de pedidos largos o ambiguos; cuesta mas que los economicos.", aceptaTemperatura: true, predeterminado: false },
+  { id: "openai/gpt-6-luna", etiqueta: "GPT-6 Luna", nivel: "economico", descripcion: "El predeterminado de la plataforma: rapido y barato; sigue bien las reglas.", aceptaTemperatura: false, predeterminado: true, vozZdr: true },
+  { id: "deepseek/deepseek-v4.1-flash", etiqueta: "DeepSeek V4.1 Flash", nivel: "economico", descripcion: "Economico, servido solo desde proveedores de EE.UU. con retencion cero.", aceptaTemperatura: true, predeterminado: false, vozZdr: true },
+  { id: "google/gemini-2.5-flash-lite", etiqueta: "Gemini 2.5 Flash-Lite", nivel: "economico", descripcion: "El mas barato; respuestas cortas y directas.", aceptaTemperatura: true, predeterminado: false, vozZdr: false },
+  { id: "meta/muse-spark-1.3", etiqueta: "Muse Spark 1.3", nivel: "equilibrado", descripcion: "Equilibrado entre costo y calidad de redaccion.", aceptaTemperatura: true, predeterminado: false, vozZdr: false },
+  { id: "google/gemini-3.8-flash", etiqueta: "Gemini 3.8 Flash", nivel: "equilibrado", descripcion: "Mejor comprension de pedidos largos o ambiguos; cuesta mas que los economicos.", aceptaTemperatura: true, predeterminado: false, vozZdr: true },
   // Cerebro v2 de voz (PM, 6-nov-2026): el modelo rapido del turno de voz. Google Vertex con endpoint ZDR (us/global). Temperatura omitida hasta verificarla en sus endpoints.
-  { id: "google/gemini-3.5-flash-lite", etiqueta: "Gemini 3.5 Flash-Lite", nivel: "economico", descripcion: "El rapido de la voz: baja latencia para turnos cortos.", aceptaTemperatura: false, predeterminado: false },
+  { id: "google/gemini-3.5-flash-lite", etiqueta: "Gemini 3.5 Flash-Lite", nivel: "economico", descripcion: "El rapido de la voz: baja latencia para turnos cortos.", aceptaTemperatura: false, predeterminado: false, vozZdr: true },
   // Cerebro v2 (PM, 6-nov-2026): respaldo de Luna en el agente de WhatsApp de PM y modelo «preciso» alterno de la voz. Precio en `MODEL_PRICES`; proveedores de
   // EE.UU. de Anthropic con endpoint ZDR verificados en https://openrouter.ai/api/v1/endpoints/zdr (Google Vertex us/global y Amazon Bedrock us-east-1).
-  { id: "anthropic/claude-haiku-5.5", etiqueta: "Claude Haiku 5.5", nivel: "economico", descripcion: "Respaldo rapido de Luna: buena comprension y mismo costo; se usa con retencion cero.", aceptaTemperatura: false, predeterminado: false },
-  { id: "anthropic/claude-sonnet-5.5", etiqueta: "Claude Sonnet 5.5", nivel: "premium", descripcion: "El de mayor calidad y el mas caro; solo si el volumen es bajo.", aceptaTemperatura: false, predeterminado: false },
+  { id: "anthropic/claude-haiku-5.5", etiqueta: "Claude Haiku 5.5", nivel: "economico", descripcion: "Respaldo rapido de Luna: buena comprension y mismo costo; se usa con retencion cero.", aceptaTemperatura: false, predeterminado: false, vozZdr: true },
+  { id: "anthropic/claude-sonnet-5.5", etiqueta: "Claude Sonnet 5.5", nivel: "premium", descripcion: "El de mayor calidad y el mas caro; solo si el volumen es bajo.", aceptaTemperatura: false, predeterminado: false, vozZdr: true },
 ] satisfies readonly ModeloAgente[]);
 
 export const MODELO_PREDETERMINADO_ID = "openai/gpt-6-luna";
+
+/** El modelo sirve para la cascada de VOZ (lista permitida + endpoint ZDR). Se valida al guardar y otra vez al armar el contexto de la llamada (un valor viejo de la base no llega al worker). */
+export function esModeloVozZdr(id: unknown): id is string {
+  return typeof id === "string" && MODELOS_AGENTE.some((m) => m.id === id && m.vozZdr);
+}
 
 export function modeloAgentePorId(id: string | null | undefined): ModeloAgente | null {
   if (!id) return null;

@@ -76,3 +76,4 @@ Las migraciones no se revierten con `scripts/rollback/rollback.sh` (solo toca Ve
 | Migración | Reversa |
 |---|---|
 | 095 `cfo_analisis_clientes` | `drop function` de sus cinco funciones de `restaurantes` (`cfo_clientes_rfm_base`, `cfo_clientes_rfm`, `cfo_clientes_reactivacion`, `cfo_intervalo_recompra`, `cfo_pedidos_tortilla`) (sin tablas ni datos que revertir; la pantalla vuelve a «no disponible aún»). Detalle en `docs/restaurantes/ANALISIS-CLIENTES.md`. |
+| 103 `voz_telefono_elevenlabs` | `scripts/rollback/migraciones/103_voz_telefono_elevenlabs.down.sql` (`drop column if exists tts_voice_id`; sus GRANT por columna se van con ella). El panel vuelve a «No disponible aún» y la llamada usa la voz de la plataforma. |

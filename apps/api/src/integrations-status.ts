@@ -213,6 +213,13 @@ export const INTEGRATIONS: readonly IntegrationDefinition[] = [
       "Escalón `cascada-v2` de la escalera de voz de la plataforma (@atiende/voice-core): Deepgram Nova-3 (STT en streaming por WebSocket) -> LLM por OpenRouter -> Deepgram Aura-2 (TTS en streaming, voz femenina mexicana). La corre el worker de voz (Fly) con UNA sola DEEPGRAM_API_KEY para el STT y el TTS, más OPENROUTER_API_KEY (ver \"llm-openrouter\"). En la API la variable solo alimenta el estado honesto: GET /hoteles/:propertyId/voz/estado y el equivalente de citas dicen \"No disponible aún: requiere DEEPGRAM_API_KEY\" si falta (nunca un falso éxito). Sin ella la escalera salta ese escalón y sigue con Gemini Live o la cascada de respaldo. VOZ_CASCADA_V2_HABILITADA es el interruptor (apagado por omisión): aunque exista la llave, el escalón no abre hasta que alguien lo encienda tras la prueba real (scripts/voz-cascada-v2-smoke).",
     variables: ["DEEPGRAM_API_KEY", "VOZ_CASCADA_V2_HABILITADA"],
   },
+  {
+    id: "voz-elevenlabs",
+    nombre: "Voz de restaurantes — ElevenLabs (Scribe v2 Realtime + eleven_v4_turbo) en la cascada v2",
+    habilita:
+      "Stack de voz elegido para la llamada telefónica (6-nov-2026): el worker de voz (Fly) usa ELEVENLABS_API_KEY para el STT Scribe v2 Realtime (keyterms del menú de la sucursal) y el TTS eleven_v4_turbo con voz mexicana (Regina por omisión; la sucursal elige su voz telefónica en el panel). Deepgram (DEEPGRAM_API_KEY) queda como respaldo automático de cada etapa. El TTS descuenta créditos del plan de ElevenLabs. Sin la llave la cascada v2 usa solo Deepgram; la API no la lee.",
+    variables: ["ELEVENLABS_API_KEY"],
+  },
 
   // ---- Proveedores LLM ----
   {
