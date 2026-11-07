@@ -7,7 +7,8 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { Link, Navigate, useLocation } from "react-router-dom";
-import { Callout, EstadoCargando } from "@atiende/ui";
+import { Callout, EstadoCargando, useT } from "@atiende/ui";
+import { restaurantesOnboarding } from "@atiende/ui/i18n/restaurantes/onboarding";
 import { fetchOnboardingGate, gateOmitido, type OnboardingGateEstado } from "./lib/onboarding-client.ts";
 
 const ROLES_CON_GATE: ReadonlySet<string> = new Set(["owner", "admin"]);
@@ -23,6 +24,7 @@ export interface PuertaOnboardingProps {
 
 export function PuertaOnboarding({ apiBaseUrl, token, propertyId, orgSlug, role, children }: PuertaOnboardingProps) {
   const { pathname } = useLocation();
+  const t = useT(restaurantesOnboarding);
   const base = `/restaurantes/${orgSlug}`;
   const esResumen = pathname.replace(/\/+$/, "") === base;
   const aplica = ROLES_CON_GATE.has(role) && esResumen;
@@ -42,21 +44,21 @@ export function PuertaOnboarding({ apiBaseUrl, token, propertyId, orgSlug, role,
 
   if (!aplica) return <>{children}</>;
   const omitido = gateOmitido(orgSlug);
-  if (gate === "cargando") return omitido ? <>{children}</> : <EstadoCargando etiqueta="Revisando la configuración…" />;
+  if (gate === "cargando") return omitido ? <>{children}</> : <EstadoCargando etiqueta={t("restaurantes.onboarding.revisando")} />;
   if (gate && gate.bloquea && !omitido) return <Navigate to={`${base}/primeros-pasos`} replace />;
   return (
     <>
       {gate && gate.obligatoriosPendientes > 0 && (
         <Callout
           tone="warning"
-          titulo="Faltan puntos obligatorios de configuración"
+          titulo={t("restaurantes.onboarding.puerta.titulo")}
           accion={
             <Link className="text-xs underline underline-offset-2" to={`${base}/primeros-pasos`}>
-              Ver primeros pasos
+              {t("restaurantes.onboarding.puerta.ver")}
             </Link>
           }
         >
-          {gate.obligatoriosPendientes} punto(s) obligatorio(s) pendiente(s) antes de operar con tranquilidad.
+          {t("restaurantes.onboarding.puerta.pendientes", { n: gate.obligatoriosPendientes })}
         </Callout>
       )}
       {children}

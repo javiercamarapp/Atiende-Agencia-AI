@@ -18,7 +18,9 @@
 // inventar sin dirección explícita.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, Label, Selector, PageContainer, useConfirm, StatusBadge, FormField } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, Label, Selector, PageContainer, useConfirm, StatusBadge, FormField, useT } from "@atiende/ui";
+import type { Clave } from "@atiende/ui";
+import { restaurantesConfiguracion } from "@atiende/ui/i18n/restaurantes/configuracion";
 import { Clock, MapPin, MessageCircle, Trash2 } from "lucide-react";
 import { createKnownZone, deleteKnownZone, fetchBranchTimezone, fetchKnownZones, fetchWhatsappConfig, updateBranchTimezone, updateWhatsappConfig } from "../lib/config-client.ts";
 import type { BranchTimezoneConfig, KnownZone, WhatsappChannelConfig } from "../lib/config-client.ts";
@@ -33,13 +35,13 @@ const STAFF_INVITE_ROLES: ReadonlySet<string> = new Set(["owner", "admin"]);
 // citas/admin.ts::optionalTimeZone, pero aquí SÍ como `<select>` con las 6 zonas
 // reales del país (citas usa un Input libre -- ver su Configuracion.tsx) --
 // ninguna otra existe hoy que un negocio mexicano real necesite.
-const ZONA_HORARIA_OPTIONS: readonly { readonly value: string; readonly label: string }[] = [
-  { value: "America/Mexico_City", label: "Ciudad de México (America/Mexico_City)" },
-  { value: "America/Cancun", label: "Cancún (America/Cancun)" },
-  { value: "America/Tijuana", label: "Tijuana (America/Tijuana)" },
-  { value: "America/Chihuahua", label: "Chihuahua (America/Chihuahua)" },
-  { value: "America/Hermosillo", label: "Hermosillo (America/Hermosillo)" },
-  { value: "America/Mazatlan", label: "Mazatlán (America/Mazatlan)" },
+const ZONA_HORARIA_OPTIONS: readonly { readonly value: string; readonly clave: Clave }[] = [
+  { value: "America/Mexico_City", clave: "restaurantes.configuracion.tz.mexicoCity" },
+  { value: "America/Cancun", clave: "restaurantes.configuracion.tz.cancun" },
+  { value: "America/Tijuana", clave: "restaurantes.configuracion.tz.tijuana" },
+  { value: "America/Chihuahua", clave: "restaurantes.configuracion.tz.chihuahua" },
+  { value: "America/Hermosillo", clave: "restaurantes.configuracion.tz.hermosillo" },
+  { value: "America/Mazatlan", clave: "restaurantes.configuracion.tz.mazatlan" },
 ];
 
 /** Valor especial del `<select>` para "sin configurar" (`zonaHoraria: null` real)
@@ -48,6 +50,7 @@ const ZONA_HORARIA_OPTIONS: readonly { readonly value: string; readonly label: s
 const SIN_CONFIGURAR = "";
 
 export function ConfiguracionPage({ apiBaseUrl, token, propertyId, role, nombreSucursal }: RestaurantesShellContext) {
+  const t = useT(restaurantesConfiguracion);
   const canManage = STAFF_INVITE_ROLES.has(role);
   const { confirmar, dialogo } = useConfirm();
 
@@ -85,7 +88,7 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, role, nombreS
       setZonaHoraria(timezoneConfig);
       setZonaHorariaSelect(timezoneConfig.zonaHoraria ?? SIN_CONFIGURAR);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo cargar la configuración.");
+      setError(err instanceof Error ? err.message : t("restaurantes.configuracion.error.cargar"));
     }
   }
 
@@ -103,7 +106,7 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, role, nombreS
       setWhatsapp(updated);
       setWhatsappSaved(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo guardar el número de WhatsApp.");
+      setError(err instanceof Error ? err.message : t("restaurantes.configuracion.error.whatsapp"));
     } finally {
       setSavingWhatsapp(false);
     }
@@ -119,7 +122,7 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, role, nombreS
       setZonaHoraria(updated);
       setZonaHorariaSaved(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo guardar la zona horaria.");
+      setError(err instanceof Error ? err.message : t("restaurantes.configuracion.error.zonaHoraria"));
     } finally {
       setSavingZonaHoraria(false);
     }
@@ -139,7 +142,7 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, role, nombreS
       setZoneLat("");
       setZoneLng("");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo agregar la zona conocida.");
+      setError(err instanceof Error ? err.message : t("restaurantes.configuracion.error.agregarZona"));
     } finally {
       setCreatingZone(false);
     }
@@ -147,10 +150,10 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, role, nombreS
 
   async function handleDeleteZone(zone: KnownZone) {
     const ok = await confirmar({
-      titulo: `Quitar "${zone.name}" de las zonas conocidas`,
-      descripcion: "El agente dejará de usar esta zona para encontrar la sucursal más cercana.",
+      titulo: t("restaurantes.configuracion.quitar.titulo", { zona: zone.name }),
+      descripcion: t("restaurantes.configuracion.quitar.descripcion"),
       tono: "danger",
-      confirmar: "Quitar zona",
+      confirmar: t("restaurantes.configuracion.quitar.confirmar"),
     });
     if (!ok) return;
     setDeletingZoneId(zone.id);
@@ -159,7 +162,7 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, role, nombreS
       await deleteKnownZone(fetch, apiBaseUrl, token, propertyId, zone.id);
       setZonas((prev) => (prev ? prev.filter((z) => z.id !== zone.id) : prev));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo quitar esa zona conocida.");
+      setError(err instanceof Error ? err.message : t("restaurantes.configuracion.error.quitarZona"));
     } finally {
       setDeletingZoneId(null);
     }
@@ -168,15 +171,15 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, role, nombreS
   if (!canManage) {
     return (
       <PageContainer padding="none">
-        <h1 className="sr-only">Configuración</h1>
-        <Callout tone="info">Editar la configuración de WhatsApp y las zonas conocidas está reservado a dueños y administradores. Tu rol actual es «{role}».</Callout>
+        <h1 className="sr-only">{t("restaurantes.configuracion.titulo")}</h1>
+        <Callout tone="info">{t("restaurantes.configuracion.soloAdmin", { rol: role })}</Callout>
       </PageContainer>
     );
   }
 
   return (
     <PageContainer padding="none">
-      <h1 className="sr-only">Configuración</h1>
+      <h1 className="sr-only">{t("restaurantes.configuracion.titulo")}</h1>
 
       {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
 
@@ -184,14 +187,15 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, role, nombreS
         <CardHeader className="p-4 pb-3">
           <CardTitle className="flex items-center gap-2">
             <MessageCircle className="h-4 w-4" strokeWidth={1.75} />
-            WhatsApp
+            {t("restaurantes.configuracion.whatsapp.titulo")}
           </CardTitle>
-          <CardDescription>Número (phone_number_id de Meta Cloud API) por el que este negocio recibe y contesta WhatsApp.</CardDescription>
+          <CardDescription>{t("restaurantes.configuracion.whatsapp.descripcion")}</CardDescription>
         </CardHeader>
         <CardContent className="p-4 pt-0">
-          {!whatsapp && !error && <EstadoCargando etiqueta="Cargando…" />}
+          {!whatsapp && !error && <EstadoCargando etiqueta={t("restaurantes.configuracion.cargando")} />}
           {whatsapp && (
             <form onSubmit={handleSaveWhatsapp} className="flex flex-wrap items-end gap-2">
+              {/* // i18n-ignorar: nombre tecnico del campo en Meta, igual en ingles */}
               <FormField label="phone_number_id">
                 <Input
                   id="config-whatsapp-phone-number-id"
@@ -206,12 +210,12 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, role, nombreS
                 />
               </FormField>
               <Button type="submit" loading={savingWhatsapp}>
-                Guardar
+                {t("restaurantes.configuracion.guardar")}
               </Button>
-              {whatsappSaved && <StatusBadge tone="success" dot={false}>Guardado</StatusBadge>}
+              {whatsappSaved && <StatusBadge tone="success" dot={false}>{t("restaurantes.configuracion.guardado")}</StatusBadge>}
             </form>
           )}
-          {whatsapp && !whatsapp.phoneNumberId && <p className="mt-2 text-xs text-muted-foreground">Todavía no hay ningún número conectado.</p>}
+          {whatsapp && !whatsapp.phoneNumberId && <p className="mt-2 text-xs text-muted-foreground">{t("restaurantes.configuracion.whatsapp.sinNumero")}</p>}
         </CardContent>
       </Card>
 
@@ -219,19 +223,18 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, role, nombreS
         <CardHeader className="p-4 pb-3">
           <CardTitle className="flex items-center gap-2">
             <Clock className="h-4 w-4" strokeWidth={1.75} />
-            Zona horaria
+            {t("restaurantes.configuracion.tz.titulo")}
           </CardTitle>
           <CardDescription>
-            De qué hora local se toma "hoy" para el horario de atención y la vigencia de tus promociones (día de la semana, franja horaria). Sin configurar, se usa el default de la plataforma
-            (Ciudad de México).
+            {t("restaurantes.configuracion.tz.descripcion")}
           </CardDescription>
         </CardHeader>
         <CardContent className="p-4 pt-0">
-          {!zonaHoraria && !error && <EstadoCargando etiqueta="Cargando…" />}
+          {!zonaHoraria && !error && <EstadoCargando etiqueta={t("restaurantes.configuracion.cargando")} />}
           {zonaHoraria && (
             <form onSubmit={handleSaveZonaHoraria} className="flex flex-wrap items-end gap-2">
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="config-zona-horaria">Zona horaria de esta sucursal</Label>
+                <Label htmlFor="config-zona-horaria">{t("restaurantes.configuracion.tz.campo")}</Label>
                 <Selector
                   id="config-zona-horaria"
                   value={zonaHorariaSelect}
@@ -241,18 +244,18 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, role, nombreS
                   }}
                   wrapperClassName="w-auto min-w-72"
                 >
-                  <option value={SIN_CONFIGURAR}>Usar el default de la plataforma (Ciudad de México)</option>
+                  <option value={SIN_CONFIGURAR}>{t("restaurantes.configuracion.tz.porDefecto")}</option>
                   {ZONA_HORARIA_OPTIONS.map((opt) => (
                     <option key={opt.value} value={opt.value}>
-                      {opt.label}
+                      {t(opt.clave)}
                     </option>
                   ))}
                 </Selector>
               </div>
               <Button type="submit" loading={savingZonaHoraria}>
-                Guardar
+                {t("restaurantes.configuracion.guardar")}
               </Button>
-              {zonaHorariaSaved && <StatusBadge tone="success" dot={false}>Guardado</StatusBadge>}
+              {zonaHorariaSaved && <StatusBadge tone="success" dot={false}>{t("restaurantes.configuracion.guardado")}</StatusBadge>}
             </form>
           )}
         </CardContent>
@@ -262,41 +265,42 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, role, nombreS
         <CardHeader className="p-4 pb-3">
           <CardTitle className="flex items-center gap-2">
             <MapPin className="h-4 w-4" strokeWidth={1.75} />
-            Zonas conocidas
+            {t("restaurantes.configuracion.zonas.titulo")}
           </CardTitle>
           <CardDescription>
-            Colonias/plazas reales de tu ciudad, con sus coordenadas — el agente de voz/WhatsApp las usa para encontrar la sucursal más cercana a la referencia que da el cliente.
+            {t("restaurantes.configuracion.zonas.descripcion")}
           </CardDescription>
         </CardHeader>
         <CardContent className="p-4 pt-0">
           <form onSubmit={handleCreateZone} className="flex flex-wrap items-end gap-2">
-            <FormField label="Nombre">
+            <FormField label={t("restaurantes.configuracion.zonas.nombre")}>
+              {/* // i18n-ignorar: ejemplo de colonia (dato), igual en ingles */}
               <Input id="config-zona-nombre" value={zoneName} onChange={(e) => setZoneName(e.target.value)} placeholder="Altabrisa" className="w-auto min-w-[160px]" required />
             </FormField>
-            <FormField label="Latitud">
+            <FormField label={t("restaurantes.configuracion.zonas.latitud")}>
               <Input id="config-zona-lat" value={zoneLat} onChange={(e) => setZoneLat(e.target.value)} placeholder="21.0619" className="w-auto min-w-[110px]" required />
             </FormField>
-            <FormField label="Longitud">
+            <FormField label={t("restaurantes.configuracion.zonas.longitud")}>
               <Input id="config-zona-lng" value={zoneLng} onChange={(e) => setZoneLng(e.target.value)} placeholder="-89.6216" className="w-auto min-w-[110px]" required />
             </FormField>
             <Button type="submit" loading={creatingZone}>
-              Agregar zona
+              {t("restaurantes.configuracion.zonas.agregar")}
             </Button>
           </form>
 
           <div className="mt-3 flex flex-col gap-2">
-            {!zonas && !error && <EstadoCargando etiqueta="Cargando zonas…" />}
-            {zonas && zonas.length === 0 && <EstadoVacio mensaje="Todavía no hay ninguna zona conocida sembrada." />}
+            {!zonas && !error && <EstadoCargando etiqueta={t("restaurantes.configuracion.zonas.cargando")} />}
+            {zonas && zonas.length === 0 && <EstadoVacio mensaje={t("restaurantes.configuracion.zonas.vacio")} />}
             {zonas &&
               zonas.map((z) => (
                 <div key={z.id} className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card p-2.5">
                   <div>
                     <p className="m-0 text-sm font-semibold text-foreground">{z.name}</p>
                     <p className="mt-0.5 text-xs text-muted-foreground">
-                      {z.lat === null || z.lng === null ? "Sin coordenadas" : `${z.lat}, ${z.lng}`}
+                      {z.lat === null || z.lng === null ? t("restaurantes.configuracion.zonas.sinCoordenadas") : `${z.lat}, ${z.lng}`}
                     </p>
                   </div>
-                  <Button type="button" variant="ghost" size="icon-sm" aria-label={`Quitar zona ${z.name}`} onClick={() => void handleDeleteZone(z)} disabled={deletingZoneId === z.id}>
+                  <Button type="button" variant="ghost" size="icon-sm" aria-label={t("restaurantes.configuracion.zonas.quitarAria", { zona: z.name })} onClick={() => void handleDeleteZone(z)} disabled={deletingZoneId === z.id}>
                     <Trash2 className="h-4 w-4" strokeWidth={1.75} />
                   </Button>
                 </div>
