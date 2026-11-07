@@ -2,18 +2,16 @@
 // Aqui viven las decisiones de presentacion que NO debe duplicar el servidor: cuanto tiempo se queda visible un pedido recien
 // entregado, cuanto falta para que expire el «Deshacer», el cambio que lleva el chofer y el destino del boton «Navegar».
 import type { EntregaChofer, MotivoProblemaChofer, Semaforo } from "@atiende/domain-restaurantes/operacion";
-import { VENTANA_DESHACER_ENTREGA_SEG } from "@atiende/domain-restaurantes/operacion";
+import { MOTIVOS_PROBLEMA_CHOFER, VENTANA_DESHACER_ENTREGA_SEG } from "@atiende/domain-restaurantes/operacion";
+import { etiquetasTraducidas } from "@atiende/ui";
 import type { StatusTone } from "@atiende/ui";
+import { restaurantesChofer } from "@atiende/ui/i18n/restaurantes/chofer";
 
 /** Un pedido entregado (o con problema) desaparece de la lista 2 min despues de verse por primera vez en ese estado. */
 export const VISIBLE_TRAS_ENTREGA_MS = 120_000;
 
-export const ETIQUETA_MOTIVO_PROBLEMA: Readonly<Record<MotivoProblemaChofer, string>> = {
-  direccion: "No encontré la dirección",
-  no_contesto: "El cliente no contesta",
-  rechazo: "Rechazó el pedido",
-  otro: "Otro motivo",
-};
+/** Motivo de «No pude entregar» -> etiqueta en el idioma activo (traduce en cada lectura). */
+export const ETIQUETA_MOTIVO_PROBLEMA: Readonly<Record<MotivoProblemaChofer, string>> = etiquetasTraducidas(MOTIVOS_PROBLEMA_CHOFER, (m) => `restaurantes.chofer.motivo.${m}` as const, restaurantesChofer);
 
 export const TONO_SEMAFORO: Readonly<Record<Semaforo, StatusTone>> = { verde: "success", amarillo: "warning", rojo: "danger" };
 
