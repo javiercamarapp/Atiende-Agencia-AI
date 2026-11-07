@@ -13,7 +13,7 @@
 import * as React from "react";
 import { flushSync } from "react-dom";
 import { Link, useLocation } from "react-router-dom";
-import { Compass } from "lucide-react";
+import { Compass, ShieldCheck } from "lucide-react";
 import { AtiendeWordmark } from "./AtiendeLogo";
 import { BottomNav, MobileHeader, type BottomNavItem } from "./BottomNav";
 import { BarraPagina } from "./BarraPagina";
@@ -240,6 +240,13 @@ export interface VerticalShellProps {
   readonly panelLateral?: React.ReactNode;
   /** `key` del <main>: al cambiar (sucursal activa) las paginas hijas se remontan. */
   readonly contentKey?: string;
+  /** Nombre de la organizacion activa: en ds3 la tarjeta de cuenta del pie lo muestra junto al rol. Opcional. */
+  readonly organizacion?: string;
+  /**
+   * Enlace a la administracion de la plataforma (solo para administradores de plataforma; quien arma el shell decide si lo pasa).
+   * Va como ultima fila del pie del sidebar y de la hoja «Más». Sin el, no se pinta.
+   */
+  readonly adminHref?: string;
   readonly children: React.ReactNode;
 }
 
@@ -257,8 +264,13 @@ export function VerticalShell({
   sidebarPie,
   contentKey,
   panelLateral,
+  organizacion,
+  adminHref,
   children,
 }: VerticalShellProps) {
+  const pie: SidebarPiePildora[] | undefined = adminHref
+    ? [...(sidebarPie ?? []), { label: "Administración de Atiende", to: adminHref, icon: ShieldCheck }]
+    : sidebarPie;
   const { pathname } = useLocation();
   const mainRef = React.useRef<HTMLElement>(null);
   const [sinH1, setSinH1] = React.useState(false);
@@ -280,8 +292,8 @@ export function VerticalShell({
   // Los destinos del pie del Sidebar ("Ver los otros paneles") tambien son paginas del panel aunque no esten en `sections`:
   // la barra les pone su nombre en vez del titulo de la consola. Van DESPUES de `sections`, asi un destino que ya es de una
   // categoria (p. ej. "Costos de IA" -> "Costos y margen") conserva el nombre de su categoria.
-  const destinosPie: SidebarSection[] = (sidebarPie ?? []).some((p) => p.to)
-    ? [{ title: "Cuenta", items: (sidebarPie ?? []).filter((p) => p.to).map((p) => ({ to: p.to as string, label: p.label, icon: p.icon ?? Compass })) }]
+  const destinosPie: SidebarSection[] = (pie ?? []).some((p) => p.to)
+    ? [{ title: "Cuenta", items: (pie ?? []).filter((p) => p.to).map((p) => ({ to: p.to as string, label: p.label, icon: p.icon ?? Compass })) }]
     : [];
   const activo = itemActivo([...sections, ...destinosPie], pathname);
   const esResumen = header.resumenTo !== undefined && pathname === header.resumenTo;
@@ -309,7 +321,7 @@ export function VerticalShell({
       </a>
 
       <div className="ds3-shell-lateral hidden md:block md:p-4 md:pr-0">
-        <Sidebar sections={sections} user={user} onLogout={onLogout} hotelSelector={selectores} storageScope={vertical} pie={sidebarPie} />
+        <Sidebar sections={sections} user={user} onLogout={onLogout} hotelSelector={selectores} storageScope={vertical} pie={pie} organizacion={organizacion} />
       </div>
 
       <MobileHeader
@@ -352,7 +364,7 @@ export function VerticalShell({
 
       {panelLateral}
 
-      <BottomNav items={mobileItems} moreSections={sections} pie={sidebarPie} />
+      <BottomNav items={mobileItems} moreSections={sections} pie={pie} />
     </div>
   );
 }
