@@ -185,15 +185,15 @@ begin
   if not found then
     raise exception 'whatsapp_meta_rotar_credencial: la credencial no existe, es de otra organizacion o esta revocada' using errcode = 'P0002';
   end if;
-  if p_etiqueta is not null then v_campos := v_campos || 'etiqueta'; end if;
-  if p_app_secret_cifrado is not null then v_campos := v_campos || 'app_secret'; end if;
-  if p_access_token_cifrado is not null then v_campos := v_campos || 'access_token'; end if;
-  if p_verify_token_hash is not null then v_campos := v_campos || 'verify_token'; end if;
+  if p_etiqueta is not null then v_campos := array_append(v_campos, 'etiqueta'); end if;
+  if p_app_secret_cifrado is not null then v_campos := array_append(v_campos, 'app_secret'); end if;
+  if p_access_token_cifrado is not null then v_campos := array_append(v_campos, 'access_token'); end if;
+  if p_verify_token_hash is not null then v_campos := array_append(v_campos, 'verify_token'); end if;
   if coalesce(p_quitar_verify_token, false) then
     if p_verify_token_hash is not null then
       raise exception 'whatsapp_meta_rotar_credencial: no se puede poner y quitar el verify token a la vez' using errcode = '22023';
     end if;
-    v_campos := v_campos || 'verify_token_quitado';
+    v_campos := array_append(v_campos, 'verify_token_quitado');
   end if;
   if cardinality(v_campos) = 0 then
     raise exception 'whatsapp_meta_rotar_credencial: no hay nada que cambiar' using errcode = '22023';
