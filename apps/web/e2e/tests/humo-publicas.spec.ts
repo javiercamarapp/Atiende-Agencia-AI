@@ -182,15 +182,12 @@ test.describe("publicas @humo", () => {
     });
   }
 
-  test("capturas: login, olvide mi contrasena y 404 en claro, oscuro y movil (adjuntas) @oscuro", async ({ page, vigilante }, info) => {
+  test("capturas: login y 404 en claro, oscuro y movil (adjuntas) @oscuro", async ({ page, vigilante }, info) => {
     await page.goto("/citas/login");
     await expect(page.getByRole("heading", { level: 1 })).toContainText("atiende citas");
     await afirmarSinScrollHorizontal(page);
     await page.waitForTimeout(1300); // la entrada escalonada termina (login-entra)
     await info.attach(`login-${info.project.name}.png`, { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
-    await page.getByRole("button", { name: "¿Olvidaste tu contraseña?" }).click();
-    await page.waitForTimeout(900);
-    await info.attach(`olvido-${info.project.name}.png`, { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
     await page.goto("/restablecer-no-existe");
     await afirmarSinScrollHorizontal(page);
     await info.attach(`404-${info.project.name}.png`, { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });

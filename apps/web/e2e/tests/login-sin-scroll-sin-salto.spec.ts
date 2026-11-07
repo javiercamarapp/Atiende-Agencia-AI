@@ -107,6 +107,8 @@ test.describe("login sin saltos @humo", () => {
           return ruta.fulfill({ status: modo === "ok" ? 200 : 429, headers: { "access-control-allow-origin": "*", "content-type": "application/json" }, body: JSON.stringify({ ok: modo === "ok" }) });
         });
         // Reloj controlable: tras un envio exitoso el login (como el de Rovaq) espera 60 s antes de dejar pedir otro enlace.
+        // Movimiento reducido: la esfera de particulas queda quieta y adelantar el reloj no pinta 60 s de cuadros.
+        await page.emulateMedia({ reducedMotion: "reduce" });
         await page.clock.install();
         await abrir(page, "/citas/login", tema, v);
         const base = await cajas(page);
