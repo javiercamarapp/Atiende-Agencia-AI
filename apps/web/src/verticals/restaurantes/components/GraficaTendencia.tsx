@@ -65,7 +65,7 @@ export function GraficaTendencia({
         return (
           <g key={k}>
             <line x1={PAD_IZQ} x2={ANCHO - PAD_DER} y1={y} y2={y} className="stroke-border" strokeWidth={1} strokeDasharray={k === 0 ? undefined : "3 4"} />
-            <text x={PAD_IZQ - 8} y={y + 3} textAnchor="end" className="fill-muted-foreground font-mono text-2xs">
+            <text x={PAD_IZQ - 8} y={y + 3} textAnchor="end" className="fill-muted-foreground tabular-nums text-2xs">
               {formatoValor((techo * k) / MARCAS_Y)}
             </text>
           </g>
@@ -78,7 +78,7 @@ export function GraficaTendencia({
             <title>{`${puntos[i]!.etiqueta}: ${formatoValor(puntos[i]!.valor)}`}</title>
           </circle>
           {mostrar(i) && (
-            <text x={x} y={ALTO - 8} textAnchor="middle" className="fill-muted-foreground font-mono text-2xs">
+            <text x={x} y={ALTO - 8} textAnchor="middle" className="fill-muted-foreground tabular-nums text-2xs">
               {puntos[i]!.etiqueta}
             </text>
           )}

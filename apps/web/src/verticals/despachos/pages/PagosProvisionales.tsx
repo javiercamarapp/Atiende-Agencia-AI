@@ -76,7 +76,7 @@ function TarjetaImpuesto({ r, titulo }: { readonly r: ResultadoImpuesto; readonl
             paginacion={false}
             columnas={[
               { id: "concepto", encabezado: "Concepto", principal: true, celda: (l) => <>{l.concepto}{l.detalle ? <span className="text-xs text-muted-foreground"> ({l.detalle})</span> : null}</> },
-              { id: "importe", encabezado: "Importe", alinear: "right", celda: (l) => <span className="font-mono text-xs">{dinero(l.centavos)}</span> },
+              { id: "importe", encabezado: "Importe", alinear: "right", celda: (l) => <span className="tabular-nums text-xs">{dinero(l.centavos)}</span> },
             ]}
           />
         </CardContent>
@@ -283,7 +283,7 @@ export function PagosProvisionalesPage({ apiBaseUrl, token, propertyId, role }: 
             {necesitaCoeficiente && (
               <div className="flex flex-col gap-1">
                 <Label htmlFor="pp-coef">Coeficiente de utilidad</Label>
-                <Input id="pp-coef" value={form.coeficienteUtilidad} inputMode="decimal" placeholder="0.234567" className="w-36 font-mono" onChange={(e) => setForm({ ...form, coeficienteUtilidad: e.target.value })} />
+                <Input id="pp-coef" value={form.coeficienteUtilidad} inputMode="decimal" placeholder="0.234567" className="w-36 tabular-nums" onChange={(e) => setForm({ ...form, coeficienteUtilidad: e.target.value })} />
                 {erroresForm.coeficienteUtilidad && (
                   <p role="alert" className="text-xs text-destructive">
                     {erroresForm.coeficienteUtilidad}
@@ -294,7 +294,7 @@ export function PagosProvisionalesPage({ apiBaseUrl, token, propertyId, role }: 
             {usaPerdidas && (
               <div className="flex flex-col gap-1">
                 <Label htmlFor="pp-perdidas">Pérdidas fiscales pendientes</Label>
-                <Input id="pp-perdidas" value={form.perdidasPendientes} inputMode="decimal" placeholder="0.00" className="w-40 text-right font-mono" onChange={(e) => setForm({ ...form, perdidasPendientes: e.target.value })} />
+                <Input id="pp-perdidas" value={form.perdidasPendientes} inputMode="decimal" placeholder="0.00" className="w-40 text-right tabular-nums" onChange={(e) => setForm({ ...form, perdidasPendientes: e.target.value })} />
                 {erroresForm.perdidasPendientes && (
                   <p role="alert" className="text-xs text-destructive">
                     {erroresForm.perdidasPendientes}
@@ -305,7 +305,7 @@ export function PagosProvisionalesPage({ apiBaseUrl, token, propertyId, role }: 
             {form.regimen !== "626" && (
               <div className="flex flex-col gap-1">
                 <Label htmlFor="pp-previos">Pagos previos no capturados aquí</Label>
-                <Input id="pp-previos" value={form.ajustePagosPrevios} inputMode="decimal" placeholder="0.00" className="w-40 text-right font-mono" onChange={(e) => setForm({ ...form, ajustePagosPrevios: e.target.value })} />
+                <Input id="pp-previos" value={form.ajustePagosPrevios} inputMode="decimal" placeholder="0.00" className="w-40 text-right tabular-nums" onChange={(e) => setForm({ ...form, ajustePagosPrevios: e.target.value })} />
                 {erroresForm.ajustePagosPrevios && (
                   <p role="alert" className="text-xs text-destructive">
                     {erroresForm.ajustePagosPrevios}
@@ -315,7 +315,7 @@ export function PagosProvisionalesPage({ apiBaseUrl, token, propertyId, role }: 
             )}
             <div className="flex flex-col gap-1">
               <Label htmlFor="pp-saldo-iva">Saldo a favor de IVA anterior</Label>
-              <Input id="pp-saldo-iva" value={form.saldoFavorAnterior} inputMode="decimal" placeholder="0.00" className="w-40 text-right font-mono" onChange={(e) => setForm({ ...form, saldoFavorAnterior: e.target.value })} />
+              <Input id="pp-saldo-iva" value={form.saldoFavorAnterior} inputMode="decimal" placeholder="0.00" className="w-40 text-right tabular-nums" onChange={(e) => setForm({ ...form, saldoFavorAnterior: e.target.value })} />
               {erroresForm.saldoFavorAnterior && (
                 <p role="alert" className="text-xs text-destructive">
                   {erroresForm.saldoFavorAnterior}
@@ -370,7 +370,7 @@ export function PagosProvisionalesPage({ apiBaseUrl, token, propertyId, role }: 
                   columnas={[
                     { id: "motivo", encabezado: "Motivo", principal: true, celda: (x) => x.motivo },
                     { id: "cantidad", encabezado: "CFDI", alinear: "right", celda: (x) => x.cantidad },
-                    { id: "importe", encabezado: "Importe total", alinear: "right", celda: (x) => <span className="font-mono text-xs">{dinero(x.importeCentavos)}</span> },
+                    { id: "importe", encabezado: "Importe total", alinear: "right", celda: (x) => <span className="tabular-nums text-xs">{dinero(x.importeCentavos)}</span> },
                   ]}
                 />
               </CardContent>
@@ -438,7 +438,7 @@ export function PagosProvisionalesPage({ apiBaseUrl, token, propertyId, role }: 
           <form id="form-presentar" onSubmit={(e) => void confirmarPresentar(e)} className="flex flex-col gap-3" noValidate>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="pres-monto">Monto efectivamente pagado (MXN)</Label>
-              <Input id="pres-monto" inputMode="decimal" value={pres.monto} placeholder="0.00" className="text-right font-mono" onChange={(e) => setPres({ ...pres, monto: e.target.value })} />
+              <Input id="pres-monto" inputMode="decimal" value={pres.monto} placeholder="0.00" className="text-right tabular-nums" onChange={(e) => setPres({ ...pres, monto: e.target.value })} />
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="pres-fecha">Fecha de presentación</Label>

@@ -206,7 +206,7 @@ export function DashboardPage(ctx: HotelesShellContext) {
         tamano="md"
       />
       {/* El odometro solo se pinta desde `sm`: en movil el mismo dato va en texto. */}
-      <p className="text-ui text-muted-foreground sm:hidden">
+      <p className="ds3-resumen-movil text-ui text-muted-foreground sm:hidden">
         RevPAR{" "}
         <span className="font-medium tabular-nums text-foreground">{pl.estado === "ok" ? dineroMxConSigno(pl.data.kpis.revpar, 0) : "—"}</span>
       </p>
@@ -241,6 +241,13 @@ export function DashboardPage(ctx: HotelesShellContext) {
         saludo={saludoPorHora()}
         nombre={primerNombreOCorreo(ctx.staffFullName, ctx.staffEmail)}
         subtitulo={cap.pl ? `${nombreProperty} · ${etiquetaPeriodo}` : nombreProperty}
+        frase={
+          cap.pl && pl.estado === "ok" ? (
+            <>
+              {nombreProperty} · RevPAR {etiquetaPeriodo}: <strong>{dineroMxConSigno(pl.data.kpis.revpar, 0)}</strong>.
+            </>
+          ) : undefined
+        }
         destacado={destacado}
         kpis={kpis}
         acciones={acciones}

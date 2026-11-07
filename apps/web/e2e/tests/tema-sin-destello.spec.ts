@@ -5,8 +5,9 @@ import type { Page } from "@playwright/test";
 import { expect, test } from "../helpers/fixtures.ts";
 import { afirmarModo } from "../helpers/ds.ts";
 
-// Con la bandera ds3 encendida por URL (con ella apagada el tema global no cambia: produccion intacta).
-const RUTAS_SIN_SELECTOR = ["/restaurantes/login?diseno=ds3", "/restaurantes/restablecer-contrasena?diseno=ds3"] as const;
+// Con la bandera ds3 encendida por URL (con ella apagada el tema global no cambia: produccion intacta). El login NO esta aqui:
+// es siempre claro (como el de Rovaq AI), lo cubre la prueba de abajo.
+const RUTAS_SIN_SELECTOR = ["/restaurantes/restablecer-contrasena?diseno=ds3"] as const;
 
 interface Captura {
   dark: boolean;
@@ -45,9 +46,20 @@ for (const ruta of RUTAS_SIN_SELECTOR) {
   });
 }
 
+test("@oscuro el login es siempre claro desde el primer pintado, aunque el sistema este en oscuro (sin destello)", async ({ page }) => {
+  await vigilarPrimerPintado(page);
+  await page.goto("/restaurantes/login?diseno=ds3");
+  const alInicio = await leerCaptura(page);
+  expect(alInicio.dark, "html.dark en DOMContentLoaded").toBe(false);
+  await page.waitForLoadState("networkidle");
+  await afirmarModo(page, "claro");
+  expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe(alInicio.fondo);
+  expect(await page.locator('meta[name="theme-color"]').getAttribute("content")).toBe("#ffffff");
+});
+
 test("@oscuro el color de la barra del navegador sigue al tema", async ({ page }, info) => {
   const oscuro = info.project.name.endsWith("oscuro");
-  await page.goto("/restaurantes/login?diseno=ds3");
+  await page.goto("/restaurantes/restablecer-contrasena?diseno=ds3");
   const color = await page.locator('meta[name="theme-color"]').getAttribute("content");
   expect(color).toBe(oscuro ? "#0e0e10" : "#ffffff");
 });

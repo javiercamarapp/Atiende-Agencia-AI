@@ -37,7 +37,7 @@ export function ThemeSelector({ tamano = "normal" }: { tamano?: "normal" | "comp
   return (
     <div role="radiogroup" aria-label="Tema de la interfaz" className={
         compacto
-          ? "inline-flex items-center gap-0.5 p-0.5 rounded-full border border-border bg-canvas"
+          ? "ds3-tema inline-flex items-center gap-0.5 p-0.5 rounded-full border border-border bg-canvas"
           : "inline-flex items-center gap-0.5 p-0.5 rounded-full bg-muted"
       }
     >
@@ -52,7 +52,7 @@ export function ThemeSelector({ tamano = "normal" }: { tamano?: "normal" | "comp
             aria-label={rotulo}
             title={rotulo}
             onClick={() => elegir(valor)}
-            className={`${compacto ? "size-6" : "w-11 h-11"} rounded-full flex items-center justify-center transition-colors ${
+            className={`${compacto ? "ds3-tema-opcion size-6" : "w-11 h-11"} rounded-full flex items-center justify-center transition-colors ${
               activo
                 ? compacto
                   ? "border border-border bg-card text-foreground"

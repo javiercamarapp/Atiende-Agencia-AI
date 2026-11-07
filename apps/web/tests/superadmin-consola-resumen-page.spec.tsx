@@ -223,7 +223,9 @@ describe("cifras reales, nulos honestos", () => {
     expect(texto()).toContain("318.5 min");
     expect(texto()).toContain("2 organizaciones sin precio");
     expect(rendered.container.querySelector('[data-testid="odometro"]')!.getAttribute("aria-label")).toContain("$48,900");
-    expect(rendered.container.querySelectorAll('[data-testid="odometro-digito"]')).toHaveLength(7);
+    // Sin estilo reloj: la cifra del MRR es una sola <Cifra> ($48,900), ya no 7 tableros con ceros a la izquierda.
+    expect(rendered.container.querySelector('[data-testid="odometro-cifra"]')!.textContent).toBe("$48,900");
+    expect(rendered.container.querySelectorAll('[data-testid="odometro-digito"]')).toHaveLength(0);
   });
 
   it("un campo null pinta '—' con su razon, no 0; el MRR null apaga el odometro con su motivo", async () => {

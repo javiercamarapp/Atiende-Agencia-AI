@@ -1,6 +1,8 @@
 export { cn } from "./lib/utils.js";
 export { GRAFICA_TEMA, duracionEntradaGrafica } from "./lib/graficas-tema.js";
 export { formatMoney } from "./lib/formatMoney.js";
+export { Cifra, CifraTexto, type CifraProps, type CifraTextoProps, type CifraTamano } from "./components/Cifra.js";
+export { CIFRA_CONTEO_MS, SIN_CIFRA, curvaRovaq, formatearCifra, partesCifra, partirTextoCifra, type CifraLocale, type CifraVariante, type OpcionesCifra, type PartesCifra } from "./lib/cifra.js";
 export { contraste, luminancia, parseHsl, type Hsl } from "./lib/contraste.js";
 export { useAmbitoVertical, ATRIBUTO_AMBITO } from "./lib/ambito.js";
 
@@ -33,10 +35,23 @@ export type { LogoMarcaClave, LogoMarcaTamano, LogoMarcaVariante } from "./compo
 export { LogoMarcaDiferido } from "./components/LogoMarcaDiferido.js";
 export { AtiendeMark, AtiendeWordmark } from "./components/AtiendeLogo.js";
 export { ThemeSelector } from "./components/ThemeSelector.js";
+export { SelectorIdioma } from "./components/SelectorIdioma.js";
+export { CapaArranque } from "./components/CapaArranque.js";
+export {
+  ARRANQUE_ESTABLE_MS,
+  ARRANQUE_FUNDIDO_MS,
+  ARRANQUE_MINIMO_MS,
+  ARRANQUE_NAVEGACION_MS,
+  ARRANQUE_RETARDO_MS,
+  ARRANQUE_TOPE_MS,
+  gobernarArranque,
+  hayCargaPendiente,
+} from "./lib/arranque.js";
+export { CLAVE_IDIOMA, IDIOMAS, IDIOMA_CAMBIO_EVENTO, guardarIdioma, leerIdioma, type Idioma } from "./lib/idioma.js";
 export { ThemeBoot, useTemaGlobal } from "./components/ThemeBoot.js";
 export { aplicarTema, aplicarBanderaDiseno, leerTema, sincronizarDisenoOrganizacion, type Tema } from "./lib/tema.js";
 export { DISENO_DS3, disenoPorDefecto, leerDisenoDs3 } from "./lib/diseno.js";
-export { StatCard, TrendStatCard, type StatCardVariante } from "./components/StatCard.js";
+export { StatCard, TrendStatCard, type StatCardSello, type StatCardVariante } from "./components/StatCard.js";
 export { EstadoVacio, VarianteEstadoVacioProvider } from "./components/EstadoVacio.js";
 export { EstadoError } from "./components/EstadoError.js";
 export { EstadoCargando, type EstadoCargandoVariante } from "./components/EstadoCargando.js";
@@ -63,7 +78,7 @@ export {
   type DataTableProps,
   type DataTableValorOrden,
 } from "./components/DataTable.js";
-export { PageHeader, type PageHeaderAtras, type PageHeaderMiga, type PageHeaderProps } from "./components/PageHeader.js";
+export { PageHeader, GrupoNavContext, type PageHeaderAtras, type PageHeaderMiga, type PageHeaderProps } from "./components/PageHeader.js";
 export { PageContainer, type PageContainerProps } from "./components/PageContainer.js";
 export { Callout, CALLOUT_TONES, type CalloutProps, type CalloutTone } from "./components/Callout.js";
 export { Sidebar, categoriaDeRuta, type SidebarItem, type SidebarSection, type SidebarProps, type SidebarPiePildora, type SidebarUser } from "./components/Sidebar.js";
@@ -80,12 +95,14 @@ export {
   RutaBoundary,
   construirMigas,
   VERTICAL_SHELL_MAIN_ID,
+  GUIA_ABRIR_EVENTO,
   type VerticalMiga,
   type VerticalNoEncontradoProps,
   type VerticalShellEstadoProps,
   type VerticalShellProps,
 } from "./components/VerticalShell.js";
 export { BarraPagina, type BarraPaginaProps } from "./components/BarraPagina.js";
+export { BarraAlcance, BarraAlcanceEspaciador, BotonFiltros, ChipFiltro, type BarraAlcanceProps, type BotonFiltrosProps, type ChipFiltroProps } from "./components/BarraAlcance.js";
 export {
   ChatDatosDialog,
   formatChatCell,
@@ -185,6 +202,17 @@ export {
   SheetTrigger,
 } from "./components/ui/sheet.js";
 export { Popover, PopoverTrigger, PopoverAnchor, PopoverClose, PopoverContent } from "./components/ui/popover.js";
+export {
+  Drawer,
+  Modal,
+  ANCHOS_SUPERPOSICION,
+  HOJA_UMBRAL_CIERRE_PX,
+  tamanoDrawerPara,
+  type DrawerProps,
+  type ModalProps,
+  type TamanoDrawer,
+  type TamanoModalDs3,
+} from "./components/ui/drawer.js";
 export { Avatar, AvatarImage, AvatarFallback } from "./components/ui/avatar.js";
 export {
   DropdownMenu,
