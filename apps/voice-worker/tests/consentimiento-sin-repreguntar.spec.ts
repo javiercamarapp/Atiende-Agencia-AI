@@ -52,3 +52,22 @@ describe("consentimiento: no se repregunta si el cliente ya siguio con su pedido
     expect(repreguntas).toHaveLength(1);
   });
 });
+
+// E2E r2 (7-nov-2026): el worker resolvia el consentimiento como «sin_respuesta» cuando el cliente contestaba con su pedido, pero el disparador le pedia al MODELO
+// «espere la respuesta sobre la grabacion antes de tomar el pedido»: el modelo volvia a preguntar «¿autoriza grabar…?» dos o tres veces y gastaba la llamada.
+describe("disparador de apertura: el modelo no repregunta la grabacion", () => {
+  const apertura = { guion: "Soy el asistente virtual. ¿Autoriza grabar y transcribir la llamada 30 días para mejorar el servicio?", pideConsentimientoGrabacion: true } as const;
+
+  it("no le pide al modelo esperar la respuesta de grabacion antes de tomar el pedido", async () => {
+    const { disparadorDeApertura } = await import("../src/llamada.ts");
+    const t = disparadorDeApertura(apertura as never);
+    expect(t).not.toMatch(/antes de tomar el pedido/i);
+  });
+
+  it("le dice que, si el cliente sigue con su pedido, NO vuelva a preguntar y lo atienda sin grabar", async () => {
+    const { disparadorDeApertura } = await import("../src/llamada.ts");
+    const t = disparadorDeApertura(apertura as never);
+    expect(t).toMatch(/no vuelva a preguntar/i);
+    expect(t).toMatch(/sin grabar/i);
+  });
+});
