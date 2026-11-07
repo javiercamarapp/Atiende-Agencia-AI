@@ -15,8 +15,8 @@ async function setup(opciones: { conRepo?: boolean } = {}) {
   const app = buildApp(deps);
   const owner = await s.staff();
   const otro = await s.staff();
-  repo.seedOrganizacion("taqueria", "restaurantes", [owner.id]);
-  repo.seedOrganizacion("clinica", "citas", [otro.id]);
+  repo.seedOrganizacion("taqueria", "restaurantes", { [owner.id]: "owner" });
+  repo.seedOrganizacion("clinica", "citas", { [otro.id]: "owner" });
   const put = (token: string, cuerpo: unknown) =>
     app.request(RUTA, { method: "PUT", headers: bearer(token, { "content-type": "application/json" }), body: JSON.stringify(cuerpo) });
   const get = (token: string, q: string) => app.request(`${RUTA}?${q}`, { headers: bearer(token) });
@@ -65,6 +65,12 @@ describe("GET/PUT /v1/onboarding/progreso", () => {
   it("la pista debe ser de la vertical de la organizacion: 400", async () => {
     const { owner, put } = await setup();
     expect((await put(owner.token, { ...PASO, pista: "citas.owner" })).status).toBe(400);
+  });
+
+  it("la pista lleva el rol REAL de la persona: un rol inventado es 400 (sin filas sin tope)", async () => {
+    const { owner, put } = await setup();
+    expect((await put(owner.token, { ...PASO, pista: "restaurantes.admin" })).status).toBe(400);
+    expect((await put(owner.token, { ...PASO, pista: "restaurantes" })).status).toBe(200);
   });
 
   it("formato cerrado: paso, pista, modo y banderas invalidos son 400 sin tocar la base", async () => {
