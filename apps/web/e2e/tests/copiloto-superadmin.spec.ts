@@ -138,9 +138,10 @@ test.describe("copiloto de superadmin @copiloto", () => {
     await iniciarSesion("superadmin");
     await page.goto(RUTA);
     await afirmarPantallaSana(page, "copiloto");
-    // Portada: una fila de temas con sus preguntas; el primero (CFO y cobranza) viene activo con sus preguntas a la vista.
+    // Portada: una fila de hasta 4 temas con sus preguntas; el primero (CFO y cobranza) viene activo con sus preguntas a la vista.
     const temas = page.getByTestId("copiloto-temas");
-    for (const titulo of ["CFO y cobranza", "Ventas y costos de IA", "Clientes, agentes y salud", "Varias organizaciones", "Actividad por negocio"]) await expect(temas.getByRole("button", { name: titulo, exact: true })).toBeVisible();
+    for (const titulo of ["CFO y cobranza", "Ventas y costos de IA", "Clientes, agentes y salud", "Varias organizaciones"]) await expect(temas.getByRole("button", { name: titulo, exact: true })).toBeVisible();
+    await expect(temas.getByRole("button", { name: "Actividad por negocio", exact: true })).toHaveCount(0);
     await expect(temas.getByRole("button", { name: "CFO y cobranza", exact: true })).toHaveAttribute("aria-pressed", "true");
     await expect(temas.getByRole("button", { name: "¿Cuál es mi MRR por vertical?" })).toBeVisible();
     await expect(temas.getByRole("button", { name: "¿Qué clientes tienen el pago pendiente?" })).toBeVisible();

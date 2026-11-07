@@ -101,7 +101,7 @@ describe("contexto de la llamada para la cascada v2", () => {
 
   it("un modelo guardado SIN endpoint de retencion cero (p. ej. un valor viejo) NO llega a la llamada: modeloVoz null (el worker usa el de la plataforma)", async () => {
     const { ctx, contexto, ajustes } = await construir();
-    for (const sinZdr of ["meta/muse-spark-1.3", "google/gemini-2.5-flash-lite"]) {
+    for (const sinZdr of ["meta/muse-spark-1.3", "google/gemini-2.5-flash-lite", "deepseek/deepseek-v4.1-flash"]) {
       await ajustes.guardar(ctx.organizationId, ctx.staff.owner.id, { ...(await ajustes.leer(ctx.organizationId)).valor, vozModeloCascada: sinZdr });
       expect((await (await contexto()).json()).modeloVoz).toBeNull();
     }
@@ -112,7 +112,9 @@ describe("contexto de la llamada para la cascada v2", () => {
     const base = `/v1/restaurantes/${ctx.propertyIdA}/admin/agente`;
     const vista = await (await app.request(`${base}/ajustes`, authedGet(ctx.staff.owner.token))).json();
     const porId = Object.fromEntries(vista.modelos.map((m: { id: string; vozZdr: boolean }) => [m.id, m.vozZdr]));
-    expect(porId).toMatchObject({ "openai/gpt-6-luna": true, "meta/muse-spark-1.3": false, "google/gemini-2.5-flash-lite": false });
+    // DeepSeek V4.1 Flash tiene ZDR solo en DeepInfra/Together/Fireworks/Baseten/Parasail/CoreWeave, fuera de los proveedores de voz (Vertex/Bedrock/Azure).
+    expect(porId).toEqual({ "openai/gpt-6-luna": true, "anthropic/claude-haiku-5.5": true, "deepseek/deepseek-v4.1-flash": false, "google/gemini-3.5-flash-lite": true });
+    expect((await app.request(`${base}/ajustes`, authedJson(ctx.staff.owner.token, { ...AJUSTES_AGENTE_POR_DEFECTO, vozModeloCascada: "deepseek/deepseek-v4.1-flash" }, "PUT"))).status).toBe(400);
     expect((await app.request(`${base}/ajustes`, authedJson(ctx.staff.owner.token, { ...AJUSTES_AGENTE_POR_DEFECTO, vozModeloCascada: "meta/muse-spark-1.3" }, "PUT"))).status).toBe(400);
     expect((await app.request(`${base}/ajustes`, authedJson(ctx.staff.owner.token, { ...AJUSTES_AGENTE_POR_DEFECTO, vozModeloCascada: "openai/gpt-6-luna" }, "PUT"))).status).toBe(200);
   });
