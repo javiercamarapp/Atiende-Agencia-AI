@@ -7,50 +7,62 @@
 // `tono` es el descriptor que Google publica para cada voz en su documentación,
 // traducido al español (sin género gramatical). Ver knownGaps del PR: la
 // traducción se hizo de memoria de esa lista y conviene contrastarla con la doc.
+// En inglés (consola en EN) `tono` es el descriptor original de Google; se traduce en cada lectura.
+import { traductorActivo } from "@atiende/ui";
+import type { Clave } from "@atiende/ui";
+import { restaurantesAgenteVoz } from "@atiende/ui/i18n/restaurantes/agenteVoz";
 
 export interface VozCatalogo {
   /** Nombre de la voz en Gemini Live (valor de `voice_name`). */
   readonly id: string;
   readonly nombre: string;
-  /** Descriptor de tono, en español. */
+  /** Descriptor de tono, en el idioma de la consola. */
   readonly tono: string;
 }
 
-function v(id: string, tono: string): VozCatalogo {
-  return { id, nombre: id, tono };
+const tr = traductorActivo(restaurantesAgenteVoz);
+
+function v(id: string, clave: Clave): VozCatalogo {
+  return {
+    id,
+    nombre: id,
+    get tono() {
+      return tr(clave);
+    },
+  };
 }
 
 export const CATALOGO_VOCES: readonly VozCatalogo[] = [
-  v("Zephyr", "Brillante"),
-  v("Puck", "Animado"),
-  v("Charon", "Informativo"),
-  v("Kore", "Firme"),
-  v("Fenrir", "Entusiasta"),
-  v("Leda", "Juvenil"),
-  v("Orus", "Firme"),
-  v("Aoede", "Ligero"),
-  v("Callirrhoe", "Relajado"),
-  v("Autonoe", "Brillante"),
-  v("Enceladus", "Susurrante"),
-  v("Iapetus", "Claro"),
-  v("Umbriel", "Relajado"),
-  v("Algieba", "Fluido"),
-  v("Despina", "Fluido"),
-  v("Erinome", "Claro"),
-  v("Algenib", "Grave y áspero"),
-  v("Rasalgethi", "Informativo"),
-  v("Laomedeia", "Animado"),
-  v("Achernar", "Suave"),
-  v("Alnilam", "Firme"),
-  v("Schedar", "Uniforme"),
-  v("Gacrux", "Maduro"),
-  v("Pulcherrima", "Directo"),
-  v("Achird", "Cercano"),
-  v("Zubenelgenubi", "Casual"),
-  v("Vindemiatrix", "Amable"),
-  v("Sadachbia", "Vivaz"),
-  v("Sadaltager", "Experto"),
-  v("Sulafat", "Cálido"),
+  v("Zephyr", "restaurantes.agenteVoz.tono.Zephyr"),
+  v("Puck", "restaurantes.agenteVoz.tono.Puck"),
+  v("Charon", "restaurantes.agenteVoz.tono.Charon"),
+  v("Kore", "restaurantes.agenteVoz.tono.Kore"),
+  v("Fenrir", "restaurantes.agenteVoz.tono.Fenrir"),
+  v("Leda", "restaurantes.agenteVoz.tono.Leda"),
+  v("Orus", "restaurantes.agenteVoz.tono.Orus"),
+  v("Aoede", "restaurantes.agenteVoz.tono.Aoede"),
+  v("Callirrhoe", "restaurantes.agenteVoz.tono.Callirrhoe"),
+  v("Autonoe", "restaurantes.agenteVoz.tono.Autonoe"),
+  v("Enceladus", "restaurantes.agenteVoz.tono.Enceladus"),
+  v("Iapetus", "restaurantes.agenteVoz.tono.Iapetus"),
+  v("Umbriel", "restaurantes.agenteVoz.tono.Umbriel"),
+  v("Algieba", "restaurantes.agenteVoz.tono.Algieba"),
+  v("Despina", "restaurantes.agenteVoz.tono.Despina"),
+  v("Erinome", "restaurantes.agenteVoz.tono.Erinome"),
+  v("Algenib", "restaurantes.agenteVoz.tono.Algenib"),
+  v("Rasalgethi", "restaurantes.agenteVoz.tono.Rasalgethi"),
+  v("Laomedeia", "restaurantes.agenteVoz.tono.Laomedeia"),
+  v("Achernar", "restaurantes.agenteVoz.tono.Achernar"),
+  v("Alnilam", "restaurantes.agenteVoz.tono.Alnilam"),
+  v("Schedar", "restaurantes.agenteVoz.tono.Schedar"),
+  v("Gacrux", "restaurantes.agenteVoz.tono.Gacrux"),
+  v("Pulcherrima", "restaurantes.agenteVoz.tono.Pulcherrima"),
+  v("Achird", "restaurantes.agenteVoz.tono.Achird"),
+  v("Zubenelgenubi", "restaurantes.agenteVoz.tono.Zubenelgenubi"),
+  v("Vindemiatrix", "restaurantes.agenteVoz.tono.Vindemiatrix"),
+  v("Sadachbia", "restaurantes.agenteVoz.tono.Sadachbia"),
+  v("Sadaltager", "restaurantes.agenteVoz.tono.Sadaltager"),
+  v("Sulafat", "restaurantes.agenteVoz.tono.Sulafat"),
 ];
 
 export function buscarVoz(id: string | null | undefined): VozCatalogo | undefined {

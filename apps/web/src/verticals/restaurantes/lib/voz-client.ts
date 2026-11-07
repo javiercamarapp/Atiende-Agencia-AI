@@ -8,6 +8,10 @@
 // sesión vía `withAuthRefresh` (un 401 intenta un refresh y reintenta una vez).
 import { apiBaseUrlFromRequestUrl, readErrorMessage, readWriteErrorMessage, withAuthRefresh } from "../../../lib/authed-fetch.ts";
 import { defaultAuthCtx, RestaurantesAdminError } from "./admin-client.ts";
+import { traductorActivo } from "@atiende/ui";
+import { restaurantesAgenteVoz } from "@atiende/ui/i18n/restaurantes/agenteVoz";
+
+const tr = traductorActivo(restaurantesAgenteVoz);
 
 /** Config de voz de UNA sucursal, tal como la edita el panel (mapeada del contrato real de la API). */
 export interface VozConfig {
@@ -60,7 +64,7 @@ export interface ConversacionVoz {
 export class VozNoDisponibleError extends Error {
   readonly status: number;
   constructor(status: number) {
-    super("El servicio de voz todavía no está disponible para este negocio.");
+    super(tr("restaurantes.agenteVoz.cliente.noDisponible"));
     this.name = "VozNoDisponibleError";
     this.status = status;
   }
@@ -84,7 +88,7 @@ export async function pedir<T>(fetchImpl: typeof fetch, url: string, token: stri
   );
   if (esNoDisponible(res.status)) throw new VozNoDisponibleError(res.status);
   if (!res.ok) {
-    const fallback = `No se pudo completar la solicitud a ${url} (${res.status}).`;
+    const fallback = tr("restaurantes.agenteVoz.cliente.solicitud", { url, status: String(res.status) });
     throw new RestaurantesAdminError(init.method === "GET" ? await readErrorMessage(res, fallback) : await readWriteErrorMessage(res, fallback));
   }
   return (await res.json()) as T;
@@ -125,7 +129,7 @@ export async function fetchVozConfig(fetchImpl: typeof fetch, apiBaseUrl: string
 
 /** El PUT de la API reemplaza la config completa y exige una voz: sin voz elegida no se puede guardar. */
 export async function updateVozConfig(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, input: VozConfigInput): Promise<VozConfig> {
-  if (input.vozId === null) throw new RestaurantesAdminError("Elige una voz antes de guardar.");
+  if (input.vozId === null) throw new RestaurantesAdminError(tr("restaurantes.agenteVoz.cliente.elegirVoz"));
   const body = {
     habilitado: input.habilitado,
     proveedor: PROVEEDOR_VOZ_PANEL,
@@ -190,7 +194,7 @@ export interface SaludVoz {
 
 export async function fetchSaludVoz(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string): Promise<SaludVoz> {
   const w = await pedir<{ salud?: { ok?: unknown; detalle?: unknown } }>(fetchImpl, `${base(apiBaseUrl, propertyId)}/catalogo`, token, { method: "GET" });
-  return { ok: w.salud?.ok === true, detalle: typeof w.salud?.detalle === "string" && w.salud.detalle ? w.salud.detalle : "El servicio de voz no informó su estado." };
+  return { ok: w.salud?.ok === true, detalle: typeof w.salud?.detalle === "string" && w.salud.detalle ? w.salud.detalle : tr("restaurantes.agenteVoz.cliente.sinEstado") };
 }
 
 interface ConversacionWire {
