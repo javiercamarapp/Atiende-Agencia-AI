@@ -1,0 +1,434 @@
+/*
+ * ds3 / «Pregúntale a tus datos» (components/copiloto/*): la pantalla de chat del sistema de referencia con la paleta de Atiende.
+ *
+ * Mismas reglas que ds3/shell.css (y su guard, packages/ui/tests/ds3-copiloto-css.spec.ts):
+ *  - TODO va bajo `html[data-diseno="ds3"]`: sin la bandera ninguna regla coincide y produccion queda igual.
+ *  - Clases `ds3-copiloto-*` que ponen los componentes; doble clase para ganar a Tailwind sin !important.
+ *  - Solo tokens (hsl(var(--x)) / var(--shadow-*) / var(--scrim)); ningun color literal.
+ *  - Movimiento <= 400 ms y solo con prefers-reduced-motion: no-preference; reutiliza las keyframes del Drawer de shell.css.
+ * Medidas de referencia: controles de 32 px (36 en celular) con radio 8 y 13 px; compositor de radio 12 con padding 8 y texto de 15;
+ * portada con titulo 20/600 y frase 14/20; historial = Drawer sm de 420 px a 8 px del borde (hoja inferior de 90dvh < 820 px),
+ * filas de 40 px, grupos 12/600 en mayusculas, logo de Atiende al pie.
+ */
+
+/* ---- Acento y campo de puntos ---------------------------------------------------------------------------------- */
+html[data-diseno="ds3"] [data-ds3-copiloto] {
+  --copiloto-acento: var(--action);
+  --copiloto-acento-fg: var(--action-foreground);
+  --ds3-col-chat: 46rem;
+  --ds3-ctl-h: 32px;
+}
+@media (max-width: 767.98px) {
+  html[data-diseno="ds3"] [data-ds3-copiloto] { --ds3-ctl-h: 36px; }
+}
+
+/* ---- Control compacto (botones de tema, preguntas, «Cómo se calculó») ------------------------------------------- */
+html[data-diseno="ds3"] .ds3-copiloto-ctl.ds3-copiloto-ctl {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  box-sizing: border-box;
+  max-width: 100%;
+  min-height: var(--ds3-ctl-h, 32px);
+  padding: 0 12px;
+  border: 1px solid hsl(var(--border-strong));
+  border-radius: 8px;
+  background-color: hsl(var(--card));
+  color: hsl(var(--foreground));
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+/* Zona tactil de 44 px sin agrandar el control. */
+html[data-diseno="ds3"] .ds3-copiloto-ctl.ds3-copiloto-ctl::after { content: ""; position: absolute; inset: calc((var(--ds3-ctl-h, 32px) - 44px) / 2 - 1px) 0; }
+html[data-diseno="ds3"] .ds3-copiloto-ctl.ds3-copiloto-ctl:hover:not(:disabled) { background-color: hsl(var(--soft)); border-color: hsl(var(--input)); }
+html[data-diseno="ds3"] .ds3-copiloto-ctl.ds3-copiloto-ctl:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
+html[data-diseno="ds3"] .ds3-copiloto-ctl.ds3-copiloto-ctl:disabled { opacity: 0.5; cursor: not-allowed; }
+html[data-diseno="ds3"] .ds3-copiloto-ctl.ds3-copiloto-ctl svg { flex: none; width: 16px; height: 16px; }
+
+/* ---- Boton «Historial (n)» arriba a la derecha --------------------------------------------------------------------- */
+html[data-diseno="ds3"] [data-ds3="hist-fila-boton"] { margin: 0 0 8px; }
+html[data-diseno="ds3"] [data-ds3="hist-btn"] {
+  gap: 6px;
+  height: var(--ds3-ctl-h, 32px);
+  padding: 0 12px;
+  border: 1px solid hsl(var(--border-strong));
+  border-radius: 8px;
+  background-color: hsl(var(--card));
+  color: hsl(var(--foreground));
+  font-size: 13px;
+  font-weight: 500;
+}
+html[data-diseno="ds3"] [data-ds3="hist-btn"]:hover { background-color: hsl(var(--soft)); }
+html[data-diseno="ds3"] [data-ds3="hist-btn"] svg { width: 14px; height: 14px; }
+html[data-diseno="ds3"] [data-ds3="hist-btn"][aria-expanded="true"] { visibility: hidden; }
+html[data-diseno="ds3"] [data-ds3="hist-contador"] {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background-color: hsl(var(--soft));
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 20px;
+  text-align: center;
+}
+
+/* ---- Portada: logo, titulo, frase, compositor y sugerencias como UN grupo centrado ---------------------------------- */
+html[data-diseno="ds3"] [data-ds3="titulo"] { margin: 0 0 6px; font-size: 20px; font-weight: 600; line-height: 1.25; letter-spacing: -0.01em; }
+html[data-diseno="ds3"] [data-ds3="sub"] { max-width: 34rem; margin: 0 0 20px; font-size: 14px; line-height: 20px; }
+html[data-diseno="ds3"] [data-ds3="contexto"] { margin: -12px 0 20px; }
+html[data-diseno="ds3"] [data-ds3="pie"] { max-width: 34rem; margin-top: 8px; font-size: 12px; line-height: 16px; }
+@media (max-height: 760px) {
+  html[data-diseno="ds3"] [data-ds3="sub"] { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; margin-bottom: 14px; }
+}
+
+/* ---- Compositor: campo grande, adjuntar a la izquierda y enviar redondo a la derecha ------------------------------------ */
+html[data-diseno="ds3"] [data-ds3="dock"] { max-width: var(--ds3-col-chat, 46rem); margin-left: auto; margin-right: auto; }
+html[data-diseno="ds3"] [data-ds3="compositor"] {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+  max-width: var(--ds3-col-chat, 46rem);
+  padding: 8px;
+  border: 1px solid hsl(var(--border-strong));
+  border-radius: 12px;
+  background-color: hsl(var(--card));
+  box-shadow: var(--shadow-elevated, var(--shadow-pop));
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+html[data-diseno="ds3"] [data-ds3="compositor"]:focus-within {
+  border-color: hsl(var(--input));
+  box-shadow: 0 0 0 3px hsl(var(--ring) / 0.14), var(--shadow-elevated, var(--shadow-pop));
+}
+html[data-diseno="ds3"] [data-ds3="compositor-barra"],
+html[data-diseno="ds3"] [data-ds3="compositor-inicio"],
+html[data-diseno="ds3"] [data-ds3="compositor-fin"] { display: contents; }
+html[data-diseno="ds3"] [data-ds3="texto"] {
+  grid-column: 2;
+  grid-row: 1;
+  min-height: 40px;
+  max-height: 144px;
+  padding: 9px 4px;
+  font-size: 15px;
+  line-height: 22px;
+}
+html[data-diseno="ds3"] [data-ds3="adjuntar"] {
+  grid-column: 1;
+  grid-row: 1;
+  width: 38px;
+  height: 32px;
+  margin-bottom: 4px;
+  border-color: hsl(var(--border-strong));
+  border-radius: 8px;
+}
+html[data-diseno="ds3"] [data-ds3="enviar"] {
+  grid-column: 3;
+  grid-row: 1;
+  margin-bottom: 4px;
+  background-color: hsl(var(--action));
+  color: hsl(var(--action-foreground));
+}
+html[data-diseno="ds3"] [data-ds3="enviar"]:hover:not(:disabled) { background-color: hsl(var(--action-hover)); opacity: 1; }
+html[data-diseno="ds3"] [data-ds3="enviar"]:disabled { opacity: 1; background-color: hsl(var(--soft)); color: hsl(var(--muted-foreground)); }
+html[data-diseno="ds3"] [data-ds3="compositor"] > [role="alert"] { grid-column: 1 / -1; margin: 0 4px 2px; }
+html[data-diseno="ds3"] [data-ds3="compositor-fin"] > [aria-live] { position: absolute; right: 14px; bottom: calc(100% + 4px); font-family: inherit; font-size: 12px; }
+
+/* «Consulta» (abre las tarjetas) y los chips sueltos los reemplazan los temas: con temas, se apagan. */
+html[data-diseno="ds3"] [data-ds3="consulta"],
+html[data-diseno="ds3"] [data-ds3="chips-con-temas"] { display: none; }
+
+/* ---- Sugerencias: fila de temas con su punto de color y hasta 3 preguntas ----------------------------------------------- */
+html[data-diseno="ds3"] .ds3-copiloto-temas.ds3-copiloto-temas[hidden] {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  max-width: var(--ds3-col-chat, 46rem);
+  margin-top: 14px;
+}
+html[data-diseno="ds3"] .ds3-copiloto-temas-fila.ds3-copiloto-temas-fila { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; width: 100%; }
+html[data-diseno="ds3"] .ds3-copiloto-tema.ds3-copiloto-tema { gap: 8px; color: hsl(var(--muted-foreground)); }
+html[data-diseno="ds3"] .ds3-copiloto-tema.ds3-copiloto-tema i { flex: none; width: 8px; height: 8px; border-radius: 50%; background-color: var(--ds3-cat); }
+html[data-diseno="ds3"] .ds3-copiloto-tema.ds3-copiloto-tema[aria-pressed="true"] {
+  border-color: var(--ds3-cat);
+  background-color: color-mix(in srgb, var(--ds3-cat) 10%, hsl(var(--card)));
+  color: hsl(var(--foreground));
+}
+html[data-diseno="ds3"] .ds3-copiloto-tema[data-serie="1"] { --ds3-cat: hsl(var(--chart-1)); }
+html[data-diseno="ds3"] .ds3-copiloto-tema[data-serie="2"] { --ds3-cat: hsl(var(--chart-2)); }
+html[data-diseno="ds3"] .ds3-copiloto-tema[data-serie="3"] { --ds3-cat: hsl(var(--chart-3)); }
+html[data-diseno="ds3"] .ds3-copiloto-tema[data-serie="4"] { --ds3-cat: hsl(var(--chart-4)); }
+html[data-diseno="ds3"] .ds3-copiloto-tema[data-serie="5"] { --ds3-cat: hsl(var(--chart-5)); }
+html[data-diseno="ds3"] .ds3-copiloto-tema[data-serie="6"] { --ds3-cat: hsl(var(--chart-6)); }
+html[data-diseno="ds3"] .ds3-copiloto-tema[data-serie="7"] { --ds3-cat: hsl(var(--chart-7)); }
+html[data-diseno="ds3"] .ds3-copiloto-tema[data-serie="8"] { --ds3-cat: hsl(var(--chart-8)); }
+html[data-diseno="ds3"] .ds3-copiloto-pregunta.ds3-copiloto-pregunta,
+html[data-diseno="ds3"] [data-ds3="chips"] > button {
+  justify-content: flex-start;
+  height: auto;
+  min-height: var(--ds3-ctl-h, 32px);
+  padding: calc((var(--ds3-ctl-h, 32px) - 18px) / 2) 12px;
+  border: 1px solid hsl(var(--border-strong));
+  border-radius: 8px;
+  background-color: hsl(var(--card));
+  color: hsl(var(--foreground));
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 16px;
+  text-align: left;
+  white-space: normal;
+}
+html[data-diseno="ds3"] .ds3-copiloto-pregunta.ds3-copiloto-pregunta::before { content: attr(data-pregunta); }
+html[data-diseno="ds3"] .ds3-copiloto-tema.ds3-copiloto-tema::before { content: attr(data-titulo); order: 1; }
+html[data-diseno="ds3"] [data-ds3="chips"] { gap: 8px; max-width: var(--ds3-col-chat, 46rem); margin-top: 14px; }
+html[data-diseno="ds3"] [data-ds3="chips"] > button:hover { background-color: hsl(var(--soft)); }
+
+/* ---- Hilo: burbuja del usuario, respuesta, bloques en tarjeta de radio 12 ------------------------------------------------- */
+html[data-diseno="ds3"] [data-ds3-copiloto] [data-ds3-hilo] { max-width: var(--ds3-col-chat, 46rem); }
+html[data-diseno="ds3"] [data-ds3="burbuja"] {
+  max-width: 85%;
+  padding: 9px 14px;
+  border-radius: 12px;
+  background-color: hsl(var(--soft));
+  box-shadow: none;
+  font-size: 14px;
+  line-height: 20px;
+}
+html[data-diseno="ds3"] [data-ds3="respuesta"] > div:first-child > p { font-size: 14px; line-height: 1.625; }
+html[data-diseno="ds3"] [data-ds3="bloque"] > * { border-radius: 12px; box-shadow: none; }
+html[data-diseno="ds3"] [data-ds3="fuentes"] { gap: 8px; }
+html[data-diseno="ds3"] [data-ds3="fuentes"] > a,
+html[data-diseno="ds3"] [data-ds3="fuentes"] > span:not(:first-child) { border-radius: 8px; }
+
+/* Evidencia bajo la respuesta: «Cómo llegué a esto · n pasos · t» (desplegable) y «Ver cómo lo calculé» (abre el Drawer). */
+html[data-diseno="ds3"] .ds3-copiloto-evidencia.ds3-solo[hidden] { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+html[data-diseno="ds3"] .ds3-copiloto-traza.ds3-copiloto-traza { max-width: 100%; }
+html[data-diseno="ds3"] .ds3-copiloto-traza-resumen.ds3-copiloto-traza-resumen { list-style: none; width: max-content; max-width: 100%; }
+html[data-diseno="ds3"] .ds3-copiloto-traza-resumen::-webkit-details-marker { display: none; }
+html[data-diseno="ds3"] .ds3-copiloto-traza-resumen svg,
+html[data-diseno="ds3"] .ds3-copiloto-pensamiento svg { transition: transform 150ms ease; }
+html[data-diseno="ds3"] .ds3-copiloto-traza[open] > .ds3-copiloto-traza-resumen svg,
+html[data-diseno="ds3"] .ds3-copiloto-pensamiento[aria-expanded="true"] svg { transform: rotate(90deg); }
+html[data-diseno="ds3"] .ds3-copiloto-traza-lista { display: grid; gap: 8px; margin: 8px 0 0; padding: 0; list-style: none; font-size: 12px; line-height: 18px; }
+html[data-diseno="ds3"] .ds3-copiloto-traza-lista li { display: flex; flex-wrap: wrap; align-items: flex-start; column-gap: 6px; }
+html[data-diseno="ds3"] .ds3-copiloto-traza-lista svg { flex: none; width: 12px; height: 12px; margin-top: 3px; color: hsl(var(--action)); }
+html[data-diseno="ds3"] .ds3-copiloto-traza-ms,
+html[data-diseno="ds3"] .ds3-copiloto-traza-nota { color: hsl(var(--muted-foreground)); }
+html[data-diseno="ds3"] .ds3-copiloto-traza-nota { margin: 8px 0 0; font-size: 12px; }
+/* «Pensamiento del sistema en vivo · n»: interruptor sin borde, 12/500 gris, que pliega los pasos en curso. */
+html[data-diseno="ds3"] .ds3-copiloto-pensamiento.ds3-solo[hidden] {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 28px;
+  margin-top: 2px;
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  color: hsl(var(--muted-foreground));
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+html[data-diseno="ds3"] .ds3-copiloto-pensamiento svg { width: 12px; height: 12px; }
+
+/* «Cómo se calculó» (Drawer sm): pares dato/valor y cajas grises con titulo 13/600. */
+html[data-diseno="ds3"] .ds3-copiloto-calculo-dl.ds3-copiloto-calculo-dl { display: grid; gap: 12px; margin: 0; }
+html[data-diseno="ds3"] .ds3-copiloto-calculo-fuente.ds3-copiloto-calculo-fuente {
+  display: grid;
+  grid-template-columns: minmax(96px, 148px) minmax(0, 1fr);
+  gap: 6px 12px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+html[data-diseno="ds3"] .ds3-copiloto-calculo-fuente dt { color: hsl(var(--muted-foreground)); }
+html[data-diseno="ds3"] .ds3-copiloto-calculo-fuente dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+html[data-diseno="ds3"] .ds3-copiloto-calculo-caja.ds3-copiloto-calculo-caja { padding: 12px 16px; border: 1px solid hsl(var(--border)); border-radius: 8px; font-size: 13px; line-height: 1.5; }
+html[data-diseno="ds3"] .ds3-copiloto-calculo-caja ul { margin: 6px 0 0; padding-left: 18px; list-style: disc; }
+html[data-diseno="ds3"] .ds3-copiloto-calculo-caja-titulo { margin: 0; font-weight: 600; }
+html[data-diseno="ds3"] .ds3-copiloto-calculo-meta { color: hsl(var(--muted-foreground)); }
+@media (max-width: 479.98px) {
+  html[data-diseno="ds3"] .ds3-copiloto-calculo-fuente.ds3-copiloto-calculo-fuente { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ---- Historial = anatomia del Drawer sm ------------------------------------------------------------------------------------ */
+html[data-diseno="ds3"] .ds3-copiloto-velo.ds3-solo[hidden] { position: fixed; inset: 0; z-index: 50; background: var(--scrim); }
+html[data-diseno="ds3"] .ds3-copiloto-hist.ds3-copiloto-hist {
+  position: fixed;
+  top: 8px;
+  right: 8px;
+  bottom: 8px;
+  left: auto;
+  z-index: 51;
+  width: min(420px, calc(100vw - 16px));
+  max-width: none;
+  border: 1px solid hsl(var(--border));
+  border-radius: 12px;
+  background-color: hsl(var(--card));
+  box-shadow: var(--shadow-pop);
+}
+html[data-diseno="ds3"] .ds3-copiloto-hist-cabecera.ds3-solo[hidden] {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid hsl(var(--border));
+}
+html[data-diseno="ds3"] .ds3-copiloto-hist-nombre { margin: 0; font-size: 15px; font-weight: 600; line-height: 1.35; }
+html[data-diseno="ds3"] .ds3-copiloto-hist-sub { margin: 2px 0 0; font-size: 12px; line-height: 1.4; color: hsl(var(--muted-foreground)); }
+html[data-diseno="ds3"] .ds3-copiloto-hist-cerrar.ds3-copiloto-hist-cerrar {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 1;
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  color: hsl(var(--muted-foreground));
+}
+html[data-diseno="ds3"] .ds3-copiloto-hist-cerrar.ds3-copiloto-hist-cerrar::after { content: ""; position: absolute; inset: -8px; }
+/* La cabecera deja sitio al cerrar (que vive en el DOM junto a «Chat nuevo»). */
+html[data-diseno="ds3"] .ds3-copiloto-hist-cabecera.ds3-solo[hidden] { padding-right: 56px; }
+html[data-diseno="ds3"] .ds3-copiloto-hist-cerrar.ds3-copiloto-hist-cerrar:hover { background-color: hsl(var(--soft)); color: hsl(var(--foreground)); }
+html[data-diseno="ds3"] .ds3-copiloto-hist-cerrar.ds3-copiloto-hist-cerrar:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
+html[data-diseno="ds3"] .ds3-copiloto-en-linea.ds3-solo[hidden] { display: inline; }
+
+/* Fila superior: «Chat nuevo» (primario suave) y el buscador lado a lado. */
+html[data-diseno="ds3"] .ds3-copiloto-hist-arriba.ds3-copiloto-hist-arriba {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 16px 16px 4px;
+}
+html[data-diseno="ds3"] .ds3-copiloto-hist-fila-nuevo.ds3-copiloto-hist-fila-nuevo { padding: 0; }
+html[data-diseno="ds3"] .ds3-copiloto-hist-nuevo svg { width: 14px; height: 14px; }
+html[data-diseno="ds3"] .ds3-copiloto-hist-nuevo.ds3-solo[hidden] {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  gap: 6px;
+  height: var(--ds3-ctl-h, 32px);
+  padding: 0 12px;
+  border: 1px solid hsl(var(--primary-soft-hover));
+  border-radius: 8px;
+  background-color: hsl(var(--primary-soft));
+  color: hsl(var(--primary-ink));
+  font-size: 13px;
+  font-weight: 600;
+}
+html[data-diseno="ds3"] .ds3-copiloto-hist-nuevo.ds3-solo[hidden]:hover { background-color: hsl(var(--primary-soft-hover)); }
+html[data-diseno="ds3"] .ds3-copiloto-hist-buscar.ds3-copiloto-hist-buscar { padding: 0; }
+html[data-diseno="ds3"] .ds3-copiloto-hist-buscar > label {
+  height: var(--ds3-ctl-h, 32px);
+  padding: 0 10px;
+  border: 1px solid hsl(var(--border-strong));
+  border-radius: 8px;
+  background-color: hsl(var(--card));
+}
+html[data-diseno="ds3"] .ds3-copiloto-hist-buscar > label:focus-within { border-color: hsl(var(--input)); box-shadow: 0 0 0 3px hsl(var(--ring) / 0.14); }
+html[data-diseno="ds3"] .ds3-copiloto-hist-buscar input { font-size: 13px; }
+
+/* Cuerpo: grupos 12/600 en mayusculas y filas de 40 px; activo con fondo suave; acciones al pasar el cursor o con foco. */
+html[data-diseno="ds3"] .ds3-copiloto-hist-cuerpo.ds3-copiloto-hist-cuerpo { padding: 8px 0 12px; overscroll-behavior: contain; }
+html[data-diseno="ds3"] .ds3-copiloto-hist-ayuda.ds3-copiloto-hist-ayuda { padding: 4px 16px; font-size: 13px; }
+html[data-diseno="ds3"] .ds3-copiloto-hist-grupo.ds3-copiloto-hist-grupo {
+  margin: 0;
+  padding: 10px 16px 4px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+  letter-spacing: 0.04em;
+}
+html[data-diseno="ds3"] .ds3-copiloto-hist-grupo.ds3-solo[hidden] { display: block; }
+html[data-diseno="ds3"] .ds3-copiloto-hist-filas.ds3-copiloto-hist-filas { padding: 0 8px; }
+html[data-diseno="ds3"] .ds3-copiloto-hist-titulo.ds3-copiloto-hist-titulo {
+  display: block;
+  height: 40px;
+  padding: 0 72px 0 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 40px;
+}
+html[data-diseno="ds3"] .ds3-copiloto-hist-titulo.ds3-copiloto-hist-titulo:hover { background-color: hsl(var(--soft)); }
+html[data-diseno="ds3"] .ds3-copiloto-hist-titulo.ds3-copiloto-hist-titulo[aria-current="true"] { background-color: hsl(var(--soft)); font-weight: 600; }
+html[data-diseno="ds3"] .ds3-copiloto-hist-renombre.ds3-copiloto-hist-renombre { height: 40px; border: 1px solid hsl(var(--input)); border-radius: 8px; background-color: hsl(var(--card)); font-size: 13px; }
+html[data-diseno="ds3"] .ds3-copiloto-hist-acciones.ds3-copiloto-hist-acciones { right: 6px; gap: 2px; }
+html[data-diseno="ds3"] .ds3-copiloto-hist-acciones > button { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border-radius: 8px; }
+html[data-diseno="ds3"] .ds3-copiloto-hist-acciones > button:hover { background-color: hsl(var(--card)); }
+
+/* Pie con la nota de privacidad y logo de Atiende de 64 px al 60 % (como el Drawer). */
+html[data-diseno="ds3"] .ds3-copiloto-hist-pie.ds3-solo[hidden] { flex-shrink: 0; padding: 12px 16px; border-top: 1px solid hsl(var(--border)); }
+html[data-diseno="ds3"] .ds3-copiloto-hist-pie p { margin: 0; font-size: 12px; line-height: 1.5; color: hsl(var(--muted-foreground)); }
+html[data-diseno="ds3"] .ds3-copiloto-hist-marca.ds3-solo[hidden] {
+  display: flex;
+  flex-shrink: 0;
+  justify-content: center;
+  padding: 9px 0 11px;
+  border-top: 1px solid hsl(var(--border));
+  opacity: 0.6;
+}
+html[data-diseno="ds3"] .ds3-copiloto-hist-marca-logo { display: inline-flex; justify-content: center; width: 64px; overflow: hidden; }
+html[data-diseno="ds3"] .ds3-copiloto-hist-marca-logo [data-atiende-wordmark] { gap: 4px; height: 13px; }
+html[data-diseno="ds3"] .ds3-copiloto-hist-marca-logo [data-atiende-wordmark] svg { width: auto; height: 12px; }
+html[data-diseno="ds3"] .ds3-copiloto-hist-marca-logo [data-atiende-wordmark] > span { font-size: 13px; line-height: 13px; }
+
+/* < 820 px: hoja inferior de 90dvh con agarradera, sin logo. */
+@media (max-width: 819.98px) {
+  html[data-diseno="ds3"] .ds3-copiloto-hist.ds3-copiloto-hist {
+    top: auto;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 90dvh;
+    border-width: 1px 0 0;
+    border-radius: 16px 16px 0 0;
+    box-shadow: var(--shadow-hoja, var(--shadow-pop));
+  }
+  html[data-diseno="ds3"] .ds3-copiloto-hist-agarre.ds3-solo[hidden] { display: flex; flex-shrink: 0; justify-content: center; padding: 8px 0 4px; touch-action: none; }
+  html[data-diseno="ds3"] .ds3-copiloto-hist-agarre > span { width: 36px; height: 4px; border-radius: 999px; background-color: hsl(var(--border-strong)); }
+  html[data-diseno="ds3"] .ds3-copiloto-hist-cerrar.ds3-copiloto-hist-cerrar { top: 32px; width: 32px; height: 32px; }
+  html[data-diseno="ds3"] .ds3-copiloto-hist-marca.ds3-solo[hidden] { display: none; }
+  html[data-diseno="ds3"] .ds3-copiloto-hist-pie.ds3-solo[hidden] { padding-bottom: calc(12px + var(--safe-area-bottom, 0px)); }
+}
+
+/* Movimiento: entra como el Drawer (translateX 16 + fundido) y sale igual; en movil sube la hoja. Nada con «reducir movimiento». */
+@media (prefers-reduced-motion: no-preference) {
+  html[data-diseno="ds3"] .ds3-copiloto-hist.ds3-copiloto-hist { animation: ds3-drawer-entra 180ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+  html[data-diseno="ds3"] .ds3-copiloto-hist.ds3-copiloto-hist[data-saliendo] { animation: ds3-drawer-sale 120ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+  html[data-diseno="ds3"] .ds3-copiloto-velo.ds3-solo[hidden] { transition: opacity 140ms ease-out; }
+  html[data-diseno="ds3"] .ds3-copiloto-velo.ds3-solo[hidden][data-saliendo] { opacity: 0; }
+  html[data-diseno="ds3"] .ds3-copiloto-pregunta.ds3-copiloto-pregunta { animation: ds3-copiloto-sube 240ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+  html[data-diseno="ds3"] .ds3-copiloto-pregunta.ds3-copiloto-pregunta:nth-child(2) { animation-delay: 50ms; }
+  html[data-diseno="ds3"] .ds3-copiloto-pregunta.ds3-copiloto-pregunta:nth-child(3) { animation-delay: 100ms; }
+}
+@media (prefers-reduced-motion: no-preference) and (max-width: 819.98px) {
+  html[data-diseno="ds3"] .ds3-copiloto-hist.ds3-copiloto-hist { animation: ds3-hoja-entra 240ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html[data-diseno="ds3"] .ds3-copiloto-hist.ds3-copiloto-hist { animation: none; }
+}
+@keyframes ds3-copiloto-sube {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (forced-colors: active) {
+  html[data-diseno="ds3"] .ds3-copiloto-hist.ds3-copiloto-hist { border: 1px solid CanvasText; }
+}
