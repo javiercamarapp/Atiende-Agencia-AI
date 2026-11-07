@@ -356,6 +356,10 @@ export const OPERATIONAL_ENV_VARS: readonly string[] = [
   "EFOS_69B_URL",
   // apps/web (Vite) — tiene default de desarrollo razonable, nunca bloquea nada.
   "VITE_API_BASE_URL",
+  // Cerebro v2 de WhatsApp (PM): esfuerzo de razonamiento de Luna (none|minimal|low; ausente = low). Perilla de medicion, no es credencial.
+  "CEREBRO_V2_LUNA_ESFUERZO",
+  // Hedging de la llamada al modelo del agente de WhatsApp de restaurantes (ms; documentado en docs/CREDENCIALES.md). No es credencial.
+  "WHATSAPP_LLM_HEDGE_MS",
 ];
 
 /** Unión de toda variable "conocida" por este inventario (integraciones +
