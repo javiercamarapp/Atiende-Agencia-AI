@@ -62,9 +62,9 @@ export interface OAuthStateClaims {
   readonly staffId?: string;
   /** Solo `purpose: "link"`: slug de la organizacion a la que se regresa (validado contra las membresias). */
   readonly orgSlug?: string;
-  /** Solo `purpose: "signup"` (registro autoservicio): token de un solo uso de la solicitud de registro, cuyo hash guarda la base
-   *  (0077). Viaja solo dentro de este `state` firmado por el servidor; nunca en claro en la base ni en logs. */
-  readonly registroNonce?: string;
+  /** Solo `purpose: "signup"` (registro autoservicio): hash (sha256) del token de la solicitud de registro, el mismo que guarda la base
+   *  (0077). El `state` va firmado por el servidor y vive 10 min: el callback lo usa tal cual, sin volver a hashear nada. */
+  readonly registroHash?: string;
 }
 
 function secretKey(secret: string): Uint8Array {

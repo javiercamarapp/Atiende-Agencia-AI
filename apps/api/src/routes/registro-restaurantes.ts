@@ -244,11 +244,12 @@ async function avisarSuperadmin(deps: AppDeps, c: Context, registro: RegistroCom
   }
 }
 
-async function completar(deps: AppDeps, c: Context, tokenPlain: string, correoVerificado: string | null): Promise<RegistroCompletado> {
+/** `tokenHash`: sha256 del token de la solicitud (el correo trae el token plano y se hashea aqui; el `state` de Google ya trae el hash). */
+async function completar(deps: AppDeps, c: Context, tokenHash: string, correoVerificado: string | null): Promise<RegistroCompletado> {
   const repo = deps.registroAutoservicioRepo;
   if (!repo) throw noDisponible();
   try {
-    const registro = await deps.engine.withAppSession({ userId: null }, (db) => repo(db).completar({ tokenHash: hashInviteToken(tokenPlain), correoVerificado }));
+    const registro = await deps.engine.withAppSession({ userId: null }, (db) => repo(db).completar({ tokenHash, correoVerificado }));
     logEvent(c, "info", "registro_restaurantes_completado", { organizationId: registro.organizationId });
     await avisarSuperadmin(deps, c, registro);
     return registro;
@@ -262,7 +263,7 @@ async function completar(deps: AppDeps, c: Context, tokenPlain: string, correoVe
 export async function completarRegistroConGoogle(
   deps: AppDeps,
   c: Context,
-  input: { readonly registroNonce: string; readonly correo: string; readonly sub: string },
+  input: { readonly registroHash: string; readonly correo: string; readonly sub: string },
 ): Promise<URL> {
   const login = (error: string) => {
     const url = new URL("/restaurantes/registro", deps.env.appBaseUrl);
@@ -274,7 +275,7 @@ export async function completarRegistroConGoogle(
     // Ya tiene cuenta (por correo o por Google): no se crea otra; entra a la suya.
     const existente = (await deps.coreRepo.findStaffByGoogleSub(input.sub)) ?? (await deps.coreRepo.findStaffByEmail(correo));
     if (existente) return login("cuenta_existente");
-    const registro = await completar(deps, c, input.registroNonce, correo);
+    const registro = await completar(deps, c, input.registroHash, correo);
     await deps.coreRepo.linkGoogleIdentity({ staffId: registro.staffId, sub: input.sub, email: correo });
     const url = new URL("/restaurantes/auth/google/callback", deps.env.appBaseUrl);
     url.searchParams.set("code", await codigoDeIntercambio(deps, registro.staffId));
@@ -314,7 +315,7 @@ export function registroRestaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
     if (captura.metodo === "google") {
       const google = deps.env.googleOAuth;
       if (!google) throw Errors.serviceUnavailable("El registro con Google no está disponible aún: usa tu correo.");
-      const { tokenPlain, tokenHash } = generateInviteToken();
+      const { tokenHash } = generateInviteToken();
       try {
         await deps.engine.withAppSession({ userId: null }, (db) =>
           repo(db).solicitar({ vertical: "restaurantes", ...captura, correo: null, tokenHash, origenHash: origenHash(deps.env.jwtSecret, c.req.raw), ttlMinutos: L.ttlGoogleMin }),
@@ -325,7 +326,7 @@ export function registroRestaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
       const codeVerifier = generateCodeVerifier();
       const nonce = generateNonce();
       const redirectUri = `${google.redirectBaseUrl}/auth/google/callback`;
-      const state = await signOAuthState({ purpose: "signup", vertical: "restaurantes", nonce, codeVerifier, redirectUri, registroNonce: tokenPlain }, deps.env.jwtSecret);
+      const state = await signOAuthState({ purpose: "signup", vertical: "restaurantes", nonce, codeVerifier, redirectUri, registroHash: tokenHash }, deps.env.jwtSecret);
       const url = buildAuthorizationUrl({ authBaseUrl: deps.env.googleStaffAuth.authBaseUrl, clientId: google.clientId, redirectUri, state, nonce, codeChallenge: computeCodeChallenge(codeVerifier) });
       return c.json({ ok: true, metodo: "google", url }, 200);
     }
@@ -360,7 +361,7 @@ export function registroRestaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
     }
     const body = await readJsonCapped<{ token?: unknown }>(c.req.raw, 1024);
     if (typeof body.token !== "string" || !/^[A-Za-z0-9_-]{20,128}$/.test(body.token)) throw Errors.validation("Enlace inválido.");
-    const registro = await completar(deps, c, body.token, null);
+    const registro = await completar(deps, c, hashInviteToken(body.token), null);
     const code = await codigoDeIntercambio(deps, registro.staffId);
     return c.json({ code, orgSlug: registro.orgSlug, trialEndsAt: registro.trialEndsAt, sucursal: { propertyId: registro.propertyId, slug: registro.branchSlug, status: "inactive" } }, 201);
   });

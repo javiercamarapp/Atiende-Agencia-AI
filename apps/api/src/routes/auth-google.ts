@@ -207,12 +207,12 @@ export function authGoogleRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       // Registro autoservicio (purpose=signup, restaurantes): el `state` firmado trae el token de la solicitud; Google ya verifico el
       // correo (verifyGoogleIdToken exige email_verified). Crea la organizacion o manda al registro con un error legible.
       if (oauthState.purpose === "signup") {
-        if (!oauthState.registroNonce) {
+        if (!oauthState.registroHash) {
           const url = new URL("/restaurantes/registro", deps.env.appBaseUrl);
           url.searchParams.set("registro_error", "state_invalido");
           return c.redirect(url.toString(), 302);
         }
-        const destino = await completarRegistroConGoogle(deps, c, { registroNonce: oauthState.registroNonce, correo: claims.email, sub: claims.sub });
+        const destino = await completarRegistroConGoogle(deps, c, { registroHash: oauthState.registroHash, correo: claims.email, sub: claims.sub });
         return c.redirect(destino.toString(), 302);
       }
 
