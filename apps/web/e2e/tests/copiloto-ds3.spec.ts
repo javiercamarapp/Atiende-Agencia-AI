@@ -81,7 +81,9 @@ test.describe("copiloto ds3 de restaurantes @copiloto @ds3", () => {
     await expect(panel).toBeVisible();
     await expect(panel.getByText("1 chat guardado en tu cuenta")).toBeVisible();
     await expect(panel.getByRole("heading", { name: "Hoy" })).toBeVisible();
-    await expect(panel.getByText("Chat nuevo", { exact: true })).toBeVisible();
+    // «Chat nuevo»: su nombre accesible es su texto visible (WCAG 2.5.3); el dialogo es modal.
+    await expect(panel.getByRole("button", { name: "Chat nuevo", exact: true })).toBeVisible();
+    await expect(panel).toHaveAttribute("aria-modal", "true");
     await expect(panel.getByText("Se guardan en tu cuenta de Atiende")).toBeVisible();
     const fila = panel.getByRole("button", { name: pregunta, exact: true });
     expect((await fila.boundingBox())?.height).toBe(40);
@@ -109,7 +111,7 @@ test.describe("copiloto ds3 de restaurantes @copiloto @ds3", () => {
     await capturar(page, "historial", info.project.name);
 
     // Chat nuevo: vuelve la portada y el panel se cierra; reabrir la conversacion la trae del servidor.
-    await panel.getByRole("button", { name: "Nuevo chat" }).click();
+    await panel.getByRole("button", { name: "Chat nuevo", exact: true }).click();
     await expect(page.getByText(TEXTO_RESPUESTA)).toHaveCount(0);
     await expect(page.getByRole("dialog", { name: "Historial de chats" })).toHaveCount(0);
     await page.getByRole("button", { name: "Historial de chats" }).click();

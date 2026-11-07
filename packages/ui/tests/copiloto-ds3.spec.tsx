@@ -96,11 +96,16 @@ describe("historial con la anatomia del Drawer (ds3)", () => {
     expect(cerrarDs3.getAttribute("aria-label")).toBe("Cerrar historial");
   });
 
-  it("«Chat nuevo» se pinta junto a «Nuevo chat» (uno por diseno) y la fila lleva la clase de 40 px", async () => {
+  it("«Chat nuevo» (ds3) es otro boton cuyo nombre accesible es su texto visible; el de siempre conserva «Nuevo chat»; filas de 40 px", async () => {
     const panel = await abrirHistorial();
-    const nuevo = panel.querySelector(".ds3-copiloto-hist-nuevo") as HTMLButtonElement;
-    expect(visibles(nuevo, "span").map((s) => s.textContent)).toEqual(["Nuevo chat"]);
-    expect((nuevo.querySelector(".ds3-solo") as HTMLElement).textContent).toBe("Chat nuevo");
+    expect(panel.getAttribute("aria-modal")).toBe("true");
+    const ds3 = panel.querySelector(".ds3-copiloto-hist-nuevo") as HTMLButtonElement;
+    expect(ds3.hidden).toBe(true);
+    expect(ds3.hasAttribute("aria-label")).toBe(false);
+    expect(ds3.textContent).toBe("Chat nuevo");
+    const actual = visibles(panel, "button").find((b) => b.getAttribute("aria-label") === "Nuevo chat") as HTMLButtonElement;
+    expect(actual.textContent).toBe("Nuevo chat");
+    expect(document.activeElement).toBe(actual);
     expect(panel.querySelectorAll(".ds3-copiloto-hist-titulo")).toHaveLength(3);
   });
 
@@ -112,6 +117,27 @@ describe("historial con la anatomia del Drawer (ds3)", () => {
     expect(ds3).toEqual(["Últimos 30 días", "Anteriores"]);
     const titulos = Array.from(panel.querySelectorAll(".ds3-copiloto-hist-titulo")).map((b) => b.textContent);
     expect(titulos).toEqual(["Ventas de hoy", "Hace dos semanas", "Hace dos meses"]);
+  });
+
+  it("con el panel abierto el fondo queda inert (hilo, compositor y lo de fuera del chat) y se restaura al cerrar; «Historial» sigue vivo", async () => {
+    const fuera = document.createElement("nav");
+    document.body.appendChild(fuera);
+    const panel = await abrirHistorial();
+    const c = montado?.container as HTMLElement;
+    const cuerpoChat = c.querySelector("[data-ds3='cuerpo']") as HTMLElement;
+    expect(cuerpoChat.hasAttribute("inert")).toBe(true);
+    expect(fuera.hasAttribute("inert")).toBe(true);
+    expect(panel.closest("[inert]")).toBeNull();
+    expect((c.querySelector("button[aria-controls]") as HTMLElement).closest("[inert]")).toBeNull();
+    const { act } = await import("react");
+    act(() => {
+      panel.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    });
+    await new Promise((r) => setTimeout(r, 520));
+    await microtareas();
+    expect(cuerpoChat.hasAttribute("inert")).toBe(false);
+    expect(fuera.hasAttribute("inert")).toBe(false);
+    fuera.remove();
   });
 
   it("el velo (clic fuera) cierra el panel", async () => {

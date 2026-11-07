@@ -112,7 +112,7 @@ describe("ds3/copiloto.css: medidas de la referencia", () => {
     expect(valor(".ds3-copiloto-hist-titulo.ds3-copiloto-hist-titulo", "height")).toBe("40px");
     expect(valor(".ds3-copiloto-hist-grupo.ds3-copiloto-hist-grupo", "font-size")).toBe("12px");
     expect(valor(".ds3-copiloto-hist-grupo.ds3-copiloto-hist-grupo", "font-weight")).toBe("600");
-    expect(valor(".ds3-copiloto-hist-nuevo.ds3-copiloto-hist-nuevo", "background-color")).toBe("hsl(var(--primary-soft))");
+    expect(valor(".ds3-copiloto-hist-nuevo.ds3-solo[hidden]", "background-color")).toBe("hsl(var(--primary-soft))");
     expect(valor(".ds3-copiloto-hist-marca", "opacity")).toBe("0.6");
   });
 
