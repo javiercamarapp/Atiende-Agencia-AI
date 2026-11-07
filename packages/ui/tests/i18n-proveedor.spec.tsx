@@ -8,7 +8,10 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { IdiomaProvider, cargarIdioma, useI18n, useT } from "../src/i18n/index";
 import { useFormatos } from "../src/i18n/useFormatos.ts";
-import "../src/i18n/mensajes/comun.ts";
+import { comun } from "../src/i18n/mensajes/comun.ts";
+import { registrarModuloEs } from "../src/i18n/mensajes/index.ts";
+
+registrarModuloEs(comun);
 import { CLAVE_IDIOMA, guardarIdioma } from "../src/lib/idioma";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;

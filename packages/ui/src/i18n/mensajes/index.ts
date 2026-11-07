@@ -20,9 +20,10 @@ import type { comun } from "./comun.ts";
 export const MODULOS = {} as const;
 
 /**
- * Modulos de un area: su espanol se registra solo cuando se importa su archivo (`import "@atiende/ui/i18n/<area>"` en quien lo
- * usa), asi viaja en el chunk perezoso de esa area y no en el de arranque. Aqui solo se declaran sus TIPOS
- * (`readonly <area>: typeof <area>` con `import type`). Cada archivo de area termina con `registrarModuloEs(<area>)`.
+ * Modulos de un area: viajan en el chunk de quien los usa (`import { <area> } from "@atiende/ui/i18n/<area>"`) y no en el de
+ * arranque. Aqui solo se declaran sus TIPOS
+ * (`readonly <area>: typeof <area>` con `import type`). Quien lo usa lo pasa a `useT(<area>)` / `useI18n(<area>)`, que registra su
+ * espanol en el render (fuera de React: `registrarModuloEs(<area>)`). El archivo del modulo NO tiene efectos al importarse.
  */
 interface ModulosDeArea {
   readonly comun: typeof comun;

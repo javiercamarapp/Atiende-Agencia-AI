@@ -2,7 +2,8 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import type { ReactNode } from "react";
 import { leerDisenoDs3 } from "../lib/diseno";
 import { CLAVE_IDIOMA, IDIOMA_CAMBIO_EVENTO, guardarIdioma, leerIdioma, type Idioma } from "../lib/idioma";
-import { cargarIdioma, idiomaListo } from "./mensajes/index.ts";
+import { cargarIdioma, idiomaListo, registrarModuloEs } from "./mensajes/index.ts";
+import type { ModuloEs } from "./tipos.ts";
 import { LOCALE_POR_IDIOMA } from "./tipos.ts";
 import { crearTraductor, type Traductor } from "./traducir";
 
@@ -114,12 +115,18 @@ export function IdiomaProvider({ children, idiomaInicial, persistir }: IdiomaPro
   return <I18nContext.Provider value={valor}>{children}</I18nContext.Provider>;
 }
 
-/** Idioma, locale, `t` y `cambiarIdioma`. Para numeros, dinero y fechas: `useFormatos()`. */
-export function useI18n(): ContextoI18n {
+/**
+ * Idioma, locale, `t` y `cambiarIdioma`. Recibe los modulos de area que usa el componente (`useI18n(nav, shell)`): su espanol se
+ * registra aqui, en el render, y no al importar el archivo. Asi un componente que el bundle no usa (tree-shaking) no arrastra
+ * su catalogo al chunk de arranque.
+ */
+export function useI18n(...modulos: readonly ModuloEs[]): ContextoI18n {
+  for (const m of modulos) registrarModuloEs(m);
   return useContext(I18nContext);
 }
 
-/** Atajo cuando solo hace falta `t`. */
-export function useT(): Traductor {
+/** Atajo cuando solo hace falta `t` (mismos modulos que `useI18n`). Para numeros, dinero y fechas: `useFormatos()`. */
+export function useT(...modulos: readonly ModuloEs[]): Traductor {
+  for (const m of modulos) registrarModuloEs(m);
   return useContext(I18nContext).t;
 }
