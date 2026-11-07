@@ -75,11 +75,51 @@ describe("alta de equipo -- gateo y validacion", () => {
     expect((await post(c, INEXISTENTE, valido(), sa.token)).status).toBe(404);
   });
 
-  it("sucursal de otra organizacion -> 400; vertical sin lista blanca (citas) -> 400", async () => {
+  it("sucursal de otra organizacion -> 400; rol de otra vertical (repartidor en citas) -> 400", async () => {
     const c = await setup();
     const sa = await c.superadmin();
     expect((await post(c, c.org, valido({ verticalRole: "staff", propertyIds: [SUC_OTRA_ORG] }), sa.token)).status).toBe(400);
-    expect((await post(c, ORG_CITAS, valido({ verticalRole: "admin" }), sa.token)).status).toBe(400);
+    expect((await post(c, ORG_CITAS, valido({ verticalRole: "repartidor" }), sa.token)).status).toBe(400);
+    // admin_gestora es de rentas: en una organizacion de restaurantes la lista blanca lo rechaza.
+    expect((await post(c, c.org, valido({ verticalRole: "admin_gestora" }), sa.token)).status).toBe(400);
+  });
+});
+
+describe("alta de equipo -- todas las verticales (migracion 0070)", () => {
+  const ORG_DESPACHOS = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+  const ORG_RENTAS = "ffffffff-ffff-4fff-8fff-ffffffffffff";
+
+  it("citas: invita al dueño (owner) con la plantilla de citas y la vertical en la lectura", async () => {
+    const c = await setup();
+    const sa = await c.superadmin();
+    const res = await post(c, ORG_CITAS, valido({ email: "duena@consultorio.mx" }), sa.token);
+    expect(res.status).toBe(201);
+    const job = correoDe(c).find((o) => o.organizationId === ORG_CITAS);
+    expect((job?.payload as { to: string }).to).toBe("duena@consultorio.mx");
+    const lectura = (await (await c.app.request(ruta(ORG_CITAS), { headers: bearer(sa.token) })).json()) as Json;
+    expect(lectura.vertical).toBe("citas");
+    expect(lectura.invitaciones).toEqual([expect.objectContaining({ rol: "owner", platformRole: "owner" })]);
+  });
+
+  it("despachos: el dueño es vertical_role admin (platform owner); un segundo dueño exige confirmacion", async () => {
+    const c = await setup();
+    c.equipo?.seedOrganizacion(ORG_DESPACHOS, "despachos");
+    const sa = await c.superadmin();
+    expect((await post(c, ORG_DESPACHOS, valido({ email: "socio@despacho.mx", verticalRole: "admin" }), sa.token)).status).toBe(201);
+    expect(c.equipo?.todas().at(-1)).toMatchObject({ verticalRole: "admin", platformRole: "owner" });
+    const segundo = await post(c, ORG_DESPACHOS, valido({ email: "otro@despacho.mx", verticalRole: "admin" }), sa.token);
+    expect(segundo.status).toBe(409);
+    expect(await segundo.json()).toMatchObject({ code: "segundo_owner_requiere_confirmacion" });
+    expect((await post(c, ORG_DESPACHOS, valido({ email: "otro@despacho.mx", verticalRole: "admin", confirmarSegundoOwner: true }), sa.token)).status).toBe(201);
+  });
+
+  it("rentas: admin_gestora -> owner; 'owner' (rol de otra vertical) -> 400", async () => {
+    const c = await setup();
+    c.equipo?.seedOrganizacion(ORG_RENTAS, "rentas");
+    const sa = await c.superadmin();
+    expect((await post(c, ORG_RENTAS, valido({ email: "gestora@rentas.mx", verticalRole: "admin_gestora" }), sa.token)).status).toBe(201);
+    expect(c.equipo?.todas().at(-1)).toMatchObject({ verticalRole: "admin_gestora", platformRole: "owner" });
+    expect((await post(c, ORG_RENTAS, valido({ email: "x@rentas.mx", verticalRole: "owner" }), sa.token)).status).toBe(400);
   });
 });
 
