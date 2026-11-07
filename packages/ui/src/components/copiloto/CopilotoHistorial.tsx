@@ -83,6 +83,7 @@ export function CopilotoHistorial({
   const { t } = useIdiomaCopiloto();
   const arrastre = useRef<{ y: number; id: number } | null>(null);
   const botonNuevo = useRef<HTMLButtonElement>(null);
+  const botonNuevoDs3 = useRef<HTMLButtonElement>(null);
   const cancelaRenombre = useRef(false);
 
   const cargar = useCallback(
@@ -114,7 +115,9 @@ export function CopilotoHistorial({
   }, [cargar]);
 
   useEffect(() => {
+    // Foco inicial en «Nuevo chat»; si esta apagado por la hoja ds3 (no toma el foco), en «Chat nuevo».
     botonNuevo.current?.focus();
+    if (typeof document !== "undefined" && document.activeElement !== botonNuevo.current) botonNuevoDs3.current?.focus();
   }, []);
 
   const reintentar = () => {
@@ -258,6 +261,7 @@ export function CopilotoHistorial({
       id={id}
       ref={raiz}
       role="dialog"
+      aria-modal="true"
       aria-label={t("historialAria")}
       onKeyDown={alTeclear}
       data-saliendo={saliendo || undefined}
@@ -305,13 +309,10 @@ export function CopilotoHistorial({
             type="button"
             onClick={onNuevo}
             aria-label={t("nuevoChat")}
-            className="ds3-copiloto-hist-nuevo flex-1 flex items-center gap-2 px-3 py-2 rounded-full border border-border/60 hover:bg-muted text-sm font-medium"
+            className="ds3-no flex-1 flex items-center gap-2 px-3 py-2 rounded-full border border-border/60 hover:bg-muted text-sm font-medium"
           >
             <Edit className="w-3.5 h-3.5" aria-hidden />
-            <span className="ds3-no">{t("nuevoChat")}</span>
-            <span hidden className="ds3-solo ds3-copiloto-en-linea">
-              {t("chatNuevo")}
-            </span>
+            {t("nuevoChat")}
           </button>
           <button
             type="button"
@@ -323,6 +324,11 @@ export function CopilotoHistorial({
           </button>
           {/* Cerrar del Drawer ds3: va aqui en el DOM (justo despues de «Chat nuevo», como el cerrar de siempre) y la hoja lo coloca
               en la esquina de la cabecera; asi el orden del teclado es el mismo con y sin bandera. */}
+          {/* «Chat nuevo» de ds3: su nombre accesible ES su texto visible (WCAG 2.5.3); el de siempre se apaga con `ds3-no`. */}
+          <button ref={botonNuevoDs3} hidden type="button" onClick={onNuevo} className="ds3-solo ds3-copiloto-hist-nuevo">
+            <Edit className="w-3.5 h-3.5" aria-hidden />
+            {t("chatNuevo")}
+          </button>
           <button hidden type="button" onClick={onCerrar} aria-label={t("cerrarHistorial")} className="ds3-solo ds3-copiloto-hist-cerrar">
             <X className="w-3.5 h-3.5" aria-hidden />
           </button>

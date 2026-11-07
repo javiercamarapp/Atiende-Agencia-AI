@@ -315,7 +315,10 @@ html[data-diseno="ds3"] .ds3-copiloto-hist-arriba.ds3-copiloto-hist-arriba {
   padding: 16px 16px 4px;
 }
 html[data-diseno="ds3"] .ds3-copiloto-hist-fila-nuevo.ds3-copiloto-hist-fila-nuevo { padding: 0; }
-html[data-diseno="ds3"] .ds3-copiloto-hist-nuevo.ds3-copiloto-hist-nuevo {
+html[data-diseno="ds3"] .ds3-copiloto-hist-nuevo svg { width: 14px; height: 14px; }
+html[data-diseno="ds3"] .ds3-copiloto-hist-nuevo.ds3-solo[hidden] {
+  display: inline-flex;
+  align-items: center;
   flex: none;
   gap: 6px;
   height: var(--ds3-ctl-h, 32px);
@@ -327,7 +330,7 @@ html[data-diseno="ds3"] .ds3-copiloto-hist-nuevo.ds3-copiloto-hist-nuevo {
   font-size: 13px;
   font-weight: 600;
 }
-html[data-diseno="ds3"] .ds3-copiloto-hist-nuevo.ds3-copiloto-hist-nuevo:hover { background-color: hsl(var(--primary-soft-hover)); }
+html[data-diseno="ds3"] .ds3-copiloto-hist-nuevo.ds3-solo[hidden]:hover { background-color: hsl(var(--primary-soft-hover)); }
 html[data-diseno="ds3"] .ds3-copiloto-hist-buscar.ds3-copiloto-hist-buscar { padding: 0; }
 html[data-diseno="ds3"] .ds3-copiloto-hist-buscar > label {
   height: var(--ds3-ctl-h, 32px);
