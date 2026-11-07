@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
+import { leerDisenoDs3 } from "../lib/diseno";
 import { CLAVE_IDIOMA, IDIOMA_CAMBIO_EVENTO, guardarIdioma, leerIdioma, type Idioma } from "../lib/idioma";
 import { cargarIdioma, idiomaListo } from "./mensajes/index.ts";
 import { LOCALE_POR_IDIOMA } from "./tipos.ts";
@@ -36,14 +37,29 @@ export interface IdiomaProviderProps {
  * Proveedor del idioma de la interfaz. Monta una vez en la raiz de la app. Escucha el evento de `guardarIdioma` (el selector
  * ES/EN del sidebar) y el `storage` de otras pestanas, asi que el cambio se ve en caliente en toda la consola. Mantiene
  * `<html lang>` sincronizado para lectores de pantalla y para el corrector del navegador.
+ *
+ * SOLO CON EL DISENO ds3: el selector ES/EN existe unicamente en ds3, asi que sin la bandera el idioma efectivo es siempre
+ * espanol (una organizacion sin ds3 no cambia ni un byte, aunque llegue con `?lang=en` o con EN guardado de antes). La
+ * bandera puede encenderse en caliente (`sincronizarDisenoOrganizacion`): se observa `<html>` y se re-evalua. `?lang=` vale
+ * solo para esa carga; la preferencia se guarda unicamente con un clic explicito (`cambiarIdioma` / selector).
  */
 export function IdiomaProvider({ children, idiomaInicial, persistir }: IdiomaProviderProps) {
   const [idioma, setIdioma] = useState<Idioma>(() => idiomaInicial ?? leerIdioma());
   const [, setCatalogosCargados] = useState(0);
+  const [ds3, setDs3] = useState<boolean>(() => leerDisenoDs3());
+  const pedido: Idioma = ds3 ? idioma : "es";
   // El ingles es un chunk aparte: mientras llega, la consola sigue en espanol (nunca claves crudas) y cambia de golpe al llegar.
-  const efectivo: Idioma = idiomaListo(idioma) ? idioma : "es";
+  const efectivo: Idioma = idiomaListo(pedido) ? pedido : "es";
 
   useEffect(() => {
+    if (typeof MutationObserver === "undefined") return undefined;
+    const observador = new MutationObserver(() => setDs3(leerDisenoDs3()));
+    observador.observe(document.documentElement, { attributes: true });
+    return () => observador.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const idioma = pedido;
     if (idiomaListo(idioma)) return undefined;
     let vigente = true;
     cargarIdioma(idioma).then(
@@ -57,7 +73,7 @@ export function IdiomaProvider({ children, idiomaInicial, persistir }: IdiomaPro
     return () => {
       vigente = false;
     };
-  }, [idioma]);
+  }, [pedido]);
 
   useEffect(() => {
     const alCambiar = (e: Event) => {
