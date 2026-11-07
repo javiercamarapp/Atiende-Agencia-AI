@@ -1,6 +1,14 @@
-import { crearFormatos, reglaPlural } from "./formato.ts";
 import { CATALOGO_ES, catalogoDe, type Clave } from "./mensajes/index.ts";
-import type { Idioma, Mensaje, Plural, Variables } from "./tipos.ts";
+import { LOCALE_POR_IDIOMA, type Idioma, type Mensaje, type Plural, type Variables } from "./tipos.ts";
+
+// Intl minimo para `t` (plural y numeros en variables); el formato completo vive en formato.ts (`useFormatos`).
+const plurales = /* @__PURE__ */ new Map<Idioma, Intl.PluralRules>();
+const numeros = /* @__PURE__ */ new Map<Idioma, Intl.NumberFormat>();
+const conCache = <T>(m: Map<Idioma, T>, idioma: Idioma, crear: (locale: string) => T): T => {
+  let v = m.get(idioma);
+  if (!v) m.set(idioma, (v = crear(LOCALE_POR_IDIOMA[idioma])));
+  return v;
+};
 
 /** Firma de `t`: clave tipada + variables opcionales. Para plurales pasa `{ count }`. */
 export type Traductor = (clave: Clave, variables?: Variables) => string;
@@ -8,7 +16,7 @@ export type Traductor = (clave: Clave, variables?: Variables) => string;
 function elegirPlural(idioma: Idioma, plural: Plural, count: number | undefined): string {
   if (count === undefined) return plural.other;
   if (count === 0 && plural.zero !== undefined) return plural.zero;
-  const categoria = reglaPlural(idioma).select(count) as keyof Plural;
+  const categoria = conCache(plurales, idioma, (l) => new Intl.PluralRules(l)).select(count) as keyof Plural;
   return plural[categoria] ?? plural.other;
 }
 
@@ -25,11 +33,10 @@ export function traducir(idioma: Idioma, clave: Clave, variables?: Variables): s
   const count = typeof variables?.["count"] === "number" ? (variables["count"] as number) : undefined;
   const texto = typeof mensaje === "string" ? mensaje : elegirPlural(idioma, mensaje, count);
   if (!variables) return texto;
-  const formatos = crearFormatos(idioma);
   return texto.replace(/\{(\w+)\}/g, (completo, nombre: string) => {
     const valor = variables[nombre];
     if (valor === undefined) return completo;
-    return typeof valor === "number" ? formatos.numero(valor) : valor;
+    return typeof valor === "number" ? conCache(numeros, idioma, (l) => new Intl.NumberFormat(l)).format(valor) : valor;
   });
 }
 

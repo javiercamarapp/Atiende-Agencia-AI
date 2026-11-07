@@ -1,14 +1,17 @@
-import type { Idioma } from "./tipos.ts";
+import { LOCALE_POR_IDIOMA, type Idioma } from "./tipos.ts";
+
+export { LOCALE_POR_IDIOMA };
 
 /**
  * Formato de numeros, dinero, porcentajes y fechas por idioma, todo con `Intl` (sin dependencias). El espanol es `es-MX` y el
  * ingles `en-US`: 1,234.50 en los dos (Mexico usa coma de miles y punto decimal), pero «6 nov 2026» vs «Nov 6, 2026».
  * El dinero sale con el simbolo corto («$1,234.50») en los dos idiomas: «MX$» en ingles se lee extrano para el dueno de un
  * negocio mexicano. Los formateadores se guardan en cache por (locale, opciones): crear un `Intl.*Format` es caro.
+ * En componentes: `useFormatos()` (idioma activo). Este modulo NO lo importa el proveedor, asi solo entra al bundle de quien
+ * formatea.
  */
-export const LOCALE_POR_IDIOMA: Readonly<Record<Idioma, string>> = { es: "es-MX", en: "en-US" };
 
-const cache = new Map<string, Intl.NumberFormat | Intl.DateTimeFormat | Intl.RelativeTimeFormat | Intl.PluralRules | Intl.ListFormat>();
+const cache = /* @__PURE__ */ new Map<string, Intl.NumberFormat | Intl.DateTimeFormat | Intl.RelativeTimeFormat | Intl.PluralRules | Intl.ListFormat>();
 
 function enCache<T extends Intl.NumberFormat | Intl.DateTimeFormat | Intl.RelativeTimeFormat | Intl.PluralRules | Intl.ListFormat>(
   tipo: string,
