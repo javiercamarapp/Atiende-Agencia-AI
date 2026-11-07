@@ -22,6 +22,8 @@
 // contra el adaptador falso sí están completos; la conexión real contra la API de
 // Google queda pendiente de credenciales — ver README.md y diseño §4/§9.
 
+import { createHash } from "node:crypto";
+
 export interface CreateEventInput {
   readonly calendarId: string;
   readonly summary: string;
@@ -30,6 +32,9 @@ export interface CreateEventInput {
   readonly startTime: string;
   readonly endTime: string;
   readonly timeZone: string;
+  /** Clave estable del alta (la cita que se sincroniza): de ella sale el id del evento en Google, para que repetir el alta
+   * (rollback de la transaccion del cron, timeout) no cree un segundo evento. Sin ella, el id sale del contenido del evento. */
+  readonly idempotencyKey?: string;
   readonly signal?: AbortSignal;
 }
 
@@ -90,6 +95,28 @@ export class GoogleCalendarApiError extends Error {
  * 429/5xx transitorio. Ver diseño Fase 3 §8, riesgo 2. */
 export function isInvalidGrantError(err: unknown): boolean {
   return err instanceof GoogleCalendarApiError && /invalid_grant/i.test(err.body);
+}
+
+const BASE32HEX = "0123456789abcdefghijklmnopqrstuv";
+
+/** Id de evento de Google (alfabeto base32hex en minusculas, 26 caracteres) derivado de la clave del alta o, sin ella, del
+ * contenido del evento: el mismo alta produce siempre el mismo id. */
+export function googleEventIdFor(input: CreateEventInput): string {
+  const semilla = input.idempotencyKey ?? JSON.stringify([input.calendarId, input.summary, input.description, input.startTime, input.endTime]);
+  const digest = createHash("sha256").update(semilla).digest();
+  let bits = 0;
+  let value = 0;
+  let out = "";
+  for (const byte of digest) {
+    value = (value << 8) | byte;
+    bits += 8;
+    while (bits >= 5 && out.length < 26) {
+      out += BASE32HEX[(value >>> (bits - 5)) & 31];
+      bits -= 5;
+    }
+    if (out.length >= 26) break;
+  }
+  return out;
 }
 
 const TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
@@ -206,17 +233,29 @@ export class RealGoogleCalendarPort implements GoogleCalendarPort {
   }
 
   async createEvent(input: CreateEventInput): Promise<CalendarEventResult> {
-    const response = await this.#request(`/calendars/${encodeURIComponent(input.calendarId)}/events`, {
-      method: "POST",
-      signal: input.signal,
-      body: JSON.stringify({
+    // Google acepta el id del cliente (base32hex, 5-1024 caracteres): un reintento del MISMO alta responde 409 en vez de crear
+    // otro evento (QA R1 automatizacion 11).
+    const id = googleEventIdFor(input);
+    let response: Response;
+    try {
+      response = await this.#request(`/calendars/${encodeURIComponent(input.calendarId)}/events`, {
+        method: "POST",
+        signal: input.signal,
+        body: JSON.stringify({
+        id,
         summary: input.summary,
         description: input.description,
         start: { dateTime: input.startTime, timeZone: input.timeZone },
         end: { dateTime: input.endTime, timeZone: input.timeZone },
         reminders: { useDefault: false, overrides: [{ method: "popup", minutes: 30 }] },
-      }),
-    });
+        }),
+      });
+    } catch (err) {
+      // 409 = ese id ya existe: el alta anterior SI llego a Google (aunque la transaccion que guardaba google_event_id se
+      // revirtio). Es exito idempotente, no un fallo a reintentar.
+      if (err instanceof GoogleCalendarApiError && err.status === 409) return { eventId: id, htmlLink: null };
+      throw err;
+    }
     const data = (await response.json()) as { id: string; htmlLink?: string };
     return { eventId: data.id, htmlLink: data.htmlLink ?? null };
   }

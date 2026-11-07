@@ -129,11 +129,12 @@ export async function enqueueAppointmentEmailCore(repo: CitasRepository, organiz
       break;
     case "appointment.reminder_24h":
       correo = correoCitaRecordatorio(base);
-      // Mismo appointmentId nunca dispara dos veces este evento — el cron ya lo
-      // protege con `reminder_24h_sent_at` (ver runConfirmacionCitaCore), pero un
-      // dedupe_key propio también cubre un reintento del propio job de correo
-      // sin depender de esa columna.
-      dedupeKey = `reminder-24h:${appointmentId}`;
+      // El cron protege el envio con `reminder_24h_sent_at` (ver runConfirmacionCitaCore) y este dedupe_key
+      // cubre un reintento del propio job de correo sin depender de esa columna. Incluye el starts_at actual
+      // (como `rescheduled:`): reagendar limpia `reminder_24h_sent_at` y la cita necesita un recordatorio NUEVO
+      // con la hora nueva; con una clave fija, `enqueue_messaging_outbox` no hace nada sobre la fila ya `sent`
+      // y el cron lo contaba como enviado sin que el cliente recibiera nada.
+      dedupeKey = `reminder-24h:${appointmentId}:${appointment.startsAt}`;
       break;
     case "appointment.cancelled":
       correo = correoCitaCancelada(base);

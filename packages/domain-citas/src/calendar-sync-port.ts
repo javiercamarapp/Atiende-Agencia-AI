@@ -46,6 +46,8 @@ export interface CreateCalendarEventInput {
   readonly attendeeEmail?: string;
   readonly attendeeName?: string;
   readonly attendeePhone?: string;
+  /** Clave estable del alta (la cita): Google la usa para derivar el id del evento y hacer el alta idempotente. */
+  readonly idempotencyKey?: string;
   readonly signal?: AbortSignal;
 }
 
@@ -229,6 +231,7 @@ export class GoogleCalendarSyncAdapter implements CalendarSyncPort {
       startTime: input.startTime,
       endTime: input.endTime,
       timeZone: input.timeZone,
+      idempotencyKey: input.idempotencyKey,
       signal: input.signal,
     });
     return { eventId: result.eventId, htmlLink: result.htmlLink };
