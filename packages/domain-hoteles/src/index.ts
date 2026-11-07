@@ -558,4 +558,4 @@ export * from "./reservas-agente/index.ts";
 // `@atiende/domain-hoteles/voz/simulador` (solo pruebas y la prueba ciega manual).
 export * from "./voz/index.ts";
 export { INVENTARIO_MAX_NOCHES, TAX_CONFIG_POR_DEFECTO } from "./types.ts";
-export type { GenerarInventarioInput, GenerarInventarioResultado } from "./types.ts";
+export type { AjustarInventarioTipoInput, AjustarInventarioTipoResultado, GenerarInventarioInput, GenerarInventarioResultado } from "./types.ts";

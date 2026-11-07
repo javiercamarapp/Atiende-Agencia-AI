@@ -87,6 +87,8 @@ import type {
   NewGuestReviewResponseInput,
   GenerarInventarioInput,
   GenerarInventarioResultado,
+  AjustarInventarioTipoInput,
+  AjustarInventarioTipoResultado,
 } from "./types.ts";
 import type { ReservationStatus } from "./reservationStateMachine.ts";
 import { isCancellable } from "./reservationStateMachine.ts";
@@ -876,12 +878,45 @@ export class InMemoryHotelesRepository implements HotelesRepository {
         const fecha = new Date(desde + i * 86_400_000).toISOString().slice(0, 10);
         const key = `${input.propertyId}:${rt.id}:${fecha}`;
         const actual = this.availability.get(key);
-        if (actual && actual.totalRooms === total) continue;
-        this.availability.set(key, { totalRooms: total, bookedRooms: actual?.bookedRooms ?? 0 });
+        const nuevo = Math.max(total, actual?.bookedRooms ?? 0);
+        if (actual && actual.totalRooms === nuevo) continue;
+        this.availability.set(key, { totalRooms: nuevo, bookedRooms: actual?.bookedRooms ?? 0 });
         filas += 1;
       }
     }
     return { tipos: tipos.length, noches, filas };
+  }
+
+  /** Espejo de `hoteles.ajustar_inventario_tipo` (migracion 050): primero desplaza las noches existentes, luego crea las faltantes. */
+  async ajustarInventarioTipo(input: AjustarInventarioTipoInput): Promise<AjustarInventarioTipoResultado> {
+    const rt = this.roomTypes.get(input.roomTypeId);
+    if (!rt || rt.propertyId !== input.propertyId) throw Object.assign(new Error("ajustar_inventario_tipo: tipo no encontrado"), { code: "P0002" });
+    const dia = (f: string) => Date.parse(`${f}T00:00:00Z`);
+    const desde = dia(input.desde);
+    const hasta = dia(input.hasta);
+    const ayer = Date.parse(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`) - 86_400_000;
+    const noches = Math.round((hasta - desde) / 86_400_000) + 1;
+    if ((input.delta !== 1 && input.delta !== -1) || Number.isNaN(desde) || Number.isNaN(hasta) || hasta < desde || desde < ayer || noches > INVENTARIO_MAX_NOCHES) {
+      throw Object.assign(new Error("ajustar_inventario_tipo: entrada invalida"), { code: "22023" });
+    }
+    const fechas = Array.from({ length: noches }, (_, i) => new Date(desde + i * 86_400_000).toISOString().slice(0, 10));
+    let ajustadas = 0;
+    const faltantes: string[] = [];
+    for (const fecha of fechas) {
+      const key = `${input.propertyId}:${input.roomTypeId}:${fecha}`;
+      const actual = this.availability.get(key);
+      if (!actual) {
+        faltantes.push(key);
+        continue;
+      }
+      const nuevo = Math.max(actual.totalRooms + input.delta, actual.bookedRooms, 0);
+      if (nuevo === actual.totalRooms) continue;
+      this.availability.set(key, { totalRooms: nuevo, bookedRooms: actual.bookedRooms });
+      ajustadas += 1;
+    }
+    const total = [...this.rooms.values()].filter((r) => r.propertyId === input.propertyId && r.roomTypeId === input.roomTypeId).length;
+    for (const key of faltantes) this.availability.set(key, { totalRooms: total, bookedRooms: 0 });
+    return { ajustadas, creadas: faltantes.length };
   }
 
   async listRooms(propertyId: string, roomTypeId?: string | null): Promise<readonly RoomSummary[]> {

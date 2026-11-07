@@ -144,6 +144,22 @@ export interface GenerarInventarioResultado {
   readonly filas: number;
 }
 
+/** Ajuste incremental de un tipo tras el alta (+1) o baja (-1) de una habitacion (`hoteles.ajustar_inventario_tipo`, migracion 050). */
+export interface AjustarInventarioTipoInput {
+  readonly propertyId: string;
+  readonly roomTypeId: string;
+  readonly delta: 1 | -1;
+  readonly desde: string;
+  readonly hasta: string;
+}
+
+export interface AjustarInventarioTipoResultado {
+  /** Noches existentes cuyo total_rooms cambio (delta aplicado, nunca por debajo de booked_rooms). */
+  readonly ajustadas: number;
+  /** Noches que faltaban y se crearon con el conteo actual de habitaciones del tipo. */
+  readonly creadas: number;
+}
+
 /** Tope de noches por llamada (mismo que la funcion SQL). */
 export const INVENTARIO_MAX_NOCHES = 400;
 

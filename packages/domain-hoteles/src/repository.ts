@@ -79,6 +79,8 @@ import type {
   NewGuestReviewResponseInput,
   GenerarInventarioInput,
   GenerarInventarioResultado,
+  AjustarInventarioTipoInput,
+  AjustarInventarioTipoResultado,
 } from "./types.ts";
 import type { ReservationStatus } from "./reservationStateMachine.ts";
 import type { RevenueGateState } from "./revenue/revenueEngineGate.ts";
@@ -216,6 +218,11 @@ export interface HotelesRepository {
    *  con total_rooms = habitaciones fisicas del tipo, sin tocar booked_rooms. Idempotente. Lanza el error de Postgres tal cual
    *  (42501 sin rol de catalogo, 22023 rango invalido, 42883 base sin la 050): la ruta lo traduce. */
   generarInventario(input: GenerarInventarioInput): Promise<GenerarInventarioResultado>;
+
+  /** Onboarding P0 (`hoteles.ajustar_inventario_tipo`, migracion 050): tras dar de alta/baja UNA habitacion, suma el delta a las noches
+   *  existentes de ese tipo (nunca por debajo de booked_rooms ni de 0) y crea solo las que faltan. No recalcula toda la propiedad ni toca
+   *  otros tipos. Lanza el error de Postgres tal cual (42501, 22023, P0002, 42883 base sin la 050). */
+  ajustarInventarioTipo(input: AjustarInventarioTipoInput): Promise<AjustarInventarioTipoResultado>;
 
   /** Alta de huésped nuevo — antes de este cambio `guestId` en `POST .../reservas`
    *  solo podía apuntar a un huésped YA sembrado por SQL directo (`searchGuests` era

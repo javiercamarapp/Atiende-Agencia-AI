@@ -88,6 +88,8 @@ import type {
   NewGuestReviewResponseInput,
   GenerarInventarioInput,
   GenerarInventarioResultado,
+  AjustarInventarioTipoInput,
+  AjustarInventarioTipoResultado,
 } from "./types.ts";
 import type { ReservationStatus } from "./reservationStateMachine.ts";
 import type { RevenueGateState } from "./revenue/revenueEngineGate.ts";
@@ -1078,6 +1080,15 @@ export class PostgresHotelesRepository implements HotelesRepository {
     );
     const r = rows[0];
     return { tipos: Number(r?.out_tipos ?? 0), noches: Number(r?.out_noches ?? 0), filas: Number(r?.out_filas ?? 0) };
+  }
+
+  async ajustarInventarioTipo(input: AjustarInventarioTipoInput): Promise<AjustarInventarioTipoResultado> {
+    const { rows } = await this.db.query<{ out_ajustadas: number; out_creadas: number }>(
+      `select out_ajustadas, out_creadas from hoteles.ajustar_inventario_tipo($1::uuid, $2::uuid, $3::integer, $4::date, $5::date);`,
+      [input.propertyId, input.roomTypeId, input.delta, input.desde, input.hasta],
+    );
+    const r = rows[0];
+    return { ajustadas: Number(r?.out_ajustadas ?? 0), creadas: Number(r?.out_creadas ?? 0) };
   }
 
   async upsertRatePlanRange(input: NewRatePlanRangeInput): Promise<{ datesWritten: number }> {
