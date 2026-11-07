@@ -67,5 +67,6 @@ export const restaurantesCierres = {
   "restaurantes.cierres.porDia.vacio": "Sin días",
   "restaurantes.cierres.sinDatos": "Sin datos.",
   "restaurantes.cierres.definiciones": "Definiciones: el día es el día calendario en la zona horaria de la sucursal y la semana va de lunes a domingo. Un pedido cuenta en el momento en que entra a operar (los programados, al promoverse). El tiempo de entrega solo cuenta pedidos con estado entregado y hora de entrega registrada.",
-  "restaurantes.cierres.comparativo": "Comparativo: {periodo} ({n} pedidos, {ventas}).",
+  // Plural solo para el ingles: el espanol de siempre dice «pedidos» tambien con 1 (byte a byte igual).
+  "restaurantes.cierres.comparativo": { one: "Comparativo: {periodo} ({n} pedidos, {ventas}).", other: "Comparativo: {periodo} ({n} pedidos, {ventas})." },
 } as const satisfies ModuloEs;
