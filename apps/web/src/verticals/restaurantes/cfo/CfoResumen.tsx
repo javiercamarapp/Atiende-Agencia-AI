@@ -3,7 +3,9 @@
 import { Fragment, useState } from "react";
 import { Lightbulb } from "lucide-react";
 import type { CriterioOrden, KpiTarjeta, ResumenVista } from "@atiende/domain-restaurantes/cfo";
-import { Callout, Card, CifraTexto, DataTable, EstadoVacio, PageContainer, RadioSegmentado, Semaforo, SectionLabel, cn } from "@atiende/ui";
+import { Callout, Card, CifraTexto, DataTable, EstadoVacio, PageContainer, RadioSegmentado, Semaforo, SectionLabel, cn, useT } from "@atiende/ui";
+import { restaurantesCfo } from "@atiende/ui/i18n/restaurantes/cfo";
+import { restaurantesCfoResumen } from "@atiende/ui/i18n/restaurantes/cfoResumen";
 import type { EstadoSemaforo } from "@atiende/ui";
 import { fetchResumen } from "./cfo-client.ts";
 import { enlaceDeAccion, type CfoPaginaProps } from "./contexto.ts";
@@ -40,6 +42,7 @@ export function resaltarNarrativa(texto: string, referencias: Readonly<Record<st
 }
 
 function KpiCard({ k }: { readonly k: KpiTarjeta }) {
+  const t = useT(restaurantesCfoResumen);
   const tono = tonoVariacion(k.variacion, k.mejorSi);
   const sinDato = k.valor.valor === null;
   return (
@@ -48,7 +51,7 @@ function KpiCard({ k }: { readonly k: KpiTarjeta }) {
         <span className="line-clamp-2 min-w-0 text-xs text-muted-foreground">{k.etiqueta}</span>
         <Semaforo estado={SEMAFORO_KPI[k.semaforo]} />
       </div>
-      <p className={cn("min-w-0 truncate font-display text-xl font-semibold tabular-nums", sinDato && "text-faint")} aria-label={sinDato ? `${k.etiqueta}: sin dato` : undefined} title={sinDato ? undefined : textoCifra(k.valor, k.tipo)}>
+      <p className={cn("min-w-0 truncate font-display text-xl font-semibold tabular-nums", sinDato && "text-faint")} aria-label={sinDato ? t("restaurantes.cfoResumen.sinDato", { etiqueta: k.etiqueta }) : undefined} title={sinDato ? undefined : textoCifra(k.valor, k.tipo)}>
         <CifraTexto texto={textoCifra(k.valor, k.tipo)} />
       </p>
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
@@ -62,6 +65,7 @@ function KpiCard({ k }: { readonly k: KpiTarjeta }) {
 }
 
 function KpiPorSucursal({ d }: { readonly d: ResumenVista }) {
+  const t = useT(restaurantesCfo, restaurantesCfoResumen);
   type Fila = { readonly id: string; readonly etiqueta: string };
   const filas: Fila[] = d.kpis.total.kpis.map((k) => ({ id: k.id, etiqueta: k.etiqueta }));
   const celda = (kpis: readonly KpiTarjeta[], id: string) => {
@@ -70,16 +74,16 @@ function KpiPorSucursal({ d }: { readonly d: ResumenVista }) {
   };
   return (
     <DataTable<Fila>
-      etiqueta="Indicadores por sucursal"
+      etiqueta={t("restaurantes.cfoResumen.porSucursal")}
       filas={filas}
       obtenerId={(f) => f.id}
       paginacion={false}
       vista="tabla"
       atributosFila={(f) => ({ "data-kpi": f.id })}
       columnas={[
-        { id: "kpi", encabezado: "Indicador", principal: true, celda: (f) => f.etiqueta },
+        { id: "kpi", encabezado: t("restaurantes.cfoResumen.indicador"), principal: true, celda: (f) => f.etiqueta },
         ...d.kpis.porSucursal.map((s) => ({ id: s.propertyId, encabezado: s.nombre, alinear: "right" as const, className: "tabular-nums", celda: (f: Fila) => celda(s.kpis, f.id) })),
-        { id: "total", encabezado: "Total", alinear: "right" as const, className: "tabular-nums font-medium", celda: (f: Fila) => celda(d.kpis.total.kpis, f.id) },
+        { id: "total", encabezado: t("restaurantes.cfo.filtros.total"), alinear: "right" as const, className: "tabular-nums font-medium", celda: (f: Fila) => celda(d.kpis.total.kpis, f.id) },
       ]}
     />
   );
@@ -87,13 +91,14 @@ function KpiPorSucursal({ d }: { readonly d: ResumenVista }) {
 
 export function CfoResumen(props: CfoPaginaProps) {
   const { api, filtros, base, pestanasDisponibles } = props;
+  const t = useT(restaurantesCfoResumen);
   const [orden, setOrden] = useState<CriterioOrden>("impacto");
   const clave = `${filtros.desde}|${filtros.hasta}|${filtros.sucursales?.join(",") ?? ""}|${filtros.comparar}`;
   const { carga, recargando, recargar } = useCargaCfo(() => fetchResumen(api, filtros, orden), [clave, orden, api.propertyId, api.token]);
 
   return (
     <PageContainer padding="none" aria-busy={recargando} data-testid="cfo-resumen">
-      <CargaCfoVista carga={carga} onReintentar={recargar} etiqueta="Cargando el resumen del CFO…">
+      <CargaCfoVista carga={carga} onReintentar={recargar} etiqueta={t("restaurantes.cfoResumen.cargando")}>
         {(d) => (
           <>
             <AvisosCfo vista={d} />
@@ -101,14 +106,14 @@ export function CfoResumen(props: CfoPaginaProps) {
             <section aria-labelledby="cfo-lo-importante" className="space-y-2.5">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
-                  <SectionLabel id="cfo-lo-importante">Lo más importante</SectionLabel>
+                  <SectionLabel id="cfo-lo-importante">{t("restaurantes.cfoResumen.loImportante")}</SectionLabel>
                 </div>
                 <RadioSegmentado<CriterioOrden>
                   name="cfo-orden-hallazgos"
-                  label="Ordenar hallazgos"
+                  label={t("restaurantes.cfoResumen.ordenar")}
                   opciones={[
-                    { id: "impacto", rotulo: "Ordenar por impacto $" },
-                    { id: "urgencia", rotulo: "Ordenar por urgencia" },
+                    { id: "impacto", rotulo: t("restaurantes.cfoResumen.porImpacto") },
+                    { id: "urgencia", rotulo: t("restaurantes.cfoResumen.porUrgencia") },
                   ]}
                   value={orden}
                   onChange={setOrden}
@@ -116,7 +121,7 @@ export function CfoResumen(props: CfoPaginaProps) {
                 />
               </div>
               {d.hallazgos.length === 0 ? (
-                <EstadoVacio icon={Lightbulb} titulo="Nada urgente en este periodo" mensaje="No hay hallazgos que superen los umbrales configurados. Si faltan datos, los avisos de arriba lo dicen; un hallazgo solo aparece con cifras reales." />
+                <EstadoVacio icon={Lightbulb} titulo={t("restaurantes.cfoResumen.nadaUrgente")} mensaje={t("restaurantes.cfoResumen.nadaUrgenteMensaje")} />
               ) : (
                 <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-3" data-testid="hallazgos" data-orden={orden}>
                   {d.hallazgos.map((h, i) => (
@@ -127,10 +132,10 @@ export function CfoResumen(props: CfoPaginaProps) {
             </section>
 
             <section aria-labelledby="cfo-narrativa" className="space-y-2">
-              <SectionLabel id="cfo-narrativa">Resumen narrado</SectionLabel>
+              <SectionLabel id="cfo-narrativa">{t("restaurantes.cfoResumen.narrado")}</SectionLabel>
               <Card className="p-4" data-testid="cfo-narrativa">
                 {d.narrativa.oraciones.length === 0 ? (
-                  <p className="text-ui text-muted-foreground">{d.narrativa.texto || "Sin datos suficientes para redactar el resumen."}</p>
+                  <p className="text-ui text-muted-foreground">{d.narrativa.texto || t("restaurantes.cfoResumen.sinNarrativa")}</p>
                 ) : (
                   <p className="text-ui leading-relaxed">
                     {d.narrativa.oraciones.map((o, i) => (
@@ -146,12 +151,12 @@ export function CfoResumen(props: CfoPaginaProps) {
             <section aria-labelledby="cfo-kpis" className="space-y-2.5">
               <div className="flex flex-wrap items-end justify-between gap-2">
                 <div>
-                  <SectionLabel id="cfo-kpis">Indicadores</SectionLabel>
+                  <SectionLabel id="cfo-kpis">{t("restaurantes.cfoResumen.indicadores")}</SectionLabel>
                 </div>
                 <Card className="flex items-center gap-3 px-3.5 py-2" data-testid="cfo-titular">
                   <div className="min-w-0">
                     <p className="text-xs text-muted-foreground">{d.titular.etiqueta}</p>
-                    <p className="font-display text-xl font-semibold tabular-nums" aria-label={d.titular.cifra.valor === null ? `${d.titular.etiqueta}: sin dato` : undefined}>
+                    <p className="font-display text-xl font-semibold tabular-nums" aria-label={d.titular.cifra.valor === null ? t("restaurantes.cfoResumen.sinDato", { etiqueta: d.titular.etiqueta }) : undefined}>
                       {d.titular.cifra.valor === null ? SIN_DATO : <CifraTexto texto={pesos(d.titular.cifra.valor)} />}
                     </p>
                   </div>
@@ -168,9 +173,10 @@ export function CfoResumen(props: CfoPaginaProps) {
                 </div>
               )}
               {d.kpis.noAsignado && (
-                <Callout tone="neutral" titulo="No asignado a una sucursal" data-testid="kpi-no-asignado">
-                  Costo del agente de la organización (IA de texto, no atribuible a una sucursal): {textoValor("centavos", d.kpis.noAsignado.costoAgenteCentavos.valor)}
-                  {d.kpis.noAsignado.llmTexto.valor === null ? " · IA de texto sin dato" : ""}.
+                <Callout tone="neutral" titulo={t("restaurantes.cfoResumen.noAsignado")} data-testid="kpi-no-asignado">
+                  {t("restaurantes.cfoResumen.costoAgente", { monto: textoValor("centavos", d.kpis.noAsignado.costoAgenteCentavos.valor) })}
+                  {d.kpis.noAsignado.llmTexto.valor === null ? t("restaurantes.cfoResumen.llmSinDato") : ""}.
+
                 </Callout>
               )}
               {d.multiSucursal.texto && (
