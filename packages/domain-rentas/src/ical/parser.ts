@@ -243,6 +243,26 @@ function normalizarStatus(valor: string | undefined): EstadoEventoIcs {
   return null;
 }
 
+/** Desescapa un valor TEXT de RFC 5545 §3.3.11 (`\\n`, `\\,`, `\\;`, `\\\\`). */
+function desescaparTexto(valor: string): string {
+  return valor.replace(/\\([nN,;\\])/g, (_m, c: string) => (c === "n" || c === "N" ? "\n" : c));
+}
+
+// Airbnb: la URL de la reserva trae el codigo de confirmacion `HM` + 8 alfanumericos en mayusculas
+// ("Reservation URL: https://www.airbnb.com/hosting/reservations/details/HMXXXXXXXX"). Es el unico patron con fixture real
+// (tests/fixtures/airbnb-reserva.ics). El dominio es un TLD acotado (`.com`, `.com.mx`...), sin cuantificador abierto: tiempo lineal ante un
+// DESCRIPTION malicioso (CodeQL js/polynomial-redos). Booking.com y Vrbo NO tienen patron aqui: sin fixture del feed real no se inventa
+// ninguno y el codigo queda `null`.
+const CODIGO_AIRBNB_RE = /airbnb\.[a-z]{2,3}(?:\.[a-z]{2})?\/hosting\/reservations\/details\/(HM[A-Z0-9]{8})(?![A-Z0-9])/i;
+const ULTIMOS4_RE = /Phone Number \(Last 4 Digits\)\s*:\s*(\d{4})(?!\d)/i;
+
+export function extraerDatosCanal(descripcion: string | null, summary: string | null): { codigoConfirmacion: string | null; telefonoUltimos4: string | null } {
+  const texto = [descripcion, summary].filter((t): t is string => typeof t === "string" && t.length > 0).join("\n");
+  const codigo = CODIGO_AIRBNB_RE.exec(texto)?.[1]?.toUpperCase() ?? null;
+  const ultimos4 = ULTIMOS4_RE.exec(texto)?.[1] ?? null;
+  return { codigoConfirmacion: codigo, telefonoUltimos4: ultimos4 };
+}
+
 function construirVEvent(lineas: LineaContenido[]): VEventNormalizado {
   const porNombre = new Map<string, LineaContenido>();
   for (const linea of lineas) {
@@ -299,6 +319,9 @@ function construirVEvent(lineas: LineaContenido[]): VEventNormalizado {
       v.tipo === "DATE-TIME-UTC" ? v.instanteIso : v.tipo === "DATE" ? `${v.fecha}T00:00:00Z` : `${v.fechaHoraLocal}Z`;
   }
 
+  const descripcionLinea = porNombre.get("DESCRIPTION");
+  const descripcion = descripcionLinea ? desescaparTexto(descripcionLinea.valor) : null;
+
   return {
     uid: uidLinea.valor.trim(),
     // Hallazgo de auditoría (a3, MEDIA, verificado contra Postgres real) — antes,
@@ -321,6 +344,7 @@ function construirVEvent(lineas: LineaContenido[]): VEventNormalizado {
     dtend,
     status: normalizarStatus(porNombre.get("STATUS")?.valor.trim()),
     summary: porNombre.get("SUMMARY")?.valor.trim() ?? null,
+    ...extraerDatosCanal(descripcion, porNombre.get("SUMMARY")?.valor.trim() ?? null),
   };
 }
 

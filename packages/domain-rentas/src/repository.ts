@@ -15,7 +15,16 @@
 // mínimo, pricing de solo lectura, y el movimiento financiero por reserva).
 import type { RangoFechas } from "./tipos.ts";
 import type {
+  ActualizarLineaImportadaInput,
   BloqueoRecord,
+  CandidataImportacion,
+  LineaColaImportacion,
+  LineaImportadaExistente,
+  MovimientoEnRevision,
+  NewImportacionPagosInput,
+  NewLineaImportadaInput,
+  OrganizacionConReservasSinMovimiento,
+  ReservaSinMovimiento,
   CandidataConciliacion,
   CanalRecord,
   ConfiguracionComisionCanal,
@@ -175,6 +184,25 @@ export interface RentasRepository {
   insertPayout(input: NewPayoutInput): Promise<{ id: string; creadoEn: string }>;
   findPayoutDetalle(propertyId: string, payoutId: string): Promise<PayoutDetalle | null>;
 
+  // ---- Importacion del reporte de pagos de la OTA y aviso de sin movimiento (Rn-P3-06/07; requieren la migracion 035) ----
+  // Todos lanzan el error de Postgres tal cual (42703/42P01 contra una base sin migrar): quien los usa abre el SAVEPOINT y degrada.
+  /** Serializa dos importaciones simultaneas del mismo canal en la misma property (advisory lock de transaccion). */
+  bloquearImportacionPagos(propertyId: string, canalId: string): Promise<void>;
+  /** Reservas de la property en ese canal con alguno de esos codigos (todas las de capa='reserva', cancelada o no). */
+  findCandidatasImportacion(propertyId: string, canalId: string, codigos: readonly string[]): Promise<readonly CandidataImportacion[]>;
+  findLineasImportadas(propertyId: string, canalId: string, huellas: readonly string[]): Promise<readonly LineaImportadaExistente[]>;
+  insertImportacionPagos(input: NewImportacionPagosInput): Promise<{ id: string; creadoEn: string }>;
+  insertLineaImportada(input: NewLineaImportadaInput): Promise<void>;
+  actualizarLineaImportada(input: ActualizarLineaImportadaInput): Promise<void>;
+  listColaImportacion(propertyId: string, limit: number): Promise<readonly LineaColaImportacion[]>;
+  /** Reservas `capa='reserva'`, `estado='confirmado'` con check-in en `[desde, hasta)` y sin `reserva_financiero`. `total` es el conteo completo. */
+  listReservasSinMovimiento(propertyId: string, desde: string, hasta: string, limit: number): Promise<{ readonly total: number; readonly items: readonly ReservaSinMovimiento[] }>;
+  listMovimientosEnRevision(propertyId: string, limit: number): Promise<readonly MovimientoEnRevision[]>;
+  /** Quita `requiere_revision` de un movimiento de la property. `false` si no existe o no estaba marcado. */
+  marcarMovimientoRevisado(propertyId: string, ocupacionId: string): Promise<boolean>;
+  /** Barrido de SISTEMA (todas las organizaciones): cuenta reservas confirmadas con check-in en `[desde, hasta)` sin movimiento. */
+  listOrganizacionesConReservasSinMovimiento(desde: string, hasta: string): Promise<readonly OrganizacionConReservasSinMovimiento[]>;
+
   // ---- Correo transaccional al huésped (Fase 9) — ver
   // reserva-email-notifications.ts/email-dispatch.ts/checkin-reminders.ts ----
   /** Defensa en profundidad: `organizationId` acota la búsqueda (mismo criterio que
@@ -276,6 +304,18 @@ export interface RentasRepository {
 }
 
 export type {
+  ActualizarLineaImportadaInput,
+  CandidataImportacion,
+  LineaColaImportacion,
+  LineaImportadaExistente,
+  MotivoRevisionMovimiento,
+  MovimientoEnRevision,
+  NewImportacionPagosInput,
+  NewLineaImportadaInput,
+  OrganizacionConReservasSinMovimiento,
+  OrigenMovimiento,
+  ReservaSinMovimiento,
+  ResultadoLineaImportacion,
   CandidataConciliacion,
   CanalRecord,
   ConfiguracionComisionCanal,

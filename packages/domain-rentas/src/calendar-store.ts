@@ -62,6 +62,9 @@ export interface StoredOcupacion {
   /** Fase 9 -- espejo de `rentas.ocupacion.recordatorio_checkin_enviado_en` (belt-
    *  and-suspenders sobre el dedupe_key real del outbox, ver migrations/011). */
   recordatorioCheckinEnviadoEn: string | null;
+  /** Rn-P3-05 -- espejo de `rentas.ocupacion.codigo_confirmacion` / `telefono_ultimos4` (opcionales: ausente = null). */
+  codigoConfirmacion?: string | null;
+  telefonoUltimos4?: string | null;
 }
 
 /** Todo lo que `InMemoryRentasRepository.findOcupacionParaCorreo` necesita, MENOS el
@@ -484,11 +487,26 @@ export class InMemoryRentasCalendarStore {
     return { id };
   }
 
+  /** Equivalente en memoria de los triggers AFTER UPDATE de `rentas.ocupacion` (p. ej. el que marca `requiere_revision` en el movimiento
+   *  financiero al cambiar fechas o cancelar, migracion 035): quien lo necesite se suscribe aqui. */
+  // Campo de tipo funcion (no arreglo) a proposito: los tests que sacan snapshots del store clonan solo Map/Array.
+  private notificarCambioOcupacion: (ocupacionId: string, cambio: "rango" | "cancelacion") => void = () => {};
+
+  suscribirCambioOcupacion(oyente: (ocupacionId: string, cambio: "rango" | "cancelacion") => void): void {
+    const anterior = this.notificarCambioOcupacion;
+    this.notificarCambioOcupacion = (id, cambio) => {
+      anterior(id, cambio);
+      oyente(id, cambio);
+    };
+  }
+
   marcarCancelada(ocupacionId: string): void {
     const fila = this.ocupaciones.get(ocupacionId);
     if (!fila) throw new Error(`rentas.ocupacion ${ocupacionId} no existe`);
+    const yaCancelada = fila.estado === "cancelado";
     fila.estado = "cancelado";
     fila.updatedAt = new Date().toISOString();
+    if (!yaCancelada) this.notificarCambioOcupacion(ocupacionId, "cancelacion");
   }
 
   /** Actualiza el rango verificando el EXCLUDE antes de mutar, igual que
@@ -501,10 +519,12 @@ export class InMemoryRentasCalendarStore {
       const violacion = this.findOverlappingReservaBloqueante(fila.unidadId, ocupacionId, inicio, fin) !== null;
       if (violacion) throw new ExclusionViolationError();
     }
+    const cambioRango = fila.inicio !== inicio || fila.fin !== fin;
     fila.inicio = inicio;
     fila.fin = fin;
     fila.version += 1;
     fila.updatedAt = new Date().toISOString();
+    if (cambioRango) this.notificarCambioOcupacion(ocupacionId, "rango");
   }
 
   // ---- Fase 9 -- correo transaccional al huésped (ver reserva-email-notifications.ts/
