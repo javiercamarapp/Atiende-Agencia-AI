@@ -148,21 +148,34 @@ export async function fetchBranches(fetchImpl: typeof fetch, apiBaseUrl: string,
 export interface TenantConfig {
   readonly organizationId: string;
   readonly timezone: string | null;
+  /** Umbral 0-100 del aviso de "nuevo match" (L-P3-09); `null` = solo las convocatorias elegibles. Una API anterior que no lo manda se lee como `null`. */
+  readonly newMatchMinScore: number | null;
 }
 
 interface TenantConfigWire {
   readonly organization_id: string;
   readonly timezone: string | null;
+  readonly new_match_min_score?: number | null;
+}
+
+function fromWire(w: TenantConfigWire): TenantConfig {
+  return { organizationId: w.organization_id, timezone: w.timezone, newMatchMinScore: w.new_match_min_score ?? null };
 }
 
 export async function fetchTenantConfig(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, orgSlug: string): Promise<TenantConfig> {
   const body = await fetchJson<{ tenant_config: TenantConfigWire }>(fetchImpl, `${apiBaseUrl}/v1/licitaciones/${orgSlug}/admin/tenant-config`, token);
-  return { organizationId: body.tenant_config.organization_id, timezone: body.tenant_config.timezone };
+  return fromWire(body.tenant_config);
 }
 
 /** `timezone: null` explícito borra la configuración (vuelve al default de
  * plataforma) -- distinto de no llamar a esta función en absoluto. */
 export async function updateTenantConfigTimezone(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, orgSlug: string, timezone: string | null): Promise<TenantConfig> {
   const body = await patchJson<{ tenant_config: TenantConfigWire }>(fetchImpl, `${apiBaseUrl}/v1/licitaciones/${orgSlug}/admin/tenant-config`, token, { timezone });
-  return { organizationId: body.tenant_config.organization_id, timezone: body.tenant_config.timezone };
+  return fromWire(body.tenant_config);
+}
+
+/** L-P3-09: guarda el umbral del aviso de nuevo match (entero 0-100) o `null` para volver a "solo elegibles". Solo owner/admin (el servidor lo exige). */
+export async function updateTenantConfigNewMatchMinScore(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, orgSlug: string, newMatchMinScore: number | null): Promise<TenantConfig> {
+  const body = await patchJson<{ tenant_config: TenantConfigWire }>(fetchImpl, `${apiBaseUrl}/v1/licitaciones/${orgSlug}/admin/tenant-config`, token, { new_match_min_score: newMatchMinScore });
+  return fromWire(body.tenant_config);
 }

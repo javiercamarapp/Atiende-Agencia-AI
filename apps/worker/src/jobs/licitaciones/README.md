@@ -169,3 +169,8 @@ el límite para enviar preguntas a la junta de aclaraciones, solo mientras haya 
 (borrador/aprobada). Una transacción por organización, registro deduplicado por convocatoria y día,
 sin canal de envío real (igual que `deadline-reminders.ts`; el correo no está cableado para este
 recordatorio). Con la migración 029 pendiente reporta `unavailable`, no un fallo.
+
+## Autopiloto (paridad3 L-P3-08/09)
+
+`runDiscoverTendersForOrganization` ahora devuelve, por fuente, `createdTenders` (convocatorias que la corrida dio de alta), `basesModificadas` (convocatorias conocidas cuya fuente cambió plazo, monto, bases o documentos: la versión y la invalidación de aprobaciones YA están persistidas) y `vigilanteNoDisponible` (base sin la migración 039). El worker no avisa nada: los avisos (campana, correo, WhatsApp) los emite la ruta de `apps/api` en transacciones propias, así que un canal que falla nunca revierte la versión.
+

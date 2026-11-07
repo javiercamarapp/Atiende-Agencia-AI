@@ -14,6 +14,7 @@ import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { CompanyDataService, EconomicProposalBuilder, fromCents, IdempotencyConflictError, InMemoryCompanyDataResolver, resolveExpedienteAsOfIso, SubmissionDeadlineUnknownError, WRITE_ROLES } from "@atiende/domain-licitaciones";
 import type { ApprovedRate, EconomicLineItemBlocked, EconomicTotals, EconomicLineItemResolved, ProposalRecord } from "@atiende/domain-licitaciones";
 import { Errors } from "../../../errors.ts";
+import { auditarExpediente } from "./autopiloto-auditor.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
 
@@ -162,6 +163,8 @@ export function licitacionesProposalRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
 
         return { status: 200, body: { proposal: serializeProposal(updated), economic: { lineItems: economicResult.lineItems.map(serializeLineItem), blockedLineItems: [], totals: economicResult.totals } } };
       });
+      // L-P3-11: el auditor determinista re-evalua el expediente tras el cambio de insumo (nunca falla la escritura).
+      await auditarExpediente(deps, c.get("db"), { organizationId, tenderId });
       return c.json(result.body, result.status as 200);
     } catch (err) {
       if (err instanceof IdempotencyConflictError) throw Errors.idempotencyConflict();

@@ -90,7 +90,8 @@ describe("fetchTenantConfig / updateTenantConfigTimezone", () => {
   it("fetchTenantConfig pide GET .../admin/tenant-config y devuelve {organizationId, timezone} camelCase", async () => {
     const fetchImpl = fakeFetch({ "/admin/tenant-config": { status: 200, body: { tenant_config: { organization_id: "org-1", timezone: "America/Tijuana" } } } });
     const result = await fetchTenantConfig(fetchImpl, "http://api.local", "tok", "empresa-de-prueba");
-    expect(result).toEqual({ organizationId: "org-1", timezone: "America/Tijuana" });
+    // una API anterior (sin new_match_min_score) se lee como umbral null: nunca un valor inventado
+    expect(result).toEqual({ organizationId: "org-1", timezone: "America/Tijuana", newMatchMinScore: null });
     expect(fetchImpl).toHaveBeenCalledWith("http://api.local/v1/licitaciones/empresa-de-prueba/admin/tenant-config", expect.objectContaining({ headers: { authorization: "Bearer tok" } }));
   });
 
@@ -103,7 +104,7 @@ describe("fetchTenantConfig / updateTenantConfigTimezone", () => {
   it("updateTenantConfigTimezone manda PATCH con {timezone} y devuelve el valor guardado", async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ tenant_config: { organization_id: "org-1", timezone: "America/Cancun" } }), { status: 200, headers: { "content-type": "application/json" } })) as unknown as typeof fetch;
     const result = await updateTenantConfigTimezone(fetchImpl, "http://api.local", "tok", "empresa-de-prueba", "America/Cancun");
-    expect(result).toEqual({ organizationId: "org-1", timezone: "America/Cancun" });
+    expect(result).toEqual({ organizationId: "org-1", timezone: "America/Cancun", newMatchMinScore: null });
     expect(fetchImpl).toHaveBeenCalledWith(
       "http://api.local/v1/licitaciones/empresa-de-prueba/admin/tenant-config",
       expect.objectContaining({ method: "PATCH", headers: { authorization: "Bearer tok", "content-type": "application/json" }, body: JSON.stringify({ timezone: "America/Cancun" }) }),
