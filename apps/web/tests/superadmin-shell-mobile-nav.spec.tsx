@@ -11,6 +11,7 @@ import { SuperAdminShell } from "../src/superadmin/SuperAdminShell.tsx";
 import { PIE_SUPERADMIN, SECCIONES, TODAS_LAS_RUTAS } from "../src/superadmin/rutas.ts";
 import { click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 import { installMatchMediaStub, installMemoryLocalStorage } from "./test-utils/memory-storage.ts";
+import { afirmarCampanaMovil } from "./test-utils/menu-cuenta-movil.ts";
 import { abrirCategoria, categoriasAbiertas, categoriasSidebar, linksSidebar, tarjetaUsuario } from "./test-utils/sidebar-estructura.ts";
 
 vi.mock("../src/lib/useNotifications.ts", () => ({
@@ -47,7 +48,8 @@ async function renderShell(onRequireLogin: () => void = () => {}, ruta = "/super
 }
 
 describe("SuperAdminShell — nav móvil", () => {
-  it("agrega MobileHeader y BottomNav con los 4 destinos diarios; Sidebar y BarraPagina quedan solo para escritorio", async () => {
+  // Decisión de Omar 7-nov-2026: la barra es 4 destinos diarios + «Preguntar» (el Copiloto de plataforma; solo ds3) + «Más».
+  it("agrega MobileHeader y BottomNav con los 4 destinos diarios + «Preguntar» (solo ds3) + «Más»; Sidebar y BarraPagina quedan solo para escritorio", async () => {
     rendered = await renderShell();
     const root = rendered.container;
     expect(root.querySelector('aside[aria-label="Navegación principal"]')!.className).toContain("md:flex");
@@ -61,7 +63,11 @@ describe("SuperAdminShell — nav móvil", () => {
       "/superadmin/organizaciones",
       "/superadmin/salud",
       "/superadmin/acciones",
+      "/superadmin/copiloto",
     ]);
+    const lugares = [...root.querySelectorAll('nav[aria-label="Navegación móvil"] > ul > li')];
+    expect(lugares.map((li) => li.textContent?.trim())).toEqual(["Resumen", "Orgs", "Salud", "Acciones", "Preguntar", "Más"]);
+    expect((lugares[4] as HTMLLIElement).hidden, "«Preguntar» es solo-ds3: oculto sin la bandera").toBe(true);
   });
 
   it("el item raíz «Resumen» solo queda activo en /superadmin (no en cada pantalla hija)", async () => {
@@ -133,11 +139,11 @@ describe("SuperAdminShell — nav móvil", () => {
     expect(document.body.querySelector('[role="dialog"]')).toBeNull();
   });
 
-  it("el encabezado móvil ya no lleva campana ni chat; cerrar sesión sigue en el menú de cuenta y Notificaciones en 'Más'", async () => {
+  it("el encabezado móvil lleva la campana (decisión de Omar 7-nov-2026) y no el chat; cerrar sesión sigue en el menú de cuenta y Notificaciones en 'Más'", async () => {
     const onRequireLogin = vi.fn();
     rendered = await renderShell(onRequireLogin);
     const mobileHeader = [...rendered.container.querySelectorAll("header")].find((h) => h.className.includes("md:hidden"))!;
-    expect(mobileHeader.querySelector('[aria-label^="Notificaciones"]')).toBeNull();
+    expect(afirmarCampanaMovil(mobileHeader).getAttribute("href")).toBe("/superadmin/notificaciones");
     expect(mobileHeader.textContent).not.toContain("Pregúntale a tus datos");
     click(mobileHeader.querySelector('button[aria-label="Abrir menú de cuenta"]')!);
     const hoja = document.body.querySelector('[role="dialog"]')!;

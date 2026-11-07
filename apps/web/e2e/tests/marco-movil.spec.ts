@@ -25,7 +25,8 @@ test.describe("marco y barra movil @movil", () => {
       expect(Math.abs(caja.height - 63), `${objetivo}: alto de la barra ${caja.height}`).toBeLessThanOrEqual(1);
       expect(Math.abs(caja.y + caja.height - vista.height), "la barra queda pegada al borde inferior").toBeLessThanOrEqual(1);
       expect(caja.width).toBeGreaterThanOrEqual(vista.width - 1);
-      const lugares = await barra.locator("li").count();
+      // «Preguntar» (decision de Omar 7-nov-2026) es solo-ds3: sin la bandera su <li hidden> no es un lugar de la barra.
+      const lugares = await barra.locator("li:not([hidden])").count();
       expect(lugares, `${objetivo}: la barra tiene de 2 a 5 lugares`).toBeGreaterThanOrEqual(2);
       expect(lugares).toBeLessThanOrEqual(5);
       // Etiqueta de 12 px e icono de 22 px (Likida), y exactamente un destino activo con aria-current.
@@ -39,7 +40,7 @@ test.describe("marco y barra movil @movil", () => {
       const secciones = await enlacesMasMovil(page);
       expect(secciones.length, `${objetivo}: la hoja Más lista las secciones`).toBeGreaterThanOrEqual(3);
       const hrefsHoja = new Set(secciones.map((s) => s.href));
-      for (const href of await barra.locator("a").evaluateAll((as) => as.map((a) => a.getAttribute("href") ?? ""))) {
+      for (const href of await barra.locator("li:not([hidden]) a").evaluateAll((as) => as.map((a) => a.getAttribute("href") ?? ""))) {
         expect(hrefsHoja.has(href), `${objetivo}: el destino de la barra ${href} tambien esta en la hoja Más`).toBe(true);
       }
       const vistas = new Set<string>();

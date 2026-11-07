@@ -44,9 +44,9 @@ afterEach(() => {
   fetchBranchesMock.mockReset();
 });
 
-async function renderShell(): Promise<RenderedComponent> {
+async function renderShell(rol = "owner"): Promise<RenderedComponent> {
   installMatchMediaStub();
-  installMemoryLocalStorage().setItem("atiende.citas.session", JSON.stringify(SESSION));
+  installMemoryLocalStorage().setItem("atiende.citas.session", JSON.stringify({ ...SESSION, organizations: [{ ...SESSION.organizations[0], rol }] }));
   fetchBranchesMock.mockResolvedValue([{ propertyId: "prop-1", name: "Sucursal Centro" }]);
   const result = renderComponent(
     <MemoryRouter>
@@ -82,8 +82,10 @@ describe("CitasShell — nav móvil", () => {
   });
 
   // PR-4 (shell unico): antes eran 5 destinos fijos y Disponibilidad/Staff/Auditoría/Privacidad no se
-  // alcanzaban en móvil. Ahora la barra trae 4 destinos curados + "Más", que abre TODAS las secciones.
-  it("el BottomNav trae los 4 destinos operativos curados más 'Más', que lista todas las secciones (nunca más de 5 lugares)", async () => {
+  // alcanzaban en móvil. Ahora la barra trae 4 destinos curados + "Más", que abre TODAS las secciones; decisión de Omar 7-nov-2026:
+  // «Preguntar» es el 5.o destino fijo (solo ds3) cuando el rol tiene el chat de datos y el servidor lo confirma. Sin chat confirmado
+  // (este caso) la barra se queda en 4 + «Más».
+  it("el BottomNav trae los 4 destinos operativos curados más 'Más' (sin chat confirmado no hay «Preguntar»), y Más lista todas las secciones", async () => {
     rendered = await renderShell();
     const root = rendered.container;
     const bottomNav = root.querySelector('nav[aria-label="Navegación móvil"]')!;
@@ -91,6 +93,7 @@ describe("CitasShell — nav móvil", () => {
     expect(labels).toEqual(["Resumen", "Agenda", "Servicios", "Clientes"]);
     const mas = [...bottomNav.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Más")!;
     expect(bottomNav.querySelectorAll("a, button")).toHaveLength(5);
+    expect(bottomNav.querySelector('[data-testid="barra-preguntar"]')).toBeNull();
     click(mas);
     const hoja = document.body.querySelector('[role="dialog"]')!;
     expect([...hoja.querySelectorAll("a")].map((a) => a.textContent)).toEqual([
@@ -151,7 +154,23 @@ describe("CitasShell — nav móvil", () => {
     expect(desktopHeader!.parentElement!.className).toContain("md:block");
   });
 
-  it("el encabezado móvil va sin campana ni chat; el menú de cuenta conserva cerrar sesión (campana y chat viven en Más > Cuenta)", async () => {
+  // Decisión de Omar 7-nov-2026: con el chat confirmado, «Preguntar» es el 5.o destino fijo (4 + Preguntar + Más), solo-ds3; el staff
+  // (sin Copiloto de citas) no lo recibe.
+  it("con el asistente activo la barra trae 4 destinos + «Preguntar» (solo ds3, al Copiloto) + «Más»; el staff no lo ve", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => new Response(JSON.stringify(String(url).endsWith("/estado") ? { available: true, permitido: true, motivo: null, usoHoyPct: 0 } : {}), { status: 200, headers: { "content-type": "application/json" } })));
+    rendered = await renderShell();
+    const barra = rendered.container.querySelector('nav[aria-label="Navegación móvil"]')!;
+    const lugares = [...barra.querySelectorAll(":scope > ul > li")];
+    expect(lugares.map((li) => li.textContent?.trim())).toEqual(["Resumen", "Agenda", "Servicios", "Clientes", "Preguntar", "Más"]);
+    const preguntar = barra.querySelector<HTMLAnchorElement>('a[data-testid="barra-preguntar"]')!;
+    expect(preguntar.getAttribute("href")).toBe("/citas/demo/copiloto");
+    expect(preguntar.closest("li")!.hidden).toBe(true);
+    rendered.unmount();
+    rendered = await renderShell("staff");
+    expect(rendered.container.querySelector('nav[aria-label="Navegación móvil"] [data-testid="barra-preguntar"]')).toBeNull();
+  });
+
+  it("el encabezado móvil lleva la campana (decisión de Omar 7-nov-2026) y no el chat; el menú de cuenta conserva cerrar sesión", async () => {
     rendered = await renderShell();
     await cerrarSesionDesdeMenuMovil(rendered.container);
     expect(window.localStorage.getItem("atiende.citas.session")).toBeNull();
