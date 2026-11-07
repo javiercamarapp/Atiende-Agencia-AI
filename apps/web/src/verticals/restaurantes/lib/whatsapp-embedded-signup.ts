@@ -70,9 +70,14 @@ export function cargarSdkFacebook(appId: string, version: string): Promise<FbSdk
   });
 }
 
+/** Solo ventanas de Meta (https://facebook.com o un subdominio) pueden mandar el resultado del flujo. */
+export function esOrigenMeta(origin: string): boolean {
+  return /^https:\/\/([a-z0-9-]+\.)?facebook\.com$/.test(origin);
+}
+
 /** Mensaje `WA_EMBEDDED_SIGNUP` de la ventana de Meta: solo se acepta de un origen de facebook.com. */
 export function leerMensajeEmbeddedSignup(ev: { origin: string; data: unknown }): { wabaId: string; phoneNumberId: string } | "cancelado" | null {
-  if (!/^https:\/\/([a-z0-9-]+\.)?facebook\.com$/.test(ev.origin)) return null;
+  if (!esOrigenMeta(ev.origin)) return null;
   let d: unknown = ev.data;
   if (typeof d === "string") {
     try {
@@ -102,6 +107,8 @@ export async function correrEmbeddedSignup(cfg: { readonly appId: string; readon
       }
     };
     const oir = (ev: MessageEvent) => {
+      // Origen verificado aqui mismo (y otra vez en leerMensajeEmbeddedSignup): solo ventanas de Meta.
+      if (!/^https:\/\/([a-z0-9-]+\.)?facebook\.com$/.test(ev.origin)) return;
       const r = leerMensajeEmbeddedSignup(ev);
       if (r === "cancelado") {
         window.removeEventListener("message", oir);
