@@ -10,8 +10,8 @@
 // lo propio de citas: el adaptador de sesión, el mapa de navegación y el contexto
 // que reciben las páginas.
 import type { ReactNode } from "react";
-import { VerticalShellEstado, SelectorSucursal } from "@atiende/ui";
-import type { BottomNavItem, SidebarSection } from "@atiende/ui";
+import { VerticalShellEstado, SelectorSucursal, useT } from "@atiende/ui";
+import type { BottomNavItem, SidebarSection, Traductor } from "@atiende/ui";
 import {
   BellRing,
   Bot,
@@ -41,6 +41,9 @@ import type { BranchOption } from "./lib/admin-client.ts";
 import { persistPropertyId, readPersistedPropertyId } from "./lib/property-selection.ts";
 import { crearChatConexionCitas } from "./lib/data-chat-client.ts";
 import { COPILOTO_CITAS_ROLES } from "./pages/Copiloto.tsx";
+import { nav } from "@atiende/ui/i18n/nav";
+import { shell } from "@atiende/ui/i18n/shell";
+import { consola } from "@atiende/ui/i18n/consola";
 
 /** Adaptador de sesión de citas. DEBE ser una constante de módulo (el hook lo usa como dependencia de sus efectos). */
 const CITAS_SESSION: VerticalSessionAdapter<BranchOption> = {
@@ -91,55 +94,55 @@ export interface CitasShellProps {
  * de Likida (Negocio, Comunicación, Administrar) con "Resumen", "Agenda" y "Primeros pasos" como raíz sin título (agenda
  * operativa primero, como documenta README.md de este vertical). Mismos destinos y rutas que antes; ningún link se agrega ni se
  * quita. `to` construido con `orgSlug` porque `Sidebar` usa `NavLink` con rutas reales, no un callback de sección. */
-function buildSections(orgSlug: string, puedeCopiloto: boolean): SidebarSection[] {
+function buildSections(t: Traductor, orgSlug: string, puedeCopiloto: boolean): SidebarSection[] {
   const base = `/citas/${orgSlug}`;
   return [
     {
-      title: "Resumen",
+      title: t("nav.resumen"),
       siempreAbierto: true,
       items: [
         // C-05 -- panel Resumen (citas hoy/semana, por confirmar, no-shows, clientes nuevos).
-        { to: `${base}/resumen`, label: "Resumen", icon: LayoutDashboard },
+        { to: `${base}/resumen`, label: t("nav.resumen"), icon: LayoutDashboard },
         // CHAT-13 -- Copiloto ("Pregúntale a tus datos"): justo debajo de Resumen, solo para owner/admin (los unicos que el servidor deja usarlo).
-        ...(puedeCopiloto ? [{ to: `${base}/copiloto`, label: "Copiloto", icon: Sparkles }] : []),
-        { to: `${base}/agenda`, label: "Agenda", icon: CalendarCheck },
+        ...(puedeCopiloto ? [{ to: `${base}/copiloto`, label: t("nav.copiloto"), icon: Sparkles }] : []),
+        { to: `${base}/agenda`, label: t("nav.agenda"), icon: CalendarCheck },
         // C-16 -- centro de avisos: por confirmar, recordatorios agotados y escalaciones de crisis con seguimiento.
-        { to: `${base}/avisos`, label: "Avisos", icon: BellRing },
+        { to: `${base}/avisos`, label: t("nav.avisos"), icon: BellRing },
         // C-06 -- checklist de primeros pasos y panel "listo para recibir citas" (owner/admin; la página gatea por rol).
-        { to: `${base}/primeros-pasos`, label: "Primeros pasos", icon: ClipboardCheck },
+        { to: `${base}/primeros-pasos`, label: t("nav.primerosPasos"), icon: ClipboardCheck },
       ],
     },
     {
-      title: "Negocio",
+      title: t("nav.negocio"),
       items: [
-        { to: `${base}/proveedores`, label: "Proveedores", icon: UserRound },
-        { to: `${base}/servicios`, label: "Servicios", icon: Scissors },
-        { to: `${base}/clientes`, label: "Clientes", icon: Users },
-        { to: `${base}/disponibilidad`, label: "Disponibilidad", icon: CalendarRange },
+        { to: `${base}/proveedores`, label: t("nav.proveedores"), icon: UserRound },
+        { to: `${base}/servicios`, label: t("nav.servicios"), icon: Scissors },
+        { to: `${base}/clientes`, label: t("nav.cartera"), icon: Users },
+        { to: `${base}/disponibilidad`, label: t("nav.disponibilidad"), icon: CalendarRange },
       ],
     },
     {
-      title: "Comunicación",
+      title: t("nav.comunicacion"),
       items: [
         // C-11 -- bandeja de conversaciones de WhatsApp con handoff a humano (tomar / responder / devolver / cerrar).
-        { to: `${base}/conversaciones`, label: "Conversaciones", icon: MessageSquare },
+        { to: `${base}/conversaciones`, label: t("nav.conversaciones"), icon: MessageSquare },
         // C-04 -- agente y mensajes de WhatsApp editables (owner/admin; la página gatea por rol).
-        { to: `${base}/agente-whatsapp`, label: "Agente de WhatsApp", icon: Bot },
-        { to: `${base}/mensajes-whatsapp`, label: "Mensajes de WhatsApp", icon: MessageSquareText },
+        { to: `${base}/agente-whatsapp`, label: t("nav.agenteWhatsapp"), icon: Bot },
+        { to: `${base}/mensajes-whatsapp`, label: t("nav.mensajesWhatsapp"), icon: MessageSquareText },
       ],
     },
     {
-      title: "Administrar",
+      title: t("nav.administrar"),
       items: [
-        { to: `${base}/configuracion`, label: "Configuración", icon: Settings },
-        { to: `${base}/staff`, label: "Staff", icon: ShieldCheck },
+        { to: `${base}/configuracion`, label: t("nav.configuracion"), icon: Settings },
+        { to: `${base}/staff`, label: t("nav.staff"), icon: ShieldCheck },
         // FASE 3 (producto) — bitácora de auditoría del staff (ver
         // packages/domain-citas/migrations/023_citas_audit_log.sql). Solo
         // owner/admin la ven con datos reales -- `AuditoriaPage` misma gatea su
         // propio contenido por rol (mismo criterio que restaurantes/rentas).
-        { to: `${base}/auditoria`, label: "Auditoría", icon: ClipboardList },
+        { to: `${base}/auditoria`, label: t("nav.auditoria"), icon: ClipboardList },
         // C-02 -- solicitudes de derechos ARCO (owner/admin; la página gatea por rol).
-        { to: `${base}/privacidad`, label: "Privacidad", icon: Lock },
+        { to: `${base}/privacidad`, label: t("nav.privacidad"), icon: Lock },
       ],
     },
   ];
@@ -147,32 +150,33 @@ function buildSections(orgSlug: string, puedeCopiloto: boolean): SidebarSection[
 
 /** Barra inferior móvil: Resumen y los 3 destinos operativos más usados (etiquetas que caben en 1/5 de 375 px sin recortarse); el 5.º lugar es "Más" (lo agrega `VerticalShell`) y
  * lista TODAS las secciones, así Proveedores, Disponibilidad, Configuración, Staff, Auditoría y Privacidad también se alcanzan en móvil. */
-function buildMobileItems(orgSlug: string): BottomNavItem[] {
+function buildMobileItems(t: Traductor, orgSlug: string): BottomNavItem[] {
   const base = `/citas/${orgSlug}`;
   return [
-    { to: `${base}/resumen`, label: "Resumen", icon: LayoutDashboard },
-    { to: `${base}/agenda`, label: "Agenda", icon: CalendarCheck },
-    { to: `${base}/servicios`, label: "Servicios", icon: Scissors },
-    { to: `${base}/clientes`, label: "Clientes", icon: Users },
+    { to: `${base}/resumen`, label: t("nav.resumen"), icon: LayoutDashboard },
+    { to: `${base}/agenda`, label: t("nav.agenda"), icon: CalendarCheck },
+    { to: `${base}/servicios`, label: t("nav.servicios"), icon: Scissors },
+    { to: `${base}/clientes`, label: t("nav.cartera"), icon: Users },
   ];
 }
 
 export function CitasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: CitasShellProps) {
+  const t = useT(nav, shell, consola);
   const s = useVerticalSession({ adapter: CITAS_SESSION, apiBaseUrl, orgSlug, onRequireLogin });
 
-  if (s.fase === "resolviendo") return <VerticalShellEstado estado="cargando" mensaje="Cargando…" />;
+  if (s.fase === "resolviendo") return <VerticalShellEstado estado="cargando" mensaje={t("shell.cargando")} />;
   if (s.fase === "sin-sesion") return null; // onRequireLogin ya disparó la redirección
   if (s.fase === "error") return <VerticalShellEstado estado="error" mensaje={s.error ?? undefined} onReintentar={s.reintentar} />;
-  if (s.fase === "cargando") return <VerticalShellEstado estado="cargando" mensaje="Cargando sucursales…" />;
-  if (s.fase === "vacio") return <VerticalShellEstado estado="vacio" mensaje="Este negocio todavía no tiene ninguna sucursal configurada." />;
+  if (s.fase === "cargando") return <VerticalShellEstado estado="cargando" mensaje={t("consola.cargandoSucursales")} />;
+  if (s.fase === "vacio") return <VerticalShellEstado estado="vacio" mensaje={t("consola.vacio.sinSucursal")} />;
 
   const { session, branches, propertyId, orgId, role } = s;
-  const user = { email: session.email, rol: role, nombre: session.fullName, rolEtiqueta: etiquetaRol(role) };
+  const user = { email: session.email, rol: role, nombre: session.fullName, rolEtiqueta: etiquetaRol(role, t) };
 
   // Selector real, visible solo cuando hay más de una sucursal (si no, solo el nombre). Se ofrece en el bloque
   // de cuenta del Sidebar (escritorio) y en el MobileHeader, para no perder la función en viewport angosto.
   const branchSelector = (idSelect: string) =>
-    <SelectorSucursal id={idSelect} etiqueta="Sucursal activa" valor={propertyId} onCambia={s.selectBranch} opciones={branches.map((b) => ({ valor: b.propertyId, etiqueta: b.name }))} />;
+    <SelectorSucursal id={idSelect} etiqueta={t("consola.selector.sucursal")} valor={propertyId} onCambia={s.selectBranch} opciones={branches.map((b) => ({ valor: b.propertyId, etiqueta: b.name }))} />;
 
   return (
     <VerticalShellConectado
@@ -180,12 +184,12 @@ export function CitasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: Ci
       token={session.token}
       notificacionesHref={`/citas/${orgSlug}/notificaciones`}
       vertical="citas"
-      sections={buildSections(orgSlug, COPILOTO_CITAS_ROLES.has(role))}
-      mobileItems={buildMobileItems(orgSlug)}
+      sections={buildSections(t, orgSlug, COPILOTO_CITAS_ROLES.has(role))}
+      mobileItems={buildMobileItems(t, orgSlug)}
       user={user}
       onLogout={() => void s.logout()}
       loggingOut={s.loggingOut}
-      header={{ icon: <CalendarClock className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: `Citas · ${orgSlug}`, resumenTo: `/citas/${orgSlug}/resumen` }}
+      header={{ icon: <CalendarClock className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: t("consola.titulo", { vertical: t("consola.vertical.citas"), nombre: orgSlug }), resumenTo: `/citas/${orgSlug}/resumen` }}
       branchSelector={branchSelector("citas-sucursal-activa")}
       mobileSelector={branches.length > 1 ? branchSelector("citas-sucursal-activa-movil") : null}
       contentKey={propertyId}
