@@ -19,7 +19,7 @@ import {
   esVolumenTecleo,
 } from "@atiende/voice-core";
 import type { EstiloHabla, PresetAmbiente, RitmoHabla } from "@atiende/voice-core";
-import { MODELO_PREDETERMINADO_ID, esModeloAgentePermitido, modeloAgentePorId } from "./modelos.ts";
+import { MODELO_PREDETERMINADO_ID, esModeloAgentePermitido, esModeloVozZdr, modeloAgentePorId } from "./modelos.ts";
 
 export interface AjustesAgente {
   /** Modelo del agente de WhatsApp (id de la lista permitida). null = el de la plataforma. */
@@ -119,7 +119,7 @@ function campoRequerido(raw: AjustesEntrada, campo: keyof AjustesEntrada): unkno
 export function validarAjustesAgente(raw: AjustesEntrada, vigentes: AjustesAgente = AJUSTES_AGENTE_POR_DEFECTO): AjustesAgente {
   const whatsappModelo = nulable(campoRequerido(raw, "whatsappModelo"), esModeloAgentePermitido, "whatsappModelo: no esta en la lista de modelos permitidos.");
   const whatsappTemperatura = nulable(campoRequerido(raw, "whatsappTemperatura"), esTemperaturaVoz, `whatsappTemperatura: un numero entre ${TEMPERATURA_VOZ_MIN} y ${TEMPERATURA_VOZ_MAX}.`);
-  const vozModeloCascada = nulable(campoRequerido(raw, "vozModeloCascada"), esModeloAgentePermitido, "vozModeloCascada: no esta en la lista de modelos permitidos.");
+  const vozModeloCascada = nulable(campoRequerido(raw, "vozModeloCascada"), esModeloVozZdr, "vozModeloCascada: no esta en la lista de modelos de voz (con retencion cero).");
   const vozTemperatura = nulable(campoRequerido(raw, "vozTemperatura"), esTemperaturaVoz, `vozTemperatura: un numero entre ${TEMPERATURA_VOZ_MIN} y ${TEMPERATURA_VOZ_MAX}.`);
   const vozRitmo = campoRequerido(raw, "vozRitmo");
   if (!esRitmoHabla(vozRitmo)) throw new AjustesInvalidosError("vozRitmo: pausado, normal o agil.");

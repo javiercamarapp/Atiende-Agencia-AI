@@ -37,9 +37,12 @@ Se dice en voz natural, sin leer cifras largas. La pregunta de grabación es **o
 ```
 Hola, soy el asistente virtual de [[POR COMPLETAR: nombre comercial]]; soy una inteligencia artificial, no una persona.
 Sus datos los trata [[POR COMPLETAR: razón social]], domicilio [[POR COMPLETAR: domicilio, dicho en una frase corta]], para tomar y entregar su pedido.
+Su voz la procesa un proveedor externo para entenderle.
 El aviso de privacidad completo está en [[POR COMPLETAR: página o "la sucursal"]]. Para ejercer sus derechos sobre sus datos, escriba "mis datos personales" por WhatsApp o dígalo en la sucursal.
 ¿Autoriza que esta llamada se grabe y se transcriba para mejorar el servicio? Se guarda [[POR COMPLETAR: días]] días. Si dice que no, lo atiendo igual, sin grabar.
 ```
+
+La frase «Su voz la procesa un proveedor externo para entenderle» ya va en `voiceOpeningScript` (`VOICE_PROCESSOR_NOTICE`): el audio pasa por ElevenLabs aunque no se autorice grabar, y ElevenLabs puede conservarlo según su política (sección 6.1 del integral).
 
 Respuestas ya implementadas (no cambian): si autoriza, "Gracias, queda registrado"; si dice que no, "Sin problema: esta llamada no se graba"; si es ambiguo, **no se graba** (`interpretRecordingConsent`).
 

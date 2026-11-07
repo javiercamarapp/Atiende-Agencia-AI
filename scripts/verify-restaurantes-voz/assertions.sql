@@ -197,6 +197,46 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000d0011
 insert into restaurantes.branch_voice_config (property_id, organization_id, voice_id, comportamiento) values ('00000000-0000-0000-0000-0000000d00a1', '00000000-0000-0000-0000-0000000d0001', 'Puck', repeat('x', 8001));
 rollback;
 
+\echo '=== A17. POSITIVO (103): owner de A guarda la voz telefonica de ElevenLabs de A2 (GRANT por columna tts_voice_id) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000d0011', true);
+update restaurantes.branch_voice_config set tts_voice_id = '9Godp7dNohUvXk6qp0gS', updated_at = now() where property_id = '00000000-0000-0000-0000-0000000d00a2' returning property_id, tts_voice_id;
+rollback;
+
+\echo '=== A18. RECHAZADO (debe fallar) (103): CHECK de tts_voice_id -- solo un id de ElevenLabs (20 alfanumericos) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000d0011', true);
+update restaurantes.branch_voice_config set tts_voice_id = 'aura-2-estrella-es' where property_id = '00000000-0000-0000-0000-0000000d00a2' returning 1 as should_fail;
+rollback;
+
+\echo '=== A19. CROSS-TENANT (103): owner de B no cambia la voz telefonica de A2 (RLS filtra: 0 filas) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000d0014', true);
+with actualizado as (
+  update restaurantes.branch_voice_config set tts_voice_id = 'sDh3eviBhiuHKi0MjTNq' where property_id = '00000000-0000-0000-0000-0000000d00a2' returning property_id
+)
+select count(*)::int as filas_actualizadas_cross_tenant_deberia_ser_0 from actualizado;
+rollback;
+
+\echo '=== A20. ROL INSUFICIENTE (103): staff de A no cambia la voz telefonica (RLS filtra: 0 filas) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000d0013', true);
+with actualizado as (
+  update restaurantes.branch_voice_config set tts_voice_id = 'sDh3eviBhiuHKi0MjTNq' where property_id = '00000000-0000-0000-0000-0000000d00a2' returning property_id
+)
+select count(*)::int as filas_actualizadas_staff_deberia_ser_0 from actualizado;
+rollback;
+
+\echo '=== A21. RECHAZADO (debe fallar) (103): anon no escribe tts_voice_id ==='
+begin;
+set local role anon;
+update restaurantes.branch_voice_config set tts_voice_id = 'sDh3eviBhiuHKi0MjTNq' where property_id = '00000000-0000-0000-0000-0000000d00a2' returning 1 as should_fail;
+rollback;
+
 \echo '=== B1. POSITIVO: owner de A emite una sesion de preview (10 min) ==='
 begin;
 set local role authenticated;
