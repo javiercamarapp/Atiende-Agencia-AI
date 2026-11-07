@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- arnes de medicion local (QA), no codigo de produccion */
 import { chat } from "./llm.ts";
 import type { Stack } from "./stack.ts";
-import { PNID, setClock, T } from "./stack.ts";
+import { PNID, T } from "./stack.ts";
 
 export type Branch = "T1" | "T3" | "T7";
 export interface Turn { who: "cliente" | "agente"; text: string; ms?: number; status?: number; at?: number; tr?: number; proveedor?: string; ubicOriginal?: string } // R12b: at = reloj del arnes (ms) al enviar/recibir; tr = reloj real (ms) del fin del turno; proveedor = causa de telemetria (error_proveedor/presupuesto_agotado)
@@ -13,8 +13,8 @@ export interface Convo {
 /** R12b: reloj REAL (no el parchado de Date) para casar los turnos con la telemetria. */
 export const relojReal = () => performance.timeOrigin + performance.now();
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const phoneCtr = 0;
-export const newPhone = () => `521999${String(Math.floor(Math.random() * 9000000) + 1000000)}`; // 521 + 10 digitos, ficticio, aleatorio
+import { randomInt } from "node:crypto";
+export const newPhone = () => `521999${String(randomInt(1000000, 10000000))}`; // 521 + 10 digitos, ficticio, aleatorio
 
 /** Carga el estado de DB de un telefono despues de la conversacion. */
 export async function snapshot(s: Stack, phone: string) {

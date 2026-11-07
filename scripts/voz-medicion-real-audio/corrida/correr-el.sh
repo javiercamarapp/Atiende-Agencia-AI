@@ -16,7 +16,7 @@ bash "$D/con-presupuesto.sh" --solo-revisar || exit 4
 P=(psql -h localhost -p 55497 -U postgres -d postgres -q)
 "${P[@]}" -c "select pg_terminate_backend(pid) from pg_stat_activity where datname='pmreal' and pid<>pg_backend_pid()" >/dev/null
 "${P[@]}" -c "drop database if exists pmreal" -c "create database pmreal template pmreal_base"
-export OPENROUTER_API_KEY="$(tr -d '[:space:]' < ~/.atiende-secrets/OPENROUTER_API_KEY.txt)"
+for k in OPENROUTER_API_KEY DEEPGRAM_API_KEY ELEVENLABS_API_KEY LIVEKIT_URL LIVEKIT_API_KEY LIVEKIT_API_SECRET; do export "$k=$(tr -d '[:space:]' < ~/.atiende-secrets/$k.txt)"; done
 export VOZ_QA_DIR="$Q" VOZ_REP="$1" VOZ_FILTRO="$2" VOZ_ETQ="$3" VOZ_RES_DIR="$M/.voz-qa/results"
 export VOZA_STACK="${VOZA_STACK:-elevenlabs}" VOZA_RUIDO="${VOZA_RUIDO:-4}"
 export VOZA_CAMA_RESTAURANTE="${VOZA_CAMA_RESTAURANTE:-$HOME/atiende-loop/work/pm-cuenta-real/voz-stt-tts-nov/audio/noise_bed_restaurante_8k.wav}" VOZA_CAMA_COCINA_CALLE="${VOZA_CAMA_COCINA_CALLE:-$HOME/atiende-loop/work/pm-cuenta-real/voz-r2/noise_bed_cocina_calle_8k.wav}"

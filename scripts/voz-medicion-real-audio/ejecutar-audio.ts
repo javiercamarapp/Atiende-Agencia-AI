@@ -6,10 +6,9 @@
 // El resto (controlador, sesion de la cascada v2, LLM real por OpenRouter, herramientas HTTP, Postgres efimero, cliente-LLM, juez, checks) es identico al arnes de texto.
 //
 // Uso (ver README.md): VOZ_QA_DIR=<qa> OPENROUTER_API_KEY=... [VOZA_RUIDO=0|1|2|3] [VOZA_TOPE_USD=1] [VOZA_TOPE_AUDIO_S=1800] [VOZA_TOPE_LLAMADA_S=240] [VOZ_FILTRO=^P01$] vite-node -c ... ejecutar-audio.ts
-// La llave de Deepgram se lee de ~/.atiende-secrets/DEEPGRAM_API_KEY.txt (o VOZA_LLAVE_ARCHIVO); NUNCA se imprime ni se escribe en los resultados.
+// Las llaves llegan por variable de entorno (correr-audio.sh las exporta desde ~/.atiende-secrets); NUNCA se imprimen ni se escriben en los resultados.
 // Sale con codigo 3 si se corto por un tope (gasto de Deepgram, audio, OpenRouter): volver a lanzar con el mismo VOZ_REP continua donde se quedo.
 import { appendFileSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { DATOS_POR_OMISION, ESCENARIOS, RELOJES } from "../voz-medicion-real/escenarios.ts";
 import type { Chk, Escenario, Evento } from "../voz-medicion-real/escenarios.ts";
 import { cortarMensaje, rngDesdeSemilla } from "../voz-medicion-real/ruido-stt.ts";
@@ -50,12 +49,12 @@ const SNR_DB: Record<number, number | undefined> = { 2: 20, 3: 10 };
 const COLA_MS = Number(process.env.VOZA_COLA_MS ?? "1200");        // silencio tras la voz del cliente para que el endpointing cierre el turno
 const REACCION_MS = Number(process.env.VOZA_REACCION_MS ?? "350"); // pausa humana tras terminar de oir al agente
 const VOZ_CLIENTE = process.env.VOZA_VOZ_CLIENTE ?? "aura-2-javier-es"; // distinta de la del agente (aura-2-estrella-es)
-const llaveDg = (() => { try { return readFileSync(process.env.VOZA_LLAVE_ARCHIVO ?? `${homedir()}/.atiende-secrets/DEEPGRAM_API_KEY.txt`, "utf8").trim(); } catch { return ""; } })();
-if (!llaveDg) throw new Error("falta la llave de Deepgram (~/.atiende-secrets/DEEPGRAM_API_KEY.txt o VOZA_LLAVE_ARCHIVO)");
+const llaveDg = (process.env.DEEPGRAM_API_KEY ?? "").trim(); // la exporta correr-audio.sh (este proceso no lee archivos de llaves)
+if (!llaveDg) throw new Error("falta DEEPGRAM_API_KEY (correr con correr-audio.sh)");
 const CFG_DG = VOZ_PLATAFORMA.cascadaV2.deepgram;
 // STACK de PM (PR #719): ElevenLabs Scribe RT + v4 Turbo con Deepgram de respaldo. VOZA_STACK=deepgram mide el stack anterior.
 const STACK = process.env.VOZA_STACK ?? "elevenlabs";
-const llaveEl = (() => { try { return readFileSync(`${homedir()}/.atiende-secrets/ELEVENLABS_API_KEY.txt`, "utf8").trim(); } catch { return ""; } })();
+const llaveEl = (process.env.ELEVENLABS_API_KEY ?? "").trim();
 if (STACK === "elevenlabs" && !llaveEl) throw new Error("falta la llave de ElevenLabs");
 const CFG_EL = VOZ_PLATAFORMA.cascadaV2.elevenlabs;
 const dg = new GastoDeepgram(

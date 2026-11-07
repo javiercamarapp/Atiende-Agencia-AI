@@ -6,15 +6,16 @@
 // recibido por la red. Al final: checks deterministas contra la base + juez (los mismos del arnes de audio) y costo del worker por componente.
 // Solo medicion local: LiveKit acepta al llamante como participante ESTANDAR, asi que aqui (y solo aqui) se hace pasar por SIP para la deteccion del worker.
 // Uso: VOZ_QA_DIR=<qa> OPENROUTER_API_KEY=... VOZ_REP=1 [VOZ_FILTRO] [VOZA_RUIDO=0|1|4] [VOZA_SNR_DB=10] [VOZA_GRABAR_N] vite-node -c <qa>/vite-node.config.ts e2e-livekit.ts
+import { randomInt } from "node:crypto";
 import { appendFileSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { homedir, loadavg } from "node:os";
+import { loadavg } from "node:os";
 import { AccessToken } from "livekit-server-sdk";
 import * as rtc from "@livekit/rtc-node";
 import { DATOS_POR_OMISION, ESCENARIOS, RELOJES } from "../voz-medicion-real/escenarios.ts";
 import type { Chk, Escenario } from "../voz-medicion-real/escenarios.ts";
 import { rngDesdeSemilla } from "../voz-medicion-real/ruido-stt.ts";
 import { sintetizarCliente } from "./adaptadores.ts";
-import { HZ_CLIENTE, concatenar, recortarSilencios, silencio } from "./pcm.ts";
+import { concatenar, recortarSilencios, silencio } from "./pcm.ts";
 import { lineaTelefonica } from "./telefonia.ts";
 
 // El reloj del arnes (stack.ts) desplaza `Date` +N dias para los escenarios: los tokens de LiveKit (del llamante y del worker) se firman con la hora REAL.
@@ -38,7 +39,8 @@ for (const flujo of [process.stdout, process.stderr]) {
     return escribir(...a);
   };
 }
-const leer = (n: string) => readFileSync(`${homedir()}/.atiende-secrets/${n}.txt`, "utf8").trim();
+// Llaves por VARIABLE DE ENTORNO (las exporta corrida/correr-el.sh desde ~/.atiende-secrets): este proceso nunca lee archivos de llaves.
+const leer = (n: string): string => { const v = (process.env[n] ?? "").trim(); if (!v) throw new Error(`falta la variable ${n} (correr con corrida/correr-el.sh)`); return v; };
 const { startStack, setClock, PROP } = await import(`${QA}/stack.ts`);
 const { chat, gasto } = await import(`${QA}/llm.ts`);
 const { nextClientMsg } = await import(`${QA}/lib.ts`);
@@ -285,7 +287,7 @@ for (const e of ESCENARIOS) {
   if (FILTRO && !FILTRO.test(e.id)) continue;
   if (hechos.has(e.id)) continue;
   setClock(RELOJES[e.reloj]);
-  const phone = `521999${String(Math.floor(Math.random() * 9000000) + 1000000)}`; const ph10 = phone.slice(-10);
+  const phone = `521999${String(randomInt(1000000, 10000000))}`; const ph10 = phone.slice(-10);
   const ev0 = eventos.length; const rec: any = { id: e.id, titulo: e.titulo, rep: REP, ruido: NIVEL_RUIDO, snrDb: SNR_CAMA };
   const el0 = await creditosEl(); const cj0 = gasto.usd; const carga0 = loadavg()[0]!; const api0 = erroresApi; const tp0 = performance.now();
   let ll: any; try { ll = await correrLlamada(e, phone); } catch (x) { rec.excepcion = true; rec.infra = { motivo: "excepcion", erroresApi: erroresApi - api0 }; rec.veredicto = "FALLA"; rec.motivo = String((x as Error).message).slice(0, 300); results.push(rec); guardar(); console.log("EXCEPCION", e.id, rec.motivo); continue; }
