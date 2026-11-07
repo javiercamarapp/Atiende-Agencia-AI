@@ -76,5 +76,33 @@ export function adaptarPromptPmV2(prompt: string): string {
     .replace('No cree otro pedido ni cancele por su cuenta; al terminar pregunte "¿algo más?" antes de cerrar.', "No cree otro pedido ni cancele por su cuenta.")
     // Default del dueño: promociones con UNA sola fuente (POLÍTICAS DE LA CASA v2: no se ofrecen por iniciativa propia). Fuera la orden de ofrecerlas y la lista repetida en los datos.
     .replace(/10\. Si cotizar_pedido trae promociones_sugeridas, ofrézcalas UNA sola vez, ANTES del resumen; nunca después del "no, es todo" ni en el turno del "sí"\. /, "10. No ofrezca promociones por iniciativa propia (POLÍTICAS DE LA CASA); si el cliente pregunta, H3. ")
-    .replace(/\n- Promociones \(solo recoger\): [^\n]*/, "");
+    .replace(/\n- Promociones \(solo recoger\): [^\n]*/, "")
+    // ── Recorte del prompt base (7-nov): lo que el SERVIDOR ya hace cumplir con la bandera o POLÍTICAS v2 ya dice (una sola fuente). Lista antes/despues en el PR. ──
+    // R1: la alergia la decide el servidor (antes del modelo con aviso URGENTE y en crear_pedido con bloqueo + nota).
+    .replace(" Las alergias siguen escalando siempre (alergia_salud).", "")
+    .replace("tiempos de entrega fuera de lo normal, alergias. Todo eso se escala", "tiempos de entrega fuera de lo normal. Todo eso se escala")
+    // R2: la guardia del texto final quita «quedó registrado» sin pedido, el folio y «en cocina» del pedido por aprobar.
+    .replace(" Nunca diga que el pedido está registrado si crear_pedido no respondió con éxito.", "")
+    .replace(/\nH14\. Nunca invente un folio[^\n]*/, "")
+    // R3: propina (el servidor la descarta con v2) y transferencia (POLÍTICAS «Pago»; la ya hecha la escala el servidor).
+    .replace("NUNCA pregunte por la propina, ni con tarjeta ni con efectivo (ignore preguntar_propina). ", "")
+    .replace("Si el cliente la menciona: es voluntaria, se la da directo al repartidor y no se suma al total. ", "")
+    .replace("Transferencia: NO se acepta (no la escale): diga que solo se paga en efectivo o con tarjeta (se envía terminal) y siga con el pedido. ", "")
+    .replace(" La propina no se registra en el pedido (la sucursal tiene propina_politica «nunca»): no la mande en propina ni en propina_porcentaje.", "")
+    // R4: el servidor valida horario, programado_para y la hora de recoger (omision ahora+30, revalida 25 min); con la sucursal cerrada rige POLÍTICAS «Horarios».
+    .replace(/H16\. Horario: [^\n]*/, PM_H16_V2)
+    // R5: la guarda del pedido en la sesión rechaza un segundo crear_pedido como cambio y la cancelación la decide el servidor antes del modelo.
+    .replace(/13\. CAMBIOS DESPUÉS DE CONFIRMAR[^\n]*/, PM_PASO13_V2)
+    // R6: la línea de cancelar de los datos contradice POLÍTICAS v2; la frase de programado_para del paso 8 iba dos veces.
+    .replace("\n- Cancelar o cambiar un pedido ya hecho: lo confirma una persona; escale.", "")
+    .replace(' Nunca mande programado_para vacío ni para "en 20 minutos": para "paso en 20 minutos" use minutos_para_recoger: 20; programado_para es solo para otro día o para una hora exacta con más de 30 minutos de anticipación.', "")
+    // R7: pedido grande: el servidor lo marca al crear (y rechaza escalar_a_humano con pedido_grande: INSTRUCCION_PEDIDO_GRANDE_SOLO_SERVIDOR); POLÍTICAS v2 «Pedido grande».
+    .replace(/ Pedido grande \(.*?el aviso al gerente de la sucursal lo da el sistema al crear el pedido\./, "");
 }
+
+/** R4 del recorte: H16 corto (el servidor valida horario y horas; con la sucursal cerrada rige POLÍTICAS «Horarios»). */
+const PM_H16_V2 =
+  "H16. Horario: SOLO los datos de la sucursal (consultar_sucursal: abierto_ahora, cierra_a, horario; y el rechazo de cotizar_pedido o crear_pedido), nunca su memoria. No lo consulte por rutina: cotizar_pedido ya lo valida; llame consultar_sucursal solo si el cliente pregunta. Con la sucursal cerrada siga POLÍTICAS DE LA CASA («Horarios»); el servidor valida programado_para y la hora de recoger: si rechaza la hora, diga el motivo y ofrezca la que indique.";
+/** R5 del recorte: paso 13 remite a POLÍTICAS v2; se conserva el cambio de hora ANTES de crear (eso sí lo hace el modelo). */
+const PM_PASO13_V2 =
+  "13. CAMBIOS DESPUÉS DE CONFIRMAR: siga POLÍTICAS DE LA CASA («Cambiar o agregar algo a un pedido YA creado», «Otro pedido distinto dentro de los 90 minutos»); el servidor no crea un segundo pedido de la sesión y la cancelación la atiende el sistema. No dé minutos ni horas ni prometa que alcanza. CAMBIO DE HORA de recogida antes de crear el pedido: póngala en hora_recogida o minutos_para_recoger en cotizar_pedido y crear_pedido (no en notes), vuelva a cotizar y repítala en el resumen.";

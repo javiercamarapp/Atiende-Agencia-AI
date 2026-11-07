@@ -8,6 +8,7 @@
 //   R4. H16 largo: el servidor valida horario, programado_para y hora de recoger (y omite ahora+30 / revalida 25 min); queda lo que el modelo decide y POLÍTICAS «Horarios».
 //   R5. Paso 13 (cambios después de confirmar): la guarda del pedido en la sesión rechaza el segundo crear_pedido como cambio y la cancelación la decide el
 //       servidor antes del modelo; rige POLÍTICAS «Cambiar o agregar algo a un pedido YA creado» (antes se contradecían: escalar_a_humano vs registrar_contacto).
+//   R7. Paso 8, párrafo de pedido grande: el servidor lo marca al crear y rechaza escalar_a_humano con pedido_grande (POLÍTICAS «Pedido grande»).
 //   R6. Datos: «Cancelar o cambiar un pedido ya hecho: … escale» (contradice POLÍTICAS v2) y la frase repetida de programado_para del paso 8.
 import { describe, expect, it } from "vitest";
 import { adaptarPromptPmV2 } from "../src/whatsapp/cerebro-v2/prompt-v2.ts";
@@ -55,8 +56,14 @@ describe("prompt base recortado con cerebro v2", () => {
     expect(v2.split(frase).length - 1).toBe(1);
   });
 
-  it("el prompt v2 es al menos 4000 caracteres más corto", () => {
-    expect(base.length - v2.length).toBeGreaterThanOrEqual(4000);
+  it("R7: sin el párrafo de pedido grande del paso 8 (lo marca el servidor al crear y rechaza escalarlo)", () => {
+    expect(base).toContain("NO llame escalar_a_humano con motivo pedido_grande");
+    expect(v2).not.toContain("NO llame escalar_a_humano con motivo pedido_grande");
+    expect(v2).toContain("Una cantidad exagerada");
+  });
+
+  it("el prompt v2 es al menos 3800 caracteres más corto", () => {
+    expect(base.length - v2.length).toBeGreaterThanOrEqual(3800);
     // Visible en la salida de la prueba para la lista antes/después del PR.
     console.info(`[prompt-v2] base ${base.length} caracteres -> v2 ${v2.length} (${base.length - v2.length} menos)`);
   });
