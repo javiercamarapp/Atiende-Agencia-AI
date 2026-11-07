@@ -65,7 +65,7 @@ export function suscribirTemaSistema(): () => void {
 const RUTA_PRE_ORG = /^(login|restablecer-contrasena|registro)$/;
 
 /** Interruptor del login: la lista del <meta> (verticales separadas por coma, o "*") incluye la vertical de esta ruta pre-org. */
-export function loginConDiseno(ruta: string, lista: string | null | undefined): boolean {
+export function rutaPreOrgConDiseno(ruta: string, lista: string | null | undefined): boolean {
   const partes = ruta.split("/");
   if (partes.length !== 3 || !RUTA_PRE_ORG.test(partes[2] ?? "")) return false;
   const verticales = (lista ?? "").split(",");
@@ -86,7 +86,7 @@ export function aplicarBanderaDiseno(busqueda: string = window.location.search, 
   } catch {
     // Sin almacenamiento: solo vale el parametro de la URL de esta carga.
   }
-  if (valor !== "off" && loginConDiseno(ruta, document.querySelector(`meta[name="${META_DISENO_LOGIN}"]`)?.getAttribute("content"))) valor = VALOR_DISENO;
+  if (valor !== "off" && rutaPreOrgConDiseno(ruta, document.querySelector(`meta[name="${META_DISENO_LOGIN}"]`)?.getAttribute("content"))) valor = VALOR_DISENO;
   const encendida = valor === VALOR_DISENO;
   if (encendida) document.documentElement.dataset.diseno = VALOR_DISENO;
   return encendida;

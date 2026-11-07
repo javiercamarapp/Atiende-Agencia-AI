@@ -6,7 +6,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { aplicarBanderaDiseno, aplicarTema, leerTema, loginConDiseno, sincronizarDisenoOrganizacion, suscribirTemaSistema } from "../src/lib/tema";
+import { aplicarBanderaDiseno, aplicarTema, leerTema, rutaPreOrgConDiseno, sincronizarDisenoOrganizacion, suscribirTemaSistema } from "../src/lib/tema";
 
 // Ruta relativa a este archivo (funciona corriendo vitest desde la raiz o desde packages/ui).
 const RUTA_SCRIPT = join(__dirname, "../../../apps/web/public/theme-boot.js");
@@ -202,7 +202,7 @@ describe("/theme-boot.js", () => {
     window.history.replaceState(null, "", ruta);
     correrScript();
     expect(estado().diseno !== null).toBe(esperado);
-    expect(loginConDiseno(ruta, lista)).toBe(esperado);
+    expect(rutaPreOrgConDiseno(ruta, lista)).toBe(esperado);
     document.documentElement.removeAttribute("data-diseno");
     expect(aplicarBanderaDiseno("", ruta)).toBe(esperado);
   });
