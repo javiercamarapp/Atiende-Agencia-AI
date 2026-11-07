@@ -1,5 +1,5 @@
 // Cabecera y barra inferior moviles ds3 (decision de Omar 7-nov-2026, igual que Rovaq): la cabecera lleva logo + campana de 44 con
-// contador + menu de cuenta de 44, y la barra inferior es 4 destinos + «Preguntar» (chat de datos, solo para roles con acceso) + «Más».
+// contador + «Más» de 44 (el menu de cuenta se oculta con ds3), y la barra inferior es 4 destinos + «Preguntar» (chat de datos, solo para roles con acceso) + «Más».
 // Corre en los proyectos moviles del config ds3 (m390-claro, m360-oscuro; con DS3_MATRIZ=completa tambien m390-oscuro y m360-claro) y
 // SIEMPRE guarda una captura por consola en <DS3_SALIDA>/shell-movil/. Sin E2E_DISENO=ds3 verifica que la campana y «Preguntar» siguen
 // ocultos (el diseno actual no cambia). No usa la API real: corre contra el mock.
@@ -62,10 +62,12 @@ for (const caso of CASOS) {
       return;
     }
 
-    // Cabecera: logo a la izquierda; campana de 44 x 44 justo antes del menu de cuenta (44 x 44), todo en una fila de 56.
+    // Cabecera (Rovaq): logo a la izquierda; campana de 44 x 44 justo antes de «Más» (44 x 44), todo en una fila; el menu de cuenta
+    // del diseno actual queda oculto con ds3.
     await expect(campana).toBeVisible();
     await expect(campana).toHaveAttribute("aria-label", /^Notificaciones/);
-    const menu = cabecera.getByRole("button", { name: "Abrir menú de cuenta" });
+    const menu = cabecera.getByRole("button", { name: "Abrir más secciones" });
+    await expect(cabecera.getByRole("button", { name: "Abrir menú de cuenta" })).toBeHidden();
     const [cajaCampana, cajaMenu, ancho] = await Promise.all([campana.boundingBox(), menu.boundingBox(), page.evaluate(() => innerWidth)]);
     expect(cajaCampana && Math.round(cajaCampana.width)).toBe(44);
     expect(cajaCampana && Math.round(cajaCampana.height)).toBe(44);

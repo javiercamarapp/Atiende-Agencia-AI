@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 //
-// ds3 / paridad movil: la cabecera suma (oculto sin la bandera) un «Más» de 44 que abre la hoja con el sidebar completo (sin campana:
-// regla vigente del dueno, ver test-utils/menu-cuenta-movil.ts); el menu de cuenta del diseno actual queda envuelto para ocultarse con ds3. Solo AÑADE.
+// ds3 / paridad movil (igual que Rovaq): la cabecera suma (oculto sin la bandera) la campana con contador y un «Más» de 44 que abre la
+// hoja con el sidebar completo; el menu de cuenta del diseno actual queda envuelto para ocultarse con ds3. La campana es decision de Omar
+// 7-nov-2026 (reemplaza «encabezado movil sin campana», ver test-utils/menu-cuenta-movil.ts).
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { Bell, CalendarCheck, Users } from "lucide-react";
@@ -25,7 +26,7 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
-const render = (contador?: number) =>
+const render = (contador?: number, conCampana = false) =>
   renderComponent(
     <MemoryRouter initialEntries={["/v/demo"]}>
       <VerticalShell
@@ -36,6 +37,7 @@ const render = (contador?: number) =>
         onLogout={() => {}}
         header={{ icon: <span />, title: "Demo" }}
         sidebarPie={[{ label: "Notificaciones", to: "/v/demo/notificaciones", icon: Bell, indicador: (contador ?? 0) > 0, contador }]}
+        notificaciones={conCampana ? { to: "/v/demo/notificaciones", contador, hayNoLeidas: (contador ?? 0) > 0 } : undefined}
       >
         <p>contenido</p>
       </VerticalShell>
@@ -45,7 +47,13 @@ const render = (contador?: number) =>
 const cabecera = () => document.body.querySelector<HTMLElement>('[data-testid="mobile-header"]')!;
 
 describe("ds3 — cabecera movil: campana y «Más»", () => {
-  it("sin campana en la cabecera (regla vigente: las notificaciones con su contador viven en «Más»)", () => {
+  it("con `notificaciones` la campana (solo-ds3) va justo antes de «Más», con el contador real; sin la prop no hay campana", () => {
+    rendered = render(3, true);
+    const campana = cabecera().querySelector<HTMLAnchorElement>('a[data-testid="movil-campana"]')!;
+    expect(campana.hidden).toBe(true);
+    expect(campana.getAttribute("aria-label")).toBe("Notificaciones: 3 sin leer");
+    expect(campana.nextElementSibling?.classList.contains("ds3-movil-mas")).toBe(true);
+    rendered.unmount();
     rendered = render(3);
     expect(cabecera().querySelector('[aria-label^="Notificaciones"]')).toBeNull();
   });

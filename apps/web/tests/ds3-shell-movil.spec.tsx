@@ -100,7 +100,7 @@ describe("ds3 — hoja «Más» con el pie del sidebar", () => {
 
 // Decision de Omar 7-nov-2026 (igual que Rovaq; reemplaza «encabezado movil sin campana» y la barra fija en 4 + «Más»).
 describe("ds3 — campana en la cabecera movil y «Preguntar» como 5.o destino", () => {
-  it("la cabecera lleva la campana de 44 (enlace a notificaciones, contador real, 99+) entre el selector y el menu de cuenta; oculta sin la bandera", () => {
+  it("la cabecera lleva la campana de 44 (enlace a notificaciones, contador real, 99+) entre el selector y «Más»; oculta sin la bandera", () => {
     rendered = renderShell(() => {}, "/v/demo/configuracion", { notificaciones: { to: "/v/demo/notificaciones", contador: 3, hayNoLeidas: true } });
     const fila = q(".ds3-movil-cabecera-fila")!;
     const campana = q('a[data-testid="movil-campana"]', fila) as HTMLAnchorElement;
@@ -110,8 +110,8 @@ describe("ds3 — campana en la cabecera movil y «Preguntar» como 5.o destino"
     expect(campana.classList.contains("ds3-solo")).toBe(true);
     expect(campana.classList.contains("ds3-movil-campana")).toBe(true);
     expect(q('[data-testid="movil-campana-contador"]', campana)!.textContent).toBe("3");
-    // Orden: campana justo antes del menu de cuenta.
-    expect(campana.nextElementSibling?.getAttribute("aria-label")).toBe("Abrir menú de cuenta");
+    // Orden (Rovaq): campana justo antes de «Más» de la cabecera; el menu de cuenta del diseno actual va despues, oculto con ds3.
+    expect(campana.nextElementSibling?.getAttribute("aria-label")).toBe("Abrir más secciones");
     expect(fila.textContent).not.toContain("Pregúntale a tus datos");
     rendered.unmount();
     rendered = renderShell(() => {}, "/v/demo/configuracion", { notificaciones: { to: "/v/demo/notificaciones", contador: 150, hayNoLeidas: true } });
