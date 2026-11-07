@@ -16,6 +16,8 @@ beforeAll(() => cargarIdioma("en"));
 beforeEach(() => {
   installMatchMediaStub();
   installMemoryLocalStorage();
+  // El idioma solo cambia con el diseno ds3 (el unico con selector ES/EN).
+  document.documentElement.dataset.diseno = "ds3";
 });
 afterEach(() => {
   r?.unmount();

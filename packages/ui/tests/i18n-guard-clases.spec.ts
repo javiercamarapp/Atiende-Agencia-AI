@@ -8,6 +8,8 @@ describe("detector: clases y marca", () => {
     expect(esListaDeClases("mt-0.5 text-xs")).toBe(true);
     expect(esListaDeClases("Sin datos aún")).toBe(false);
     expect(esListaDeClases("ver ficha")).toBe(false);
+    expect(esListaDeClases("whitespace-nowrap text-xs font-semibold uppercase tracking-wide")).toBe(true);
+    expect(esListaDeClases("sin cambio vs periodo-anterior")).toBe(false);
   });
 
   it("no cuenta clases en una prop visible ni la marca", () => {
