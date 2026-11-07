@@ -209,6 +209,10 @@ const MUSE_SPARK: LlmRungConfig = { model: "meta/muse-spark-1.3", reasoningEffor
 const SONNET_MEDIUM: LlmRungConfig = { model: "anthropic/claude-sonnet-5.5", reasoningEffort: "medium", temperature: "omit", minMaxTokens: 3000, supportsStructuredOutput: true };
 const QWEN_235B: LlmRungConfig = { model: "qwen/qwen3-235b-a22b-2507", temperature: "omit", minMaxTokens: 3000, supportsStructuredOutput: true };
 const GEMINI_38_FLASH: LlmRungConfig = { model: "google/gemini-3.8-flash", reasoningEffort: "low", temperature: "omit", minMaxTokens: 4000, supportsStructuredOutput: true };
+/** Cerebro v2 (6-nov-2026): respaldo de Luna en el WhatsApp de PM y modelo preciso alterno de la voz. Temperatura omitida (como Sonnet 5.5). */
+const HAIKU_55: LlmRungConfig = { model: "anthropic/claude-haiku-5.5", temperature: "omit", minMaxTokens: 1500, supportsStructuredOutput: true };
+/** Cerebro v2 de voz: el modelo rapido de los turnos de voz. */
+const FLASH_LITE_35: LlmRungConfig = { model: "google/gemini-3.5-flash-lite", temperature: "omit", minMaxTokens: 1000, supportsStructuredOutput: true };
 
 /** Escalon para un modelo ELEGIDO por una organizacion de restaurantes (lista permitida `MODELOS_AGENTE` de domain-restaurantes): los mismos
  *  parametros de razonamiento/tokens que el escalon por defecto del modelo, pero con la temperatura HABILITADA solo si el modelo la admite
@@ -221,6 +225,8 @@ const BASE_RUNG_MODELO_AGENTE: Readonly<Record<string, LlmRungConfig>> = {
   [MUSE_SPARK.model]: MUSE_SPARK,
   [GEMINI_38_FLASH.model]: GEMINI_38_FLASH,
   [SONNET_MEDIUM.model]: SONNET_MEDIUM,
+  [HAIKU_55.model]: HAIKU_55,
+  [FLASH_LITE_35.model]: FLASH_LITE_35,
 };
 
 export function rungParaModeloAgente(modeloId: string): LlmRungConfig | undefined {
@@ -302,6 +308,36 @@ export const DEFAULT_ROLE_ROUTES: Readonly<Record<string, LlmRouteConfig>> = {
 };
 
 export const DEFAULT_ROUTE: LlmRouteConfig = ECONOMICO;
+
+/**
+ * Cerebro v2 (bandera por organizacion, migracion 190): modelos con endpoint de RETENCION CERO verificado en https://openrouter.ai/api/v1/endpoints/zdr
+ * (6-nov-2026) dentro de los proveedores de EE.UU. permitidos. Las llamadas con `zdrEstricto` solo usan escalones de esta lista y siempre con `provider.zdr: true`.
+ * Gemini 2.5 Flash-Lite y Muse Spark NO tienen endpoint ZDR: quedan fuera de la escalera v2.
+ */
+export const MODELOS_CON_ZDR_VERIFICADO: ReadonlySet<string> = new Set([
+  "openai/gpt-6-luna", // Azure (us)
+  "anthropic/claude-haiku-5.5", // Google Vertex (us/global) y Amazon Bedrock (us-east-1)
+  "google/gemini-3.5-flash-lite", // Google Vertex (us/global)
+  "google/gemini-3.8-flash",
+  "anthropic/claude-sonnet-5.5",
+  ...Object.entries(VERIFIED_MODEL_HOSTS).filter(([, v]) => v.zdr && v.hosts.length > 0).map(([m]) => m),
+]);
+
+/** Escalera v2 del agente de WhatsApp de restaurantes: Luna -> Haiku 5.5, ambas con ZDR. */
+export const CEREBRO_V2_WHATSAPP_ROUTE: LlmRouteConfig = { models: [LUNA_LOW, HAIKU_55], routing: { allowFallbacks: true, zdr: true } };
+/** Alternativas ZDR elegibles por `preferredModel` dentro del cerebro v2 (el rapido de voz y Haiku de primario). */
+export const CEREBRO_V2_ALTERNATIVAS: readonly LlmRungConfig[] = [FLASH_LITE_35, HAIKU_55, LUNA_LOW];
+
+/**
+ * Escalera ZDR de un rol para el cerebro v2: la ruta vigente del rol (defaults o LLM_MODELS_JSON) SIN los escalones que no tienen endpoint ZDR, con Haiku 5.5
+ * al final si no estaba (el respaldo decidido). Asi el escalado conserva la decision vigente del monorrepo y solo se le quita lo que no cumple retencion cero.
+ * El rol por defecto del agente usa `CEREBRO_V2_WHATSAPP_ROUTE` tal cual.
+ */
+export function rutaZdrCerebroV2(route: LlmRouteConfig): LlmRouteConfig {
+  const conZdr = route.models.filter((r) => MODELOS_CON_ZDR_VERIFICADO.has(r.model));
+  const models = conZdr.some((r) => r.model === HAIKU_55.model) ? conZdr : [...conZdr, HAIKU_55];
+  return { ...route, models, routing: { ...(route.routing ?? {}), zdr: true } };
+}
 
 /** Retadores SOLO para el arnes de evals (MOD-07/08). Apagados: nada en produccion los lee. */
 export const EVAL_CHALLENGERS: readonly (LlmRungConfig & { readonly enabled: false; readonly note: string })[] = [

@@ -62,7 +62,7 @@ import { emitirNotificacion } from "@atiende/db";
 import { ProductionLlmUsageRecorder, ProductionOrgMonthlyBudgetStore, ProductionRoleDailyTurnStore } from "./llm-usage-gateway-adapters.ts";
 import { RESUMEN_DIARIO_LLM_ROLE } from "../resumen-diario/redaccion.ts";
 import type { ApiEnv } from "../env.ts";
-import { COMPACTACION_HISTORIAL_ROLE, COMPUERTA_ESCALAMIENTO_ROLE, DATA_CHAT_RETRY_SUFFIX, ENRUTADOR_TURNO_ROLE, NEW_PLATFORM_LLM_ROLES, REPORTE_ANALISIS_FINANCIERO_ROLE, REPORTE_ANALISIS_GENERAL_ROLE, REPORTE_REDACCION_FINANCIERO_ROLE, REPORTE_REDACCION_GENERAL_ROLE, RESTAURANTES_TRANSCRIPCION_ROLE, TITULOS_RESUMENES_ROLE, parseLlmModelsJson, resolveRoleRoute, routingForModel, rungsDeModelosAgente, SUPERADMIN_COPILOTO_ROLE, type LlmModelsConfig } from "./llm-models.ts";
+import { COMPACTACION_HISTORIAL_ROLE, COMPUERTA_ESCALAMIENTO_ROLE, DATA_CHAT_RETRY_SUFFIX, ENRUTADOR_TURNO_ROLE, NEW_PLATFORM_LLM_ROLES, REPORTE_ANALISIS_FINANCIERO_ROLE, REPORTE_ANALISIS_GENERAL_ROLE, REPORTE_REDACCION_FINANCIERO_ROLE, REPORTE_REDACCION_GENERAL_ROLE, RESTAURANTES_TRANSCRIPCION_ROLE, TITULOS_RESUMENES_ROLE, CEREBRO_V2_ALTERNATIVAS, CEREBRO_V2_WHATSAPP_ROUTE, rutaZdrCerebroV2, parseLlmModelsJson, resolveRoleRoute, routingForModel, rungsDeModelosAgente, SUPERADMIN_COPILOTO_ROLE, type LlmModelsConfig, type LlmRouteConfig, type LlmRungConfig } from "./llm-models.ts";
 
 export const RESTAURANTES_WHATSAPP_AGENT_ROLE = "restaurantes:whatsapp_agent";
 export const RESTAURANTES_WHATSAPP_AGENT_ESCALATED_ROLE = "restaurantes:whatsapp_agent_escalated";
@@ -240,6 +240,37 @@ function hasAnyProvider(env: ApiEnv): boolean {
   return Boolean(env.llmProviders.openrouter || env.llmProviders.openai);
 }
 
+/** Proveedor OpenRouter de un escalon con la politica de siempre (EE.UU., `data_collection: deny`, `require_parameters`) y el `zdr` de la ruta. */
+function proveedorOpenRouter(env: ApiEnv, openrouter: NonNullable<ApiEnv["llmProviders"]["openrouter"]>, route: LlmRouteConfig, rung: LlmRungConfig): LlmProvider {
+  return new OpenRouterProvider({
+    id: `openrouter:${rung.model}`,
+    apiKey: openrouter.apiKey,
+    model: rung.model,
+    params: rung,
+    routing: routingForModel(route, rung.model, openrouter.zdr),
+    countryOfResidence: openrouter.countryOfResidence ?? undefined,
+    appUrl: env.appBaseUrl,
+    appName: OPENROUTER_APP_NAME,
+  });
+}
+
+/**
+ * Escaleras de RETENCION CERO del cerebro v2 por rol del agente de WhatsApp de restaurantes: el rol por defecto usa Luna -> Haiku 5.5; el escalado conserva su
+ * ruta vigente (defaults o LLM_MODELS_JSON) sin los escalones que no tienen endpoint ZDR, con Haiku al final. Todas las rutas llevan `zdr: true`, que
+ * `routingForModel` traslada a `provider.zdr`. Sin llave de OpenRouter: ninguna (la llamada v2 falla cerrada).
+ */
+export function buildCerebroV2ZdrLadders(env: ApiEnv, models: LlmModelsConfig): Map<string, { ladder: LlmProvider[]; alternativas: LlmProvider[] }> {
+  const salida = new Map<string, { ladder: LlmProvider[]; alternativas: LlmProvider[] }>();
+  const { openrouter } = env.llmProviders;
+  if (!openrouter) return salida;
+  const alternativasRoute: LlmRouteConfig = { models: [...CEREBRO_V2_ALTERNATIVAS], routing: { allowFallbacks: true, zdr: true } };
+  const alternativas = CEREBRO_V2_ALTERNATIVAS.map((rung) => proveedorOpenRouter(env, openrouter, alternativasRoute, rung));
+  salida.set(RESTAURANTES_WHATSAPP_AGENT_ROLE, { ladder: CEREBRO_V2_WHATSAPP_ROUTE.models.map((rung) => proveedorOpenRouter(env, openrouter, CEREBRO_V2_WHATSAPP_ROUTE, rung)), alternativas });
+  const escalada = rutaZdrCerebroV2(resolveRoleRoute(RESTAURANTES_WHATSAPP_AGENT_ESCALATED_ROLE, models));
+  salida.set(RESTAURANTES_WHATSAPP_AGENT_ESCALATED_ROLE, { ladder: escalada.models.map((rung) => proveedorOpenRouter(env, openrouter, escalada, rung)), alternativas: [] });
+  return salida;
+}
+
 /** Modelos que una organizacion de restaurantes puede ELEGIR para un rol (lista permitida de domain-restaurantes). Se registran como alternativas del
  *  rol (`LlmGateway.registerAlternatives`): no entran a la escalera por defecto y pasan por la MISMA politica de proveedores de EE.UU. (`routingForModel`),
  *  con el mismo id de escalon (`openrouter:<modelo>`) para compartir el circuit breaker. Sin llave de OpenRouter no hay alternativas (el legado de un
@@ -304,6 +335,9 @@ export function buildProductionLlmGateway(env: ApiEnv, engine: TenancyEngine, ki
   // Modelo elegido por la organizacion para el agente de WhatsApp de restaurantes (ajustes del agente): alternativas del MISMO rol, asi el interruptor
   // de plataforma, el tope y el registro de uso siguen siendo los del rol.
   gateway.registerAlternatives(RESTAURANTES_WHATSAPP_AGENT_ROLE, buildAgentModelAlternatives(env, RESTAURANTES_WHATSAPP_AGENT_ROLE, models));
+  // Cerebro v2 (bandera por organizacion, migracion 190): escaleras con retencion cero para las llamadas con `zdrEstricto`. Sin OpenRouter no se registran y la
+  // llamada v2 falla cerrada (el turno responde con el texto de falla del proveedor), nunca cae a un proveedor sin ZDR.
+  for (const [role, ladder] of buildCerebroV2ZdrLadders(env, models)) gateway.registerZdrLadder(role, ladder.ladder, ladder.alternativas);
 
   return gateway;
 }

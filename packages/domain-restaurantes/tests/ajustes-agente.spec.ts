@@ -41,6 +41,9 @@ describe("lista permitida de modelos", () => {
       "meta/muse-spark-1.3": true,
       "google/gemini-3.8-flash": true,
       "anthropic/claude-sonnet-5.5": false,
+      // Cerebro v2 (6-nov-2026): temperatura omitida hasta verificarla en sus endpoints ZDR.
+      "anthropic/claude-haiku-5.5": false,
+      "google/gemini-3.5-flash-lite": false,
     });
   });
 });
