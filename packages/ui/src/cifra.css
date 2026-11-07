@@ -139,12 +139,18 @@ html[data-diseno="ds3"] .ds3-resumen [data-parte="kpis"] > * {
 html[data-diseno="ds3"] .ds3-resumen [data-parte="kpis"] > :nth-child(4n + 2) { --kpi-color: var(--chart-2); }
 html[data-diseno="ds3"] .ds3-resumen [data-parte="kpis"] > :nth-child(4n + 3) { --kpi-color: var(--chart-3); }
 html[data-diseno="ds3"] .ds3-resumen [data-parte="kpis"] > :nth-child(4n + 4) { --kpi-color: var(--chart-4); }
-html[data-diseno="ds3"] .ds3-resumen [data-parte="kpis"] .ds3-stat {
+/* La celda puede ser la tarjeta misma (StatCard directo) o un envoltorio (enlace, div) con la tarjeta dentro. */
+html[data-diseno="ds3"] .ds3-resumen [data-parte="kpis"] > * .ds3-stat {
   height: 100%;
   border: 0;
   border-radius: 0;
   background-color: transparent;
   box-shadow: none;
+  padding: 17px 14px 14px;
+}
+html[data-diseno="ds3"] .ds3-resumen [data-parte="kpis"] > .ds3-stat {
+  border-width: 1px 0 0 1px;
+  border-radius: 0;
   padding: 17px 14px 14px;
 }
 html[data-diseno="ds3"] .ds3-resumen [data-parte="kpis"] :is(.ds3-stat-chip, .ds3-kpi-chip) { display: none; }
