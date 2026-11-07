@@ -15,7 +15,7 @@ import { flushSync } from "react-dom";
 import { Link, useLocation } from "react-router-dom";
 import { CircleHelp, Compass, ShieldCheck } from "lucide-react";
 import { AtiendeWordmark } from "./AtiendeLogo";
-import { BottomNav, MobileHeader, type BottomNavItem } from "./BottomNav";
+import { BottomNav, CampanaMovil, MobileHeader, type BottomNavItem, type CampanaMovilProps } from "./BottomNav";
 import { BarraPagina } from "./BarraPagina";
 import { EstadoCargando } from "./EstadoCargando";
 import { EstadoError } from "./EstadoError";
@@ -258,6 +258,16 @@ export interface VerticalShellProps {
    * `GUIA_ABRIR_EVENTO` en `window`. Sin la bandera ds3 el boton existe oculto.
    */
   readonly onGuia?: () => void;
+  /**
+   * ds3 (decision de Omar 7-nov-2026): campana con contador en la cabecera movil, enlace a la pagina de notificaciones. Sin la bandera
+   * existe oculta (las notificaciones siguen en la pildora del pie / hoja «Más»).
+   */
+  readonly notificaciones?: CampanaMovilProps;
+  /**
+   * ds3 (decision de Omar 7-nov-2026): ruta del chat de datos («Pregúntale a tus datos») como destino fijo de la barra inferior movil,
+   * entre los destinos curados y «Más». Solo para roles con acceso; sin ella no se pinta. Sin la bandera existe oculto.
+   */
+  readonly preguntarHref?: string;
   readonly children: React.ReactNode;
 }
 
@@ -278,6 +288,8 @@ export function VerticalShell({
   organizacion,
   adminHref,
   onGuia,
+  notificaciones,
+  preguntarHref,
   children,
 }: VerticalShellProps) {
   const pie: SidebarPiePildora[] | undefined = adminHref
@@ -340,8 +352,9 @@ export function VerticalShell({
         title={<AtiendeWordmark className="scale-90 origin-left" />}
         pagina={{ icon: iconoBarra, title: tituloBarra, comoH1: sinH1 }}
         action={
-          <div className="flex items-center gap-1 min-w-0">
+          <div className="ds3-movil-acciones flex items-center gap-1 min-w-0">
             {mobileSelector ? <div className="min-w-0 max-w-[48vw]">{mobileSelector}</div> : null}
+            {notificaciones ? <CampanaMovil {...notificaciones} /> : null}
             <MobileAccountMenu user={user} onLogout={onLogout} loggingOut={loggingOut} />
           </div>
         }
@@ -388,7 +401,13 @@ export function VerticalShell({
 
       {panelLateral}
 
-      <BottomNav items={mobileItems} moreSections={sections} pie={pie} cuenta={{ user, onLogout, loggingOut }} />
+      <BottomNav
+        items={mobileItems}
+        moreSections={sections}
+        pie={pie}
+        cuenta={{ user, onLogout, loggingOut }}
+        preguntar={preguntarHref ? { to: preguntarHref } : undefined}
+      />
     </div>
   );
 }

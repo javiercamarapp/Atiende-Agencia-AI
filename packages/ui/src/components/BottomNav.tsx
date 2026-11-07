@@ -1,6 +1,6 @@
 import { useEffect, useState, type ComponentType, type ReactNode } from "react";
 import { NavLink, useLocation } from "react-router-dom";
-import { Ellipsis, LogOut } from "lucide-react";
+import { Bell, Ellipsis, LogOut, MessageCircle } from "lucide-react";
 import { cn } from "../lib/utils";
 import type { SidebarPiePildora, SidebarSection, SidebarUser } from "./Sidebar";
 import { SelectorIdioma } from "./SelectorIdioma";
@@ -39,6 +39,11 @@ export interface BottomNavProps {
    * Sin la bandera ese bloque existe oculto (la cuenta sigue en el menu de cuenta de la cabecera).
    */
   cuenta?: { user: SidebarUser | null; onLogout: () => void; loggingOut?: boolean };
+  /**
+   * ds3 (decision de Omar 7-nov-2026): «Preguntar» (Pregúntale a tus datos) es un destino fijo de la barra, entre los destinos curados
+   * y «Más». Solo se pasa a roles que pueden usar el chat de datos; sin la bandera el destino existe oculto (la barra sigue en 4 + «Más»).
+   */
+  preguntar?: { to: string };
 }
 
 /**
@@ -69,7 +74,7 @@ export function useTecladoAbierto(): void {
   }, []);
 }
 
-/** Maximo de destinos curados de la barra; el 5.o lugar es "Mas" (spec UNI-1 §5.2). */
+/** Maximo de destinos curados de la barra; despues van «Preguntar» (solo ds3, si el rol tiene chat de datos) y "Mas" (spec UNI-1 §5.2). */
 export const BOTTOM_NAV_MAX_DESTINOS = 4;
 
 function rutaCoincide(pathname: string, to: string, end?: boolean): boolean {
@@ -88,7 +93,7 @@ const claseTituloGrupo = "mb-1.5 px-2.5 py-1 font-mono text-2xs uppercase tracki
  * (el mismo arbol del Sidebar de escritorio, sin curar destinos a ojo). El estado activo es color +
  * negrita + `aria-current="page"`, nunca color solo. z-40: queda bajo los overlays (z-50) y el skip link (z-60).
  */
-export function BottomNav({ items, moreSections, pie, cuenta }: BottomNavProps) {
+export function BottomNav({ items, moreSections, pie, cuenta, preguntar }: BottomNavProps) {
   const [masAbierto, setMasAbierto] = useState(false);
   useTecladoAbierto();
   const { pathname } = useLocation();
@@ -124,6 +129,18 @@ export function BottomNav({ items, moreSections, pie, cuenta }: BottomNavProps) 
             </NavLink>
           </li>
         ))}
+        {preguntar && (
+          <li hidden className="ds3-solo ds3-barra-preguntar min-w-0 flex-1">
+            <NavLink to={preguntar.to} data-testid="barra-preguntar" className={({ isActive }) => cn("ds3-barra-destino", claseDestino, isActive ? "text-primary" : "text-muted-foreground")}>
+              {({ isActive }) => (
+                <>
+                  <MessageCircle aria-hidden="true" className="size-[22px]" strokeWidth={isActive ? 2.25 : 1.75} />
+                  <span className={cn("max-w-full truncate px-1 text-xs", isActive ? "font-semibold" : "font-medium")}>Preguntar</span>
+                </>
+              )}
+            </NavLink>
+          </li>
+        )}
         {hayMas && (
           <li className="min-w-0 flex-1">
             <button
@@ -133,7 +150,7 @@ export function BottomNav({ items, moreSections, pie, cuenta }: BottomNavProps) 
               aria-expanded={masAbierto}
               aria-label={masConAvisos ? "Más, con avisos sin leer" : undefined}
               data-activo={masActivo ? "" : undefined}
-              className={cn("ds3-barra-destino w-full", claseDestino, masActivo ? "text-primary" : "text-muted-foreground")}
+              className={cn("ds3-barra-destino ds3-barra-mas w-full", claseDestino, masActivo ? "text-primary" : "text-muted-foreground")}
             >
               <Ellipsis aria-hidden="true" className="size-[22px]" strokeWidth={masActivo ? 2.25 : 1.75} />
               <span className={cn("max-w-full truncate px-1 text-xs", masActivo ? "font-semibold" : "font-medium")}>Más</span>
@@ -261,6 +278,42 @@ function PildoraCuenta({ pildora, onNavegar }: { pildora: SidebarPiePildora; onN
     >
       {contenido}
     </button>
+  );
+}
+
+export interface CampanaMovilProps {
+  /** Pagina de notificaciones de la consola. */
+  readonly to: string;
+  /** Conteo real de sin leer; nunca inventar un numero (omitir si no hay dato). */
+  readonly contador?: number;
+  /** Hay avisos sin leer pero no se conoce el numero: punto sin cifra. */
+  readonly hayNoLeidas?: boolean;
+}
+
+/**
+ * ds3 (decision de Omar 7-nov-2026, reemplaza «encabezado movil sin campana»): campana de 44 x 44 en la cabecera movil, entre el
+ * selector y el menu de cuenta, con contador de sin leer. Enlace a la pagina de notificaciones. Sin la bandera existe oculta.
+ */
+export function CampanaMovil({ to, contador, hayNoLeidas = false }: CampanaMovilProps) {
+  const n = typeof contador === "number" && contador > 0 ? contador : 0;
+  const etiqueta = n > 0 ? `Notificaciones: ${n} sin leer` : hayNoLeidas ? "Notificaciones: hay avisos sin leer" : "Notificaciones";
+  return (
+    <NavLink
+      hidden
+      to={to}
+      aria-label={etiqueta}
+      data-testid="movil-campana"
+      className="ds3-solo ds3-movil-campana relative h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border bg-card text-foreground"
+    >
+      <Bell aria-hidden="true" className="size-5" strokeWidth={1.75} />
+      {n > 0 ? (
+        <span aria-hidden="true" data-testid="movil-campana-contador" className="ds3-movil-campana-contador">
+          {n > 99 ? "99+" : n}
+        </span>
+      ) : hayNoLeidas ? (
+        <span aria-hidden="true" data-testid="movil-campana-punto" className="ds3-movil-campana-punto" />
+      ) : null}
+    </NavLink>
   );
 }
 

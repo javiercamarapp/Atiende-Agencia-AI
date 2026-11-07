@@ -81,7 +81,7 @@ export { PageContainer, type PageContainerProps } from "./components/PageContain
 export { Callout, CALLOUT_TONES, type CalloutProps, type CalloutTone } from "./components/Callout.js";
 export { Sidebar, categoriaDeRuta, type SidebarItem, type SidebarSection, type SidebarProps, type SidebarPiePildora, type SidebarUser } from "./components/Sidebar.js";
 export { MobileAccountMenu, type MobileAccountMenuProps } from "./components/MobileAccountMenu.js";
-export { BottomNav, BOTTOM_NAV_MAX_DESTINOS, MobileHeader, type BottomNavItem, type BottomNavProps, type MobileHeaderTitulo } from "./components/BottomNav.js";
+export { BottomNav, BOTTOM_NAV_MAX_DESTINOS, CampanaMovil, MobileHeader, type BottomNavItem, type BottomNavProps, type CampanaMovilProps, type MobileHeaderTitulo } from "./components/BottomNav.js";
 export {
   VerticalShell,
   VerticalShellEstado,
