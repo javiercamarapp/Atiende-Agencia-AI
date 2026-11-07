@@ -28,8 +28,8 @@
 .login-ds3 .ld3-columna { display: flex; flex-direction: column; min-height: 100vh; min-height: 100dvh; min-width: 0; padding: 28px 24px; }
 .login-ds3 .ld3-interior { display: flex; flex: 1; flex-direction: column; width: 100%; max-width: 530px; margin: 0 auto; }
 .login-ds3 .ld3-marca { display: flex; align-items: center; justify-content: space-between; gap: 24px; min-height: 32px; }
-.login-ds3 .ld3-idiomas { display: flex; align-items: center; gap: 12px; font-size: 13px; }
-.login-ds3 .ld3-idiomas button { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0; border: 0; background: transparent; color: var(--ld3-tenue); font: inherit; cursor: pointer; }
+.login-ds3 .ld3-idiomas { display: flex; align-items: center; gap: 0; font-size: 13px; }
+.login-ds3 .ld3-idiomas button { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; padding: 0; border: 0; background: transparent; color: var(--ld3-tenue); font: inherit; cursor: pointer; }
 .login-ds3 .ld3-idiomas button[aria-current] { color: var(--ld3-tinta); }
 .login-ds3 .ld3-idiomas span { color: var(--ld3-borde); }
 
@@ -58,12 +58,13 @@
 .login-ds3 .login-btn:focus-visible { outline: 2px solid var(--ld3-acento); outline-offset: 2px; }
 .login-ds3 .login-campo {
   width: 100%; min-width: 0; min-height: 44px; padding: 10px 16px;
-  border: 1px solid var(--ld3-borde); border-radius: 12px;
+  /* Borde con --input (>= 3:1, WCAG 1.4.11): el gris claro de Rovaq (1,16:1) no se distingue del fondo. */
+  border: 1px solid hsl(var(--input)); border-radius: 12px;
   background: var(--ld3-superficie); color: var(--ld3-tinta);
   font: 500 14px/1.4 var(--ld3-sans);
 }
 .login-ds3 .login-campo::placeholder { color: var(--ld3-tenue); }
-.login-ds3 .login-campo:focus-visible { outline: 2px solid var(--ld3-acento); outline-offset: 2px; border-color: var(--ld3-borde); box-shadow: 0 0 0 4px color-mix(in srgb, var(--ld3-acento) 12%, transparent); }
+.login-ds3 .login-campo:focus-visible { outline: 2px solid var(--ld3-acento); outline-offset: 2px; border-color: hsl(var(--input)); box-shadow: 0 0 0 4px color-mix(in srgb, var(--ld3-acento) 12%, transparent); }
 /* Gesto de Rovaq: el simbolo aparece dentro del boton de correo al pasar el cursor o al enfocarlo. */
 .login-ds3 .login-glifo { display: inline-flex; align-items: center; justify-content: center; width: 0; height: auto; max-height: 18px; margin-right: 0; overflow: hidden; opacity: 0; transform: none; }
 .login-ds3 .login-btn:is(:hover, :focus-visible, [aria-busy="true"]) .login-glifo { width: 44px; opacity: 1; }
@@ -137,7 +138,8 @@
 @media (max-width: 1023px) {
   .login-ds3 .ld3-copia { padding: 40px 0 24px; }
   .login-ds3 .login-campo { font-size: 16px; } /* iOS no hace zoom con 16 px */
-  .login-ds3 .ld3-idiomas button { min-width: 32px; }
+  /* En tactil, los enlaces de texto llegan a 44 px de alto (area de toque). */
+  .login-ds3 .ld3-enlace, .login-ds3 .ld3-ayuda summary { min-height: 44px; }
 }
 @media (max-width: 380px) {
   .login-ds3 .ld3-columna { padding: 20px; }
