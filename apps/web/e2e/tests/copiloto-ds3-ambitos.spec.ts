@@ -83,7 +83,7 @@ test.describe("copiloto ds3 en todos los ámbitos @copiloto @ds3", () => {
       await expect(hilo.getByText(a.respuesta)).toBeVisible();
       await expect.poll(async () => (await mock.buscar({ metodo: "POST", ruta: a.post })).length).toBe(1);
 
-      await hilo.getByRole("button", { name: "Cómo se calculó" }).first().click();
+      await hilo.getByRole("button", { name: "Ver cómo lo calculé" }).first().click();
       const calculo = page.getByRole("dialog", { name: /Cómo se calculó/ });
       await expect(calculo).toBeVisible();
       await expect(calculo.getByText(a.fuente)).toBeVisible();
