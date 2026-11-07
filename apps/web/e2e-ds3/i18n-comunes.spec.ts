@@ -11,7 +11,7 @@ import { esperarSinCarga, prepararBandera } from "./comun.ts";
 const CONSOLAS = [...VERTICALES, "superadmin"] as const;
 const SALIDA = process.env["DS3_SALIDA"] ?? "test-results-ds3/evidencia";
 /** Frases exactas de los componentes comunes en espanol (no del contenido de la pagina). */
-const COMUNES_ES = /Mostrando \d+–\d+ de|Página \d+ de \d+|Sin registros|No hay registros que mostrar|No se pudo cargar la información|Rango de fechas|Migas de pan|Seleccionar todas/;
+const COMUNES_ES = /Mostrando \d+–\d+ de|Página \d+ de \d+|Sin registros|No hay registros que mostrar|No se pudo cargar la información|Migas de pan|Seleccionar todas/;
 const MAX_PANTALLAS = 4;
 
 test.beforeEach(async ({ page }) => {
