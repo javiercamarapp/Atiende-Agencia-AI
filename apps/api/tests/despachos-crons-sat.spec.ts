@@ -281,7 +281,7 @@ describe(`POST ${CRON_VENC}`, () => {
     expect(cron.escalamientos.filter((e) => e.deadlineId === id)).toHaveLength(1);
     const proximos = emisiones.filter((e) => e.evento === "despachos.fiscal.vencimiento_proximo");
     expect(proximos).toHaveLength(1);
-    expect(proximos[0]).toMatchObject({ propertyId: ctx.propertyId, cuerpo: "Por vencer hoy o mañana: 1.", dedupeKey: `despachos.fiscal.vencimiento_proximo:${ctx.propertyId}:2026-11-17`, roles: ["contador"], enlace: "/despachos/{orgSlug}/vencimientos" });
+    expect(proximos[0]).toMatchObject({ propertyId: ctx.propertyId, cuerpo: "Por vencer en 7 días hábiles o menos: 1.", dedupeKey: `despachos.fiscal.vencimiento_proximo:${ctx.propertyId}:2026-11-17`, roles: ["contador"], enlace: "/despachos/{orgSlug}/vencimientos" });
 
     const b = (await (await app.request(CRON_VENC, SECRETO(ctx))).json()) as { escalados: number; ya_escalados: number };
     expect(b.escalados).toBe(0);
@@ -320,6 +320,95 @@ describe(`POST ${CRON_VENC}`, () => {
     expect(body.ok).toBe(false);
     expect(body.failures.map((f) => f.property_id)).toEqual([ctx.propertyId]);
     expect(body.creados).toBeGreaterThan(0);
+  });
+
+  // ---- D-P3-33 (brief paridad3-despachos-fiscal-correcciones): 7/3/1 dias habiles, relleno del periodo anterior y correo con dedupe diario ----
+  it("D-P3-33: avisa por dias HABILES (7 -> nivel_1, 3 -> nivel_2, 1 -> nivel_3) y encola el correo al staff owner/admin", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const { app, cron, emisiones } = conCliente();
+    cron.sembrarDestinatario(ctx.organizationId, "owner@despacho.test");
+    cron.sembrarCliente({ organizationId: ctx.organizationId, propertyId: ctx.propertyId, regimenes: ["601"], zonaHoraria: "America/Mexico_City" }, "Cliente Uno SA de CV");
+    // 2026-10-20 (martes): vencimiento el viernes 2026-10-30 = 8 dias habiles; el 21 (miercoles) = 7.
+    const { id } = await cron.upsertVencimientoSistema(ctx.propertyId, { tipo: "ISR", periodo: "2026-09", fechaLimite: "2026-10-30", prioridad: "baja" });
+    const correr = async (iso: string) => {
+      vi.setSystemTime(new Date(`${iso}T18:00:00Z`));
+      return (await (await app.request(CRON_VENC, SECRETO(ctx))).json()) as { escalados: number; correos_encolados: number };
+    };
+    expect((await correr("2026-10-20")).escalados).toBe(0);
+    const siete = await correr("2026-10-21");
+    expect(siete.escalados).toBeGreaterThanOrEqual(1);
+    expect(cron.escalamientos.filter((e) => e.deadlineId === id).map((e) => e.nivel)).toEqual(["nivel_1"]);
+    expect(siete.correos_encolados).toBeGreaterThanOrEqual(1);
+    const correo = cron.correos.find((c) => c.dedupeKey.startsWith(`escalation:${id}:nivel_1:2026-10-21:`))!;
+    expect(correo).toMatchObject({ to: "owner@despacho.test", evento: "vencimiento.escalado" });
+    expect(correo.subject).toContain("Cliente Uno SA de CV");
+    expect(correo.subject).toContain("Faltan 7 día(s) hábil(es)");
+    await correr("2026-10-27"); // 3 habiles
+    await correr("2026-10-29"); // 1 habil
+    expect(cron.escalamientos.filter((e) => e.deadlineId === id).map((e) => e.nivel)).toEqual(["nivel_1", "nivel_2", "nivel_3"]);
+    expect(emisiones.filter((e) => e.evento === "despachos.fiscal.vencimiento_proximo").length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("D-P3-33: dedupe diario del correo: repetir la corrida el mismo dia no encola otro; sin destinatarios no encola nada", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const { app, cron } = conCliente();
+    const { id } = await cron.upsertVencimientoSistema(ctx.propertyId, { tipo: "IVA", periodo: "2026-09", fechaLimite: "2026-10-30", prioridad: "baja" });
+    vi.setSystemTime(new Date("2026-10-29T18:00:00Z")); // 1 dia habil
+    await app.request(CRON_VENC, SECRETO(ctx));
+    expect(cron.correos).toHaveLength(0); // aun sin destinatarios (organizacion sin owner/admin)
+    cron.sembrarDestinatario(ctx.organizationId, "admin@despacho.test");
+    await app.request(CRON_VENC, SECRETO(ctx));
+    await app.request(CRON_VENC, SECRETO(ctx));
+    // El escalamiento ya estaba registrado en la primera corrida: la segunda y tercera no escalan ni encolan.
+    expect(cron.escalamientos.filter((e) => e.deadlineId === id)).toHaveLength(1);
+    expect(cron.correos).toHaveLength(0);
+  });
+
+  it("D-P3-33: un correo suprimido o con el outbox ausente (base sin migrar) no tumba el barrido ni el escalamiento", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const { app, cron } = conCliente();
+    cron.sembrarDestinatario(ctx.organizationId, "owner@despacho.test");
+    cron.disponible024 = false;
+    const { id } = await cron.upsertVencimientoSistema(ctx.propertyId, { tipo: "IVA", periodo: "2026-09", fechaLimite: "2026-10-30", prioridad: "baja" });
+    vi.setSystemTime(new Date("2026-10-29T18:00:00Z"));
+    const body = (await (await app.request(CRON_VENC, SECRETO(ctx))).json()) as { ok: boolean; escalados: number; omitidos: number };
+    expect(body.ok).toBe(true);
+    expect(cron.escalamientos.filter((e) => e.deadlineId === id)).toHaveLength(1);
+    expect(cron.correos).toHaveLength(0);
+    expect(body.omitidos).toBeGreaterThan(0); // los tipos de la 024 no se crearon: lo dice, no lo finge
+  });
+
+  it("D-P3-33: rellena el periodo ANTERIOR solo si el cliente ya corria y ese periodo no se genero", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-05T18:00:00Z"));
+    const { app, cron } = conCliente();
+    // El cliente corrio en agosto (2026-08) pero el cron no genero septiembre (2026-09): hueco real.
+    cron.sembrarVencimiento({ propertyId: ctx.propertyId, tipo: "ISR", periodo: "2026-08", fechaLimite: "2026-09-17", estado: "completado" });
+    const body = (await (await app.request(CRON_VENC, SECRETO(ctx))).json()) as { rellenados: number; creados: number };
+    expect(body.rellenados).toBeGreaterThan(0);
+    const periodos = new Set(cron.vencimientosDe(ctx.propertyId).map((v) => v.periodo));
+    expect([...periodos].sort()).toEqual(["2026-08", "2026-09", "2026-10"]);
+    const segunda = (await (await app.request(CRON_VENC, SECRETO(ctx))).json()) as { rellenados: number; creados: number };
+    expect(segunda).toMatchObject({ rellenados: 0, creados: 0 });
+  });
+
+  it("D-P3-33: un cliente recien dado de alta (sin historial) NO recibe el periodo anterior (no inventa vencidos)", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-05T18:00:00Z"));
+    const { app, cron } = conCliente();
+    const body = (await (await app.request(CRON_VENC, SECRETO(ctx))).json()) as { rellenados: number };
+    expect(body.rellenados).toBe(0);
+    expect(new Set(cron.vencimientosDe(ctx.propertyId).map((v) => v.periodo))).toEqual(new Set(["2026-10"]));
+  });
+
+  it("D-P3-33: si el periodo anterior ya existe no se vuelve a generar", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-05T18:00:00Z"));
+    const { app, cron } = conCliente();
+    cron.sembrarVencimiento({ propertyId: ctx.propertyId, tipo: "ISR", periodo: "2026-09", fechaLimite: "2026-10-19" });
+    const body = (await (await app.request(CRON_VENC, SECRETO(ctx))).json()) as { rellenados: number };
+    expect(body.rellenados).toBe(0);
+    expect(new Set(cron.vencimientosDe(ctx.propertyId).map((v) => v.periodo))).toEqual(new Set(["2026-09", "2026-10"]));
   });
 
   it("REGLA DURA: base sin la migracion 022 -> status no_disponible (200)", async () => {

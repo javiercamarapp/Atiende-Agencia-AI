@@ -88,7 +88,7 @@ describe('parseCfdiXml — camino feliz (CFDI 4.0, un concepto, IVA trasladado 1
     expect(r.total).toBe(1160);
     expect(r.descuento).toBe(0);
     expect(r.iva).toBe(160);
-    expect(r.conceptos).toEqual([{ cantidad: 1, valorUnitario: 1000, importe: 1000 }]);
+    expect(r.conceptos).toEqual([{ cantidad: 1, valorUnitario: 1000, importe: 1000, traslados: [{ impuesto: '002', tipoFactor: 'Tasa', tasaOCuota: 0.16, base: 1000, importe: 160 }] }]);
     expect(r.usoCfdi).toBe('G03');
     expect(r.formaPago).toBe('03');
     expect(r.metodoPago).toBe('PUE');
@@ -103,6 +103,38 @@ describe('parseCfdiXml — camino feliz (CFDI 4.0, un concepto, IVA trasladado 1
     expect(r.retencionIsr).toBeNull();
     expect(r.retencionIva).toBeNull();
     expect(r.ieps).toBeNull();
+    expect(r.impuestosLocalesTraslados).toBeNull();
+    expect(r.impuestosLocalesRetenciones).toBeNull();
+    expect(r.regimenFiscalReceptor).toBe('616');
+  });
+
+  it('D-P3-01: lee implocal:ImpuestosLocales (TotaldeTraslados / TotaldeRetenciones) del complemento', () => {
+    const xml = cfdiXml({
+      complementoXml: `<cfdi:Complemento>
+        <implocal:ImpuestosLocales xmlns:implocal="http://www.sat.gob.mx/implocal" version="1.0" TotaldeRetenciones="12.50" TotaldeTraslados="60.00">
+          <implocal:TrasladosLocales ImpLocTrasladado="ISH" TasadeTraslado="3.00" Importe="60.00"/>
+        </implocal:ImpuestosLocales>
+        <tfd:TimbreFiscalDigital xmlns:tfd="http://www.sat.gob.mx/TimbreFiscalDigital" Version="1.1" UUID="11111111-2222-3333-4444-555555555555" FechaTimbrado="2026-07-01T10:05:00" SelloCFD="abc" NoCertificadoSAT="def" SelloSAT="ghi"/>
+      </cfdi:Complemento>`,
+    });
+    const r = parseCfdiXml(xml);
+    expect(r.impuestosLocalesTraslados).toBe(60);
+    expect(r.impuestosLocalesRetenciones).toBe(12.5);
+  });
+
+  it('D-P3-01: lee el IEPS (003) trasladado por cuota a nivel comprobante', () => {
+    const r = parseCfdiXml(
+      cfdiXml({
+        impuestosComprobanteXml: `<cfdi:Impuestos TotalImpuestosTrasladados="777.00">
+          <cfdi:Traslados>
+            <cfdi:Traslado Base="100.00" Impuesto="003" TipoFactor="Cuota" TasaOCuota="6.170000" Importe="617.00"/>
+            <cfdi:Traslado Base="1000.00" Impuesto="002" TipoFactor="Tasa" TasaOCuota="0.160000" Importe="160.00"/>
+          </cfdi:Traslados>
+        </cfdi:Impuestos>`,
+      }),
+    );
+    expect(r.ieps).toBe(617);
+    expect(r.iva).toBe(160);
   });
 
   it('varios conceptos: cada uno se extrae en orden, y el IVA global sigue viniendo del nodo Impuestos a nivel comprobante', () => {
@@ -121,8 +153,8 @@ describe('parseCfdiXml — camino feliz (CFDI 4.0, un concepto, IVA trasladado 1
     });
     const r = parseCfdiXml(xml);
     expect(r.conceptos).toEqual([
-      { cantidad: 1, valorUnitario: 1000, importe: 1000 },
-      { cantidad: 2, valorUnitario: 250, importe: 500 },
+      { cantidad: 1, valorUnitario: 1000, importe: 1000, traslados: [] },
+      { cantidad: 2, valorUnitario: 250, importe: 500, traslados: [] },
     ]);
     expect(r.iva).toBe(240);
   });

@@ -1,9 +1,10 @@
 import { isMigrationPendingError, runWithSavepointFallback } from "@atiende/db";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import type { EstadoSatCfdi } from "../cfdi/modelo-cfdi.ts";
-import type { NivelEscalamiento } from "../vencimientos/engine.ts";
+import { TIPOS_VENCIMIENTO_BASE } from "../vencimientos/engine.ts";
+import type { NivelEscalamiento, TipoVencimiento } from "../vencimientos/engine.ts";
 import { CronSatNoDisponibleError } from "./types.ts";
-import type { CfdiPendienteEstatusSat, ClienteFichaSistema, CronSatRepository, EfosAfectadoSistema, RegistroEstatusSat, VencimientoPorEscalar } from "./types.ts";
+import type { CfdiPendienteEstatusSat, ClienteFichaSistema, CronSatRepository, DestinatarioAvisoSistema, EfosAfectadoSistema, RegistroEstatusSat, VencimientoPorEscalar } from "./types.ts";
 
 const FN_PREFIX = "despachos.system_";
 
@@ -71,10 +72,20 @@ export class PostgresCronSatRepository implements CronSatRepository {
     );
   }
 
-  upsertVencimientoSistema(propertyId: string, nuevo: { readonly tipo: string; readonly periodo: string; readonly fechaLimite: string; readonly prioridad: string }): Promise<{ readonly id: string; readonly creado: boolean }> {
-    return this.escritura("sp_cron_vencimiento_upsert", async () => {
+  upsertVencimientoSistema(propertyId: string, nuevo: { readonly tipo: string; readonly periodo: string; readonly fechaLimite: string; readonly prioridad: string }): Promise<{ readonly id: string; readonly creado: boolean; readonly omitido?: boolean }> {
+    const insertar = (): Promise<{ id: string; creado: boolean; omitido?: boolean }> => this.escritura("sp_cron_vencimiento_upsert", async () => {
       const { rows } = await this.db.query<{ out_deadline_id: string; out_creado: boolean }>("select * from despachos.system_vencimiento_upsert($1, $2, $3, $4::date, $5);", [propertyId, nuevo.tipo, nuevo.periodo, nuevo.fechaLimite, nuevo.prioridad]);
-      return { id: rows[0]!.out_deadline_id, creado: rows[0]!.out_creado };
+      return { id: rows[0]!.out_deadline_id, creado: rows[0]!.out_creado } as { id: string; creado: boolean; omitido?: boolean };
+    });
+    if (TIPOS_VENCIMIENTO_BASE.includes(nuevo.tipo as TipoVencimiento)) return insertar();
+    // Un tipo que el CHECK de la base aun no admite (23514, falta la migracion 019/024) NO debe tumbar la transaccion del cliente: el
+    // intento corre en un SAVEPOINT propio, se omite y el resto de las obligaciones del cliente sigue.
+    return runWithSavepointFallback<{ id: string; creado: boolean; omitido?: boolean }>({
+      session: this.db,
+      savepointName: "sp_cron_vencimiento_tipo_nuevo",
+      primary: () => insertar(),
+      isRecoverable: (err) => Boolean(err && typeof err === "object" && (err as { code?: unknown }).code === "23514"),
+      fallback: async () => ({ id: "", creado: false, omitido: true }),
     });
   }
 
@@ -89,6 +100,39 @@ export class PostgresCronSatRepository implements CronSatRepository {
     return this.escritura("sp_cron_vencimiento_escalar", async () => {
       const { rows } = await this.db.query<{ r: boolean }>("select despachos.system_vencimiento_escalar($1, $2, $3) as r;", [deadlineId, nivel, notas]);
       return rows[0]?.r === true;
+    });
+  }
+
+  listarPeriodosVencimientosSistema(propertyId: string): Promise<readonly string[] | null> {
+    return this.lectura<{ out_periodo: string }, readonly string[]>("sp_cron_vencimientos_periodos", "select * from despachos.system_vencimientos_periodos($1);", [propertyId], (rows) => rows.map((r) => r.out_periodo));
+  }
+
+  async nombreClienteSistema(propertyId: string): Promise<string | null> {
+    const r = await this.lectura<{ nombre: string | null }, string | null>("sp_cron_cliente_nombre", "select despachos.system_cliente_nombre($1) as nombre;", [propertyId], (rows) => rows[0]?.nombre ?? null);
+    return r ?? null;
+  }
+
+  async listarDestinatariosAvisoSistema(organizationId: string): Promise<readonly DestinatarioAvisoSistema[]> {
+    const r = await runWithSavepointFallback<readonly DestinatarioAvisoSistema[]>({
+      session: this.db,
+      savepointName: "sp_cron_destinatarios_aviso",
+      primary: async () => (await this.db.query<{ email: string }>("select email from despachos.organization_notification_recipients($1);", [organizationId])).rows.map((x) => ({ email: x.email })),
+      isRecoverable: (err) => isMigrationPendingError(err, "despachos.organization_notification_recipients"),
+      fallback: async () => [],
+    });
+    return r;
+  }
+
+  encolarCorreoSistema(organizationId: string, evento: string, dedupeKey: string, payload: { readonly to: string; readonly subject: string; readonly html: string; readonly text: string }): Promise<boolean> {
+    return runWithSavepointFallback<boolean>({
+      session: this.db,
+      savepointName: "sp_cron_encolar_correo",
+      primary: async () => {
+        await this.db.query("select despachos.enqueue_messaging_outbox($1, 'email', $2, $3, $4::jsonb);", [organizationId, evento, dedupeKey, JSON.stringify(payload)]);
+        return true;
+      },
+      isRecoverable: (err) => isMigrationPendingError(err, "despachos.enqueue_messaging_outbox"),
+      fallback: async () => false,
     });
   }
 }

@@ -58,6 +58,11 @@ export interface VencimientoPorEscalar {
   readonly nivelMax: NivelEscalamiento | null;
 }
 
+/** Destinatario de un aviso interno (staff owner/admin de la organización). */
+export interface DestinatarioAvisoSistema {
+  readonly email: string;
+}
+
 export interface CronSatRepository {
   /** CFDI por verificar ante el SAT, los mas antiguos primero (`null` = base sin migrar). */
   listarCfdiPendientesEstatusSat(limite: number, reintentoDias: number): Promise<readonly CfdiPendienteEstatusSat[] | null>;
@@ -68,8 +73,16 @@ export interface CronSatRepository {
   /** Clientes (properties activas) con ficha de cliente (`null` = sin migrar). */
   listarClientesFichaSistema(limite: number): Promise<readonly ClienteFichaSistema[] | null>;
   /** Crea (o corrige, si sigue pendiente) un vencimiento. Idempotente. */
-  upsertVencimientoSistema(propertyId: string, nuevo: Pick<NuevoVencimiento, "tipo" | "periodo" | "fechaLimite" | "prioridad">): Promise<{ readonly id: string; readonly creado: boolean }>;
+  upsertVencimientoSistema(propertyId: string, nuevo: Pick<NuevoVencimiento, "tipo" | "periodo" | "fechaLimite" | "prioridad">): Promise<{ readonly id: string; readonly creado: boolean; /** true = la base aun no admite ese tipo (CHECK sin la migracion 019/024): no se creo, el resto del cliente sigue. */ readonly omitido?: boolean }>;
   listarVencimientosPorEscalarSistema(propertyId: string, hoy: string): Promise<readonly VencimientoPorEscalar[]>;
   /** false = no hizo nada (completado, o ya tenia ese nivel o uno mayor). */
   escalarVencimientoSistema(deadlineId: string, nivel: NivelEscalamiento, notas: string): Promise<boolean>;
+  /** D-P3-33: periodos 'YYYY-MM' que ya tienen algun vencimiento en la property (`null` = base sin la migracion 024). Sirve para rellenar el periodo anterior solo en clientes que ya corrian. */
+  listarPeriodosVencimientosSistema(propertyId: string): Promise<readonly string[] | null>;
+  /** D-P3-33: razon social del cliente para el asunto del correo interno (`null` = sin ficha o base sin la 024). */
+  nombreClienteSistema(propertyId: string): Promise<string | null>;
+  /** D-P3-33: staff owner/admin de la organizacion (funcion de la migracion 007; `[]` si la base no la tiene). */
+  listarDestinatariosAvisoSistema(organizationId: string): Promise<readonly DestinatarioAvisoSistema[]>;
+  /** D-P3-33: encola un correo en `despachos.messaging_outbox` (funcion de la migracion 005/007) con clave de dedupe; la supresion y el reintento los resuelve el despacho del outbox. `false` si la base no tiene el outbox. */
+  encolarCorreoSistema(organizationId: string, evento: string, dedupeKey: string, payload: { readonly to: string; readonly subject: string; readonly html: string; readonly text: string }): Promise<boolean>;
 }

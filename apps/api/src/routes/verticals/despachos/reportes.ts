@@ -3,7 +3,7 @@
 //   GET /despachos/:propertyId/reportes/:tipo?periodo=YYYY-MM&formato=json|pdf|xlsx
 //
 // Solo lectura, calculada desde datos reales (CFDI 4.0 ingeridos, vencimientos fiscales
-// SAT y, para la balanza, el libro contable de D-24); lo que el modelo no persiste se devuelve "sin datos" con su motivo — ver
+// SAT, para la balanza el libro contable de D-24 y para impuestos el papel de pagos provisionales de D-25); lo que el modelo no persiste se devuelve "sin datos" con su motivo — ver
 // `@atiende/domain-despachos::reportes/builders.ts`. Roles de lectura (`VER_REPORTES_ROLES`);
 // la membership de property aplica igual que en el resto de rutas de staff. Sin migración.
 // Sin llamadas al SAT ni a PACs.
@@ -11,13 +11,14 @@ import { Hono } from "hono";
 import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembership } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { hoyFechaNegocio } from "@atiende/core-tenancy";
-import { PostgresLibroRepository, TIPOS_REPORTE_CLIENTE, VER_REPORTES_ROLES, XLSX_CONTENT_TYPE, construirReporteCliente, leerFuenteOpcional, reporteAXlsx } from "@atiende/domain-despachos";
+import { PostgresLibroRepository, PostgresPagosProvisionalesRepository, TIPOS_REPORTE_CLIENTE, VER_REPORTES_ROLES, XLSX_CONTENT_TYPE, construirReporteCliente, leerFuenteOpcional, reporteAXlsx } from "@atiende/domain-despachos";
 import type { TipoReporteCliente } from "@atiende/domain-despachos";
 import { Errors } from "../../../errors.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { resolverZonaHorariaDespachosProperty } from "./zona-horaria.ts";
 import { reporteAPdf } from "./reporte-pdf.ts";
 import { auditarAccesoDespachos } from "./auditoria-acceso.ts";
+import { rfcContribuyenteDeFicha } from "./ficha-rfc.ts";
 
 const PERIODO_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 const FORMATOS = ["json", "pdf", "xlsx"] as const;
@@ -67,7 +68,13 @@ export function despachosReportesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       tipo === "balanza"
         ? (await (deps.libroRepo ? deps.libroRepo(c.get("db")) : new PostgresLibroRepository(c.get("db"))).balanza(propertyId, Number(periodo.slice(0, 4)), Number(periodo.slice(5, 7)))).datos
         : undefined;
-    const reporte = construirReporteCliente(tipo, { periodo, generadoEn: hoy, contribuyente: { nombre } }, { invoicesDelPeriodo, vencimientosDelPeriodo: vencimientos.filter((v) => v.periodo === periodo), balanzaLibro });
+    // D-P3-05: el reporte de impuestos lee el papel de pagos provisionales persistido (D-25); `listarPapeles` corre en su propio
+    // SAVEPOINT y contra la base sin la migracion 020 devuelve `no_disponible` (vacio honesto), nunca un 500.
+    const papelesProvisionales =
+      tipo === "impuestos"
+        ? await (deps.pagosProvisionalesRepo ? deps.pagosProvisionalesRepo(c.get("db")) : new PostgresPagosProvisionalesRepository(c.get("db"))).listarPapeles(propertyId, Number(periodo.slice(0, 4)))
+        : undefined;
+    const reporte = construirReporteCliente(tipo, { periodo, generadoEn: hoy, contribuyente: { nombre }, rfcContribuyente: await rfcContribuyenteDeFicha(deps, c.get("db"), propertyId) }, { invoicesDelPeriodo, vencimientosDelPeriodo: vencimientos.filter((v) => v.periodo === periodo), balanzaLibro, papelesProvisionales });
 
     if (formato === "json") return c.json(reporte);
 

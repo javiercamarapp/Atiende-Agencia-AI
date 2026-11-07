@@ -6,7 +6,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { calcularIsrPm, procesarNomina } from "@atiende/domain-despachos";
 import { buildApp } from "../src/app.ts";
-import { authedJson, buildDespachosTestContext } from "./despachos-fixtures.ts";
+import { authedJson, buildDespachosTestContext, sembrarFichaCliente } from "./despachos-fixtures.ts";
 import type { DespachosTestContext } from "./despachos-fixtures.ts";
 
 let ctx: DespachosTestContext;
@@ -29,7 +29,7 @@ function cfdiIngresoConDiot(overrides: Record<string, unknown> = {}) {
     metodoPago: "PUE",
     regimenFiscalEmisor: "601",
     rfcEmisor: "CON950820K12",
-    rfcReceptor: "XAXX010101000",
+    rfcReceptor: "CLI010101CL1",
     emisorNombre: "PROVEEDOR DE PRUEBA SA DE CV",
     tieneSello: true,
     noCertificado: "00001000000504465028",
@@ -102,6 +102,11 @@ describe("POST /despachos/:propertyId/declaraciones/isr/pm-resico", () => {
 });
 
 describe("GET /despachos/:propertyId/declaraciones/diot/:periodo -- agregación real desde invoices persistidos", () => {
+  beforeEach(async () => {
+    // D-P3-01: el RFC del contribuyente sale de la ficha de cartera; el CFDI de ejemplo es una compra de este cliente.
+    await sembrarFichaCliente(ctx, "CLI010101CL1");
+  });
+
   it("agrega un CFDI reportable real (subtotal=1000, iva=160) en su período, con totales exactos", async () => {
     const app = buildApp(ctx.deps);
     const ingesta = await app.request(`/despachos/${ctx.propertyId}/cfdi`, authedJson(ctx.staff.contador.token, cfdiIngresoConDiot()));
@@ -114,7 +119,40 @@ describe("GET /despachos/:propertyId/declaraciones/diot/:periodo -- agregación 
     expect(body.totalMontoNeto).toBe(1000);
     expect(body.totalIvaTrasladado).toBe(160);
     expect(body.totalIvaAcreditable).toBe(160);
-    expect(body.rfcContribuyente).toBe("XAXX010101000");
+    expect(body.rfcContribuyente).toBe("CLI010101CL1");
+  });
+
+  it("D-P3-01: una venta del cliente (CFDI emitido) NO entra como proveedor y no cambia el total", async () => {
+    const app = buildApp(ctx.deps);
+    await app.request(`/despachos/${ctx.propertyId}/cfdi`, authedJson(ctx.staff.contador.token, cfdiIngresoConDiot()));
+    const venta = cfdiIngresoConDiot({ folioFiscal: "bbbbbbbb-2222-3333-4444-555555555555", rfcEmisor: "CLI010101CL1", rfcReceptor: "CON950820K12", subtotal: 9000, total: 10440, iva: 1440 });
+    expect((await app.request(`/despachos/${ctx.propertyId}/cfdi`, authedJson(ctx.staff.contador.token, venta))).status).toBe(201);
+    const res = await app.request(`/despachos/${ctx.propertyId}/declaraciones/diot/2026-07`, authedJson(ctx.staff.contador.token));
+    const body = (await res.json()) as { registros: { rfcTercero: string }[]; totalMontoNeto: number; excluidos: number };
+    expect(body.registros.map((r) => r.rfcTercero)).toEqual(["CON950820K12"]);
+    expect(body.totalMontoNeto).toBe(1000);
+    expect(body.excluidos).toBe(1);
+  });
+
+  it("D-P3-01: un CFDI cancelado ante el SAT queda fuera de la DIOT", async () => {
+    const app = buildApp(ctx.deps);
+    expect((await app.request(`/despachos/${ctx.propertyId}/cfdi`, authedJson(ctx.staff.contador.token, cfdiIngresoConDiot()))).status).toBe(201);
+    const lista = await ctx.despachosRepo.listInvoices(ctx.propertyId, { periodo: "2026-07" });
+    await ctx.despachosRepo.registrarEstadoSatInvoice(ctx.propertyId, lista[0]!.id, "cancelado");
+    const res = await app.request(`/despachos/${ctx.propertyId}/declaraciones/diot/2026-07`, authedJson(ctx.staff.contador.token));
+    const body = (await res.json()) as { registros: unknown[]; excluidos: number };
+    expect(body.registros).toHaveLength(0);
+    expect(body.excluidos).toBe(1);
+  });
+
+  it("D-P3-01: sin ficha de cartera la DIOT queda sin datos y el RFC es null (nunca el receptor de un CFDI)", async () => {
+    const sinFicha = await buildDespachosTestContext(buildApp);
+    const app = buildApp(sinFicha.deps);
+    await app.request(`/despachos/${sinFicha.propertyId}/cfdi`, authedJson(sinFicha.staff.contador.token, cfdiIngresoConDiot()));
+    const res = await app.request(`/despachos/${sinFicha.propertyId}/declaraciones/diot/2026-07`, authedJson(sinFicha.staff.contador.token));
+    const body = (await res.json()) as { registros: unknown[]; rfcContribuyente: string | null };
+    expect(body.registros).toHaveLength(0);
+    expect(body.rfcContribuyente).toBeNull();
   });
 
   it("no incluye CFDIs de un período distinto (filtro real, no solo el más reciente)", async () => {

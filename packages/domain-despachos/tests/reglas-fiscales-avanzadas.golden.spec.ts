@@ -131,10 +131,16 @@ describe("golden-set numérico: validarCfdiDespachos (TS) vs validate_cfdi (Pyth
       requires_human_review: boolean;
     };
 
-    it(`${name}: mismos códigos de hallazgo`, () => {
-      const ts = validarCfdiDespachos(datos);
-      expect(issueCodes(ts.issues)).toEqual(issueCodes(py.issues));
-    });
+    // D-P3-01 (brief paridad3-despachos-fiscal-correcciones): el Python original NO suma el IEPS al total
+    // (`SubTotal + IVA - Descuento`), de modo que un CFDI legítimo con IEPS (gasolina, restaurante, tabaco)
+    // salía `total_incoherente`. Anexo 20: Total = SubTotal - Descuento + Traslados (IVA + IEPS) - Retenciones, así que
+    // el caso 09 (ieps=50 sin sumarlo al total) ahora SÍ es incoherente. Ese caso se compara aparte, abajo; los demás siguen idénticos al Python.
+    if (name !== "09_ieps_presente") {
+      it(`${name}: mismos códigos de hallazgo`, () => {
+        const ts = validarCfdiDespachos(datos);
+        expect(issueCodes(ts.issues)).toEqual(issueCodes(py.issues));
+      });
+    }
 
     it(`${name}: requires_human_review idéntico`, () => {
       const ts = validarCfdiDespachos(datos);
@@ -213,6 +219,15 @@ describe("golden-set numérico: validarCfdiDespachos (TS) vs validate_cfdi (Pyth
     const ts = validarCfdiDespachos(CASES["08_timbrado_96h01m_dispara_warning"]!);
     const py = golden["08_timbrado_96h01m_dispara_warning"] as { warnings: readonly string[] };
     expect(ts.warnings).toContain(py.warnings[0]);
+  });
+
+  it("09 (D-P3-01): con IEPS=50 el total debe incluirlo; 1160 ya no cuadra y 1210 sí (el Python original lo daba por bueno sin sumarlo)", () => {
+    const sinSumar = validarCfdiDespachos(CASES["09_ieps_presente"]!);
+    expect(sinSumar.issues.map((i) => i.codigo)).toEqual(["total_incoherente"]);
+    expect(sinSumar.issues[0]!.mensaje).toContain("IEPS");
+    const sumado = validarCfdiDespachos({ ...CASES["09_ieps_presente"]!, total: 1210 });
+    expect(sumado.issues).toEqual([]);
+    expect(sumado.ok).toBe(true);
   });
 
   it("09: warning de IEPS idéntico al Python", () => {

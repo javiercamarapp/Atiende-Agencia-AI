@@ -19,10 +19,21 @@ import { esRfcValido } from './rfc.ts';
 
 export const TOLERANCIA = 0.02;
 
+/** Traslado de impuesto de UN concepto (Anexo 20). Los importes son pesos como número; `null` = el XML no lo trae (Exento no trae Importe). */
+export interface TrasladoConceptoCfdi {
+  impuesto: string; // c_Impuesto: 001 ISR, 002 IVA, 003 IEPS
+  tipoFactor: string; // Tasa | Cuota | Exento
+  tasaOCuota: number | null;
+  base: number | null;
+  importe: number | null;
+}
+
 export interface ConceptoCfdi {
   cantidad: number;
   valorUnitario: number;
   importe: number;
+  /** D-P3-31: traslados por concepto (el parser los expone); ausente = no se conoce el desglose, no se valida. */
+  traslados?: readonly TrasladoConceptoCfdi[];
 }
 
 export interface DatosCfdi {
@@ -31,6 +42,14 @@ export interface DatosCfdi {
   total: number;
   descuento?: number;
   iva?: number | null;
+  /** IEPS trasladado (c_Impuesto 003). D-P3-01: forma parte del total (Subtotal + IVA + IEPS ...). */
+  ieps?: number | null;
+  /** Complemento de impuestos locales (`implocal:ImpuestosLocales`, p. ej. ISH): TotaldeTraslados se SUMA al total. */
+  impuestosLocalesTraslados?: number | null;
+  /** `implocal:ImpuestosLocales` TotaldeRetenciones: se RESTA del total. */
+  impuestosLocalesRetenciones?: number | null;
+  /** Régimen fiscal del receptor (CFDI 4.0, atributo obligatorio del nodo Receptor); solo para el aviso UsoCFDI vs régimen. */
+  regimenFiscalReceptor?: string | null;
   conceptos: ConceptoCfdi[];
   usoCfdi: string;
   formaPago: string;
@@ -110,9 +129,15 @@ export function validarCfdi(datos: DatosCfdi): ResultadoValidacionCfdi {
   }
 
   // ---- 3. IVA global (solo warning: hay tasas mixtas / frontera / exentas) ----
+  // Con IEPS el IVA se calcula sobre (subtotal + IEPS) (art. 1 LIVA y art. 4 LIEPS: el IEPS integra la base del IVA):
+  // se acepta cualquiera de las dos bases para no avisar en falso en gasolina, restaurantes o tabaco.
+  const ieps = datos.ieps ?? 0;
+  const locTraslados = datos.impuestosLocalesTraslados ?? 0;
+  const locRetenciones = datos.impuestosLocalesRetenciones ?? 0;
   if (iva !== null) {
     const esperado = r2(datos.subtotal * 0.16);
-    if (!cerca(iva, esperado)) {
+    const esperadoConIeps = ieps > 0 ? r2((datos.subtotal + ieps) * 0.16) : esperado;
+    if (!cerca(iva, esperado) && !cerca(iva, esperadoConIeps)) {
       warnings.push(
         `IVA global ${iva} difiere de 16% del subtotal (${esperado}); puede haber tasas diferenciadas ` +
         '(frontera 8%) u operaciones exentas.',
@@ -123,14 +148,19 @@ export function validarCfdi(datos: DatosCfdi): ResultadoValidacionCfdi {
   }
 
   // ---- 4. Coherencia total ----
-  const esperadoTotal = r2(datos.subtotal + (iva ?? 0) - descuento);
+  // D-P3-01: Total = SubTotal − Descuento + IVA + IEPS + impuestos locales trasladados − impuestos locales retenidos
+  // (Anexo 20, Total = SubTotal − Descuento + Traslados − Retenciones; el IEPS y el complemento `implocal` son parte de esa suma).
+  const esperadoTotal = r2(datos.subtotal + (iva ?? 0) + ieps + locTraslados - descuento - locRetenciones);
+  const conExtras = ieps !== 0 || locTraslados !== 0 || locRetenciones !== 0;
   if (!cerca(esperadoTotal, datos.total)) {
     if (datos.tipo === 'E' && datos.total === 0) {
       ok(); // nota de crédito con total=0: el SAT lo permite (BUG-F3 del original)
     } else {
       fail(
         'total_incoherente',
-        `SubTotal + IVA − Descuento = ${esperadoTotal} pero Total=${datos.total}`,
+        conExtras
+          ? `SubTotal + IVA + IEPS + impuestos locales − Descuento = ${esperadoTotal} pero Total=${datos.total}`
+          : `SubTotal + IVA − Descuento = ${esperadoTotal} pero Total=${datos.total}`,
         'Anexo 20 / Guia de llenado',
       );
     }

@@ -44,6 +44,10 @@ export interface RepPago {
   readonly fechaPago: string;
   readonly formaDePagoP: string;
   readonly monedaP: string;
+  /** D-P3-31: TipoCambioP tal cual (texto); null si no viene. Obligatorio cuando MonedaP no es MXN. Opcional en el tipo para no romper literales existentes. */
+  readonly tipoCambioP?: string | null;
+  /** D-P3-31: TipoCadPago (c_TipoCadenaPago, p. ej. "01" SPEI); null si no viene. */
+  readonly tipoCadPago?: string | null;
   readonly montoCentavos: number;
   readonly documentos: readonly RepDocumentoRelacionado[];
 }
@@ -176,6 +180,8 @@ export function parseComplementoPagoXml(xml: string): RepParseResult {
       fechaPago: requerido(p.FechaPago, `Pago[${i}].FechaPago`),
       formaDePagoP: requerido(p.FormaDePagoP, `Pago[${i}].FormaDePagoP`),
       monedaP: requerido(p.MonedaP, `Pago[${i}].MonedaP`),
+      tipoCambioP: texto(p.TipoCambioP) ?? null,
+      tipoCadPago: texto(p.TipoCadPago) ?? null,
       montoCentavos: importe(p.Monto, `Pago[${i}].Monto`),
       documentos,
     };
