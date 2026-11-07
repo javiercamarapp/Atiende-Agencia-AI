@@ -412,8 +412,24 @@ sin esa variable configurada, el cron sigue disparándose pero la ruta responde 
 - [ ] El proyecto de Vercel es **Pro** (los crons de cada 5, 10, 15 y 30 minutos no caben en Hobby; ver la advertencia de abajo).
 - [ ] `CRON_SECRET` = `INTERNAL_SECRET` en el entorno Production. Sin él, cada cron responde 401 y no deja latido.
 - [ ] Vercel → Project → Settings → Cron Jobs lista los 38 crons de `vercel.json`.
-- [ ] Variable de **repositorio** (no secreto) `PROD_BASE_URL` = `https://<dominio de producción>` en GitHub → Settings → Secrets and variables → Actions → Variables. Sin ella `prod-health.yml` no sondea y deja un `::warning::` en cada corrida. Opcional: `PROD_HEALTH_OPEN_ISSUE=true` para que además abra un issue mientras dure la falla.
+- [ ] Variable de **repositorio** (no secreto) `PROD_BASE_URL` = `https://app.useatiende.ai` en GitHub → Settings → Secrets and variables → Actions → Variables. Sin ella `prod-health.yml` **falla en rojo** cada 15 min (antes salía en verde sin sondear) y `smoke-post-deploy.yml` usa `https://app.useatiende.ai` por omisión. Opcional: `PROD_HEALTH_OPEN_ISSUE=true` para que además abra un issue mientras dure la falla (repo público: anuncia la caída).
 - [ ] Al desplegar, `GET /health` anónimo trae `"crons"`: pasa de `sin_latido` a `ok` en cuanto cada cron corre una vez (los de 5 minutos, en minutos). Detalle en [`docs/CRONS.md`](./CRONS.md#cómo-saber-que-corren).
+
+**Observabilidad y alertas: lo que el dueño configura (ninguna se pone desde el repo):**
+
+| Dónde | Nombre | Valor | Sin ella |
+|---|---|---|---|
+| GitHub → Actions → **Variables** | `PROD_BASE_URL` | `https://app.useatiende.ai` | `prod-health.yml` en rojo («producción no se está vigilando») |
+| GitHub → Actions → Variables | `PROD_HEALTH_OPEN_ISSUE` | `true` (opcional) | Solo el rojo del job y el correo de GitHub |
+| Vercel → Production | `SENTRY_DSN` | Sentry → Project Settings → Client Keys | Sin rastreo de errores ni alerta a Sentry |
+| Vercel → Production | `ALERTAS_EMAIL_DESTINATARIOS` | correos de 2 personas, separados por comas (usa `RESEND_API_KEY`) | Canal de correo apagado |
+| Vercel → Production | `ALERTAS_WEBHOOK_URL` + `ALERTAS_WEBHOOK_SECRETO` | receptor `https` + `openssl rand -hex 32` | Canal de webhook apagado |
+| Vercel → Production | `ALERTAS_LIMITE_POR_HORA` | 1–60 (opcional) | 2 por tipo y destino |
+
+El smoke post-deploy (`smoke-post-deploy.yml`) estuvo en rojo desde el 6-oct porque comprobaba la URL **única** del
+despliegue (`*.vercel.app`), que la protección de despliegues de Vercel redirige (302) a `vercel.com/sso-api`. Ahora
+comprueba el alias de producción (`PROD_BASE_URL` o `https://app.useatiende.ai`) y, si vuelve a ver un 302 hacia
+Vercel, lo dice con esas palabras. No hace falta desactivar la protección ni crear un bypass.
 
 **ADVERTENCIA: estos 30 crons requieren Vercel Pro (Hobby: 2 crons diarios; el deploy falla con crons más frecuentes). Sin verificar desde este repo — revisar en el dashboard antes de
 confiar en que estos 29 crons realmente corran:** la documentación pública de
