@@ -8,7 +8,8 @@ const CONSOLAS = [...VERTICALES, "superadmin"] as const;
 
 for (const consola of CONSOLAS) {
   test(`encabezado ds3 de 44 px: ${consola}`, async ({ page, iniciarSesion }, info) => {
-    test.skip(info.project.name.startsWith("m"), "el encabezado de 44 es de escritorio");
+    // El encabezado de 44 es de escritorio; en movil la cabecera es otra (lote 5.3) y esta prueba no tiene nada que medir.
+    if (info.project.name.startsWith("m")) return;
     await page.addInitScript(() => {
       try {
         window.localStorage.setItem("atiende-diseno", "ds3");
