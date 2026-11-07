@@ -15,8 +15,8 @@
 // ninguna elección (mismo criterio que antes: `branches[0]`), así que no hay selector.
 import type { ReactNode } from "react";
 import { BellRing, Building2, CalendarOff, CheckCheck, Database, FileText, Gavel, LayoutDashboard, Lock, MessageCircle, Radar, ScrollText, ShieldAlert, ShieldCheck, Sparkles, Target, Users } from "lucide-react";
-import { VerticalShellEstado } from "@atiende/ui";
-import type { BottomNavItem, SidebarSection } from "@atiende/ui";
+import { useT, VerticalShellEstado } from "@atiende/ui";
+import type { BottomNavItem, SidebarSection, Traductor } from "@atiende/ui";
 import { VerticalShellConectado } from "../../components/VerticalShellConectado.tsx";
 import { etiquetaRol } from "../../lib/roles.ts";
 import { useVerticalSession } from "../../lib/useVerticalSession.ts";
@@ -27,6 +27,9 @@ import { clearLicitacionesSession, logout, readPersistedLicitacionesSession } fr
 import { fetchBranches } from "./lib/admin-client.ts";
 import type { BranchOption } from "./lib/admin-client.ts";
 import { STAFF_NAV_ROLES, puedeVerPrivacidad } from "./roles-nav.ts";
+import { nav } from "@atiende/ui/i18n/nav";
+import { shell } from "@atiende/ui/i18n/shell";
+import { consola } from "@atiende/ui/i18n/consola";
 
 /** Adaptador de sesión de licitaciones. DEBE ser una constante de módulo (el hook lo usa como dependencia de sus efectos). */
 const LICITACIONES_SESSION: VerticalSessionAdapter<BranchOption> = {
@@ -79,47 +82,47 @@ export { puedeVerPrivacidad };
 // consolas) — UNI-6: categorías en el orden de Likida (Oportunidades, Inteligencia, Organización) con "Resumen" como raíz sin
 // título; Staff solo para owner/admin. "Más" de la barra móvil lista TODOS (las mismas secciones del Sidebar), nada queda
 // inalcanzable en móvil.
-function buildSidebarSections(orgSlug: string, puedeVerStaff: boolean, puedePrivacidad: boolean): SidebarSection[] {
+function buildSidebarSections(t: Traductor, orgSlug: string, puedeVerStaff: boolean, puedePrivacidad: boolean): SidebarSection[] {
   const base = `/licitaciones/${orgSlug}`;
   return [
     {
-      title: "Resumen",
+      title: t("nav.resumen"),
       siempreAbierto: true,
       items: [
-        { to: `${base}/panel`, label: "Resumen", icon: LayoutDashboard },
+        { to: `${base}/panel`, label: t("nav.resumen"), icon: LayoutDashboard },
         // CHAT-12: el Copiloto ("Pregúntale a tus datos") va justo debajo de Resumen, como en las demás consolas.
-        { to: `${base}/copiloto`, label: "Copiloto", icon: Sparkles },
+        { to: `${base}/copiloto`, label: t("nav.copiloto"), icon: Sparkles },
       ],
     },
     {
-      title: "Oportunidades",
+      title: t("nav.oportunidades"),
       items: [
-        { to: `${base}/convocatorias`, label: "Convocatorias", icon: Gavel },
-        { to: `${base}/seguimiento`, label: "Seguimiento", icon: BellRing },
-        { to: `${base}/radar-renovaciones`, label: "Radar de renovaciones", icon: Radar },
+        { to: `${base}/convocatorias`, label: t("nav.convocatorias"), icon: Gavel },
+        { to: `${base}/seguimiento`, label: t("nav.seguimiento"), icon: BellRing },
+        { to: `${base}/radar-renovaciones`, label: t("nav.radarRenovaciones"), icon: Radar },
       ],
     },
     {
-      title: "Inteligencia",
+      title: t("nav.inteligencia"),
       items: [
-        { to: `${base}/fuentes`, label: "Fuentes y frescura", icon: Database },
-        { to: `${base}/kyc-69b`, label: "KYC proveedores (69-B)", icon: ShieldAlert },
-        { to: `${base}/perfil-matching`, label: "Perfil de matching", icon: Target },
+        { to: `${base}/fuentes`, label: t("nav.fuentesFrescura"), icon: Database },
+        { to: `${base}/kyc-69b`, label: t("nav.kycProveedores"), icon: ShieldAlert },
+        { to: `${base}/perfil-matching`, label: t("nav.perfilMatching"), icon: Target },
       ],
     },
     {
-      title: "Organización",
+      title: t("nav.organizacion"),
       items: [
-        { to: `${base}/datos-empresa`, label: "Datos de la empresa", icon: Building2 },
-        { to: `${base}/dias-inhabiles`, label: "Días inhábiles", icon: CalendarOff },
-        { to: `${base}/aprobaciones`, label: "Aprobaciones", icon: CheckCheck },
-        ...(puedeVerStaff ? [{ to: `${base}/staff`, label: "Staff", icon: Users }] : []),
+        { to: `${base}/datos-empresa`, label: t("nav.datosEmpresa"), icon: Building2 },
+        { to: `${base}/dias-inhabiles`, label: t("nav.diasInhabiles"), icon: CalendarOff },
+        { to: `${base}/aprobaciones`, label: t("nav.aprobaciones"), icon: CheckCheck },
+        ...(puedeVerStaff ? [{ to: `${base}/staff`, label: t("nav.staff"), icon: Users }] : []),
         // L-P3-17: quién cambió qué, con antes y después (solo owner/admin, mismo umbral que Staff).
-        ...(puedeVerStaff ? [{ to: `${base}/bitacora`, label: "Bitácora", icon: ScrollText }] : []),
-        { to: `${base}/whatsapp`, label: "WhatsApp", icon: MessageCircle },
-        { to: `${base}/seguridad`, label: "Seguridad", icon: ShieldCheck },
+        ...(puedeVerStaff ? [{ to: `${base}/bitacora`, label: t("nav.bitacora"), icon: ScrollText }] : []),
+        { to: `${base}/whatsapp`, label: t("nav.whatsapp"), icon: MessageCircle },
+        { to: `${base}/seguridad`, label: t("nav.seguridad"), icon: ShieldCheck },
         // L-20: solicitudes ARCO, retención y aviso de privacidad de la organización (solo owner/admin).
-        ...(puedePrivacidad ? [{ to: `${base}/privacidad`, label: "Privacidad", icon: Lock }] : []),
+        ...(puedePrivacidad ? [{ to: `${base}/privacidad`, label: t("nav.privacidad"), icon: Lock }] : []),
       ],
     },
   ];
@@ -129,26 +132,27 @@ function buildSidebarSections(orgSlug: string, puedeVerStaff: boolean, puedePriv
  * Las etiquetas son cortas a propósito (cada lugar mide 75 px a 375 px y el e2e `shells-categorias` mide que ninguna se recorte,
  * tampoco con la tipografía de respaldo de Linux): "Concursos" es la barra de "Convocatorias" y "Radar" la de "Radar de
  * renovaciones"; los nombres completos son los de la hoja "Más" y del Sidebar. */
-function buildMobileItems(orgSlug: string): BottomNavItem[] {
+function buildMobileItems(t: Traductor, orgSlug: string): BottomNavItem[] {
   const base = `/licitaciones/${orgSlug}`;
   return [
-    { to: `${base}/panel`, label: "Resumen", icon: LayoutDashboard },
-    { to: `${base}/convocatorias`, label: "Concursos", icon: Gavel },
-    { to: `${base}/radar-renovaciones`, label: "Radar", icon: Radar },
-    { to: `${base}/datos-empresa`, label: "Empresa", icon: Building2 },
+    { to: `${base}/panel`, label: t("nav.resumen"), icon: LayoutDashboard },
+    { to: `${base}/convocatorias`, label: t("nav.concursos"), icon: Gavel },
+    { to: `${base}/radar-renovaciones`, label: t("nav.radar"), icon: Radar },
+    { to: `${base}/datos-empresa`, label: t("nav.empresa"), icon: Building2 },
   ];
 }
 
 export function LicitacionesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: LicitacionesShellProps) {
   // Título de pestaña por vertical/organización (ver use-document-title.ts). El hook va ANTES de los returns condicionales.
-  useDocumentTitle("Licitaciones", orgSlug);
+  const t = useT(nav, shell, consola);
+  useDocumentTitle(t("consola.vertical.licitaciones"), orgSlug);
   const s = useVerticalSession({ adapter: LICITACIONES_SESSION, apiBaseUrl, orgSlug, onRequireLogin, defaultRole: "viewer" });
 
-  if (s.fase === "resolviendo") return <VerticalShellEstado estado="cargando" mensaje="Cargando…" />;
+  if (s.fase === "resolviendo") return <VerticalShellEstado estado="cargando" mensaje={t("shell.cargando")} />;
   if (s.fase === "sin-sesion") return null; // onRequireLogin ya disparó la redirección
   if (s.fase === "error") return <VerticalShellEstado estado="error" mensaje={s.error ?? undefined} onReintentar={s.reintentar} />;
-  if (s.fase === "cargando") return <VerticalShellEstado estado="cargando" mensaje="Cargando organización…" />;
-  if (s.fase === "vacio") return <VerticalShellEstado estado="vacio" mensaje="Esta organización todavía no tiene ninguna property configurada." />;
+  if (s.fase === "cargando") return <VerticalShellEstado estado="cargando" mensaje={t("consola.cargandoOrganizacion")} />;
+  if (s.fase === "vacio") return <VerticalShellEstado estado="vacio" mensaje={t("consola.vacio.sinOrganizacion")} />;
 
   const { session, propertyId, role } = s;
   const puedeVerStaff = STAFF_NAV_ROLES.has(role);
@@ -174,12 +178,12 @@ export function LicitacionesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
       chat={chatConexion}
       copilotoHref={`/licitaciones/${orgSlug}/copiloto`}
       vertical="licitaciones"
-      sections={buildSidebarSections(orgSlug, puedeVerStaff, puedeVerPrivacidad(role))}
-      mobileItems={buildMobileItems(orgSlug)}
-      user={{ email: session.email, rol: role, nombre: session.fullName, rolEtiqueta: etiquetaRol(role) }}
+      sections={buildSidebarSections(t, orgSlug, puedeVerStaff, puedeVerPrivacidad(role))}
+      mobileItems={buildMobileItems(t, orgSlug)}
+      user={{ email: session.email, rol: role, nombre: session.fullName, rolEtiqueta: etiquetaRol(role, t) }}
       onLogout={() => void s.logout()}
       loggingOut={s.loggingOut}
-      header={{ icon: <FileText className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: `Licitaciones · ${orgSlug}`, resumenTo: `/licitaciones/${orgSlug}/panel` }}
+      header={{ icon: <FileText className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: t("consola.titulo", { vertical: t("consola.vertical.licitaciones"), nombre: orgSlug }), resumenTo: `/licitaciones/${orgSlug}/panel` }}
       contentKey={propertyId}
     >
       {children(contexto)}

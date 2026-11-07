@@ -13,15 +13,17 @@
 import * as React from "react";
 import { flushSync } from "react-dom";
 import { useLocation } from "react-router-dom";
-import { CircleHelp, Compass, ShieldCheck } from "lucide-react";
+import { CircleHelp, Compass, Ellipsis, ShieldCheck } from "lucide-react";
 import { AtiendeWordmark } from "./AtiendeLogo";
-import { BottomNav, MobileHeader, type BottomNavItem } from "./BottomNav";
+import { BottomNav, CampanaMovil, MAS_ABRIR_EVENTO, MobileHeader, type BottomNavItem, type CampanaMovilProps } from "./BottomNav";
 import { BarraPagina } from "./BarraPagina";
 import { EstadoCargando } from "./EstadoCargando";
 import { EstadoError } from "./EstadoError";
 import { EstadoVacio } from "./EstadoVacio";
 import { MobileAccountMenu } from "./MobileAccountMenu";
 import { Sidebar, type SidebarItem, type SidebarPiePildora, type SidebarSection, type SidebarUser } from "./Sidebar";
+import { I18nContexto, useT, type ContextoI18n } from "../i18n/proveedor";
+import { shell } from "../i18n/mensajes/shell.ts";
 import { GrupoNavContext } from "./PageHeader";
 
 export const VERTICAL_SHELL_MAIN_ID = "contenido-principal";
@@ -139,12 +141,13 @@ export interface VerticalShellEstadoProps {
 
 /** Centrado a pantalla completa para los estados que corren ANTES de que exista shell (sesion, sucursales). */
 export function VerticalShellEstado({ estado, mensaje, onReintentar }: VerticalShellEstadoProps) {
+  const t = useT(shell);
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-6">
       <div className="w-full max-w-sm">
-        {estado === "cargando" && <EstadoCargando variante="pantalla" etiqueta={mensaje ?? "Cargando…"} />}
+        {estado === "cargando" && <EstadoCargando variante="pantalla" etiqueta={mensaje ?? t("shell.cargando")} />}
         {estado === "error" && <EstadoError mensaje={mensaje} onReintentar={onReintentar} />}
-        {estado === "vacio" && <EstadoVacio mensaje={mensaje ?? "No hay nada que mostrar todavía."} />}
+        {estado === "vacio" && <EstadoVacio mensaje={mensaje ?? t("shell.vacio")} />}
       </div>
     </div>
   );
@@ -167,6 +170,8 @@ interface RutaBoundaryState {
  * errores de red: esos los maneja cada pagina con su propio estado.
  */
 export class RutaBoundary extends React.Component<RutaBoundaryProps, RutaBoundaryState> {
+  static override contextType = I18nContexto;
+  declare context: ContextoI18n;
   override state: RutaBoundaryState = { error: null, resetKey: this.props.resetKey };
 
   static getDerivedStateFromError(error: Error): Partial<RutaBoundaryState> {
@@ -181,13 +186,13 @@ export class RutaBoundary extends React.Component<RutaBoundaryProps, RutaBoundar
     if (this.state.error) {
       return (
         <EstadoError
-          titulo="Esta pantalla no pudo mostrarse"
-          mensaje="Ocurrió un problema al abrir esta sección. Inténtalo de nuevo; el resto del panel sigue disponible."
+          titulo={this.context.t("shell.errorRuta.titulo")}
+          mensaje={this.context.t("shell.errorRuta.mensaje")}
           onReintentar={() => this.setState({ error: null })}
         />
       );
     }
-    return <React.Suspense fallback={<EstadoCargando variante="tarjeta" etiqueta="Cargando pantalla…" />}>{this.props.children}</React.Suspense>;
+    return <React.Suspense fallback={<EstadoCargando variante="tarjeta" etiqueta={this.context.t("shell.cargandoPantalla")} />}>{this.props.children}</React.Suspense>;
   }
 }
 
@@ -245,6 +250,16 @@ export interface VerticalShellProps {
    * `GUIA_ABRIR_EVENTO` en `window`. Sin la bandera ds3 el boton existe oculto.
    */
   readonly onGuia?: () => void;
+  /**
+   * ds3 (decision de Omar 7-nov-2026): campana con contador en la cabecera movil, enlace a la pagina de notificaciones. Sin la bandera
+   * existe oculta (las notificaciones siguen en la pildora del pie / hoja «Más»).
+   */
+  readonly notificaciones?: CampanaMovilProps;
+  /**
+   * ds3 (decision de Omar 7-nov-2026): ruta del chat de datos («Pregúntale a tus datos») como destino fijo de la barra inferior movil,
+   * entre los destinos curados y «Más». Solo para roles con acceso; sin ella no se pinta. Sin la bandera existe oculto.
+   */
+  readonly preguntarHref?: string;
   readonly children: React.ReactNode;
 }
 
@@ -266,10 +281,13 @@ export function VerticalShell({
   organizacion,
   adminHref,
   onGuia,
+  notificaciones,
+  preguntarHref,
   children,
 }: VerticalShellProps) {
+  const t = useT(shell);
   const pie: SidebarPiePildora[] | undefined = adminHref
-    ? [...(sidebarPie ?? []), { label: "Administración de Atiende", to: adminHref, icon: ShieldCheck }]
+    ? [...(sidebarPie ?? []), { label: t("shell.administracionAtiende"), to: adminHref, icon: ShieldCheck }]
     : sidebarPie;
   const { pathname } = useLocation();
   const mainRef = React.useRef<HTMLElement>(null);
@@ -293,7 +311,7 @@ export function VerticalShell({
   // la barra les pone su nombre en vez del titulo de la consola. Van DESPUES de `sections`, asi un destino que ya es de una
   // categoria (p. ej. "Costos de IA" -> "Costos y margen") conserva el nombre de su categoria.
   const destinosPie: SidebarSection[] = (pie ?? []).some((p) => p.to)
-    ? [{ title: "Cuenta", items: (pie ?? []).filter((p) => p.to).map((p) => ({ to: p.to as string, label: p.label, icon: p.icon ?? Compass })) }]
+    ? [{ title: t("shell.cuenta"), items: (pie ?? []).filter((p) => p.to).map((p) => ({ to: p.to as string, label: p.label, icon: p.icon ?? Compass })) }]
     : [];
   const activo = itemActivo([...sections, ...destinosPie], pathname);
   const esResumen = header.resumenTo !== undefined && pathname === header.resumenTo;
@@ -321,7 +339,7 @@ export function VerticalShell({
         href={`#${VERTICAL_SHELL_MAIN_ID}`}
         className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[60] focus:rounded-lg focus:border focus:border-border focus:bg-card focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-foreground focus:shadow-elevated"
       >
-        Saltar al contenido
+        {t("shell.saltarAlContenido")}
       </a>
 
       <div className="ds3-shell-lateral hidden md:block md:p-4 md:pr-0">
@@ -332,9 +350,25 @@ export function VerticalShell({
         title={<AtiendeWordmark className="scale-90 origin-left" />}
         pagina={{ icon: iconoBarra, title: tituloBarra, comoH1: sinH1 }}
         action={
-          <div className="flex items-center gap-1 min-w-0">
+          <div className="ds3-movil-acciones flex items-center gap-1 min-w-0">
             {mobileSelector ? <div className="min-w-0 max-w-[48vw]">{mobileSelector}</div> : null}
-            <MobileAccountMenu user={user} onLogout={onLogout} loggingOut={loggingOut} />
+            {/* ds3 (decision de Omar 7-nov-2026, igual que Rovaq): campana con contador y «Más» de 44 que abre la hoja con el sidebar
+                completo (cuenta, tema y salir incluidos); el menu de cuenta del diseno actual se oculta. El chat de datos no va aqui: es
+                «Preguntar» de la barra inferior. */}
+            {notificaciones ? <CampanaMovil {...notificaciones} /> : null}
+            <button
+              type="button"
+              hidden
+              aria-label={t("shell.abrirMasSecciones")}
+              aria-haspopup="dialog"
+              onClick={() => window.dispatchEvent(new Event(MAS_ABRIR_EVENTO))}
+              className="ds3-solo ds3-movil-mas"
+            >
+              <Ellipsis aria-hidden="true" strokeWidth={1.75} />
+            </button>
+            <span className="ds3-no contents">
+              <MobileAccountMenu user={user} onLogout={onLogout} loggingOut={loggingOut} />
+            </span>
           </div>
         }
       />
@@ -361,7 +395,7 @@ export function VerticalShell({
             className="ds3-solo ds3-guia"
           >
             <CircleHelp aria-hidden="true" strokeWidth={1.75} />
-            Guía
+            {t("shell.guia")}
           </button>
         </div>
         {/* `key` fuerza el remontaje de las paginas hijas cuando cambia la sucursal activa. */}
@@ -398,7 +432,13 @@ export function VerticalShell({
 
       {historialChat ? <div data-testid="ranura-historial-chat" className="contents">{historialChat}</div> : null}
 
-      <BottomNav items={mobileItems} moreSections={sections} pie={pie} />
+      <BottomNav
+        items={mobileItems}
+        moreSections={sections}
+        pie={pie}
+        cuenta={{ user, onLogout, loggingOut }}
+        preguntar={preguntarHref ? { to: preguntarHref } : undefined}
+      />
     </div>
   );
 }
