@@ -649,7 +649,6 @@ function ConfigResumenDialogo({
         </FormField>
         <FormField label={t("restaurantes.resumen.config.metaIngresos")}>
           <Input id="resumen-meta-ingresos" inputMode="numeric" value={metaIngresos} onChange={(e) => setMetaIngresos(e.target.value)} placeholder={t("restaurantes.resumen.config.rango", { min: vista.rangos.meta.min, max: vista.rangos.meta.max })} />
-
         </FormField>
         {error !== null && <p role="alert" className="text-ui text-destructive">{error}</p>}
       </div>

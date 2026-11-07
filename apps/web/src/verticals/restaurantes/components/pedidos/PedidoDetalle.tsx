@@ -255,7 +255,6 @@ export function PedidoDetalle({ apiBaseUrl, token, propertyId, orderId, repartid
               <RegionCargando ocupado etiqueta={t("restaurantes.pedidos.detalle.cargandoRecientes")} className="flex justify-center py-8" claseDs3="min-h-24" giro="h-5 w-5 text-muted-foreground" />
             ) : recientes.length === 0 ? (
               <p className="px-1 text-pill text-muted-foreground">{t("restaurantes.pedidos.detalle.sinRecientes")}</p>
-
             ) : (
               <div className="overflow-hidden rounded-2xl border border-border bg-card">
                 {recientes.map((r) => (

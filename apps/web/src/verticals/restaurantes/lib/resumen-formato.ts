@@ -61,7 +61,6 @@ export function cuandoEnZona(iso: string, zona: string | null): string | null {
     ).format(d);
   } catch {
     return new Intl.DateTimeFormat(localeActivo(), opciones).format(d);
-
   }
 }
 

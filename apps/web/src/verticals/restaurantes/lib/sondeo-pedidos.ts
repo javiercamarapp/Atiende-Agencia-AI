@@ -46,7 +46,6 @@ export function faltaPara(programadoPara: string | null | undefined, ahoraMs: nu
   const m = min % 60;
   if (h >= 24) return tr("restaurantes.pedidos.falta.dias", { d: Math.floor(h / 24), h: h % 24 });
   return m === 0 ? tr("restaurantes.pedidos.falta.horas", { h }) : tr("restaurantes.pedidos.falta.horasMin", { h, m });
-
 }
 
 // ---- Preferencia de sonido (por organizacion + sucursal, en este navegador) ----

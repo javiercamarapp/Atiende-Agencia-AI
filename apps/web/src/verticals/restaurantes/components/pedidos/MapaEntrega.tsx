@@ -75,7 +75,6 @@ export function MapaEntrega({ order, sucursal, repartidorNombre }: { readonly or
           )}
           <p className="pt-1 text-eyebrow leading-snug text-muted-foreground">
             {t("restaurantes.pedidos.mapa.aviso")}
-
           </p>
         </div>
       )}
