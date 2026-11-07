@@ -296,3 +296,11 @@ export { PostgresLoginChoferRepository, InMemoryLoginChoferRepository, LoginChof
 export type { LoginChoferRepository, LoginChoferCuenta, LoginChoferCodigoReservado, LoginChoferLimites, LoginChoferEventoTipo, LoginChoferTelefonoListado, LoginChoferLecturaCore, ResultadoLimite } from "./login-chofer-repository.ts";
 export { hayOnboardingEvento, registrarOnboardingEvento } from "./onboarding-evento.ts";
 export type { OnboardingEventoInput, ResultadoRegistroEvento, TipoOnboardingEvento } from "./onboarding-evento.ts";
+export type { GuardarProgresoGuia, ModoRecorrido, OnboardingProgresoRepository, ProgresoGuia } from "./onboarding-progreso-repository.ts";
+export {
+  InMemoryOnboardingProgresoRepository,
+  OnboardingProgresoInvalidoError,
+  OnboardingProgresoProhibidoError,
+  PostgresOnboardingProgresoRepository,
+  validarProgresoGuia,
+} from "./onboarding-progreso-repository.ts";
