@@ -2,6 +2,7 @@
 // respaldo al espanol y formato es-MX / en-US de numeros, dinero, porcentajes y fechas.
 import { beforeAll, describe, expect, it } from "vitest";
 import { crearFormatos } from "../src/i18n/formato.ts";
+import "../src/i18n/mensajes/comun.ts";
 import { cargarIdioma, idiomaListo, type Clave } from "../src/i18n/mensajes/index.ts";
 import { crearTraductor, traducir } from "../src/i18n/traducir.ts";
 
@@ -28,7 +29,8 @@ describe("traducir", () => {
     expect(traducir("es", "comun.resultados", { count: 0 })).toBe("0 resultados");
     expect(traducir("en", "comun.resultados", { count: 1 })).toBe("1 result");
     expect(traducir("en", "comun.resultados", { count: 1234 })).toBe("1,234 results");
-    expect(traducir("es", "comun.resultados", { count: 1234 })).toBe("1,234 resultados");
+    // Espanol byte a byte igual al texto que reemplaza: el numero sin agrupar.
+    expect(traducir("es", "comun.resultados", { count: 1234 })).toBe("1234 resultados");
   });
 
   it("sin count un plural cae a `other`", () => {
@@ -64,7 +66,8 @@ describe("crearFormatos", () => {
     expect(es.moneda(1234.5)).toBe("$1,234.50");
     expect(en.moneda(1234.5)).toBe("$1,234.50");
     expect(en.moneda(1234.5, { decimales: 0 })).toBe("$1,235");
-    expect(en.moneda(10, { moneda: "USD" })).toBe("$10.00");
+    expect(en.moneda(10, { moneda: "USD" }).replace(/\s/g, " ")).toBe("USD 10.00");
+    expect(es.moneda(10, { moneda: "USD" }).replace(/\s/g, " ")).toBe("USD 10.00");
   });
 
   it("porcentaje desde fraccion", () => {
