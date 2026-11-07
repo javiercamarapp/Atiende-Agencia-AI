@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import type { ReactNode } from "react";
 import { CLAVE_IDIOMA, IDIOMA_CAMBIO_EVENTO, guardarIdioma, leerIdioma, type Idioma } from "../lib/idioma";
 import { crearFormatos, type Formatos } from "./formato";
+import { cargarIdioma, idiomaListo } from "./mensajes/index.ts";
 import { crearTraductor, type Traductor } from "./traducir";
 
 export interface ContextoI18n {
@@ -43,6 +44,25 @@ export interface IdiomaProviderProps {
  */
 export function IdiomaProvider({ children, idiomaInicial, persistir }: IdiomaProviderProps) {
   const [idioma, setIdioma] = useState<Idioma>(() => idiomaInicial ?? leerIdioma());
+  const [, setCatalogosCargados] = useState(0);
+  // El ingles es un chunk aparte: mientras llega, la consola sigue en espanol (nunca claves crudas) y cambia de golpe al llegar.
+  const efectivo: Idioma = idiomaListo(idioma) ? idioma : "es";
+
+  useEffect(() => {
+    if (idiomaListo(idioma)) return undefined;
+    let vigente = true;
+    cargarIdioma(idioma).then(
+      () => {
+        if (vigente) setCatalogosCargados((n) => n + 1);
+      },
+      () => {
+        // Sin red: se queda en espanol; el siguiente cambio de idioma lo reintenta.
+      },
+    );
+    return () => {
+      vigente = false;
+    };
+  }, [idioma]);
 
   useEffect(() => {
     // Un enlace con `?lang=` (p. ej. el login en ingles) deja la preferencia guardada: al entrar a la consola sigue en ese idioma.
@@ -68,8 +88,8 @@ export function IdiomaProvider({ children, idiomaInicial, persistir }: IdiomaPro
   }, []);
 
   useEffect(() => {
-    if (typeof document !== "undefined") document.documentElement.lang = idioma;
-  }, [idioma]);
+    if (typeof document !== "undefined") document.documentElement.lang = efectivo;
+  }, [efectivo]);
 
   const cambiarIdioma = useCallback(
     (nuevo: Idioma) => {
@@ -86,7 +106,7 @@ export function IdiomaProvider({ children, idiomaInicial, persistir }: IdiomaPro
     [persistir],
   );
 
-  const valor = useMemo(() => contextoPara(idioma, cambiarIdioma), [idioma, cambiarIdioma]);
+  const valor = useMemo(() => contextoPara(efectivo, cambiarIdioma), [efectivo, cambiarIdioma]);
   return <I18nContext.Provider value={valor}>{children}</I18nContext.Provider>;
 }
 

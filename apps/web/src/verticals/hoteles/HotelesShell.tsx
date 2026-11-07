@@ -51,6 +51,8 @@ import { COPILOTO_HOTELES_ROLES } from "./pages/Copiloto.tsx";
 import { fetchProperties, resolveActivePropertyId } from "./lib/discovery-client.ts";
 import type { PropertyOption } from "./lib/discovery-client.ts";
 import { persistPropertyId, readPersistedPropertyId } from "./lib/property-selection.ts";
+import "@atiende/ui/i18n/nav";
+import "@atiende/ui/i18n/shell";
 
 /** Hotel (property) con el `name` que exige `useVerticalSession`; `nombre` sigue siendo el campo del API. */
 type HotelOption = PropertyOption & { readonly name: string };

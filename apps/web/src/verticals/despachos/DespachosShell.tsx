@@ -58,6 +58,8 @@ import { persistPropertyId, readPersistedPropertyId } from "./lib/property-selec
 import { StepUpDialog } from "./components/StepUpDialog.tsx";
 import { AltaPrimerCliente } from "./pages/Cartera.tsx";
 import { COPILOTO_DESPACHOS_ROLES } from "./pages/Copiloto.tsx";
+import "@atiende/ui/i18n/nav";
+import "@atiende/ui/i18n/shell";
 
 /** Adaptador de sesión de despachos. DEBE ser una constante de módulo (el hook lo usa como dependencia de sus efectos). */
 const DESPACHOS_SESSION: VerticalSessionAdapter<BranchOption> = {

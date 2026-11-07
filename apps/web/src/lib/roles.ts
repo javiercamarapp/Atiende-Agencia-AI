@@ -4,6 +4,7 @@
 //
 // Un rol que no aparece aqui (p. ej. uno nuevo del dominio) se muestra tal cual llego, nunca se inventa.
 import { traducir, type Clave, type Traductor } from "@atiende/ui";
+import "@atiende/ui/i18n/rol";
 
 /** Clave del catalogo i18n (packages/ui/src/i18n/mensajes/rol.ts) de cada rol conocido. */
 export const CLAVES_ROL: Readonly<Record<string, Clave>> = {

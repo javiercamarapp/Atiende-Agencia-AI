@@ -53,6 +53,8 @@ import type { LoginSession } from "./lib/auth-client.ts";
 import { fetchProperties } from "./lib/discovery-client.ts";
 import type { PropertyOption } from "./lib/discovery-client.ts";
 import { persistPropertyId, readPersistedPropertyId, resolveActivePropertyId } from "./lib/property-selection.ts";
+import "@atiende/ui/i18n/nav";
+import "@atiende/ui/i18n/shell";
 
 /** Propiedad con el `name` que exige `useVerticalSession`; `nombre` sigue siendo el campo del API. */
 type PropiedadOption = PropertyOption & { readonly name: string };

@@ -12,6 +12,7 @@ import { useChatDatosDisponible } from "./BotonChatDatos.tsx";
 import { BannerPlan } from "./BannerPlan.tsx";
 import { PanelChateaConTusDatos } from "./PanelChateaConTusDatos.tsx";
 import type { ChatDatosConexion } from "./PanelChateaConTusDatos.tsx";
+import "@atiende/ui/i18n/nav";
 
 export type VerticalShellConectadoProps = VerticalShellProps & {
   readonly apiBaseUrl: string;

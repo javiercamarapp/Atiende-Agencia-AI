@@ -59,6 +59,8 @@ import { SUGERENCIAS_RESTAURANTES, ejecutarConsultaDirecta, fetchDataChatDisponi
 import { persistPropertyId, readPersistedPropertyId } from "./lib/property-selection.ts";
 import { PuertaOnboarding } from "./PuertaOnboarding.tsx";
 import { BannerAgregados } from "./components/operacion/BannerAgregados.tsx";
+import "@atiende/ui/i18n/nav";
+import "@atiende/ui/i18n/shell";
 
 /** Adaptador de sesión de restaurantes. DEBE ser una constante de módulo (el hook lo usa como dependencia de sus efectos). */
 const RESTAURANTES_SESSION: VerticalSessionAdapter<BranchOption> = {

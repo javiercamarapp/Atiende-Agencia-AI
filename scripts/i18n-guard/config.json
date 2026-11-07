@@ -19,6 +19,7 @@
     "apps/web/src/verticals/licitaciones/LicitacionesShell.tsx",
     "apps/web/src/verticals/rentas/RentasShell.tsx",
     "apps/web/src/verticals/restaurantes/RestaurantesShell.tsx",
+    "apps/web/src/superadmin/rutas-i18n.ts",
     "packages/ui/src/components/EstadoVacio.tsx",
     "packages/ui/src/components/EstadoError.tsx",
     "packages/ui/src/components/EstadoCargando.tsx",

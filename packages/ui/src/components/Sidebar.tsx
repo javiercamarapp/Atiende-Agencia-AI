@@ -5,6 +5,7 @@ import { ThemeSelector } from "./ThemeSelector";
 import { AtiendeWordmark } from "./AtiendeLogo";
 import { cn } from "../lib/utils";
 import { useT } from "../i18n/proveedor";
+import "../i18n/mensajes/shell.ts";
 
 type IconType = ComponentType<{ className?: string; strokeWidth?: number | string }>;
 

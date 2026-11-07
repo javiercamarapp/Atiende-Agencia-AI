@@ -4,6 +4,7 @@ import { Button } from "./ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "./ui/sheet";
 import { useT } from "../i18n/proveedor";
 import { ThemeSelector } from "./ThemeSelector";
+import "../i18n/mensajes/shell.ts";
 
 export interface MobileAccountMenuProps {
   user: { email: string; rol?: string } | null;

@@ -1,0 +1,16 @@
+/**
+ * Catalogo en ingles: un chunk APARTE que se descarga solo cuando alguien elige EN (`cargarIdioma("en")`). `satisfies` exige
+ * una traduccion por cada modulo de `MODULOS` (y ninguna de mas). Para agregar un modulo: su archivo aqui + una linea abajo.
+ */
+import type { ModulosTraducidos } from "../index.ts";
+import { comunEn } from "./comun.ts";
+import { navEn } from "./nav.ts";
+import { rolEn } from "./rol.ts";
+import { shellEn } from "./shell.ts";
+
+export const MODULOS_EN = {
+  comun: comunEn,
+  nav: navEn,
+  shell: shellEn,
+  rol: rolEn,
+} as const satisfies ModulosTraducidos;

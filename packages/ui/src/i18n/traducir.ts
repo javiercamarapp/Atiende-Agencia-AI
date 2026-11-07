@@ -1,5 +1,5 @@
 import { crearFormatos, reglaPlural } from "./formato.ts";
-import { CATALOGOS, type Clave } from "./mensajes/index.ts";
+import { CATALOGO_ES, catalogoDe, type Clave } from "./mensajes/index.ts";
 import type { Idioma, Mensaje, Plural, Variables } from "./tipos.ts";
 
 /** Firma de `t`: clave tipada + variables opcionales. Para plurales pasa `{ count }`. */
@@ -13,13 +13,14 @@ function elegirPlural(idioma: Idioma, plural: Plural, count: number | undefined)
 }
 
 /**
- * Traduce sin React (servicios, pruebas, `document.title`). Orden de respaldo: idioma pedido -> espanol -> la propia clave
+ * Traduce sin React (servicios, pruebas, `document.title`). Orden de respaldo: idioma pedido (si su catalogo ya se descargo,
+ * ver `cargarIdioma`) -> espanol -> la propia clave
  * (visible a proposito: con claves tipadas no deberia pasar nunca, y si pasa se nota en vez de dejar un hueco).
  * `{variable}` se reemplaza; los numeros salen con el formato del idioma (1,234 / 1,234). Una variable que no llego se deja
  * tal cual (`{nombre}`) para que el error se vea en pantalla y en las pruebas.
  */
 export function traducir(idioma: Idioma, clave: Clave, variables?: Variables): string {
-  const mensaje: Mensaje | undefined = CATALOGOS[idioma][clave] ?? CATALOGOS.es[clave];
+  const mensaje: Mensaje | undefined = catalogoDe(idioma)?.[clave] ?? CATALOGO_ES[clave];
   if (mensaje === undefined) return clave;
   const count = typeof variables?.["count"] === "number" ? (variables["count"] as number) : undefined;
   const texto = typeof mensaje === "string" ? mensaje : elegirPlural(idioma, mensaje, count);

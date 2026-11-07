@@ -41,6 +41,8 @@ import type { BranchOption } from "./lib/admin-client.ts";
 import { persistPropertyId, readPersistedPropertyId } from "./lib/property-selection.ts";
 import { crearChatConexionCitas } from "./lib/data-chat-client.ts";
 import { COPILOTO_CITAS_ROLES } from "./pages/Copiloto.tsx";
+import "@atiende/ui/i18n/nav";
+import "@atiende/ui/i18n/shell";
 
 /** Adaptador de sesión de citas. DEBE ser una constante de módulo (el hook lo usa como dependencia de sus efectos). */
 const CITAS_SESSION: VerticalSessionAdapter<BranchOption> = {

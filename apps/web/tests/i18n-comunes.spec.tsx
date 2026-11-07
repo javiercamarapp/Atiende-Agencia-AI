@@ -2,15 +2,17 @@
 //
 // i18n ES/EN — componentes comunes de @atiende/ui: estados vacio/error/cargando, tabla con paginacion y seleccion, campos,
 // KPIs y filtros. En ingles hablan ingles natural; en espanol quedan IDENTICOS a antes; un texto que pasa quien llama gana.
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { Activity } from "lucide-react";
 import type { ReactElement } from "react";
-import { DataTable, EstadoCargando, EstadoError, EstadoVacio, FormField, GlobalFilter, IdiomaProvider, Input, StatCard, resolverRango } from "@atiende/ui";
+import { DataTable, EstadoCargando, EstadoError, EstadoVacio, FormField, GlobalFilter, IdiomaProvider, Input, StatCard, cargarIdioma, resolverRango } from "@atiende/ui";
 import { renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 import { installMatchMediaStub, installMemoryLocalStorage } from "./test-utils/memory-storage.ts";
 
 let r: RenderedComponent | undefined;
+// El ingles es un chunk perezoso: se precarga para que el render sea sincrono.
+beforeAll(() => cargarIdioma("en"));
 beforeEach(() => {
   installMatchMediaStub();
   installMemoryLocalStorage();

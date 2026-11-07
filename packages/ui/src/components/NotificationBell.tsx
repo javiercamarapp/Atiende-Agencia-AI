@@ -12,6 +12,7 @@ import { Link } from "react-router-dom";
 import { cn } from "../lib/utils";
 import { useT } from "../i18n/proveedor";
 import { CentroNotificaciones, type CentroNotificacionesProps } from "./CentroNotificaciones";
+import "../i18n/mensajes/shell.ts";
 
 export interface NotificationBellProps {
   /** Ruta de la pagina de notificaciones de la consola (p. ej. `/restaurantes/mi-org/notificaciones`). */
