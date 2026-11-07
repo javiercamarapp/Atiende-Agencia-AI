@@ -292,4 +292,4 @@ export {
 } from "./superadmin-alta-equipo-repository.ts";
 export { PostgresLoginChoferRepository, InMemoryLoginChoferRepository, LoginChoferNoDisponibleError, LoginChoferTelefonoError } from "./login-chofer-repository.ts";
 export type { LoginChoferRepository, LoginChoferCuenta, LoginChoferCodigoReservado, LoginChoferLimites, LoginChoferEventoTipo, LoginChoferTelefonoListado, LoginChoferLecturaCore, ResultadoLimite } from "./login-chofer-repository.ts";
-export { organizacionOperable, sqlOrgOperable, sqlOrgOperableSinFecha } from "./organizacion-operable.ts";
+export { organizacionOperable, sqlOrgOperable } from "./organizacion-operable.ts";
