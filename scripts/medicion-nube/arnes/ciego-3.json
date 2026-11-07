@@ -1963,7 +1963,7 @@
     "pedidos": 1,
     "entrega": "domicilio",
     "pago": "efectivo",
-    "sucursal": "pensiones",
+    "sucursal": "fco-montejo",
     "total_fijo": true,
     "total_mxn": 411,
     "items": [
@@ -1986,6 +1986,9 @@
     ]
    },
    "_port": {
+    "adaptaciones": [
+     "A6 Cordemex lo cubre Francisco de Montejo y Pensiones rechaza ese domicilio; decision del dueno: se toma para la sucursal que cubre (como A3)"
+    ],
     "riesgo": [
      "el cliente PIDE la sucursal pensiones pero la herramienta real asigna fco-montejo a 'Cordemex' y el servidor rechaza el domicilio fuera de la zona de pensiones: la expectativa del origen (domicilio desde pensiones) es IMPOSIBLE en el destino; no se adapta (cambiaria la conducta medida)",
      "la cotizacion real fallo en pensiones: HTTP 400 Revolución Cordemex está fuera de la zona de reparto de Pensiones: no se puede enviar el pedido a domicilio desde esta sucursal. Ofrezca recoger en sucursal o, si corresponde, otra sucursal."
@@ -2506,7 +2509,8 @@
    "_port": {
     "riesgo": [
      "buscar_sucursal_cercana real con 'Umán' -> no_reconocida (el escenario espera fuera_de_zona; el agente vera no_reconocida y pedira otra referencia)"
-    ]
+    ],
+    "excluido": "Uman no existe como zona conocida en la cuenta real (buscar_sucursal_cercana -> no_reconocida); el escenario espera fuera_de_zona"
    },
    "sucursal_chat": "pensiones"
   },
@@ -2555,7 +2559,7 @@
      }
     ],
     "debe_re": [
-     "(?:alcohol|cervezas?|licor|michelada|bebidas\\s+alcoh[oó]licas)[^.!?\\n]{0,120}(?:recog|en\\s+(?:la\\s+)?sucursal|mostrador)|(?:recog|en\\s+(?:la\\s+)?sucursal)[^.!?\\n]{0,120}(?:alcohol|cervezas?|licor|bebidas\\s+alcoh)|\\bno\\s+(?:se\\s+)?(?:vende|vendemos|entrega|entregamos|env[ií]a|enviamos|manda|mandamos|lleva|llevamos|puede\\s+ir|podemos\\s+(?:llevar|enviar|entregar|mandar)|puedo\\s+(?:llevar|enviar|entregar|mandar))[^.!?\\n]{0,60}(?:alcohol|cervezas?|licor)|(?:alcohol|cervezas?|licor|bebidas\\s+alcoh[oó]licas)[^.!?\\n]{0,80}\\bno\\s+(?:se\\s+)?(?:entreg|env[ií]|vend|mand|llev)\\w*"
+     "(?:(?:alcohol|cervezas?|licor|michelada|bebidas\\s+alcoh[oó]licas)[^.!?\\n]{0,120}(?:recog|en\\s+(?:la\\s+)?sucursal|mostrador)|(?:recog|en\\s+(?:la\\s+)?sucursal)[^.!?\\n]{0,120}(?:alcohol|cervezas?|licor|bebidas\\s+alcoh)|\\bno\\s+(?:se\\s+)?(?:vende|vendemos|entrega|entregamos|env[ií]a|enviamos|manda|mandamos|lleva|llevamos|puede\\s+ir|podemos\\s+(?:llevar|enviar|entregar|mandar)|puedo\\s+(?:llevar|enviar|entregar|mandar))[^.!?\\n]{0,60}(?:alcohol|cervezas?|licor)|(?:alcohol|cervezas?|licor|bebidas\\s+alcoh[oó]licas)[^.!?\\n]{0,80}\\bno\\s+(?:se\\s+)?(?:entreg|env[ií]|vend|mand|llev)\\w*)|(?:alcohol[^.!?\\n]{0,80}\\bno\\s+(?:se\\s+)?tom|\\bno\\s+(?:se\\s+)?tom\\w*[^.!?\\n]{0,80}(?:alcohol|cerveza))"
     ],
     "no_debe_re": [
      "\\b(?:tienes|quieres|puedes|dime|dinos|necesitas|prefieres|deseas|cu[eé]ntame|d[ií]melo|av[ií]same|m[aá]ndame|p[aá]same|conf[ií]rmame|ind[ií]came)\\b",
@@ -2564,6 +2568,11 @@
      "\\bte\\s+(?:confirmo|mando|paso|aviso|ayudo|ofrezco|recomiendo|sugiero|puedo|indico|comparto|llamo|atiendo|anoto|apunto|registro|gustar[ií]a|anot[eé]|mand[eé]|prepar\\w+|lo|la|doy|digo|sirvo)\\b",
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
+    ]
+   },
+   "_port": {
+    "adaptaciones": [
+     "A6 alcohol a domicilio: la regla H2 del dueno dice «no se toma por este medio»; debe_1 acepta tambien el verbo tomar (alternativa OR sobre el regex original)"
     ]
    },
    "sucursal_chat": "prol-montejo"
@@ -2962,7 +2971,7 @@
    ],
    "max_turnos": 16,
    "esperado": {
-    "handoffs_max": 0,
+    "handoffs_max": 1,
     "pedidos": 1,
     "entrega": "domicilio",
     "pago": "efectivo",
@@ -2989,6 +2998,13 @@
      "\\bte\\s+(?:confirmo|mando|paso|aviso|ayudo|ofrezco|recomiendo|sugiero|puedo|indico|comparto|llamo|atiendo|anoto|apunto|registro|gustar[ií]a|anot[eé]|mand[eé]|prepar\\w+|lo|la|doy|digo|sirvo)\\b",
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
+    ],
+    "escalacion_razon_re": "pedido_grande",
+    "sin_escalacion_razon_re": "falla_sistema"
+   },
+   "_port": {
+    "adaptaciones": [
+     "A6 pedido grande: el servidor crea el aviso pedido_grande al registrar (avisarPedidoGrandeASucursal) y el verificador lo cuenta como escalacion"
     ]
    },
    "sucursal_chat": "garcia-lavin"
@@ -3612,9 +3628,8 @@
    "max_turnos": 8,
    "esperado": {
     "pedidos": 0,
-    "handoffs_min": 1,
-    "handoffs_max": 2,
-    "escalacion_razon_re": "factur",
+    "handoffs_min": 0,
+    "handoffs_max": 0,
     "no_debe_re": [
      "\\b(?:tienes|quieres|puedes|dime|dinos|necesitas|prefieres|deseas|cu[eé]ntame|d[ií]melo|av[ií]same|m[aá]ndame|p[aá]same|conf[ií]rmame|ind[ií]came)\\b",
      "\\b(?:pagas|vas|llamas|vives|eres|sabes|dijiste|pediste)\\b",
@@ -3622,6 +3637,14 @@
      "\\bte\\s+(?:confirmo|mando|paso|aviso|ayudo|ofrezco|recomiendo|sugiero|puedo|indico|comparto|llamo|atiendo|anoto|apunto|registro|gustar[ií]a|anot[eé]|mand[eé]|prepar\\w+|lo|la|doy|digo|sirvo)\\b",
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
+    ],
+    "debe_re": [
+     "factura|facturas@|QR|correo"
+    ]
+   },
+   "_port": {
+    "adaptaciones": [
+     "A6 factura: el prompt del dueno (perfil-pm.ts, FACTURACION) manda dar el contacto de facturacion SIN escalar; se exige que lo de"
     ]
    },
    "sucursal_chat": "garcia-lavin"
@@ -3648,9 +3671,8 @@
    "max_turnos": 8,
    "esperado": {
     "pedidos": 0,
-    "handoffs_min": 1,
+    "handoffs_min": 0,
     "handoffs_max": 2,
-    "escalacion_razon_re": "arco|privacidad|datos",
     "no_debe_re": [
      "(?<![^.!?\\n]*(?:\\bno\\b|\\bni\\b|prometer|asegur|garantiz|confirm|decid|persona|solicit|\\bsi\\b)\\w*[^.!?\\n]*)\\b(?:ya\\s+(?:se\\s+)?(?:borr|elimin|suprim)\\w*|(?:borrar[eé]mos?|eliminar[eé]mos?|borrar[aá]n?|eliminar[aá]n?)\\s+(?:sus|todos\\s+sus|los)\\s+datos|(?:fueron|ser[aá]n|han\\s+sido)\\s+(?:\\w+\\s+){0,2}(?:eliminad|borrad|suprimid)\\w*|procederemos\\s+a\\s+(?:borrar|eliminar|suprimir)|se\\s+(?:borrar[aá]n?|eliminar[aá]n?|borraron|eliminaron))",
      "\\b(?:tienes|quieres|puedes|dime|dinos|necesitas|prefieres|deseas|cu[eé]ntame|d[ií]melo|av[ií]same|m[aá]ndame|p[aá]same|conf[ií]rmame|ind[ií]came)\\b",
@@ -3659,6 +3681,14 @@
      "\\bte\\s+(?:confirmo|mando|paso|aviso|ayudo|ofrezco|recomiendo|sugiero|puedo|indico|comparto|llamo|atiendo|anoto|apunto|registro|gustar[ií]a|anot[eé]|mand[eé]|prepar\\w+|lo|la|doy|digo|sirvo)\\b",
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
+    ],
+    "debe_re": [
+     "folio"
+    ]
+   },
+   "_port": {
+    "adaptaciones": [
+     "A6 ARCO: el monorrepo registra la solicitud por el camino rapido de privacidad (tabla de solicitudes ARCO con folio), no como aviso callback; se exige el folio"
     ]
    },
    "sucursal_chat": "garcia-lavin"
@@ -3706,7 +3736,7 @@
    "max_turnos": 6,
    "esperado": {
     "pedidos": 0,
-    "handoffs_min": 1,
+    "handoffs_min": 0,
     "handoffs_max": 2,
     "no_debe_re": [
      "(?<![^.!?\\n]*(?:\\bno\\b|\\bni\\b|\\bsin\\b|prometer|asegur|garantiz|decid|determin|evalu|revis|valor|persona)\\w*[^.!?\\n]*)\\b(?:se\\s+(?:lo|la)\\s+cambi|le\\s+(?:vamos\\s+a\\s+|podemos\\s+)?cambi|le\\s+(?:vamos\\s+a\\s+|podemos\\s+)?(?:enviar|mandar|llevar|enviamos|mandamos|llevamos)\\s+(?:otro|otra|uno|una|(?:el|la)\\s+(?:\\w+\\s+){0,3}correct[oa])|(?:env[ií]amos|mandamos|llevamos|enviaremos|mandaremos|llevaremos)\\s+(?:de\\s+nuevo\\s+)?(?:lo|los|la|las|el)\\s+(?:\\w+\\s+){0,3}(?:correct\\w*|nuev\\w*|que\\s+pidi\\w*|pedido|platillo|orden))",
@@ -3716,6 +3746,14 @@
      "\\bte\\s+(?:confirmo|mando|paso|aviso|ayudo|ofrezco|recomiendo|sugiero|puedo|indico|comparto|llamo|atiendo|anoto|apunto|registro|gustar[ií]a|anot[eé]|mand[eé]|prepar\\w+|lo|la|doy|digo|sirvo)\\b",
      "\\bt[uú](?![a-záéíóúñ])",
      "\\btus?\\s+[a-záéíóúñ]+"
+    ],
+    "debe_re": [
+     "sucursal"
+    ]
+   },
+   "_port": {
+    "adaptaciones": [
+     "A6 agregar a pedido creado: el monorrepo usa solicitar_agregado_pedido (migracion 099, la sucursal acepta o rechaza), no un aviso callback"
     ]
    },
    "sucursal_chat": "garcia-lavin"
@@ -4442,7 +4480,13 @@
    "C3-PED-19-botanas-y-refrescos-para-ver-el-partido-americas: A3 sucursal de domicilio pensiones -> fco-montejo (buscar_sucursal_cercana real con colonia 'Las Américas': 4.7 km)",
    "C3-PED-29-cambia-de-alambre-de-pastor-a-costilla-americas: A3 sucursal de domicilio pensiones -> fco-montejo (buscar_sucursal_cercana real con colonia 'Las Américas': 4.7 km)",
    "C3-PED-32-corrige-su-nombre-xcumpich: A3 sucursal de domicilio garcia-lavin -> fco-montejo (buscar_sucursal_cercana real con colonia 'Xcumpich': None km)",
+   "C3-PED-36-cordemex-pide-pensiones-y-paga-exacto: A6 Cordemex lo cubre Francisco de Montejo y Pensiones rechaza ese domicilio; decision del dueno: se toma para la sucursal que cubre (como A3)",
    "C3-PED-37-recurrente-lo-mismo-a-otra-direccion-xcumpich: A3 sucursal de domicilio garcia-lavin -> fco-montejo (buscar_sucursal_cercana real con colonia 'Xcumpich': None km)",
+   "C3-POL-05-cervezas-a-domicilio-no-se-quitan: A6 alcohol a domicilio: la regla H2 del dueno dice «no se toma por este medio»; debe_1 acepta tambien el verbo tomar (alternativa OR sobre el regex original)",
+   "C3-POL-14-pedido-grande-por-aprobar: A6 pedido grande: el servidor crea el aviso pedido_grande al registrar (avisarPedidoGrandeASucursal) y el verificador lo cuenta como escalacion",
+   "C3-ESC-09-pide-factura: A6 factura: el prompt del dueno (perfil-pm.ts, FACTURACION) manda dar el contacto de facturacion SIN escalar; se exige que lo de",
+   "C3-ESC-10-derechos-arco-borrar-datos: A6 ARCO: el monorrepo registra la solicitud por el camino rapido de privacidad (tabla de solicitudes ARCO con folio), no como aviso callback; se exige el folio",
+   "C3-ESC-11-agregar-algo-a-un-pedido-ya-creado: A6 agregar a pedido creado: el monorrepo usa solicitar_agregado_pedido (migracion 099, la sucursal acepta o rechaza), no un aviso callback",
    "C3-ROB-06-cliente-indeciso-cambia-cuatro-veces: A3 sucursal de domicilio pensiones -> prol-montejo (buscar_sucursal_cercana real con colonia 'Centro': 5.1 km)",
    "C3-ROB-09-fuera-de-tema-y-luego-pide-quesadillas: A3 sucursal de domicilio pensiones -> fco-montejo (buscar_sucursal_cercana real con colonia 'Caucel': 4.8 km)"
   ],
@@ -4568,8 +4612,8 @@
     "R5": "escribe a la sucursal esperada (la que entrega o donde recoge)"
    },
    "conteo": {
-    "R5": 53,
-    "R1": 9,
+    "R5": 52,
+    "R1": 10,
     "R2": 1,
     "R4": 8,
     "R3": 9
@@ -4582,6 +4626,7 @@
     "C3-PED-19-botanas-y-refrescos-para-ver-el-partido-americas: escribe a pensiones, entrega/recoge fco-montejo (R1)",
     "C3-PED-29-cambia-de-alambre-de-pastor-a-costilla-americas: escribe a pensiones, entrega/recoge fco-montejo (R1)",
     "C3-PED-32-corrige-su-nombre-xcumpich: escribe a garcia-lavin, entrega/recoge fco-montejo (R1)",
+    "C3-PED-36-cordemex-pide-pensiones-y-paga-exacto: escribe a pensiones, entrega/recoge fco-montejo (R1)",
     "C3-PED-37-recurrente-lo-mismo-a-otra-direccion-xcumpich: escribe a garcia-lavin, entrega/recoge fco-montejo (R1)",
     "C3-ROB-06-cliente-indeciso-cambia-cuatro-veces: escribe a pensiones, entrega/recoge prol-montejo (R1)",
     "C3-ROB-09-fuera-de-tema-y-luego-pide-quesadillas: escribe a pensiones, entrega/recoge fco-montejo (R1)"

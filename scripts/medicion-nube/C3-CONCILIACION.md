@@ -14,7 +14,7 @@ Generado por `c3-conciliar.py` (sin red ni LLM). Fuente: `arnes/ciego-3.fuente.j
 
 ## Numero de WhatsApp por escenario (sucursal_chat)
 
-Cada escenario escribe al numero de UNA sucursal (decision del dueno, 2026-11-06). Reglas y conteo: {'R5': 53, 'R1': 9, 'R2': 1, 'R4': 8, 'R3': 9}. Sucursal cruzada (escribe a una, entrega otra):
+Cada escenario escribe al numero de UNA sucursal (decision del dueno, 2026-11-06). Reglas y conteo: {'R5': 52, 'R1': 10, 'R2': 1, 'R4': 8, 'R3': 9}. Sucursal cruzada (escribe a una, entrega otra):
 - C3-PED-07-kilo-de-bistec-y-medio-de-poc-chuc-americas: escribe a pensiones, entrega/recoge fco-montejo (R1)
 - C3-PED-08-kilo-y-cuarto-de-costilla-centro: escribe a pensiones, entrega/recoge prol-montejo (R1)
 - C3-PED-13-gringas-y-mestiza-xcumpich: escribe a garcia-lavin, entrega/recoge fco-montejo (R1)
@@ -22,11 +22,12 @@ Cada escenario escribe al numero de UNA sucursal (decision del dueno, 2026-11-06
 - C3-PED-19-botanas-y-refrescos-para-ver-el-partido-americas: escribe a pensiones, entrega/recoge fco-montejo (R1)
 - C3-PED-29-cambia-de-alambre-de-pastor-a-costilla-americas: escribe a pensiones, entrega/recoge fco-montejo (R1)
 - C3-PED-32-corrige-su-nombre-xcumpich: escribe a garcia-lavin, entrega/recoge fco-montejo (R1)
+- C3-PED-36-cordemex-pide-pensiones-y-paga-exacto: escribe a pensiones, entrega/recoge fco-montejo (R1)
 - C3-PED-37-recurrente-lo-mismo-a-otra-direccion-xcumpich: escribe a garcia-lavin, entrega/recoge fco-montejo (R1)
 - C3-ROB-06-cliente-indeciso-cambia-cuatro-veces: escribe a pensiones, entrega/recoge prol-montejo (R1)
 - C3-ROB-09-fuera-de-tema-y-luego-pide-quesadillas: escribe a pensiones, entrega/recoge fco-montejo (R1)
 
-## Escenarios con adaptaciones o riesgos (13 de 80; 9 adaptaciones, 6 riesgos)
+## Escenarios con adaptaciones o riesgos (18 de 80; 15 adaptaciones, 6 riesgos)
 
 - **C3-PED-07-kilo-de-bistec-y-medio-de-poc-chuc-americas**
   - ADAPTADO: A3 sucursal de domicilio pensiones -> fco-montejo (buscar_sucursal_cercana real con colonia 'Las Américas': 4.7 km)
@@ -44,6 +45,7 @@ Cada escenario escribe al numero de UNA sucursal (decision del dueno, 2026-11-06
   - RIESGO (sin adaptar): el cliente PIDE la sucursal garcia-lavin pero la herramienta real asigna prol-montejo a 'Itzimná' y el servidor rechaza el domicilio fuera de la zona de garcia-lavin: la expectativa del origen (domicilio desde garcia-lavin) es IMPOSIBLE en el destino; no se adapta (cambiaria la conducta medida)
   - RIESGO (sin adaptar): la cotizacion real fallo en garcia-lavin: HTTP 400 Itzimná está fuera de la zona de reparto de García Lavín (Victory Platz): no se puede enviar el pedido a domicilio desde esta sucursal. Ofrezca recoger en sucursal o, si corresponde, otra suc
 - **C3-PED-36-cordemex-pide-pensiones-y-paga-exacto**
+  - ADAPTADO: A6 Cordemex lo cubre Francisco de Montejo y Pensiones rechaza ese domicilio; decision del dueno: se toma para la sucursal que cubre (como A3)
   - RIESGO (sin adaptar): el cliente PIDE la sucursal pensiones pero la herramienta real asigna fco-montejo a 'Cordemex' y el servidor rechaza el domicilio fuera de la zona de pensiones: la expectativa del origen (domicilio desde pensiones) es IMPOSIBLE en el destino; no se adapta (cambiaria la conducta medida)
   - RIESGO (sin adaptar): la cotizacion real fallo en pensiones: HTTP 400 Revolución Cordemex está fuera de la zona de reparto de Pensiones: no se puede enviar el pedido a domicilio desde esta sucursal. Ofrezca recoger en sucursal o, si corresponde, otra sucursal.
 - **C3-PED-37-recurrente-lo-mismo-a-otra-direccion-xcumpich**
@@ -51,7 +53,146 @@ Cada escenario escribe al numero de UNA sucursal (decision del dueno, 2026-11-06
 - **C3-POL-03-fuera-de-zona-kanasin**
   - RIESGO (sin adaptar): buscar_sucursal_cercana real con 'Kanasín' -> no_reconocida (el escenario espera fuera_de_zona; el agente vera no_reconocida y pedira otra referencia)
 - **C3-POL-04-fuera-de-zona-uman-recoge-en-pensiones**
+  - EXCLUIDO (no se corre): U
+  - EXCLUIDO (no se corre): m
+  - EXCLUIDO (no se corre): a
+  - EXCLUIDO (no se corre): n
+  - EXCLUIDO (no se corre):  
+  - EXCLUIDO (no se corre): n
+  - EXCLUIDO (no se corre): o
+  - EXCLUIDO (no se corre):  
+  - EXCLUIDO (no se corre): e
+  - EXCLUIDO (no se corre): x
+  - EXCLUIDO (no se corre): i
+  - EXCLUIDO (no se corre): s
+  - EXCLUIDO (no se corre): t
+  - EXCLUIDO (no se corre): e
+  - EXCLUIDO (no se corre):  
+  - EXCLUIDO (no se corre): c
+  - EXCLUIDO (no se corre): o
+  - EXCLUIDO (no se corre): m
+  - EXCLUIDO (no se corre): o
+  - EXCLUIDO (no se corre):  
+  - EXCLUIDO (no se corre): z
+  - EXCLUIDO (no se corre): o
+  - EXCLUIDO (no se corre): n
+  - EXCLUIDO (no se corre): a
+  - EXCLUIDO (no se corre):  
+  - EXCLUIDO (no se corre): c
+  - EXCLUIDO (no se corre): o
+  - EXCLUIDO (no se corre): n
+  - EXCLUIDO (no se corre): o
+  - EXCLUIDO (no se corre): c
+  - EXCLUIDO (no se corre): i
+  - EXCLUIDO (no se corre): d
+  - EXCLUIDO (no se corre): a
+  - EXCLUIDO (no se corre):  
+  - EXCLUIDO (no se corre): e
+  - EXCLUIDO (no se corre): n
+  - EXCLUIDO (no se corre):  
+  - EXCLUIDO (no se corre): l
+  - EXCLUIDO (no se corre): a
+  - EXCLUIDO (no se corre):  
+  - EXCLUIDO (no se corre): c
+  - EXCLUIDO (no se corre): u
+  - EXCLUIDO (no se corre): e
+  - EXCLUIDO (no se corre): n
+  - EXCLUIDO (no se corre): t
+  - EXCLUIDO (no se corre): a
+  - EXCLUIDO (no se corre):  
+  - EXCLUIDO (no se corre): r
+  - EXCLUIDO (no se corre): e
+  - EXCLUIDO (no se corre): a
+  - EXCLUIDO (no se corre): l
+  - EXCLUIDO (no se corre):  
+  - EXCLUIDO (no se corre): (
+  - EXCLUIDO (no se corre): b
+  - EXCLUIDO (no se corre): u
+  - EXCLUIDO (no se corre): s
+  - EXCLUIDO (no se corre): c
+  - EXCLUIDO (no se corre): a
+  - EXCLUIDO (no se corre): r
+  - EXCLUIDO (no se corre): _
+  - EXCLUIDO (no se corre): s
+  - EXCLUIDO (no se corre): u
+  - EXCLUIDO (no se corre): c
+  - EXCLUIDO (no se corre): u
+  - EXCLUIDO (no se corre): r
+  - EXCLUIDO (no se corre): s
+  - EXCLUIDO (no se corre): a
+  - EXCLUIDO (no se corre): l
+  - EXCLUIDO (no se corre): _
+  - EXCLUIDO (no se corre): c
+  - EXCLUIDO (no se corre): e
+  - EXCLUIDO (no se corre): r
+  - EXCLUIDO (no se corre): c
+  - EXCLUIDO (no se corre): a
+  - EXCLUIDO (no se corre): n
+  - EXCLUIDO (no se corre): a
+  - EXCLUIDO (no se corre):  
+  - EXCLUIDO (no se corre): -
+  - EXCLUIDO (no se corre): >
+  - EXCLUIDO (no se corre):  
+  - EXCLUIDO (no se corre): n
+  - EXCLUIDO (no se corre): o
+  - EXCLUIDO (no se corre): _
+  - EXCLUIDO (no se corre): r
+  - EXCLUIDO (no se corre): e
+  - EXCLUIDO (no se corre): c
+  - EXCLUIDO (no se corre): o
+  - EXCLUIDO (no se corre): n
+  - EXCLUIDO (no se corre): o
+  - EXCLUIDO (no se corre): c
+  - EXCLUIDO (no se corre): i
+  - EXCLUIDO (no se corre): d
+  - EXCLUIDO (no se corre): a
+  - EXCLUIDO (no se corre): )
+  - EXCLUIDO (no se corre): ;
+  - EXCLUIDO (no se corre):  
+  - EXCLUIDO (no se corre): e
+  - EXCLUIDO (no se corre): l
+  - EXCLUIDO (no se corre):  
+  - EXCLUIDO (no se corre): e
+  - EXCLUIDO (no se corre): s
+  - EXCLUIDO (no se corre): c
+  - EXCLUIDO (no se corre): e
+  - EXCLUIDO (no se corre): n
+  - EXCLUIDO (no se corre): a
+  - EXCLUIDO (no se corre): r
+  - EXCLUIDO (no se corre): i
+  - EXCLUIDO (no se corre): o
+  - EXCLUIDO (no se corre):  
+  - EXCLUIDO (no se corre): e
+  - EXCLUIDO (no se corre): s
+  - EXCLUIDO (no se corre): p
+  - EXCLUIDO (no se corre): e
+  - EXCLUIDO (no se corre): r
+  - EXCLUIDO (no se corre): a
+  - EXCLUIDO (no se corre):  
+  - EXCLUIDO (no se corre): f
+  - EXCLUIDO (no se corre): u
+  - EXCLUIDO (no se corre): e
+  - EXCLUIDO (no se corre): r
+  - EXCLUIDO (no se corre): a
+  - EXCLUIDO (no se corre): _
+  - EXCLUIDO (no se corre): d
+  - EXCLUIDO (no se corre): e
+  - EXCLUIDO (no se corre): _
+  - EXCLUIDO (no se corre): z
+  - EXCLUIDO (no se corre): o
+  - EXCLUIDO (no se corre): n
+  - EXCLUIDO (no se corre): a
   - RIESGO (sin adaptar): buscar_sucursal_cercana real con 'Umán' -> no_reconocida (el escenario espera fuera_de_zona; el agente vera no_reconocida y pedira otra referencia)
+- **C3-POL-05-cervezas-a-domicilio-no-se-quitan**
+  - ADAPTADO: A6 alcohol a domicilio: la regla H2 del dueno dice «no se toma por este medio»; debe_1 acepta tambien el verbo tomar (alternativa OR sobre el regex original)
+- **C3-POL-14-pedido-grande-por-aprobar**
+  - ADAPTADO: A6 pedido grande: el servidor crea el aviso pedido_grande al registrar (avisarPedidoGrandeASucursal) y el verificador lo cuenta como escalacion
+- **C3-ESC-09-pide-factura**
+  - ADAPTADO: A6 factura: el prompt del dueno (perfil-pm.ts, FACTURACION) manda dar el contacto de facturacion SIN escalar; se exige que lo de
+- **C3-ESC-10-derechos-arco-borrar-datos**
+  - ADAPTADO: A6 ARCO: el monorrepo registra la solicitud por el camino rapido de privacidad (tabla de solicitudes ARCO con folio), no como aviso callback; se exige el folio
+- **C3-ESC-11-agregar-algo-a-un-pedido-ya-creado**
+  - ADAPTADO: A6 agregar a pedido creado: el monorrepo usa solicitar_agregado_pedido (migracion 099, la sucursal acepta o rechaza), no un aviso callback
 - **C3-ROB-06-cliente-indeciso-cambia-cuatro-veces**
   - ADAPTADO: A3 sucursal de domicilio pensiones -> prol-montejo (buscar_sucursal_cercana real con colonia 'Centro': 5.1 km)
 - **C3-ROB-09-fuera-de-tema-y-luego-pide-quesadillas**

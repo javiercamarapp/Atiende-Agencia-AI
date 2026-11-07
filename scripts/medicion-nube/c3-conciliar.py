@@ -90,6 +90,24 @@ def reemplazar(x, a, b):
 def arg(n, d=None):
     return sys.argv[sys.argv.index(n) + 1] if n in sys.argv else d
 
+# A6: decisiones de expectativa (ver el comentario en main). clave -> (cambios en esperado, motivo, excluir)
+A6_DECISIONES = {
+    "C3-ESC-09-": ({"handoffs_min": 0, "handoffs_max": 0, "escalacion_razon_re": None, "debe_re_mas": ["factura|facturas@|QR|correo"]},
+                   "factura: el prompt del dueno (perfil-pm.ts, FACTURACION) manda dar el contacto de facturacion SIN escalar; se exige que lo de", False),
+    "C3-ESC-10-": ({"handoffs_min": 0, "escalacion_razon_re": None, "debe_re_mas": ["folio"]},
+                   "ARCO: el monorrepo registra la solicitud por el camino rapido de privacidad (tabla de solicitudes ARCO con folio), no como aviso callback; se exige el folio", False),
+    "C3-ESC-11-": ({"handoffs_min": 0, "debe_re_mas": ["sucursal"]},
+                   "agregar a pedido creado: el monorrepo usa solicitar_agregado_pedido (migracion 099, la sucursal acepta o rechaza), no un aviso callback", False),
+    "C3-POL-05-": ({"debe_1_o": "alcohol[^.!?\\n]{0,80}\\bno\\s+(?:se\\s+)?tom|\\bno\\s+(?:se\\s+)?tom\\w*[^.!?\\n]{0,80}(?:alcohol|cerveza)"},
+                   "alcohol a domicilio: la regla H2 del dueno dice «no se toma por este medio»; debe_1 acepta tambien el verbo tomar (alternativa OR sobre el regex original)", False),
+    "C3-POL-14-": ({"handoffs_max": 1, "escalacion_razon_re": "pedido_grande", "sin_escalacion_razon_re": "falla_sistema"},
+                   "pedido grande: el servidor crea el aviso pedido_grande al registrar (avisarPedidoGrandeASucursal) y el verificador lo cuenta como escalacion", False),
+    "C3-PED-36-": ({"sucursal": "fco-montejo"},
+                   "Cordemex lo cubre Francisco de Montejo y Pensiones rechaza ese domicilio; decision del dueno: se toma para la sucursal que cubre (como A3)", False),
+    "C3-POL-04-": ({}, "Uman no existe como zona conocida en la cuenta real (buscar_sucursal_cercana -> no_reconocida); el escenario espera fuera_de_zona", True),
+}
+
+
 def main():
     banco_id = arg("--banco", "c3")
     if banco_id not in BANCOS: sys.exit(f"--banco debe ser uno de {sorted(BANCOS)}")
@@ -225,6 +243,19 @@ def main():
                 if not por_nombre.get(norm(x["name"])): riesgo.append(f"pedido previo: producto inexistente {x['name']}")
         if s and s.get("semilla_error"):
             riesgo.append(f"semilla del pedido previo fallo: {s['semilla_error'][:160]}")
+        # A6 (2026-11-06, tras C3 x1 en 8b2c019): expectativas que chocan con una regla escrita del dueno o con el flujo real del monorrepo
+        # (no con la conducta medida). Cada una cita su fuente; ver C3-CONCILIACION.md.
+        if not principal:
+            for clave, (cambios, motivo, excluir) in A6_DECISIONES.items():
+                if e["id"].startswith(clave):
+                    if excluir: excl = excl or motivo
+                    else:
+                        for k, v in cambios.items():
+                            if v is None: e["esperado"].pop(k, None)
+                            elif k == "debe_re_mas": e["esperado"]["debe_re"] = list(e["esperado"].get("debe_re", [])) + v
+                            elif k == "debe_1_o": e["esperado"]["debe_re"] = [f"(?:{e['esperado']['debe_re'][0]})|(?:{v})"] + list(e["esperado"]["debe_re"][1:])
+                            else: e["esperado"][k] = v
+                        ad.append(f"A6 {motivo}")
         if excl: excluidos.append((e["id"], excl))
         if ad or riesgo or excl:
             e["_port"] = {**({"adaptaciones": ad} if ad else {}), **({"riesgo": riesgo} if riesgo else {}), **({"excluido": excl} if excl else {})}
