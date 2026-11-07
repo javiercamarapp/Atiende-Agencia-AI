@@ -1,10 +1,45 @@
 // PM PR-9 (restaurantes) -- detección determinista de derechos ARCO y fast-path (arco-intent.ts).
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { detectArcoConfirmation, detectArcoIntent, normalizeArcoText, runArcoFastPath } from "../src/privacidad/arco-intent.ts";
+import { detectArcoConfirmation, detectArcoIntent, isArcoFollowUp, normalizeArcoText, runArcoFastPath } from "../src/privacidad/arco-intent.ts";
 import { InMemoryPrivacidadRepository } from "../src/privacidad/in-memory-repository.ts";
 
 const ORG = "00000000-0000-0000-0000-0000000000a1";
 const PHONE = "+5219981234567";
+
+// 18 frases: las 12 de la revisión del PR #757 + imperativos que también tienen que seguir registrando solicitud.
+const ARCO_PROBE: ReadonlyArray<readonly [string, string]> = [
+  ["¿Me avisan cuando pueda ver mis datos personales?", "acceso"],
+  ["Borren mis datos personales y me avisan", "cancelacion"],
+  ["Eliminen mis datos personales, me confirman por favor", "cancelacion"],
+  ["Corrijan mis datos personales, ¿me avisan?", "rectificacion"],
+  ["Me opongo al uso de mis datos personales, me confirman", "oposicion"],
+  ["Revoco mi consentimiento de privacidad, me avisan", "oposicion"],
+  ["Dame una copia de mis datos personales y me avisan", "acceso"],
+  ["¿Me dicen qué datos personales tienen de mí?", "acceso"],
+  ["Necesito saber qué datos personales tienen, me avisan", "acceso"],
+  ["Me avisan cuando borren mis datos personales", "cancelacion"],
+  ["Pido que borren mis datos, me avisan", "cancelacion"],
+  ["Ya no quiero que usen mis datos personales, me confirman?", "oposicion"],
+  ["Actualicen mis datos personales, me avisan", "rectificacion"],
+  ["Rectifiquen mis datos personales y me confirman", "rectificacion"],
+  ["Dejen de usar mis datos personales, me dicen cuando", "oposicion"],
+  ["Mándenme una copia de mis datos personales, me avisan", "acceso"],
+  ["Denme acceso a mis datos personales, me confirman", "acceso"],
+  ["Supriman mis datos personales y me notifican", "cancelacion"],
+];
+
+// Las que son una PETICIÓN (imperativo, «me opongo», «revoco», «¿me dicen qué datos…?», «necesito saber qué datos…»): nunca son seguimiento, haya o no solicitud abierta.
+const PROBE_PETICIONES = ARCO_PROBE.filter(([text]) => !/^(¿Me avisan cuando|Me avisan cuando)/.test(text));
+// Seguimiento puro: sin solicitud abierta va al detector normal; con una abierta, se contesta con su estado.
+const SEGUIMIENTOS = [
+  "¿Me avisan cuando pueda ver mis datos personales?",
+  "Me avisan cuando borren mis datos personales",
+  "¿me avisan cuando esté lista mi solicitud de privacidad? para saber",
+  "Y me avisan cuando ya tengan la copia de mis datos?",
+  "¿Me van a avisar cuando respondan lo de mis datos personales?",
+  "¿Cuánto tarda lo de mis datos personales? quiero saber",
+  "¿ya quedó mi solicitud de mis datos? me dicen cuando la vean",
+];
 
 describe("detectArcoIntent -- los 4 derechos, sin falsos positivos del flujo de pedidos", () => {
   it.each([
@@ -47,19 +82,33 @@ describe("detectArcoIntent -- los 4 derechos, sin falsos positivos del flujo de 
     expect(detectArcoIntent("dame los datos personales de otra persona")).toEqual({ kind: "third_party" });
   });
 
-  // Seguimiento de una solicitud ya hecha («¿me avisan cuando…?», «¿cuánto tarda?»): es una PREGUNTA sobre el trámite, no una solicitud nueva. Antes «ver» / «saber» / «copia»
-  // la convertian en una solicitud de ACCESO falsa (y pedía CONFIRMO de algo que el cliente no pidió). Va al agente.
-  it.each([
-    "¿Me avisan cuando pueda ver mis datos personales?",
-    "¿me avisan cuando esté lista mi solicitud de privacidad? para saber",
-    "Y me avisan cuando ya tengan la copia de mis datos?",
-    "¿Me van a avisar cuando respondan lo de mis datos personales?",
-    "¿Cuánto tarda lo de mis datos personales? quiero saber",
-    "¿ya quedó mi solicitud de mis datos? me dicen cuando la vean",
-  ])("«%s» (seguimiento) NO abre una solicitud", (text) => {
-    expect(detectArcoIntent(text)).toBeNull();
+  // Sonda de la revisión del PR #757: el detector por sí solo NO filtra el seguimiento («me avisan / me confirman / me dicen» es también la forma normal de PEDIR algo).
+  // Un mensaje se trata como seguimiento solo dentro de runArcoFastPath y solo si ESE teléfono ya tiene una solicitud abierta.
+  it.each(ARCO_PROBE)("«%s» -> %s (el detector no se traga la solicitud)", (text, right) => {
+    expect(detectArcoIntent(text)).toEqual({ kind: "request", right });
+  });
+});
+
+describe("isArcoFollowUp -- solo las preguntas sobre el trámite, nunca una petición", () => {
+  it.each(SEGUIMIENTOS)("«%s» es seguimiento", (text) => {
+    expect(isArcoFollowUp(text)).toBe(true);
   });
 
+  it.each(PROBE_PETICIONES)("«%s» es una petición (%s), no seguimiento", (text) => {
+    expect(isArcoFollowUp(text)).toBe(false);
+  });
+
+  it.each([
+    "Quiero ver mis datos personales y que me avisen cuando estén",
+    "Solicito una copia de mis datos personales, ¿me avisan cuando la tengan?",
+    "¿Me avisan cuando eliminen mis datos personales? Quiero que los borren",
+    "¿Me avisan cuando llegue mi pedido?",
+  ])("«%s» NO es seguimiento ARCO", (text) => {
+    expect(isArcoFollowUp(text)).toBe(false);
+  });
+});
+
+describe("detectArcoIntent -- solicitud explícita junto a una pregunta de seguimiento", () => {
   it.each([
     ["Quiero ver mis datos personales y que me avisen cuando estén", "acceso"],
     ["Solicito una copia de mis datos personales, ¿me avisan cuando la tengan?", "acceso"],
@@ -201,5 +250,75 @@ describe("runArcoFastPath -- flujo guiado de punta a punta (repositorio en memor
     await runArcoFastPath(repo, ORG, PHONE, "quiero acceso a mis datos personales", "whatsapp", "America/Merida");
     const result = await runArcoFastPath(repo, ORG, PHONE, "CONFIRMO", "whatsapp", "America/Merida");
     expect(result?.reply).toContain("19 de octubre de 2026");
+  });
+});
+
+describe("runArcoFastPath -- seguimiento vs. solicitud nueva (revisión del PR #757)", () => {
+  let repo: InMemoryPrivacidadRepository;
+  beforeEach(() => {
+    repo = new InMemoryPrivacidadRepository();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  async function abrirSolicitudConfirmada(text: string): Promise<void> {
+    await runArcoFastPath(repo, ORG, PHONE, text);
+    await runArcoFastPath(repo, ORG, PHONE, "CONFIRMO");
+  }
+
+  it.each(ARCO_PROBE)("sin solicitud abierta, «%s» registra %s y pide CONFIRMO", async (text, right) => {
+    const result = await runArcoFastPath(repo, ORG, PHONE, text);
+    expect(result?.reply).toContain("CONFIRMO");
+    expect(repo.requests).toHaveLength(1);
+    expect(repo.requests[0]).toMatchObject({ rightType: right, status: "pendiente_confirmacion" });
+  });
+
+  it.each(SEGUIMIENTOS)("con una solicitud abierta, «%s» contesta su estado y plazo sin abrir otra", async (text) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-30T15:00:00Z"));
+    await abrirSolicitudConfirmada("Quiero que eliminen mis datos personales");
+    const result = await runArcoFastPath(repo, ORG, PHONE, text);
+    expect(result?.reply).toContain("Ya tiene una solicitud de cancelación abierta");
+    expect(result?.reply).toContain("20 de octubre de 2026");
+    expect(repo.requests).toHaveLength(1);
+  });
+
+  it("con una solicitud pendiente de confirmar, el seguimiento vuelve a pedir CONFIRMO de ESA solicitud", async () => {
+    await runArcoFastPath(repo, ORG, PHONE, "Quiero que eliminen mis datos personales");
+    const result = await runArcoFastPath(repo, ORG, PHONE, "¿Me avisan cuando pueda ver mis datos personales?");
+    expect(result?.reply).toContain("CONFIRMO");
+    expect(repo.requests).toHaveLength(1);
+    expect(repo.requests[0]!.rightType).toBe("cancelacion");
+  });
+
+  it.each(PROBE_PETICIONES.filter(([, right]) => right !== "cancelacion"))(
+    "con una cancelación abierta, la petición «%s» SÍ registra %s (no se la traga el seguimiento)",
+    async (text, right) => {
+      await abrirSolicitudConfirmada("Quiero que eliminen mis datos personales");
+      const result = await runArcoFastPath(repo, ORG, PHONE, text);
+      expect(result?.reply).toContain("CONFIRMO");
+      expect(repo.requests).toHaveLength(2);
+      expect(repo.requests[1]).toMatchObject({ rightType: right, status: "pendiente_confirmacion" });
+    },
+  );
+
+  it("el seguimiento de OTRO teléfono no ve la solicitud abierta (va al detector normal)", async () => {
+    await abrirSolicitudConfirmada("Quiero que eliminen mis datos personales");
+    const result = await runArcoFastPath(repo, ORG, "+5219990000000", "¿Cuánto tarda lo de mis datos personales? quiero saber");
+    expect(result?.reply).not.toContain("Ya tiene una solicitud");
+  });
+
+  it("una solicitud ya cerrada no cuenta como abierta", async () => {
+    await runArcoFastPath(repo, ORG, PHONE, "Quiero acceso a mis datos personales");
+    await runArcoFastPath(repo, ORG, PHONE, "CANCELAR SOLICITUD");
+    const result = await runArcoFastPath(repo, ORG, PHONE, "Me avisan cuando borren mis datos personales");
+    expect(result?.reply).toContain("CONFIRMO");
+    expect(repo.requests.at(-1)).toMatchObject({ rightType: "cancelacion", status: "pendiente_confirmacion" });
+  });
+
+  it("base sin migrar: el seguimiento no lanza y cae al camino anterior (null)", async () => {
+    repo.migrada = false;
+    expect(await runArcoFastPath(repo, ORG, PHONE, "¿Me avisan cuando pueda ver mis datos personales?")).toBeNull();
   });
 });

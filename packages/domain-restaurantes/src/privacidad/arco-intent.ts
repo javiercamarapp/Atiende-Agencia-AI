@@ -59,18 +59,37 @@ const THIRD_PARTY_RE =
   /\b(de|del) (mi|su|otro|otra|un|una|el|la) (esposa|esposo|pareja|mama|papa|madre|padre|hij[oa]|hermano|hermana|amig[oa]|cliente|paciente|vecin[oa]|persona|jefe|jefa|ex|novio|novia|senor|senora|familiar)\b|\bde (otra persona|alguien mas|un tercero|terceros)\b/;
 
 const RIGHT_PATTERNS: ReadonlyArray<{ readonly right: DataRightType; readonly re: RegExp }> = [
-  { right: "cancelacion", re: /\b(cancelar|cancelacion de|eliminar|elimina|eliminen|borrar|borren|borra|suprimir|supresion|olvidar|olviden|dar de baja|darme de baja)\b/ },
+  { right: "cancelacion", re: /\b(cancelar|cancelacion de|eliminar|elimina|eliminen|borrar|borren|borra|suprimir|supriman|supresion|olvidar|olviden|dar de baja|darme de baja)\b/ },
   { right: "oposicion", re: /\b(oponer|oponerme|oposicion|me opongo|revoco|revocar|revocacion|no quiero que (usen|traten|utilicen|compartan)|dejen de (usar|tratar|utilizar|compartir)|no (los |lo )?(usen|compartan|traten|utilicen))\b/ },
-  { right: "rectificacion", re: /\b(rectificar|rectificacion|corregir|correccion|corrijan|actualizar|actualicen|modificar|modifiquen|estan mal|incorrectos|erroneos|equivocados)\b/ },
+  { right: "rectificacion", re: /\b(rectificar|rectificacion|rectifiquen|corregir|correccion|corrijan|actualizar|actualicen|modificar|modifiquen|estan mal|incorrectos|erroneos|equivocados)\b/ },
   { right: "acceso", re: /\b(acceso|acceder|conocer|saber|ver|consultar|copia|obtener|que datos|cuales datos|entreguen|envien)\b/ },
 ];
 
-// Seguimiento de una solicitud ya hecha: pregunta por el aviso, el plazo o el estado del trámite. Sin una petición explícita en el mismo mensaje NO es una solicitud nueva
-// (antes «¿me avisan cuando pueda ver mis datos?» abría un ACCESO falso por «ver» y pedía CONFIRMO de algo que el cliente no pidió): sigue al agente.
+// Seguimiento de una solicitud ya hecha: pregunta por el aviso, el plazo o el estado del trámite («¿me avisan cuando…?», «¿cuánto tarda?»).
+// OJO: «me avisan / me confirman / me dicen» es también la forma normal de PEDIR algo en español («Borren mis datos y me avisan»), así que este patrón
+// NUNCA descarta un mensaje por sí solo: solo cuenta dentro de `runArcoFastPath` y solo si ESE teléfono ya tiene una solicitud abierta (revisión del PR #757).
 const FOLLOW_UP_RE =
   /\b(me avisan|me avisas|me avisaran|me avisen|me van a avisar|me notifican|me notificaran|me van a notificar|me dicen|me confirman|cuanto tarda|cuanto tiempo|cuando me (responden|contestan)|ya quedo|como va|en que va|estatus|status|seguimiento)\b/;
-// Petición explícita («quiero / solicito / pido…», «que borren…»). «quiero saber» es la coletilla de una pregunta, no una petición.
-const EXPLICIT_REQUEST_RE = /\b(quiero|quisiera|solicito|deseo|pido|necesito|me gustaria)\b(?! saber\b)|\bque (los |las |me )?(borren|eliminen|corrijan|rectifiquen|den|envien|entreguen)\b/;
+// Petición explícita: «quiero / solicito / pido…», «que borren…», los imperativos directos («borren», «corrijan», «dame una copia», «denme»…),
+// «me opongo», «revoco», «dejen de…», «¿me dicen qué datos…?» y «necesito saber qué datos…». «quiero saber» a secas es la coletilla de una pregunta, no una petición.
+const EXPLICIT_REQUEST_RE = new RegExp(
+  [
+    "\\b(quiero|quisiera|solicito|deseo|pido|necesito|requiero|me gustaria)\\b(?! saber\\b)",
+    "\\bque (los |las |me )?(borren|eliminen|supriman|corrijan|rectifiquen|actualicen|modifiquen|den|envien|manden|entreguen)\\b",
+    // «cuando borren…» es subjuntivo (pregunta por el aviso), no una orden.
+    "(?<!\\b(?:cuando|si|en cuanto) )\\b(borren|borra|borrame|borrenme|eliminen|elimina|eliminame|eliminenme|supriman|suprime|corrijan|corrige|corrijanme|rectifiquen|rectifica|actualicen|actualiza|modifiquen|modifica|dame|denme|envienme|enviame|mandenme|mandame|entreguenme|entregame)\\b",
+    "\\b(me opongo|revoco|dejen de|no quiero que)\\b",
+    "\\b(me (dicen|digan|dices|informan|indican)|quiero saber|quisiera saber|necesito saber|deseo saber) (que|cuales|cual) (datos|informacion)\\b",
+  ].join("|"),
+);
+
+/** `true` si el mensaje es una PREGUNTA sobre un trámite ARCO (aviso, plazo, estado) y no trae una petición explícita.
+ * No basta para descartar el mensaje: `runArcoFastPath` solo lo trata como seguimiento si ya hay una solicitud abierta. */
+export function isArcoFollowUp(message: string): boolean {
+  const normalized = normalizeArcoText(message);
+  if (!normalized || !PERSONAL_DATA_RE.test(normalized) || THIRD_PARTY_RE.test(normalized)) return false;
+  return FOLLOW_UP_RE.test(normalized) && !EXPLICIT_REQUEST_RE.test(normalized);
+}
 
 export type ArcoIntent =
   | { readonly kind: "request"; readonly right: DataRightType }
@@ -88,7 +107,6 @@ export function detectArcoIntent(message: string): ArcoIntent | null {
   if (!normalized || !PERSONAL_DATA_RE.test(normalized)) return null;
 
   if (THIRD_PARTY_RE.test(normalized)) return { kind: "third_party" };
-  if (FOLLOW_UP_RE.test(normalized) && !EXPLICIT_REQUEST_RE.test(normalized)) return null;
 
   const matched = RIGHT_PATTERNS.filter(({ re }) => re.test(normalized)).map(({ right }) => right);
   // "acceso" es el verbo más genérico ("ver", "saber"): si coincide junto con otro
@@ -110,7 +128,9 @@ export interface ArcoFastPathResult {
  * camino anterior, el agente LLM) — nunca lanza por una base sin migrar.
  *
  * Orden: (1) frase de confirmación/retiro, solo si hay una solicitud pendiente
- * vigente de ESTE teléfono; (2) intención de ARCO nueva.
+ * vigente de ESTE teléfono; (2) pregunta de seguimiento («¿me avisan cuando…?»), solo
+ * si ESTE teléfono ya tiene una solicitud abierta: se contesta con su estado y plazo
+ * reales, sin abrir otra; (3) intención de ARCO nueva.
  */
 export async function runArcoFastPath(
   repo: PrivacidadRepository,
@@ -130,6 +150,15 @@ export async function runArcoFastPath(
       return { reply: arcoConfirmedReply(outcome.rightType, outcome.id, outcome.responseDueAt, outcome.executionDueAt, timezone) };
     }
     return { reply: arcoWithdrawnReply(outcome.rightType, outcome.id) };
+  }
+
+  if (isArcoFollowUp(message)) {
+    const open = await repo.findOpenDataRightsRequestAsSystem(organizationId, customerPhone);
+    if (open.available && open.found) {
+      return { reply: arcoAlreadyOpenReply(open.rightType, open.id, open.status, open.responseDueAt, timezone) };
+    }
+    // Sin solicitud abierta (o base sin la 106): no hay trámite del que dar seguimiento, así que se trata como
+    // cualquier otro mensaje. Preferimos pedir CONFIRMO de más a perder una solicitud real con su plazo legal.
   }
 
   const intent = detectArcoIntent(message);
