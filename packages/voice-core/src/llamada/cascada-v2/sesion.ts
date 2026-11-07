@@ -46,6 +46,10 @@ export interface CascadaV2Opciones {
   readonly plazoLlm?: false | { readonly plazoMs: number; readonly modeloRespaldo: string | null };
   /** Modelo RAPIDO para los turnos de cortesia (`elegirNivelModelo`); sin el, todos los turnos van al modelo por omision (o a `elegirModelo`). */
   readonly modeloRapido?: string;
+  /** Mientras el agente prepara su respuesta (LLM o herramientas en curso), un asentimiento corto del cliente («si», «aja», «gracias», «aqui espero») NO lo
+   * interrumpe ni abre otro turno: se ignora. Va con el plazo del LLM: tras la frase de espera la gente contesta «si» y, sin esto, cortaba la respuesta real
+   * cada vez (medicion E2E del 6-nov-2026). Apagado por omision. */
+  readonly ignorarAsentimientosOcupado?: boolean;
   /** Temporizador del plazo del LLM (pruebas). */
   readonly temporizador?: { readonly poner: (fn: () => void, ms: number) => unknown; readonly quitar: (id: unknown) => void };
   /** Puerto del LLM en streaming (en produccion `crearPuertoLlmVozV2` del worker, sobre OpenRouter). */
@@ -155,7 +159,7 @@ class SesionCascadaV2 implements VozSesionLlamada {
   constructor(
     private readonly apertura: AperturaLlamada,
     private readonly h: ManejadoresSesion,
-    private readonly o: Required<Pick<CascadaV2Opciones, "llm" | "config" | "vueltasToolMax">> & Pick<CascadaV2Opciones, "herramientasEnParalelo" | "confirmacionAntesDeCrear" | "modeloLlm" | "elegirModelo" | "log" | "ahora" | "plazoLlm" | "temporizador" | "modeloRapido">,
+    private readonly o: Required<Pick<CascadaV2Opciones, "llm" | "config" | "vueltasToolMax">> & Pick<CascadaV2Opciones, "herramientasEnParalelo" | "confirmacionAntesDeCrear" | "modeloLlm" | "elegirModelo" | "log" | "ahora" | "plazoLlm" | "temporizador" | "modeloRapido" | "ignorarAsentimientosOcupado">,
     readonly vozTts: string,
   ) {
     this.ahora = o.ahora ?? Date.now;
@@ -256,12 +260,22 @@ class SesionCascadaV2 implements VozSesionLlamada {
     // parcial no vacio (`alParcial`), unos 200-300 ms despues.
   }
 
+  /** Asentimiento corto mientras el agente prepara la respuesta: no corta ni abre turno (ver `ignorarAsentimientosOcupado`). */
+  private asentimientoMientrasPiensa(texto: string): boolean {
+    return this.o.ignorarAsentimientosOcupado === true && this.ocupada && esAsentimiento(texto);
+  }
+
   private alParcial(texto: string): void {
-    if (texto.trim() !== "") this.interrumpir();
+    if (texto.trim() === "" || this.asentimientoMientrasPiensa(texto)) return;
+    this.interrumpir();
   }
 
   private alTurnoFinal(texto: string): void {
     if (this.cerrada || texto.trim() === "") return;
+    if (this.asentimientoMientrasPiensa(texto)) {
+      this.log("v2_asentimiento_ignorado", { motivo: "agente_pensando" });
+      return;
+    }
     this.interrumpir();
     this.esperandoAlCliente.pendiente = false; // el cliente respondio: ya puede crearse el pedido
     this.reportarSegundosStt();
@@ -682,7 +696,7 @@ export function crearProveedorCascadaV2(opts: CascadaV2Opciones): ProveedorCasca
     const sesion = new SesionCascadaV2(
       apertura,
       manejadores,
-      { llm: opts.llm, config, vueltasToolMax: opts.vueltasToolMax ?? 4, ...(opts.plazoLlm !== undefined ? { plazoLlm: opts.plazoLlm } : {}), ...(opts.modeloRapido ? { modeloRapido: opts.modeloRapido } : {}), ...(opts.temporizador ? { temporizador: opts.temporizador } : {}), ...(opts.herramientasEnParalelo ? { herramientasEnParalelo: opts.herramientasEnParalelo } : {}), ...(opts.confirmacionAntesDeCrear ? { confirmacionAntesDeCrear: opts.confirmacionAntesDeCrear } : {}), ...(opts.modeloLlm ? { modeloLlm: opts.modeloLlm } : {}), ...(opts.elegirModelo ? { elegirModelo: opts.elegirModelo } : {}), ...(opts.log ? { log: opts.log } : {}), ...(opts.ahora ? { ahora: opts.ahora } : {}) },
+      { llm: opts.llm, config, vueltasToolMax: opts.vueltasToolMax ?? 4, ...(opts.plazoLlm !== undefined ? { plazoLlm: opts.plazoLlm } : {}), ...(opts.modeloRapido ? { modeloRapido: opts.modeloRapido } : {}), ...(opts.ignorarAsentimientosOcupado ? { ignorarAsentimientosOcupado: true } : {}), ...(opts.temporizador ? { temporizador: opts.temporizador } : {}), ...(opts.herramientasEnParalelo ? { herramientasEnParalelo: opts.herramientasEnParalelo } : {}), ...(opts.confirmacionAntesDeCrear ? { confirmacionAntesDeCrear: opts.confirmacionAntesDeCrear } : {}), ...(opts.modeloLlm ? { modeloLlm: opts.modeloLlm } : {}), ...(opts.elegirModelo ? { elegirModelo: opts.elegirModelo } : {}), ...(opts.log ? { log: opts.log } : {}), ...(opts.ahora ? { ahora: opts.ahora } : {}) },
       voz,
     );
     await sesion.iniciar(stt, tts);
@@ -733,4 +747,13 @@ function armarPilaStt(opts: CascadaV2Opciones, config: ConfigPlataformaVoz, aper
     tts: opts.tts ?? (ttsDg ? ttsConRespaldo(ttsEl, ttsDg, vozAura, avisar) : ttsEl),
     voz: vozEl,
   };
+}
+
+/** Palabras de asentimiento / espera (sin contenido de pedido). */
+const PALABRAS_ASENTIMIENTO = new Set(["si", "aja", "mhm", "ok", "okay", "va", "vale", "sale", "bueno", "claro", "gracias", "esta", "bien", "perfecto", "de", "acuerdo", "aqui", "espero", "le", "lo"]);
+
+/** El texto es SOLO un asentimiento corto («si», «aja», «esta bien, gracias», «aqui espero»): hasta 4 palabras, todas de la lista. «Si, pero...» o «no» no lo son. */
+export function esAsentimiento(texto: string): boolean {
+  const palabras = normalizarCortesia(texto).split(" ").filter((w) => w !== "");
+  return palabras.length > 0 && palabras.length <= 4 && palabras.every((w) => PALABRAS_ASENTIMIENTO.has(w)) && !palabras.every((w) => w === "de" || w === "le" || w === "lo");
 }

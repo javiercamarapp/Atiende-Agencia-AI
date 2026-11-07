@@ -22,4 +22,4 @@ export { sttConRespaldo, ttsConRespaldo } from "./respaldo.ts";
 export type { AvisoRespaldo } from "./respaldo.ts";
 export { completarConPlazo } from "./plazo-llm.ts";
 export type { OpcionesPlazoLlm, ResultadoPlazoLlm } from "./plazo-llm.ts";
-export { elegirNivelModelo } from "./sesion.ts";
+export { elegirNivelModelo, esAsentimiento } from "./sesion.ts";
