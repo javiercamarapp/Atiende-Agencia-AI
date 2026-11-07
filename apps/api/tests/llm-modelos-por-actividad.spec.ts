@@ -116,6 +116,33 @@ describe("la prueba falla si una superficie de datos se configura con un modelo 
     }
   });
 
+  it("LLM_MODELS_JSON no pisa la decision del dueno en WhatsApp: ni clave exacta, ni \"*:whatsapp_agent\", ni el comodin \"*\"", () => {
+    const luna_ds = { models: [{ model: "openai/gpt-6-luna", temperature: "omit" }, { model: "deepseek/deepseek-v4.1-flash", temperature: "omit" }] };
+    for (const key of ["*:whatsapp_agent", "restaurantes:whatsapp_agent", "*:whatsapp_agent_escalated"]) {
+      const { config, errors } = parseLlmModelsJson(JSON.stringify({ roles: { [key]: luna_ds } }));
+      expect(config.roles[key], key).toBeUndefined();
+      expect(errors.join(" "), key).toMatch(/decision del dueno/);
+    }
+    const comodin = parseLlmModelsJson(JSON.stringify({ roles: { "*": luna_ds } })).config;
+    for (const v of ["restaurantes", "hoteles", "citas"]) {
+      expect(resolveRoleRoute(`${v}:whatsapp_agent`, comodin), v).toBe(ACTIVIDADES_LLM.whatsapp_agente.route);
+      expect(resolveRoleRoute(`${v}:whatsapp_agent_escalated`, comodin), v).toBe(ACTIVIDADES_LLM.whatsapp_agente_escalado.route);
+    }
+    expect(resolveRoleRoute("restaurantes:data_chat", comodin).models.map((m) => m.model)).toEqual(["openai/gpt-6-luna", "deepseek/deepseek-v4.1-flash"]);
+  });
+
+  it("LLM_MODELS_JSON no manda el audio a modelos de solo texto: la clave de transcripcion se rechaza y el comodin \"*\" no la alcanza", () => {
+    const soloTexto = { models: [{ model: "openai/gpt-6-luna", temperature: "omit" }] };
+    const exacta = parseLlmModelsJson(JSON.stringify({ roles: { "restaurantes:transcripcion": soloTexto } }));
+    expect(exacta.config.roles["restaurantes:transcripcion"]).toBeUndefined();
+    expect(exacta.errors.join(" ")).toMatch(/no acepta audio/);
+    const comodin = parseLlmModelsJson(JSON.stringify({ roles: { "*": soloTexto, "*:transcripcion": soloTexto } })).config;
+    expect(resolveRoleRoute("restaurantes:transcripcion", comodin)).toBe(ACTIVIDADES_LLM.transcripcion_audio.route);
+    const conAudio = parseLlmModelsJson(JSON.stringify({ roles: { "restaurantes:transcripcion": { models: [{ model: "google/gemini-3.5-flash-lite", temperature: "omit" }] } } }));
+    expect(conAudio.errors).toEqual([]);
+    expect(resolveRoleRoute("restaurantes:transcripcion", conAudio.config).models.map((m) => m.model)).toEqual(["google/gemini-3.5-flash-lite"]);
+  });
+
   it("sin llave de OpenRouter no hay escalera (el legado directo de OpenAI no tiene ZDR): falla cerrado", () => {
     const env: ApiEnv = { ...TEST_ENV, llmProviders: { openai: { apiKey: `t-${randomBytes(6).toString("hex")}`, model: "gpt-test" }, openrouter: null } };
     for (const rol of ["restaurantes:data_chat", "superadmin:copiloto", "restaurantes:whatsapp_agent"]) expect(buildRoleLadder(env, rol, { roles: {} }), rol).toBeUndefined();

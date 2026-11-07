@@ -7,7 +7,7 @@ organización (modelo y temperatura de WhatsApp, modelo de la cascada de voz, te
 sonido de fondo opcional). El repositorio en memoria nunca aplica RLS, GRANT ni `auth.uid()`, así que no podría detectar
 un hueco de este tipo.
 
-## Qué demuestra (31 escenarios)
+## Qué demuestra (35 escenarios)
 
 - **A. Lectura:** owner/admin de la organización y la sesión de SISTEMA (`auth.uid()` NULL: webhook de WhatsApp y
   servicio de llamadas) ven la fila; staff y repartidor no; otra organización (cross-tenant) no; `anon` ni siquiera SELECT.
@@ -17,6 +17,8 @@ un hueco de este tipo.
 - **C. CHECK por columna:** formato del id de modelo y, desde la migración 104 (`104_modelos_agente_zdr_baratos.sql`), la lista cerrada de modelos
   baratos con ZDR (Sonnet 5.5 y Gemini 2.5 Flash-Lite rechazados), temperatura 0..1, ritmo y estilo de listas cerradas, volumen del
   fondo 0..20 (el fondo nunca tapa la voz); una organización nueva nace con el fondo apagado y sin modelo propio.
+- **E. Respaldo de la 104:** `restaurantes.respaldo_104_modelos_agente` tiene RLS sin policies y ni `authenticated` ni `anon` la leen
+  o escriben (solo el rol de migraciones, para `scripts/rollback/migraciones/104_modelos_agente_zdr_baratos.down.sql`).
 - **D. Base sin migrar:** con la tabla eliminada dentro de la transacción, SQLSTATE 42P01 se recupera con SAVEPOINT /
   ROLLBACK TO SAVEPOINT (lo que hace `runWithSavepointFallback`) y, sin SAVEPOINT, la transacción queda abortada (25P02).
 

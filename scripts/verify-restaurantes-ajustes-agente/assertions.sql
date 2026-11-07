@@ -333,3 +333,30 @@ drop table restaurantes.agent_runtime_settings;
 select 1 from restaurantes.agent_runtime_settings;
 select 1 as should_fail;
 rollback;
+
+\echo ''
+\echo '=== E) (migracion 104) respaldo privado de los modelos reescritos ==='
+\echo ''
+
+\echo '--- 30. la tabla de respaldo tiene RLS habilitado (sin policies: nadie de la app la ve) ---'
+select (relrowsecurity)::int as rls_respaldo_deberia_ser_1 from pg_class where oid = 'restaurantes.respaldo_104_modelos_agente'::regclass;
+
+\echo '--- 31. owner de la Org A NO puede leer el respaldo (sin GRANT para authenticated): RECHAZADO ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000d0c01', true);
+select count(*) as should_fail from restaurantes.respaldo_104_modelos_agente;
+rollback;
+
+\echo '--- 32. owner de la Org A NO puede escribir en el respaldo: RECHAZADO ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000d0c01', true);
+insert into restaurantes.respaldo_104_modelos_agente (organization_id, whatsapp_model) values ('00000000-0000-0000-0000-0000000d0a01', 'anthropic/claude-sonnet-5.5') returning 1 as should_fail;
+rollback;
+
+\echo '--- 33. anon no tiene ni SELECT sobre el respaldo: RECHAZADO ---'
+begin;
+set local role anon;
+select count(*) as should_fail from restaurantes.respaldo_104_modelos_agente;
+rollback;

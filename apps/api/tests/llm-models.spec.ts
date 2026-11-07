@@ -131,12 +131,12 @@ describe("politica de proveedores (allowlist)", () => {
 });
 
 describe("PM-R21 routing.sort (ordenar los endpoints permitidos por latencia)", () => {
-  const ruta = (sort: unknown) => JSON.stringify({ roles: { "restaurantes:whatsapp_agent": { models: [{ model: "openai/gpt-6-luna", reasoningEffort: "low", temperature: "omit" }], routing: { allowFallbacks: true, sort } } } });
+  const ruta = (sort: unknown) => JSON.stringify({ roles: { "restaurantes:data_chat": { models: [{ model: "openai/gpt-6-luna", reasoningEffort: "low", temperature: "omit" }], routing: { allowFallbacks: true, sort } } } });
 
   it.each(["latency", "throughput", "price"])("acepta sort=%s y llega al cuerpo de OpenRouter sin ampliar los proveedores ni relajar la privacidad", (sort) => {
     const { config, errors } = parseLlmModelsJson(ruta(sort));
     expect(errors).toEqual([]);
-    const route = config.roles["restaurantes:whatsapp_agent"]!;
+    const route = config.roles["restaurantes:data_chat"]!;
     const wire = buildOpenRouterProviderPrefs(routingForModel(route, "openai/gpt-6-luna", false));
     expect(wire).toMatchObject({ sort, only: ["azure"], data_collection: "deny", require_parameters: true, zdr: true });
   });
@@ -168,7 +168,8 @@ describe("parseLlmModelsJson", () => {
     expect(resolveRoleRoute("hoteles:whatsapp_agent", config)).toBe(DEFAULT_ROLE_ROUTES["*:whatsapp_agent"]);
     const exact = parseLlmModelsJson(JSON.stringify({ roles: { ...ok.roles, "restaurantes:data_chat": { models: [{ model: "google/gemini-3.8-flash" }] }, "*": { models: [{ model: "openai/gpt-6-luna" }] } } })).config;
     expect(resolveRoleRoute("restaurantes:data_chat", exact).models[0]!.model).toBe("google/gemini-3.8-flash");
-    expect(resolveRoleRoute("hoteles:whatsapp_agent", exact).models[0]!.model).toBe("openai/gpt-6-luna");
+    // "*" no alcanza a WhatsApp (decision del dueno): queda la ruta de su actividad.
+    expect(resolveRoleRoute("hoteles:whatsapp_agent", exact)).toBe(DEFAULT_ROLE_ROUTES["*:whatsapp_agent"]);
   });
 
   const route = (routing: unknown, model = "deepseek/deepseek-v4.1-flash") => JSON.stringify({ roles: { "*:data_chat": { models: [{ model, temperature: "omit" }], ...(routing ? { routing } : {}) } } });
