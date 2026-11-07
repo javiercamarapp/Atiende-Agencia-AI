@@ -4,6 +4,7 @@ import { AtiendeMark } from "../AtiendeLogo";
 import { Card, CardContent } from "../ui/card";
 import { CopilotoAcciones } from "./CopilotoAcciones";
 import { CopilotoComoSeCalculo } from "./CopilotoComoSeCalculo";
+import { CopilotoTraza } from "./CopilotoTraza";
 import { CopilotoTarjetaAccion, TOOL_PROPONER_ACCION, propuestaDeBloque } from "./CopilotoTarjetaAccion";
 import { GraficaBloque, Sparkline, planGrafica } from "./CopilotoGraficas";
 import { formatoCelda, rutaInternaSegura } from "./formato";
@@ -233,8 +234,9 @@ export function CopilotoMensajeVista({
         </div>
       ) : null}
 
-      {exito && ((mensaje.sources?.length ?? 0) > 0 || (mensaje.blocks ?? []).some((b) => b.tool !== TOOL_PROPONER_ACCION)) ? (
-        <div hidden className="ds3-solo ml-6">
+      {exito && ((mensaje.traza?.length ?? 0) > 0 || (mensaje.sources?.length ?? 0) > 0 || (mensaje.blocks ?? []).some((b) => b.tool !== TOOL_PROPONER_ACCION)) ? (
+        <div hidden className="ds3-solo ds3-copiloto-evidencia ml-6">
+          {mensaje.traza && mensaje.traza.length > 0 ? <CopilotoTraza traza={mensaje.traza} duracionMs={mensaje.duracionMs} etiquetas={etiquetasHerramienta} /> : null}
           <CopilotoComoSeCalculo
             bloques={(mensaje.blocks ?? []).filter((b) => b.tool !== TOOL_PROPONER_ACCION)}
             fuentes={mensaje.sources ?? []}
