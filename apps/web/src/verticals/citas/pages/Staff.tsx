@@ -34,7 +34,8 @@ import {
   TableCell,
   TableHead,
   TableHeader,
-  TableRow, NativeSelect } from "@atiende/ui";
+  TableRow, NativeSelect, etiquetasTraducidas, localeActivo, traductorActivo, useT } from "@atiende/ui";
+import { citasStaff } from "@atiende/ui/i18n/citas/staff";
 import { INVITE_STATUS_TONES } from "../lib/status-tones.ts";
 import { createStaffInvite, fetchOrgMembers, fetchStaffInvites, revokeStaffInvite, updateStaffRole } from "../lib/staff-client.ts";
 import type { CreatedStaffInvite, OrgMember, StaffInvite, StaffVerticalRole } from "../lib/staff-client.ts";
@@ -42,23 +43,20 @@ import type { CitasShellContext } from "../CitasShell.tsx";
 
 const STAFF_INVITE_ROLES: ReadonlySet<string> = new Set(["owner", "admin"]);
 
-const ROLE_LABELS: Record<StaffVerticalRole, string> = {
-  owner: "Dueño/a",
-  admin: "Administrador/a",
-  staff: "Staff",
-};
+/** Etiqueta de cada rol en el idioma activo (cada lectura traduce). */
+const ROLE_LABELS: Readonly<Record<StaffVerticalRole, string>> = etiquetasTraducidas<StaffVerticalRole>(["owner", "admin", "staff"], (r) => `citas.staff.rol.${r}` as const, citasStaff);
 
 const ROLE_OPTIONS: readonly StaffVerticalRole[] = ["admin", "staff", "owner"];
 
+const tr = traductorActivo(citasStaff);
+
 function statusLabel(status: string): string {
-  if (status === "pending") return "Pendiente";
-  if (status === "accepted") return "Aceptada";
-  if (status === "revoked") return "Revocada";
-  if (status === "expired") return "Expirada";
+  if (status === "pending" || status === "accepted" || status === "revoked" || status === "expired") return tr(`citas.staff.estado.${status}`);
   return status;
 }
 
 export function StaffPage({ apiBaseUrl, token, propertyId, role }: CitasShellContext) {
+  const t = useT(citasStaff);
   const canManage = STAFF_INVITE_ROLES.has(role);
 
   const [invites, setInvites] = useState<readonly StaffInvite[] | null>(null);
@@ -82,7 +80,7 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role }: CitasShellCon
       setInvites(await fetchStaffInvites(fetch, apiBaseUrl, token, propertyId));
       setMembers(await fetchOrgMembers(fetch, apiBaseUrl, token, propertyId));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo cargar el staff.");
+      setError(err instanceof Error ? err.message : t("citas.staff.errorCargar"));
     }
   }
 
@@ -93,7 +91,7 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role }: CitasShellCon
       const updated = await updateStaffRole(fetch, apiBaseUrl, token, propertyId, memberId, nextRole);
       setMembers((prev) => (prev ? prev.map((m) => (m.id === memberId ? updated : m)) : prev));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo cambiar el rol de ese staff.");
+      setError(err instanceof Error ? err.message : t("citas.staff.errorRol"));
     } finally {
       setSavingRoleId(null);
     }
@@ -115,7 +113,7 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role }: CitasShellCon
       setEmail("");
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo crear la invitación.");
+      setError(err instanceof Error ? err.message : t("citas.staff.errorInvitar"));
     } finally {
       setCreating(false);
     }
@@ -129,7 +127,7 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role }: CitasShellCon
       if (lastCreated?.id === inviteId) setLastCreated(null);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo revocar la invitación.");
+      setError(err instanceof Error ? err.message : t("citas.staff.errorRevocar"));
     } finally {
       setRevokingId(null);
     }
@@ -137,7 +135,7 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role }: CitasShellCon
 
   return (
     <div className="flex max-w-3xl flex-col gap-5">
-      <h1 className="font-display text-xl font-semibold text-foreground">Staff</h1>
+      <h1 className="font-display text-xl font-semibold text-foreground">{t("citas.staff.titulo")}</h1>
 
       {error && <EstadoError mensaje={error} />}
 
@@ -146,7 +144,7 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role }: CitasShellCon
           <CardContent className="flex items-start gap-3 p-4">
             <Lock aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
             <p className="text-sm leading-relaxed text-muted-foreground">
-              Invitar o revocar staff está reservado a dueños y administradores. Con tu rol actual ({role}) no puedes gestionar el staff de este negocio.
+              {t("citas.staff.sinPermiso", { rol: role })}
             </p>
           </CardContent>
         </Card>
@@ -155,16 +153,16 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role }: CitasShellCon
       {canManage && (
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">Invitar a alguien nuevo</CardTitle>
+            <CardTitle className="text-base">{t("citas.staff.invitarTitulo")}</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
             <form onSubmit={handleCreate} className="flex flex-wrap items-end gap-3">
               <div className="flex min-w-[220px] flex-1 flex-col gap-1.5">
-                <Label htmlFor="citas-staff-email">Correo</Label>
-                <Input id="citas-staff-email" type="email" placeholder="correo@ejemplo.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
+                <Label htmlFor="citas-staff-email">{t("citas.staff.correo")}</Label>
+                <Input id="citas-staff-email" type="email" placeholder={t("citas.staff.correoPlaceholder")} value={email} onChange={(e) => setEmail(e.target.value)} required />
               </div>
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="citas-staff-rol">Rol</Label>
+                <Label htmlFor="citas-staff-rol">{t("citas.staff.rol")}</Label>
                 <NativeSelect id="citas-staff-rol" value={verticalRole} onChange={(e) => setVerticalRole(e.target.value as StaffVerticalRole)}>
                   {ROLE_OPTIONS.map((r) => (
                     <option key={r} value={r}>
@@ -175,20 +173,20 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role }: CitasShellCon
               </div>
               <Button type="submit" disabled={creating}>
                 <Send aria-hidden />
-                {creating ? "Invitando…" : "Invitar"}
+                {creating ? t("citas.staff.invitando") : t("citas.staff.invitar")}
               </Button>
             </form>
             <p className="text-xs text-muted-foreground">
-              No podrás dar de alta a alguien con más alcance que el tuyo — el servidor lo rechaza (403) aunque el rol aparezca en esta lista.
+              {t("citas.staff.alcance")}
             </p>
 
             {lastCreated && (
               <div className="rounded-lg border border-border bg-muted/50 p-3">
                 <p className="text-sm font-semibold text-foreground">
-                  Invitación creada para {lastCreated.email} ({ROLE_LABELS[lastCreated.verticalRole]})
+                  {t("citas.staff.creada", { correo: lastCreated.email, rol: ROLE_LABELS[lastCreated.verticalRole] })}
                 </p>
                 <p className="mt-1.5 text-xs text-muted-foreground">
-                  Se le mandó un correo real con el enlace de activación. Si prefieres compartirlo tú mismo, aquí está el token — solo se muestra una vez.
+                  {t("citas.staff.creadaNota")}
                 </p>
                 <code className="mt-1.5 block break-all rounded-md border border-border bg-background px-2.5 py-2 font-mono text-xs text-foreground">{lastCreated.inviteToken}</code>
               </div>
@@ -200,19 +198,19 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role }: CitasShellCon
       {canManage && (
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">Invitaciones pendientes</CardTitle>
+            <CardTitle className="text-base">{t("citas.staff.pendientes")}</CardTitle>
           </CardHeader>
           <CardContent className={invites && invites.length > 0 ? "p-0" : undefined}>
-            {!invites && !error && <EstadoCargando lineas={2} etiqueta="Cargando invitaciones…" />}
-            {invites && invites.length === 0 && <EstadoVacio icon={ShieldCheck} mensaje="No hay ninguna invitación pendiente." />}
+            {!invites && !error && <EstadoCargando lineas={2} etiqueta={t("citas.staff.cargandoInvitaciones")} />}
+            {invites && invites.length === 0 && <EstadoVacio icon={ShieldCheck} mensaje={t("citas.staff.sinInvitaciones")} />}
             {invites && invites.length > 0 && (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Correo</TableHead>
-                    <TableHead>Rol</TableHead>
-                    <TableHead>Estado</TableHead>
-                    <TableHead className="text-right">Acción</TableHead>
+                    <TableHead>{t("citas.staff.correo")}</TableHead>
+                    <TableHead>{t("citas.staff.rol")}</TableHead>
+                    <TableHead>{t("citas.staff.col.estado")}</TableHead>
+                    <TableHead className="text-right">{t("citas.staff.col.accion")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -220,7 +218,7 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role }: CitasShellCon
                     <TableRow key={inv.id}>
                       <TableCell className="font-semibold text-foreground">
                         {inv.email}
-                        <span className="block text-xs font-normal text-muted-foreground">expira {new Date(inv.expiresAt).toLocaleString("es-MX")}</span>
+                        <span className="block text-xs font-normal text-muted-foreground">{t("citas.staff.expira", { fecha: new Date(inv.expiresAt).toLocaleString(localeActivo()) })}</span>
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">{ROLE_LABELS[inv.verticalRole]}</TableCell>
                       <TableCell>
@@ -235,7 +233,7 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role }: CitasShellCon
                           onClick={() => void handleRevoke(inv.id)}
                           disabled={revokingId === inv.id}
                         >
-                          {revokingId === inv.id ? "Revocando…" : "Revocar"}
+                          {revokingId === inv.id ? t("citas.staff.revocando") : t("citas.staff.revocar")}
                         </Button>
                       </TableCell>
                     </TableRow>
@@ -250,21 +248,18 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role }: CitasShellCon
       {canManage && (
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">Staff activo</CardTitle>
-            <CardDescription>
-              Cambia el rol de un staff ya aceptado. No puedes tocar el rol de alguien con más alcance que el tuyo, ni asignar un rol por encima del tuyo, ni cambiar tu propio rol
-              — el servidor lo rechaza aunque el rol aparezca en esta lista.
-            </CardDescription>
+            <CardTitle className="text-base">{t("citas.staff.activo")}</CardTitle>
+            <CardDescription>{t("citas.staff.activoDesc")}</CardDescription>
           </CardHeader>
           <CardContent className={members && members.length > 0 ? "p-0" : undefined}>
-            {!members && !error && <EstadoCargando lineas={2} etiqueta="Cargando staff…" />}
-            {members && members.length === 0 && <EstadoVacio icon={Users} mensaje="Todavía no hay ningún staff aceptado en este negocio." />}
+            {!members && !error && <EstadoCargando lineas={2} etiqueta={t("citas.staff.cargandoStaff")} />}
+            {members && members.length === 0 && <EstadoVacio icon={Users} mensaje={t("citas.staff.sinStaff")} />}
             {members && members.length > 0 && (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Persona</TableHead>
-                    <TableHead className="text-right">Rol</TableHead>
+                    <TableHead>{t("citas.staff.col.persona")}</TableHead>
+                    <TableHead className="text-right">{t("citas.staff.rol")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -276,7 +271,7 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role }: CitasShellCon
                       </TableCell>
                       <TableCell className="text-right">
                         <Label htmlFor={`citas-staff-rol-${m.id}`} className="sr-only">
-                          Rol de {m.fullName}
+                          {t("citas.staff.rolDe", { nombre: m.fullName })}
                         </Label>
                         <NativeSelect
                           id={`citas-staff-rol-${m.id}`}
