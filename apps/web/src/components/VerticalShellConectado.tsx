@@ -3,10 +3,11 @@
 // disponibilidad del chat "Pregúntale a tus datos". Campana, chat y fecha ya NO van en el
 // encabezado: son pildoras del pie del Sidebar (y seccion "Cuenta" de la hoja "Mas" movil). Cada vertical migrada monta este componente en
 // lugar de armar a mano el Sidebar, el MobileHeader y el BottomNav.
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Bell, MessageCircle, ShieldCheck } from "lucide-react";
-import { VerticalShell } from "@atiende/ui";
-import type { SidebarPiePildora, VerticalShellProps } from "@atiende/ui";
+import { GuiaRecorrido, limpiarProgresoGuia, VerticalShell } from "@atiende/ui";
+import type { ContenidoConsola, SidebarPiePildora, VerticalShellProps } from "@atiende/ui";
+import { baseDeConsola, pistaGuia, servidorProgresoGuia } from "../lib/guia-progreso.ts";
 import { useNotifications } from "../lib/useNotifications.ts";
 import { useChatDatosDisponible } from "./BotonChatDatos.tsx";
 import { BannerPlan } from "./BannerPlan.tsx";
@@ -24,7 +25,20 @@ export type VerticalShellConectadoProps = VerticalShellProps & {
   readonly copilotoHref?: string;
   /** Rol sin acceso al Copiloto: no se ofrece la pildora (el servidor igual responde 403). */
   readonly ocultarChat?: boolean;
+  /** ds3 «Guía»: contenido del recorrido por pantalla de la vertical. Sin el, cada pantalla del menu del rol lleva el texto generico. */
+  readonly guia?: GuiaConsola;
 };
+
+/** Lo que cada vertical aporta al recorrido guiado; el recorrido en si sale del menu real del rol (`sections`). */
+export interface GuiaConsola {
+  readonly contenido?: ContenidoConsola;
+  /** Rutas relativas a la raiz de la consola del recorrido corto («» = Resumen). */
+  readonly esenciales?: readonly string[];
+  readonly excluir?: readonly string[];
+  /** «Primeros pasos» de la consola, si el rol la tiene. */
+  readonly primerosPasosHref?: string;
+  readonly organizacionNombre?: string;
+}
 
 /** `/<vertical>/<orgSlug>/notificaciones` -> `/<vertical>/<orgSlug>/plan` (la pantalla Plan y uso vive junto a las notificaciones). */
 export function planHrefDe(notificacionesHref: string): string {
@@ -36,7 +50,7 @@ export function seguridadHrefDe(notificacionesHref: string): string {
   return notificacionesHref.replace(/\/notificaciones\/?$/, "/seguridad");
 }
 
-export function VerticalShellConectado({ apiBaseUrl, token, notificacionesHref, chat: chatProp, copilotoHref, ocultarChat = false, children, ...shell }: VerticalShellConectadoProps) {
+export function VerticalShellConectado({ apiBaseUrl, token, notificacionesHref, chat: chatProp, copilotoHref, ocultarChat = false, guia, children, ...shell }: VerticalShellConectadoProps) {
   const notif = useNotifications(apiBaseUrl, token);
   const chat = ocultarChat ? undefined : chatProp;
   // Pildora "Pregúntale a tus datos" del pie del Sidebar (gemela de la de Likida): abre el panel real (o la pagina del Copiloto) y solo existe cuando el servidor confirma que el asistente esta activo (nunca una pildora "Pronto").
@@ -53,10 +67,20 @@ export function VerticalShellConectado({ apiBaseUrl, token, notificacionesHref, 
     ...(yaEnNavegacion ? [] : [{ label: "Seguridad de la cuenta", to: seguridadHref, icon: ShieldCheck }]),
     ...(chat && chatDisponible ? [copilotoHref ? { label: "Pregúntale a tus datos", to: copilotoHref, icon: MessageCircle } : { label: "Pregúntale a tus datos", onClick: () => setChatAbierto(true), icon: MessageCircle }] : []),
   ];
+  // ds3 «Guía»: el recorrido de ESTE rol sale de su menu real; el progreso se guarda por persona en el servidor (y en el navegador).
+  const consola = baseDeConsola(notificacionesHref);
+  const pista = pistaGuia(shell.vertical, shell.user?.rol);
+  const servidorGuia = useMemo(() => (consola ? servidorProgresoGuia(fetch, apiBaseUrl, token, pista, consola.orgSlug) : null), [apiBaseUrl, token, pista, consola?.orgSlug]);
+  const salir = () => {
+    // Equipo compartido: al cerrar sesion se borra el progreso de la guia del navegador (el del servidor es de la persona).
+    limpiarProgresoGuia(typeof window === "undefined" ? null : window.localStorage);
+    shell.onLogout();
+  };
   return (
     <>
       <VerticalShell
         {...shell}
+        onLogout={salir}
         sidebarPie={pie}
       >
         {/* PL-16: aviso de fin de prueba / tope de mensajes del plan, comun a las 6 verticales. */}
@@ -64,6 +88,22 @@ export function VerticalShellConectado({ apiBaseUrl, token, notificacionesHref, 
         {children}
       </VerticalShell>
       {chatAbierto && chat && <PanelChateaConTusDatos onClose={() => setChatAbierto(false)} chat={chat} />}
+      {consola ? (
+        <GuiaRecorrido
+          sections={shell.sections}
+          base={consola.base}
+          pista={pista}
+          persona={shell.user?.email ?? ""}
+          organizacion={consola.orgSlug}
+          organizacionNombre={guia?.organizacionNombre ?? consola.orgSlug}
+          rolEtiqueta={shell.user?.rolEtiqueta ?? shell.user?.rol ?? ""}
+          contenido={guia?.contenido}
+          esenciales={guia?.esenciales}
+          excluir={guia?.excluir}
+          primerosPasosHref={guia?.primerosPasosHref}
+          servidor={servidorGuia}
+        />
+      ) : null}
     </>
   );
 }
