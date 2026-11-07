@@ -25,6 +25,9 @@ export interface WhatsAppTurnHandler {
     /** Instante absoluto (ms, mismo reloj que `Date.now`) antes del cual el turno debe TERMINAR para que la funcion del
      * webhook alcance a confirmar la transaccion y encolar la respuesta. Ausente = solo manda el presupuesto propio del handler. */
     readonly finTurnoMs?: number;
+    /** Turno ASINCRONO (cerebro v2 / `WHATSAPP_TURNO_ASINCRONO`): Meta ya recibio su 200 y la fase B corre con la vida extendida de la funcion. Con la marca
+     * el tope del turno es SOLO `finTurnoMs` (el presupuesto corto por omision, pensado para el camino sincrono de 30 s, no aplica). Ausente = como siempre. */
+    readonly turnoAsincrono?: true;
     /** Prueba del dueno en el panel (NO el webhook): `preview` corre las herramientas SIN efectos (pedido simulado, sin avisos).
      * Lo fija solo el servidor desde la ruta de preview; nunca sale de un argumento del modelo ni del cliente de WhatsApp. */
     readonly modo?: "real" | "preview";

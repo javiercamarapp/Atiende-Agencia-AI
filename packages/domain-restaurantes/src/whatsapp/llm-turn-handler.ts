@@ -704,12 +704,14 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
   }
 
   async function ejecutarTurno(
-    { organizationId, phone, messages, customer, propertyId: entryPropertyId, messageId, finTurnoMs, modo, previewCustomerId, configBorrador }: Entrada,
+    { organizationId, phone, messages, customer, propertyId: entryPropertyId, messageId, finTurnoMs, turnoAsincrono, modo, previewCustomerId, configBorrador }: Entrada,
     tele: Telemetria,
   ): Promise<Salida> {
       // Una llamada al LLM que ARRANCA justo antes del tope todavia tarda lo suyo: el presupuesto por omision deja
       // `MARGEN_CIERRE_TURNO_MS` + una llamada lenta de holgura bajo los 30 s de la funcion.
-      const deadline = Math.min(Date.now() + turnBudgetMs, finTurnoMs ?? Number.POSITIVE_INFINITY);
+      // Turno asincrono: Meta ya tiene su 200 y la funcion vive 60 s; el tope de 18 s cortaba 20-40 % de los turnos de Luna por Azure ZDR
+      // (2-5 vueltas de 3-6 s). Ahi manda solo el fin de la fase que calcula el webhook (ya trae el margen de cierre).
+      const deadline = turnoAsincrono && finTurnoMs !== undefined ? finTurnoMs : Math.min(Date.now() + turnBudgetMs, finTurnoMs ?? Number.POSITIVE_INFINITY);
       // `modo` y `configBorrador` solo los fija la ruta de preview del panel (servidor); el modelo nunca los ve.
       const preview = modo === "preview";
       const configBase = preview && configBorrador ? aplicarFilaAConfig(configBorrador, organizationId) : await resolveAgentConfig(repo, organizationId, entryPropertyId ?? null);
