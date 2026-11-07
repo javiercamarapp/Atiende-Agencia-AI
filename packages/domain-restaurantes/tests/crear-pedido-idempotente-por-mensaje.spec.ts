@@ -19,7 +19,7 @@ const crear = (f: Fixture, extra: { cerebroV2?: boolean; sourceEventId?: string 
     items: [{ product_id: f.products.tacosPastor, requested_quantity: cantidad, tortilla: "maiz" }],
   });
 
-const pedidos = async (f: Fixture) => (await f.repo.listOrders(f.organizationId, {})).orders;
+const pedidos = async (f: Fixture) => (await f.repo.listOrders(f.organizationId, { propertyIds: null, limit: 50 })).orders;
 
 describe("crear_pedido por WhatsApp con cerebro v2: idempotente por mensaje de Meta", () => {
   it("dos ejecuciones del mismo mensaje con notas distintas devuelven UN solo pedido", async () => {
