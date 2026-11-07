@@ -208,6 +208,38 @@ html[data-diseno="ds3"] [data-ds3="fuentes"] { gap: 8px; }
 html[data-diseno="ds3"] [data-ds3="fuentes"] > a,
 html[data-diseno="ds3"] [data-ds3="fuentes"] > span:not(:first-child) { border-radius: 8px; }
 
+/* Evidencia bajo la respuesta: «Cómo llegué a esto · n pasos · t» (desplegable) y «Ver cómo lo calculé» (abre el Drawer). */
+html[data-diseno="ds3"] .ds3-copiloto-evidencia.ds3-solo[hidden] { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+html[data-diseno="ds3"] .ds3-copiloto-traza.ds3-copiloto-traza { max-width: 100%; }
+html[data-diseno="ds3"] .ds3-copiloto-traza-resumen.ds3-copiloto-traza-resumen { list-style: none; width: max-content; max-width: 100%; }
+html[data-diseno="ds3"] .ds3-copiloto-traza-resumen::-webkit-details-marker { display: none; }
+html[data-diseno="ds3"] .ds3-copiloto-traza-resumen svg,
+html[data-diseno="ds3"] .ds3-copiloto-pensamiento svg { transition: transform 150ms ease; }
+html[data-diseno="ds3"] .ds3-copiloto-traza[open] > .ds3-copiloto-traza-resumen svg,
+html[data-diseno="ds3"] .ds3-copiloto-pensamiento[aria-expanded="true"] svg { transform: rotate(90deg); }
+html[data-diseno="ds3"] .ds3-copiloto-traza-lista { display: grid; gap: 8px; margin: 8px 0 0; padding: 0; list-style: none; font-size: 12px; line-height: 18px; }
+html[data-diseno="ds3"] .ds3-copiloto-traza-lista li { display: flex; flex-wrap: wrap; align-items: flex-start; column-gap: 6px; }
+html[data-diseno="ds3"] .ds3-copiloto-traza-lista svg { flex: none; width: 12px; height: 12px; margin-top: 3px; color: hsl(var(--action)); }
+html[data-diseno="ds3"] .ds3-copiloto-traza-ms,
+html[data-diseno="ds3"] .ds3-copiloto-traza-nota { color: hsl(var(--muted-foreground)); }
+html[data-diseno="ds3"] .ds3-copiloto-traza-nota { margin: 8px 0 0; font-size: 12px; }
+/* «Pensamiento del sistema en vivo · n»: interruptor sin borde, 12/500 gris, que pliega los pasos en curso. */
+html[data-diseno="ds3"] .ds3-copiloto-pensamiento.ds3-solo[hidden] {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 28px;
+  margin-top: 2px;
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  color: hsl(var(--muted-foreground));
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+html[data-diseno="ds3"] .ds3-copiloto-pensamiento svg { width: 12px; height: 12px; }
+
 /* «Cómo se calculó» (Drawer sm): pares dato/valor y cajas grises con titulo 13/600. */
 html[data-diseno="ds3"] .ds3-copiloto-calculo-dl.ds3-copiloto-calculo-dl { display: grid; gap: 12px; margin: 0; }
 html[data-diseno="ds3"] .ds3-copiloto-calculo-fuente.ds3-copiloto-calculo-fuente {

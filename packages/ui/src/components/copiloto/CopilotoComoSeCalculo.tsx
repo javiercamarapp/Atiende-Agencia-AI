@@ -32,7 +32,7 @@ export function CopilotoComoSeCalculo({
     <>
       <button type="button" className="ds3-copiloto-ctl ds3-copiloto-calculo" onClick={() => setAbierto(true)}>
         <Info aria-hidden="true" />
-        <span>{t("comoSeCalculo")}</span>
+        <span>{t("verComoLoCalcule")}</span>
       </button>
       <Drawer open={abierto} onOpenChange={setAbierto} tamano="sm" titulo={titulo ? t("comoSeCalculoDe", { t: titulo }) : t("comoSeCalculo")} notaPie={t("notaCalculo")}>
         <dl className="ds3-copiloto-calculo-dl" data-testid="copiloto-como-se-calculo">
