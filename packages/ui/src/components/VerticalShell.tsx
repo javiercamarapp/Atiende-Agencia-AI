@@ -300,7 +300,7 @@ export function VerticalShell({
     ) : undefined;
 
   return (
-    <div data-vertical={vertical} className="min-h-[100dvh] bg-background flex w-full">
+    <div data-vertical={vertical} className="ds3-shell min-h-[100dvh] bg-background flex w-full">
       <a
         href={`#${VERTICAL_SHELL_MAIN_ID}`}
         className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[60] focus:rounded-lg focus:border focus:border-border focus:bg-card focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-foreground focus:shadow-elevated"
@@ -308,7 +308,7 @@ export function VerticalShell({
         Saltar al contenido
       </a>
 
-      <div className="hidden md:block md:p-4 md:pr-0">
+      <div className="ds3-shell-lateral hidden md:block md:p-4 md:pr-0">
         <Sidebar sections={sections} user={user} onLogout={onLogout} hotelSelector={selectores} storageScope={vertical} pie={sidebarPie} />
       </div>
 
@@ -325,7 +325,7 @@ export function VerticalShell({
 
       {/* Marco de Likida: columna de contenido gris tenue (--sunken = --g1) con hairline y esquinas
           redondeadas; la barra queda dentro, blanca, y las tarjetas blancas encima. */}
-      <div ref={fijarMarco} className="relative flex min-w-0 flex-1 flex-col bg-sunken md:sticky md:top-4 md:m-4 md:h-[calc(100dvh-2rem)] md:overflow-hidden md:rounded-2xl md:border md:border-border">
+      <div ref={fijarMarco} className="ds3-shell-marco relative flex min-w-0 flex-1 flex-col bg-sunken md:sticky md:top-4 md:m-4 md:h-[calc(100dvh-2rem)] md:overflow-hidden md:rounded-2xl md:border md:border-border">
         <div className="hidden md:block shrink-0">
           <BarraPagina icon={iconoBarra} title={tituloBarra} acciones={accionesBarra} comoH1={sinH1} />
         </div>
@@ -335,10 +335,10 @@ export function VerticalShell({
           id={VERTICAL_SHELL_MAIN_ID}
           tabIndex={-1}
           key={contentKey}
-          className="flex-1 min-h-0 overflow-y-auto focus:outline-none px-4 pt-[calc(5.5rem+var(--safe-area-top))] pb-[calc(7rem+var(--safe-area-bottom))] md:px-5 md:pt-3.5 md:pb-5"
+          className="ds3-shell-contenido flex-1 min-h-0 overflow-y-auto focus:outline-none px-4 pt-[calc(5.5rem+var(--safe-area-top))] pb-[calc(7rem+var(--safe-area-bottom))] md:px-5 md:pt-3.5 md:pb-5"
         >
           {/* Transicion de navegacion: entrada breve (tokens de motion) al cambiar de ruta, solo con movimiento permitido. Sin `max-w`: ancho completo del marco. */}
-          <div key={pathname} className="motion-safe:animate-page-in">
+          <div key={pathname} className="ds3-shell-pagina motion-safe:animate-page-in">
             <TituloBarraContext.Provider value={fijarTitulo}>
               <AccionesBarraContext.Provider value={fijarAcciones}>
                 <MarcoShellContext.Provider value={marco}>

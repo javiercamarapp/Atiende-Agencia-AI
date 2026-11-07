@@ -1,0 +1,74 @@
+/*
+ * ds3 / shell de la app (lote 5): marco, sidebar, encabezado, cabecera de pagina y barra de alcance.
+ *
+ * Reglas de esta hoja:
+ *  - TODO va bajo `html[data-diseno="ds3"]`: sin la bandera ninguna regla coincide y produccion queda igual.
+ *  - Las clases `ds3-*` las ponen los componentes de @atiende/ui; doble clase o atributo para ganar a las utilidades de
+ *    Tailwind sin !important.
+ *  - Solo tokens (hsl(var(--x))); ningun color literal. La paleta la define el bloque ds3 de index.css.
+ *  - Valores de referencia del sistema de diseno: marco 16, tarjetas de 1 px con radio 12 y sin sombra, contenido gris
+ *    con padding 24/24/28, easing unico cubic-bezier(.22,1,.36,1).
+ *  - Movimiento: el apagado global por prefers-reduced-motion vive en index.css; aqui no se duplica.
+ */
+
+/* ---- Elementos solo-ds3 ------------------------------------------------------------------------------------------
+ * Un elemento nuevo del shell que no existe en el diseno actual se pinta con el atributo `hidden` y la clase
+ * `ds3-solo`: sin la bandera queda oculto (y fuera del arbol accesible); con ella se muestra como bloque, o con el display
+ * que fije la regla de su componente (`revert` no sirve: volveria al `display:none` de [hidden] de la hoja del navegador).
+ * A la inversa, `ds3-no` oculta bajo ds3 una pieza del diseno actual que el shell nuevo reemplaza.
+ */
+html[data-diseno="ds3"] .ds3-solo[hidden] { display: block; }
+html[data-diseno="ds3"] .ds3-no.ds3-no { display: none; }
+
+/* ---- 1. Marco (escritorio >= 768) ---------------------------------------------------------------------------------
+ * Tres niveles de gris: lienzo (--background) -> tarjetas blancas (--card: sidebar y marco) -> contenido sumido (--sunken).
+ * El lienzo lleva padding 16 y gap 16; sidebar y marco son tarjetas de 1 px, radio 12, sin sombra. Solo el contenido
+ * hace scroll (el documento no se bloquea: se conserva la impresion del ticket de cocina y las anclas).
+ */
+@media (min-width: 768px) {
+  html[data-diseno="ds3"] .ds3-shell.ds3-shell {
+    gap: 16px;
+    padding: 16px;
+    background-color: hsl(var(--background));
+  }
+  html[data-diseno="ds3"] .ds3-shell-lateral.ds3-shell-lateral { padding: 0; }
+  html[data-diseno="ds3"] .ds3-shell-marco.ds3-shell-marco {
+    top: 16px;
+    margin: 0;
+    height: calc(100dvh - 32px);
+    border: 1px solid hsl(var(--border));
+    border-radius: 12px;
+    background-color: hsl(var(--card));
+    box-shadow: none;
+    overflow: clip;
+  }
+  html[data-diseno="ds3"] .ds3-shell-contenido.ds3-shell-contenido {
+    padding: 24px 24px 28px;
+    background-color: hsl(var(--sunken));
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+  }
+  html[data-diseno="ds3"] .ds3-sidebar.ds3-sidebar {
+    top: 16px;
+    height: calc(100dvh - 32px);
+    border: 1px solid hsl(var(--border));
+    border-radius: 12px;
+    background-color: hsl(var(--card));
+    box-shadow: none;
+  }
+}
+
+/* Entrada de pagina: solo transform (sin fade), 5 px, 240 ms con el easing unico. */
+@keyframes ds3-entrada {
+  from { transform: translateY(5px); }
+  to { transform: none; }
+}
+html[data-diseno="ds3"] .ds3-shell-pagina.ds3-shell-pagina {
+  animation: ds3-entrada var(--dur-slow, 240ms) cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Modo de alto contraste (forced-colors): las tarjetas conservan su contorno aunque el sistema quite los fondos. */
+@media (forced-colors: active) {
+  html[data-diseno="ds3"] .ds3-shell-marco,
+  html[data-diseno="ds3"] .ds3-sidebar { border: 1px solid CanvasText; }
+}
