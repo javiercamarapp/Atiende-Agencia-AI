@@ -174,6 +174,15 @@ export const INTEGRATIONS: readonly IntegrationDefinition[] = [
     variables: ["SENTRY_DSN"],
   },
 
+  // ---- Geocodificacion (pin de sucursal) ----
+  {
+    id: "geocodificacion",
+    nombre: "Geocodificación (pin de sucursal en restaurantes)",
+    habilita:
+      "Buscar «dirección o colonia» y sugerir la dirección del pin al editar una sucursal (GET .../admin/geocodificar), desde el servidor. GEOCODING_PROVIDER=nominatim exige GEOCODING_CONTACT_EMAIL (politica de uso de OSM; GEOCODING_BASE_URL opcional); GEOCODING_PROVIDER=google exige GEOCODING_API_KEY. Sin configurar: 503 honesto y el panel sigue aceptando coordenadas pegadas de Google Maps.",
+    variables: ["GEOCODING_PROVIDER"],
+  },
+
   // ---- Stripe ----
   {
     id: "stripe",
