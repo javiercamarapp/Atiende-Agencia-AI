@@ -48,7 +48,13 @@ export function SeleccionarVerticalPage() {
         <p className="login-kicker">Bienvenido a atiende.ai</p>
         <h1 className="login-serif mt-2 text-xl sm:text-2xl text-foreground">¿A qué negocio quieres entrar?</h1>
         <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
-          Elige tu vertical para ir a su panel de acceso.
+          Elige tu vertical para ir a su panel de acceso.{" "}
+          {/* Alta autoservicio: hoy solo restaurantes tiene registro sin superadmin (rentas tiene el suyo en /rentas/registro). En la misma
+              linea a proposito: el selector debe caber sin scroll en 1280x720 (e2e login-sin-scroll). */}
+          ¿Tienes un restaurante?{" "}
+          <Link to="/restaurantes/registro" className="font-semibold text-foreground underline underline-offset-2 hover:opacity-70 transition-opacity">
+            Crea tu cuenta
+          </Link>
         </p>
       </div>
 
@@ -78,14 +84,6 @@ export function SeleccionarVerticalPage() {
           </Link>
         ))}
       </div>
-
-      {/* Alta autoservicio: hoy solo restaurantes tiene registro sin superadmin (rentas tiene el suyo en /rentas/registro). */}
-      <p className="login-entra [--retraso:150ms] mt-5 text-center text-sm text-muted-foreground">
-        ¿Tienes un restaurante?{" "}
-        <Link to="/restaurantes/registro" className="font-semibold text-foreground underline underline-offset-2 hover:opacity-70 transition-opacity">
-          Crea tu cuenta en minutos, con 14 días de prueba
-        </Link>
-      </p>
 
       <p className="login-entra [--retraso:180ms] mt-6 text-pretty text-center text-xs leading-relaxed text-muted-foreground">
         Al continuar, aceptas los{" "}

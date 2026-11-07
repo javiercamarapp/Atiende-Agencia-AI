@@ -41,11 +41,10 @@ export function RestaurantesLoginPage({ apiBaseUrl }: LoginPageProps) {
       placeholderCorreo="tu@correo.com"
       pie={
         <>
-          ¿Tienes un restaurante y aún no usas atiende?{" "}
+          ¿Sin acceso? <span className="font-semibold text-foreground">Pídele a tu restaurante que te dé de alta.</span> ¿Eres dueño?{" "}
           <Link to="/restaurantes/registro" className="font-semibold text-foreground underline underline-offset-2">
-            Crea tu cuenta: 14 días de prueba
+            Crea tu cuenta
           </Link>
-          . ¿Trabajas en uno? <span className="font-semibold text-foreground">Pídele a tu restaurante que te dé de alta.</span>
           {conCelular ? (
             <>
               {" "}

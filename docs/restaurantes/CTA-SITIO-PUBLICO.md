@@ -4,8 +4,8 @@ Este documento cubre solo la **página y el botón de restaurantes**. El redise�
 
 ## En la app (este repo)
 
-- **Selector de vertical (`/`)**: debajo de las tarjetas aparece «¿Tienes un restaurante? **Crea tu cuenta en minutos, con 14 días de prueba**», que lleva a `/restaurantes/registro`.
-- **Login de restaurantes (`/restaurantes/login`)**: «¿Tienes un restaurante y aún no usas atiende? **Crea tu cuenta: 14 días de prueba**». Se conserva la indicación para el personal: «¿Trabajas en uno? Pídele a tu restaurante que te dé de alta».
+- **Selector de vertical (`/`)**: en la misma línea del subtítulo aparece «¿Tienes un restaurante? **Crea tu cuenta**», que lleva a `/restaurantes/registro`. Va en esa línea para que la página siga cabiendo sin scroll en 1280x720.
+- **Login de restaurantes (`/restaurantes/login`)**: el pie dice «¿Sin acceso? Pídele a tu restaurante que te dé de alta. ¿Eres dueño? **Crea tu cuenta**». Es corto a propósito: el login no debe hacer scroll.
 - **Registro (`/restaurantes/registro`)**: correo o Google. Nace la organización en prueba de 14 días con su primera sucursal inactiva. Luego viene la ruta corta «primer valor en 30 minutos»: menú, horario, zonas, cómo cobras, prueba del agente y activación.
 
 ## En el sitio público (`useatiende.ai`, fuera de este repo)
