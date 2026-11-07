@@ -269,16 +269,16 @@ describe("pila por llaves", () => {
 
   it("con ElevenLabs y Deepgram: abre Scribe con la llave en `xi-api-key`; si no confirma la sesion, cae a Deepgram (respaldo) y la llamada sigue", async () => {
     const f = fabricaSockets();
-    const fetchFn = (async (url: string | URL | Request) => (String(url).includes("/v1/voices/") ? new Response("{}") : new Response("", { status: 500 }))) as typeof fetch;
+    const fetchFn = (async (url: string | URL | Request) => (new URL(String(url)).pathname.startsWith("/v1/voices/") ? new Response("{}") : new Response("", { status: 500 }))) as typeof fetch;
     const lineas: { evento: string; campos: Record<string, unknown> }[] = [];
     const prov = crearProveedorCascadaV2({ deepgramApiKey: "dg", elevenlabsApiKey: "el", llm: llmFalso([]), crearSocket: f.crear, fetchFn, log: (l) => void lineas.push({ evento: l.evento, campos: { ...l.campos } }) });
     const abriendo = prov.abrirSesion({ ...APERTURA, vozTelefono: "sDh3eviBhiuHKi0MjTNq", vocabulario: ["cochinita"] }, manejadoresFalsos().h);
     await turnoMicrotareas(40);
-    const el = f.sockets.find((s) => s.url.startsWith("wss://api.elevenlabs.io"))!;
+    const el = f.sockets.find((s) => new URL(s.url).host === "api.elevenlabs.io")!;
     expect(el.headers).toEqual({ "xi-api-key": "el" });
     el.texto({ message_type: "auth_error", error: "x" });
     await turnoMicrotareas(40);
-    const dg = f.sockets.find((s) => s.url.startsWith("wss://api.deepgram.com/v1/listen"));
+    const dg = f.sockets.find((s) => new URL(s.url).host === "api.deepgram.com" && new URL(s.url).pathname === "/v1/listen");
     expect(dg).toBeDefined();
     dg!.abrir();
     await abriendo;
