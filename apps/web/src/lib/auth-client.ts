@@ -12,6 +12,9 @@ export interface OrganizationSummary {
   readonly nombre: string;
   readonly vertical: string;
   readonly rol: string;
+  /** Diseno del panel de esta organizacion (`core.organization.diseno`, migracion 0060): `null` = actual, `"ds3"` = nuevo.
+   *  Ausente en sesiones persistidas antes del campo: entonces no se toca nada (ver `useDisenoOrganizacion`). */
+  readonly diseno?: string | null;
 }
 
 export interface LoginSession {

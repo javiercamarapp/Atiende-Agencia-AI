@@ -280,14 +280,18 @@ export async function crearCheckoutDeOrganizacion(deps: AppDeps, callerId: strin
   }
 
   const appBaseUrl = deps.env.appBaseUrl;
+  // URLs de regreso de Stripe: `apps/web` las sirve (`/billing/success`, `/billing/cancel`, shell/BillingRegreso.tsx). Llevan la vertical
+  // (no es secreto: es el valor de `core.organization.vertical`) para que la pantalla publica pueda mandar a `/<vertical>/login` sin pedir
+  // sesion ni consultar nada; el organization_id ya iba antes. Nunca llevan el slug ni datos de la organizacion.
+  const regreso = `organization_id=${encodeURIComponent(organizationId)}&vertical=${encodeURIComponent(billing.vertical)}`;
   return crearCheckoutPerSeat(deps.saasBillingStripeClient, {
     tenantId: organizationId,
     vertical: billing.vertical,
     priceId,
     cantidadSeats: seats,
     customerId: billing.stripeCustomerId ?? undefined,
-    successUrl: `${appBaseUrl}/billing/success?organization_id=${encodeURIComponent(organizationId)}&session_id={CHECKOUT_SESSION_ID}`,
-    cancelUrl: `${appBaseUrl}/billing/cancel?organization_id=${encodeURIComponent(organizationId)}`,
+    successUrl: `${appBaseUrl}/billing/success?${regreso}&session_id={CHECKOUT_SESSION_ID}`,
+    cancelUrl: `${appBaseUrl}/billing/cancel?${regreso}`,
   });
 }
 

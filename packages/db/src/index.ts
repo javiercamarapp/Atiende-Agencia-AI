@@ -288,6 +288,8 @@ export {
   InMemoryOrgEquipoRepository,
   PostgresOrgEquipoRepository,
   enmascararCorreo,
+  esRolInvitableEnAlgunaVertical,
+  ROLES_INVITABLES_POR_VERTICAL,
   traducirErrorEquipo,
 } from "./superadmin-alta-equipo-repository.ts";
 export { PostgresLoginChoferRepository, InMemoryLoginChoferRepository, LoginChoferNoDisponibleError, LoginChoferTelefonoError } from "./login-chofer-repository.ts";
@@ -303,3 +305,5 @@ export {
   traducirErrorAltaPropiedad,
 } from "./alta-propiedad-repository.ts";
 export type { AltaPropiedadCodigo, AltaPropiedadInput, AltaPropiedadRepository, PropiedadActivada, PropiedadCreada } from "./alta-propiedad-repository.ts";
+export { hayOnboardingEvento, registrarOnboardingEvento } from "./onboarding-evento.ts";
+export type { OnboardingEventoInput, ResultadoRegistroEvento, TipoOnboardingEvento } from "./onboarding-evento.ts";
