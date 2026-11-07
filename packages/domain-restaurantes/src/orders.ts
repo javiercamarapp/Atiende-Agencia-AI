@@ -3,6 +3,7 @@
 // re-cotiza server-side contra el catálogo real de la sucursal — nunca se confía en
 // un total mandado por el cliente/LLM (guardia anti-alucinación de precio, ver
 // product-search.ts::resolveOrderItemsAgainstProducts).
+import { buscarEnCatalogo } from "./whatsapp/cerebro-v2/busqueda.ts";
 import { descripcionSeguraDeError } from "./log-seguro.ts";
 import { createHash } from "node:crypto";
 import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
@@ -84,9 +85,17 @@ export function assertDobleSalsaAplica(products: readonly ProductoEncontrado[], 
 /** Búsqueda real de productos disponibles en una sucursal — port literal de
  * buscarProductosCore, incluyendo el fix real del 4-sep-2026 (match contra name,
  * description, categoría Y search_keywords, no solo name). */
-export async function searchProducts(repo: RestaurantesRepository, args: { readonly propertyId: string; readonly query: string }): Promise<ProductoEncontrado[]> {
+export async function searchProducts(repo: RestaurantesRepository, args: { readonly propertyId: string; readonly query: string; readonly cerebroV2?: boolean }): Promise<ProductoEncontrado[]> {
   let tokens = tokenizeForProductSearch(args.query);
   const catalog = await repo.listAvailableProductsForBranch(args.propertyId);
+  // Cerebro v2: la busqueda medida del suelto (cero cero / sin alcohol, platillo vs pieza, relevancia, varias partes) ordena el MISMO catalogo de la sucursal; los
+  // datos de cada renglon (precio, paquete, no_domicilio) siguen saliendo del catalogo del monorrepo. Si no encuentra nada, sigue la busqueda de siempre.
+  if (args.cerebroV2) {
+    const porId = new Map(catalog.map((p) => [p.id, p] as const));
+    const v2 = buscarEnCatalogo(args.query, catalog.map((p) => ({ id: p.id, name: p.name, category: p.categoryName ?? null, description: p.description ?? null, price: Number(p.price), searchKeywords: p.searchKeywords ?? null })), { conExtras: false });
+    const elegidos = v2.flatMap((r) => { const p = porId.get(r.id); return p ? [p] : []; });
+    if (elegidos.length > 0) return elegidos.slice(0, 8).map((p) => toProductoEncontrado(p));
+  }
   const buscar = (ts: readonly string[]) => catalog.filter((p) => matchesProductSearch(ts, { name: p.name, description: p.description, categoryName: p.categoryName, searchKeywords: p.searchKeywords }));
   let encontrados = buscar(tokens);
   // R8 (T7-032/045/064/031/005/061): "torta de bistek sin queso", "frijol sin tostada", "pastor planchado", "flautas de pollo doradas", "1/4 de pollo bien picada" daban lista vacia

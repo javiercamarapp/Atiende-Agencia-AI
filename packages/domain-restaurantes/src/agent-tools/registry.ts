@@ -165,6 +165,8 @@ export interface AgentToolDefinition {
 
 export interface AgentToolContext {
   readonly organizationId: string;
+  /** Cerebro v2 (bandera por organizacion, migracion 190): buscar_producto usa la busqueda medida del suelto antes que la de siempre. */
+  readonly cerebroV2?: boolean;
   readonly channel: AgentChannel;
   /** Telefono del cliente tomado del CONTEXTO (remitente de WhatsApp / token de llamada).
    * `null` = el canal no lo conoce (voz sin token de llamada, camino legado). */
@@ -2106,7 +2108,7 @@ async function dispatchTool(
       const branch = await repo.findBranch(organizationId, { slug: branchSlug });
       if (!branch) throw new OrderValidationError(`Sucursal '${branchSlug}' no encontrada`);
       const buscarUna = async (consulta: string) => {
-      const productos = await searchProducts(repo, { propertyId: branch.propertyId, query: consulta });
+      const productos = await searchProducts(repo, { propertyId: branch.propertyId, query: consulta, ...(ctx.cerebroV2 ? { cerebroV2: true } : {}) });
       // QA-PM-R5-voz-01 / reglas-05: el modelo buscaba "arrachera kilo", veia solo "Arrachera — 1 kg" y cotizaba el kilo cuando el cliente pidio tres cuartos ($350 de mas), o decia que
       // "no existe" 1.25 kg. Cada renglon por peso lleva las presentaciones REALES del mismo platillo y la regla para fracciones que no existen.
       const hayPeso = productos.some((p) => pesoDeProductoEnGramos(p.name) !== null);
