@@ -78,3 +78,25 @@ Las instrucciones exactas están en la cabecera de cada migración (drop de func
 - **Avisos de bolsa** (`apps/api/src/plan-topes/aviso-bolsa.ts`): al 80 %, al 100 % y al pasar el uso justo, in-app y por correo al dueño (y a superadmin al pasar el uso justo). Corre en el cron diario existente `/internal/plataforma/prueba-avisos` (no agrega cron; siguen 40 de 40). Reclamo idempotente en `core.cobro_aviso_bolsa`. **Nada se corta.**
 
 Orden de despliegue: código → `20240101000702_0081_*` → `20240101000703_201_*` → `20240101000704_0082_*`. Rollback: cabecera de cada migración.
+
+## Stripe, cobranza y CFDI (0083)
+
+- **Lista permitida de precios** (`core.plan_stripe_precio`): por plan y componente (`cuota_fija`, `sucursal`, `alta`, `minuto_voz_excedente`, `conversacion_wa_excedente`). `PUT /superadmin/planes/:id/stripe-precios/:componente` (step-up) valida el precio contra Stripe: activo, en MXN, recurrente y mayor que $0. El alta es de pago único y los excedentes son precios **medidos** ligados a un meter. `POST /billing/checkout` (el de antes) ya solo acepta precios de esta lista.
+- **Autoservicio con tarjeta**: `POST /billing/checkout-plan`. La sucursal se cobra por cantidad, los medidos van sin cantidad y el alta entra solo en la primera factura. El IVA usa `STRIPE_IVA_TAX_RATE_ID`; sin esa variable, responde 503. El periodo se ancla al día 1 en la zona del negocio, así que el periodo de Stripe coincide con el mes que se mide.
+- **Enterprise por SPEI**: `POST /superadmin/cobro/organizaciones/:id/suscripcion-spei` (step-up) crea la suscripción por factura (`collection_method=send_invoice`, `customer_balance` + `mx_bank_transfer`, CLABE virtual de Stripe). **OXXO no se ofrece**: Stripe no lo admite en suscripciones ni en facturas, y su tope es de 10,000 MXN por pago.
+- **Uso medido**: se reporta a Stripe (`/v1/billing/meter_events`) una vez al día, dentro del cron existente, y una última vez al llegar `invoice.created` del ciclo. Solo se manda la diferencia contra `core.cobro_uso_reportado`, con un identificador idempotente.
+- **Cobranza**:
+  - `invoice.payment_failed` sube la cobranza a «aviso», luego a «gracia» y luego a «pausa sugerida» (con 3 fallos o a los 7 días). Avisa al dueño y a superadmin. **Nada se pausa solo.**
+  - `invoice.paid` regresa la cobranza a «al corriente».
+- **CFDI**: cada factura pagada se encola en `core.cfdi_suscripcion_solicitud`. El emisor (`EmisorCfdiSuscripcion`) se conecta al PAC cuando haya CSD y credenciales; por omisión, `EmisorCfdiSinPac` no timbra nada y la solicitud queda «pendiente_pac». Se consultan en `GET /superadmin/cobro/cfdi-pendientes`.
+
+Configuración en Stripe (la hace una persona; no la toca ninguna migración):
+
+1. Crear la tasa de IVA de 16 % exclusiva y ponerla en `STRIPE_IVA_TAX_RATE_ID`.
+2. Crear los meters `atiende_minutos_voz` y `atiende_conversaciones_wa`, con agregación por suma.
+3. Crear los precios: sucursal o cuota fija, alta (pago único) y excedentes (medidos, graduados si el plan trae bandas).
+4. Ligarlos al plan en el superadmin.
+5. Habilitar la transferencia bancaria (SPEI) en la cuenta.
+6. Suscribir el webhook a `invoice.paid`, `invoice.payment_failed` e `invoice.created`.
+
+Orden de despliegue: código, después `20240101000705_0083_*` y después la configuración de Stripe de arriba.
