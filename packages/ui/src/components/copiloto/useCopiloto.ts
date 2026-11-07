@@ -110,9 +110,18 @@ export function useCopiloto({ transporte, fases, conversacionInicial, onConversa
       let respuesta: CopilotoRespuesta | undefined;
       let convNueva: string | undefined;
       let seqEvento: number | undefined;
+      // Traza medida en el cliente (lo que el servidor reporto como pasos y cuanto tardo cada uno): nunca texto del modelo.
+      const t0 = Date.now();
+      const traza: { herramienta: string; inicio: number; ms: number | null }[] = [];
       const alEvento = (e: CopilotoEvento) => {
         if (ctl.signal.aborted) return;
         if (e.t === "paso") {
+          if (e.fase === "inicio") traza.push({ herramienta: e.herramienta, inicio: Date.now(), ms: null });
+          else {
+            const abierto = traza.find((x) => x.herramienta === e.herramienta && x.ms === null);
+            if (abierto) abierto.ms = Date.now() - abierto.inicio;
+            else traza.push({ herramienta: e.herramienta, inicio: Date.now(), ms: null });
+          }
           setPasos((prev) => {
             if (e.fase === "inicio") return [...prev, { herramienta: e.herramienta, fin: false }];
             const i = prev.findIndex((p) => p.herramienta === e.herramienta && !p.fin);
@@ -155,6 +164,7 @@ export function useCopiloto({ transporte, fases, conversacionInicial, onConversa
           ...(r.sugerencias ? { sugerencias: r.sugerencias } : {}),
           ...(r.reintentarEnSeg !== undefined ? { reintentarEnSeg: r.reintentarEnSeg } : {}),
           ...(r.limiteDiario !== undefined ? { limiteDiario: r.limiteDiario } : {}),
+          ...(traza.length > 0 ? { traza: traza.map(({ herramienta, ms }) => ({ herramienta, ms })), duracionMs: Date.now() - t0 } : {}),
         };
         if (convNueva && convNueva !== conversacionRef.current) fijarConversacion(convNueva);
       } catch (e) {
