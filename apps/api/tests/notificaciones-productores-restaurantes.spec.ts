@@ -18,7 +18,7 @@ vi.mock("@atiende/domain-restaurantes", async (importOriginal) => {
 
 import { buildApp } from "../src/app.ts";
 import { authedGet, authedJson, buildRestaurantesKpiTestContext } from "./restaurantes-admin-kpis-fixtures.ts";
-import { InMemoryVozKpiRepository, diaVacio } from "@atiende/domain-restaurantes";
+import { InMemoryPrivacidadRepository, InMemoryVozKpiRepository, diaVacio } from "@atiende/domain-restaurantes";
 import { conEmisiones } from "./support/emisiones.ts";
 
 const urlDe = (propertyId: string) => `/v1/restaurantes/${propertyId}/admin/onboarding`;
@@ -80,6 +80,21 @@ describe("restaurantes.onboarding.listo", () => {
     );
     expect(horario.status).toBe(200);
     expect(emisiones.map((e) => e.evento)).toEqual(["restaurantes.onboarding.listo", "restaurantes.onboarding.listo"]);
+  });
+
+  it("publicar el aviso de privacidad cuando era el ultimo obligatorio tambien emite (onboarding P0); un staff rechazado no", async () => {
+    const ctx = await buildRestaurantesKpiTestContext(buildApp);
+    const { deps, emisiones } = conEmisiones({ ...ctx.deps, privacidadRepo: () => new InMemoryPrivacidadRepository() });
+    const app = buildApp(deps);
+    const aviso = { responsable: "Restaurante", avisoUrl: "https://ejemplo.mx/aviso", avisoVersion: "v1", retencionConversacionesDias: 90, retencionVozDias: 15, exigirConsentimientoGrabacion: true };
+    estado.cola = [false, true];
+    const rechazado = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/privacidad/configuracion`, authedJson(ctx.staff.repartidor.token, aviso, "PUT"));
+    expect(rechazado.status).toBe(403);
+    expect(emisiones).toHaveLength(0);
+    estado.cola = [false, true];
+    const res = await app.request(`/v1/restaurantes/${ctx.propertyIdA}/admin/privacidad/configuracion`, authedJson(ctx.staff.owner.token, aviso, "PUT"));
+    expect(res.status).toBe(200);
+    expect(emisiones.map((e) => e.evento)).toEqual(["restaurantes.onboarding.listo"]);
   });
 
   it("una escritura rechazada (403) no emite, y leer el checklist (GET) nunca emite aunque este completo", async () => {
