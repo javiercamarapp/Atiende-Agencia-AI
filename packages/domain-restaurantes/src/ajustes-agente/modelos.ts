@@ -6,10 +6,13 @@
 // por otra via. Agregar un modelo es un cambio de codigo revisado: requiere (1) fila en `MODEL_PRICES` (agent-core), (2) proveedores de EE.UU.
 // verificados (`apps/api/src/production/llm-models.ts`) y (3) una fila aqui. Un test en la API verifica las tres cosas para cada id.
 //
-// `aceptaTemperatura` sale de `supported_parameters` de los endpoints PERMITIDOS de OpenRouter (/api/v1/models/<id>/endpoints), leido el
-// 4-oct-2026: deepseek-v4.1-flash (DeepInfra, CoreWeave, BaseTen, Together, Parasail, Fireworks), gemini-2.5-flash-lite y gemini-3.8-flash
-// (Google AI Studio) y muse-spark-1.3 (Meta) la aceptan; gpt-6-luna y claude-sonnet-5.5 NO (con `require_parameters` mandarla deja la ruta sin
-// endpoints). Para esos dos la pantalla dice "este modelo no admite temperatura" en vez de ofrecer un control que no hace nada.
+// `aceptaTemperatura` sale de `supported_parameters` de los endpoints ZDR PERMITIDOS de OpenRouter (/api/v1/endpoints/zdr), leido el 6-nov-2026:
+// deepseek-v4.1-flash la acepta; gpt-6-luna, claude-haiku-5.5 y gemini-3.5-flash-lite NO (con `require_parameters` mandarla deja la ruta sin
+// endpoints). Para esos la pantalla dice "este modelo no admite temperatura" en vez de ofrecer un control que no hace nada.
+//
+// MODELOS POR ACTIVIDAD (6-nov-2026): la lista solo tiene modelos BARATOS con endpoint de RETENCION CERO (ZDR) en proveedores de EE.UU.; se
+// quitaron Claude Sonnet 5.5 (premium), Gemini 2.5 Flash-Lite y Muse Spark 1.3 (sin endpoint ZDR) y Gemini 3.8 Flash (gama media: solo reportes).
+// La base acota los mismos ids con un CHECK (migracion 104_modelos_agente_zdr_baratos): cambiar esta lista exige una migracion nueva en el MISMO PR.
 import { lookupModelPrice } from "@atiende/agent-core";
 
 export type NivelModeloAgente = "economico" | "equilibrado" | "premium";
@@ -27,12 +30,13 @@ export interface ModeloAgente {
 
 export const MODELOS_AGENTE: readonly ModeloAgente[] = Object.freeze([
   { id: "openai/gpt-6-luna", etiqueta: "GPT-6 Luna", nivel: "economico", descripcion: "El predeterminado de la plataforma: rapido y barato; sigue bien las reglas.", aceptaTemperatura: false, predeterminado: true },
+  { id: "anthropic/claude-haiku-5.5", etiqueta: "Claude Haiku 5.5", nivel: "economico", descripcion: "El respaldo de Luna: buena comprension al mismo precio; con retencion cero.", aceptaTemperatura: false, predeterminado: false },
   { id: "deepseek/deepseek-v4.1-flash", etiqueta: "DeepSeek V4.1 Flash", nivel: "economico", descripcion: "Economico, servido solo desde proveedores de EE.UU. con retencion cero.", aceptaTemperatura: true, predeterminado: false },
-  { id: "google/gemini-2.5-flash-lite", etiqueta: "Gemini 2.5 Flash-Lite", nivel: "economico", descripcion: "El mas barato; respuestas cortas y directas.", aceptaTemperatura: true, predeterminado: false },
-  { id: "meta/muse-spark-1.3", etiqueta: "Muse Spark 1.3", nivel: "equilibrado", descripcion: "Equilibrado entre costo y calidad de redaccion.", aceptaTemperatura: true, predeterminado: false },
-  { id: "google/gemini-3.8-flash", etiqueta: "Gemini 3.8 Flash", nivel: "equilibrado", descripcion: "Mejor comprension de pedidos largos o ambiguos; cuesta mas que los economicos.", aceptaTemperatura: true, predeterminado: false },
-  { id: "anthropic/claude-sonnet-5.5", etiqueta: "Claude Sonnet 5.5", nivel: "premium", descripcion: "El de mayor calidad y el mas caro; solo si el volumen es bajo.", aceptaTemperatura: false, predeterminado: false },
+  { id: "google/gemini-3.5-flash-lite", etiqueta: "Gemini 3.5 Flash-Lite", nivel: "economico", descripcion: "El rapido de la voz: baja latencia para turnos cortos.", aceptaTemperatura: false, predeterminado: false },
 ] satisfies readonly ModeloAgente[]);
+
+/** Ids permitidos, en el mismo orden que el CHECK de la base (`restaurantes.agent_runtime_settings`, migracion 104). */
+export const IDS_MODELOS_AGENTE: readonly string[] = Object.freeze(MODELOS_AGENTE.map((m) => m.id));
 
 export const MODELO_PREDETERMINADO_ID = "openai/gpt-6-luna";
 
@@ -42,21 +46,21 @@ export function modeloAgentePorId(id: string | null | undefined): ModeloAgente |
 }
 
 /**
- * Modelo ALTERNO para el reintento de una llamada que agoto su tope de tiempo (fallback de proveedor del turno de WhatsApp). Solo devuelve ids de la lista
- * permitida (`MODELOS_AGENTE`) y que ya forman parte de la escalera aprobada del rol (Luna -> DeepSeek V4.1 Flash -> Gemini 2.5 Flash-Lite -> Muse Spark): no
- * agrega modelos ni proveedores. El alterno nunca es el mismo modelo que se atasco: Luna (o cualquier otro) -> DeepSeek V4.1 Flash; DeepSeek -> Gemini 2.5 Flash-Lite.
+ * Modelo ALTERNO para el reintento de una llamada que agoto su tope de tiempo (fallback de proveedor del turno de WhatsApp). Decision del dueno
+ * (6-nov-2026): Luna principal y Claude Haiku 5.5 de respaldo, ambos con retencion cero. El alterno nunca es el mismo modelo que se atasco:
+ * cualquier modelo -> Haiku 5.5; Haiku 5.5 -> Luna.
  */
-export const MODELO_ALTERNO_TOPE_ID = "deepseek/deepseek-v4.1-flash";
-export const MODELO_ALTERNO_SEGUNDO_TOPE_ID = "google/gemini-2.5-flash-lite";
+export const MODELO_ALTERNO_TOPE_ID = "anthropic/claude-haiku-5.5";
+export const MODELO_ALTERNO_SEGUNDO_TOPE_ID = "openai/gpt-6-luna";
 
 export function modeloAlternoParaTope(primarioId: string | null | undefined): string {
   return primarioId === MODELO_ALTERNO_TOPE_ID ? MODELO_ALTERNO_SEGUNDO_TOPE_ID : MODELO_ALTERNO_TOPE_ID;
 }
 
 /**
- * El respaldo por tope de tiempo solo se activa cuando el modelo que se atasco es un modelo ECONOMICO de la lista (Luna, DeepSeek V4.1 Flash, Gemini 2.5 Flash-Lite):
- * el tope del primer intento (>= 9 s) se calibro con su latencia (p99 ~8.3 s por llamada). Los modelos con razonamiento y piso de tokens alto (Sonnet 5.5, Gemini 3.8
- * Flash, Muse Spark) tardan mas de forma normal y un tope de 11 s degradaria en silencio turnos que hoy terminan bien a 11-18 s. Sin eleccion = el predeterminado.
+ * El respaldo por tope de tiempo solo se activa cuando el modelo que se atasco es un modelo ECONOMICO de la lista (hoy todos lo son): el tope del primer
+ * intento (>= 9 s) se calibro con su latencia (p99 ~8.3 s por llamada). Un modelo de otro nivel que se agregue a la lista tardaria mas de forma normal y un
+ * tope de 11 s degradaria en silencio turnos que terminan bien a 11-18 s. Sin eleccion = el predeterminado.
  */
 export function modeloAdmiteRespaldoPorTope(modeloId: string | null | undefined): boolean {
   if (!modeloId) return true;
