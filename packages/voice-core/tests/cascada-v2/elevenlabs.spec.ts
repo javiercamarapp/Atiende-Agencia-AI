@@ -150,6 +150,24 @@ describe("ElevenLabs Scribe v2 Realtime (STT)", () => {
     expect(vistos.at(-1)).toBe("final:en la calle sesenta");
   });
 
+  it("sin audio por 4 s manda una trama de silencio (Scribe cierra la sesion inactiva con 1000 y la llamada caeria al respaldo)", async () => {
+    const f = fabricaSockets();
+    const reloj = relojManual();
+    let ahora = 0;
+    const abriendo = crearSttElevenLabs({ apiKey: LLAVE, config: C.stt, crearSocket: f.crear, temporizador: reloj, ahora: () => ahora }).abrir({ hzEntrada: 16_000 }, eventosFalsos().e);
+    await turnoMicrotareas();
+    f.sockets[0]!.texto({ message_type: "session_started" });
+    const sesion = await abriendo;
+    ahora = 4_000;
+    reloj.vencer(4_000);
+    expect(f.sockets[0]!.json.at(-1)).toMatchObject({ message_type: "input_audio_chunk", commit: false, sample_rate: 16_000 });
+    const n = f.sockets[0]!.json.length;
+    sesion.enviarAudio(Uint8Array.from([1, 2]));
+    ahora = 6_000;
+    reloj.vencer(4_000); // hubo audio hace 2 s: no manda silencio
+    expect(f.sockets[0]!.json.length).toBe(n + 1);
+  });
+
   it("al cerrar no avisa caida", async () => {
     const { sesion, socket, vistos } = await abrirStt();
     await sesion.cerrar();
