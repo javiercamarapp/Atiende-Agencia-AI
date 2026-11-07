@@ -195,8 +195,11 @@ async function chatCliente(messages: { role: string; content: string }[]): Promi
   throw new Error(`cliente simulado sin respuesta: ${err}`);
 }
 const ultimoFinCliente = new Map<string, string>();
+/** Escenarios cuyo cliente ya se despidio con texto + <FIN>: el siguiente turno termina la conversacion. */
+const finPendiente = new Set<string>();
 async function siguienteMensaje(e: any, turnos: { cliente: string; agente: string }[], i: number, modo: string): Promise<string | null> {
   if (modo === "guion") { const l = e.guion?.[i]; return l === undefined ? null : textoLinea(l); }
+  if (finPendiente.has(e.id)) { finPendiente.delete(e.id); return null; }
   if (i === 0 && e.guion?.[0]) return textoLinea(e.guion[0]);
   const msgs = [{ role: "system", content: promptCliente(e) }];
   for (const t of turnos) { if (t.cliente) msgs.push({ role: "assistant", content: t.cliente }); msgs.push({ role: "user", content: t.agente.trim() || "(el restaurante no respondio este mensaje)" }); }
@@ -206,7 +209,13 @@ async function siguienteMensaje(e: any, turnos: { cliente: string; agente: strin
   for (let k = 0; !crudo && k < 2; k++) crudo = (await chatCliente(msgs)).trim();
   if (!crudo) throw new Error("cliente simulado devolvio contenido vacio 3 veces");
   ultimoFinCliente.set(e.id, crudo.includes(FIN) ? crudo.slice(0, 200) : "");
-  if (crudo.includes(FIN)) return null;
+  if (crudo.includes(FIN)) {
+    // «Sí, está bien. Gracias <FIN>»: el cliente CONTESTA y se despide en la misma respuesta. Antes se tiraba la respuesta entera y el «sí» nunca
+    // llegaba al agente (pedido no creado). Si hay texto antes de <FIN>, se envia como ultimo mensaje y la conversacion termina despues.
+    const antes = crudo.slice(0, crudo.indexOf(FIN)).trim().replace(/^["“]|["”]$/g, "");
+    if (antes && !finPendiente.has(e.id)) { finPendiente.add(e.id); return antes; }
+    return null;
+  }
   return crudo.replace(/^["“]|["”]$/g, "");
 }
 
