@@ -2,11 +2,13 @@
 // el tipo no ve: claves repetidas entre modulos, variables que no coinciden, plurales sin `other` y — lo que Rovaq deja pasar —
 // textos en «ingles» que en realidad se quedaron en espanol.
 import { describe, expect, it } from "vitest";
-import { CATALOGOS, MODULOS } from "../src/i18n/mensajes/index.ts";
+import { CATALOGO_ES, MODULOS } from "../src/i18n/mensajes/index.ts";
+import { MODULOS_EN } from "../src/i18n/mensajes/en/index.ts";
 import type { Mensaje } from "../src/i18n/tipos.ts";
 
 type Mod = { es: Record<string, Mensaje>; en: Record<string, Mensaje> };
-const modulos = Object.entries(MODULOS) as Array<[string, Mod]>;
+const modulos = (Object.keys(MODULOS) as Array<keyof typeof MODULOS>).map((k): [string, Mod] => [k, { es: MODULOS[k], en: MODULOS_EN[k] }]);
+const CATALOGOS = { es: CATALOGO_ES, en: Object.assign({}, ...Object.values(MODULOS_EN)) as typeof CATALOGO_ES };
 
 const textos = (m: Mensaje): string[] => (typeof m === "string" ? [m] : Object.values(m).filter((v): v is string => typeof v === "string"));
 const variables = (m: Mensaje): string[] => [...new Set(textos(m).flatMap((t) => [...t.matchAll(/\{(\w+)\}/g)].map((x) => x[1] ?? "")))].sort();
@@ -37,6 +39,10 @@ const IGUALES_PERMITIDOS = new Set<string>([
 ]);
 
 describe("catalogo i18n", () => {
+  it("hay traduccion para cada modulo y ninguna de mas", () => {
+    expect(Object.keys(MODULOS_EN).sort()).toEqual(Object.keys(MODULOS).sort());
+  });
+
   it("cada modulo tiene las mismas claves en es y en", () => {
     for (const [nombre, m] of modulos) {
       expect(Object.keys(m.en).sort(), nombre).toEqual(Object.keys(m.es).sort());

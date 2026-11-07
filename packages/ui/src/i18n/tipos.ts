@@ -1,8 +1,8 @@
 /**
  * Tipos del catalogo de traducciones (ES/EN). Un mensaje es un texto con `{variables}` o, si depende de una cantidad, un objeto
- * de plurales con las categorias de `Intl.PluralRules` (`other` siempre obligatoria). Los modulos se declaran con
- * `definirModulo`: el ingles DEBE tener exactamente las mismas claves que el espanol, asi que una clave que falta (o que sobra)
- * rompe el typecheck en lugar de llegar a produccion en espanol a medias.
+ * de plurales con las categorias de `Intl.PluralRules` (`other` siempre obligatoria). Cada modulo en espanol tiene su
+ * `Traduccion` al ingles con exactamente las mismas claves: una clave que falta (o que sobra) rompe el typecheck en lugar de
+ * llegar a produccion en espanol a medias.
  */
 /** Mismo tipo que `Idioma` de lib/idioma (la preferencia); repetido aqui para que el nucleo no dependa de `window`. */
 export type Idioma = "es" | "en";
@@ -21,23 +21,17 @@ export type Mensaje = string | Plural;
 /** Valores para `{variable}`. Un numero se formatea con el locale activo (1,234 / 1,234); `count` ademas elige el plural. */
 export type Variables = Readonly<Record<string, string | number>>;
 
-export interface Modulo<ES extends Readonly<Record<string, Mensaje>>> {
-  readonly es: ES;
-  readonly en: { readonly [K in keyof ES]: Mensaje };
-}
+/** Un modulo del catalogo en espanol (la fuente): `{ "area.clave": "Texto" }`, declarado `as const satisfies ModuloEs`. */
+export type ModuloEs = Readonly<Record<string, Mensaje>>;
 
 /**
- * Declara un modulo del catalogo. Uso:
+ * La traduccion de un modulo: EXACTAMENTE las mismas claves que el espanol. Uso (archivo aparte en `mensajes/en/`):
  *
- *   export const nav = definirModulo({ es: { "nav.resumen": "Resumen" }, en: { "nav.resumen": "Overview" } });
+ *   export const navEn: Traduccion<typeof nav> = { "nav.resumen": "Overview" };
  *
- * - Falta una clave en `en` -> error de tipos (propiedad requerida).
- * - Sobra una clave en `en` -> error de tipos (propiedad en exceso del literal).
- * Convencion: todas las claves de un modulo llevan su prefijo (`nav.`, `comun.`, ...); una prueba exige que no se repitan entre modulos.
+ * - Falta una clave -> error de tipos (propiedad requerida).
+ * - Sobra una clave -> error de tipos (propiedad en exceso del literal).
+ * El ingles va en su propio archivo para que viaje en un chunk aparte (carga perezosa): el espanol, idioma por omision, es el
+ * unico que entra al bundle de arranque.
  */
-export function definirModulo<const ES extends Readonly<Record<string, Mensaje>>>(modulo: {
-  readonly es: ES;
-  readonly en: { readonly [K in keyof ES]: Mensaje };
-}): Modulo<ES> {
-  return modulo;
-}
+export type Traduccion<ES extends ModuloEs> = { readonly [K in keyof ES]: Mensaje };
