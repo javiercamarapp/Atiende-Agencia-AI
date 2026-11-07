@@ -5,6 +5,7 @@
 import type { ReactNode } from "react";
 import { cn } from "../lib/utils";
 import { resolverFormato, type FormatoPreset } from "../lib/formato-preset";
+import { CargandoLogo } from "./CargandoLogo";
 import { Card } from "./ui/card";
 import { SparklineConsola, Tendencia } from "./graficas";
 
@@ -22,33 +23,35 @@ export interface KpiTileProps {
   readonly vacio?: string;
   /** Nota fija de una linea (cita, aclaracion del supuesto): se pinta siempre que se pasa. */
   readonly nota?: string;
+  /** Carga en curso: la cifra se sustituye por el logo que respira (linea) sin cambiar el alto de la tarjeta. */
+  readonly cargando?: boolean;
   readonly className?: string;
 }
 
-export function KpiTile({ icono, etiqueta, valor, formato = "numero", tendencia, sparkline, vacio, nota, className }: KpiTileProps) {
+export function KpiTile({ icono, etiqueta, valor, formato = "numero", tendencia, sparkline, vacio, nota, cargando = false, className }: KpiTileProps) {
   const noMedible = valor === null || !Number.isFinite(valor);
   const texto = noMedible ? "—" : resolverFormato(formato)(valor);
   return (
-    <Card className={cn("min-w-0 p-3.5", className)}>
+    <Card className={cn("ds3-stat min-w-0 p-3.5", className)} aria-busy={cargando || undefined}>
       <div className="flex items-center gap-3">
-        <div className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-canvas">{icono}</div>
+        <div className="ds3-kpi-chip flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-canvas">{icono}</div>
         <div className="min-w-0">
           <div
             data-testid="kpi-tile-valor"
-            className={cn("min-w-0 truncate font-display text-xl font-semibold leading-tight tabular-nums", noMedible && "text-faint")}
-            title={noMedible ? undefined : texto}
+            className={cn("ds3-kpi-valor min-w-0 truncate font-display text-xl font-semibold leading-tight tabular-nums", noMedible && "text-faint", cargando && "flex min-h-7 items-center")}
+            title={noMedible || cargando ? undefined : texto}
             aria-label={noMedible ? `${etiqueta}: sin dato` : undefined}
           >
-            {texto}
+            {cargando ? <CargandoLogo tamano="linea" etiqueta={`Cargando ${etiqueta}`} /> : texto}
           </div>
-          <div className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{etiqueta}</div>
+          <div className="ds3-kpi-label mt-0.5 line-clamp-2 text-xs text-muted-foreground">{etiqueta}</div>
         </div>
       </div>
       {vacio ? (
         <p className="mt-2 text-xs text-faint">{vacio}</p>
       ) : sparkline && sparkline.length > 1 ? (
         <div className="mt-2 flex items-center gap-2 border-t border-dashed border-line2 pt-2">
-          <div className="min-w-0 flex-1">
+          <div className="ds3-kpi-spark min-w-0 flex-1">
             <SparklineConsola valores={sparkline} alto={20} />
           </div>
           {tendencia !== undefined && <Tendencia valor={tendencia} />}
