@@ -5,7 +5,8 @@
 // documento llegan como BORRADOR y no entran al agente hasta que una persona las aprueba una por una. Contrato: lib/conocimiento-client.ts.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BookOpen, Pencil, Plus, Trash2 } from "lucide-react";
-import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, FormField, Input, Selector, StatusBadge, Textarea, resolverFormato, useConfirm } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, FormField, Input, Selector, StatusBadge, Textarea, resolverFormato, traductorActivo, useConfirm, useT } from "@atiende/ui";
+import { restaurantesConocimiento } from "@atiende/ui/i18n/restaurantes/conocimiento";
 import { fetchAdminBranches } from "../lib/branches-client.ts";
 import type { BranchDetail } from "../lib/branches-client.ts";
 import { TEXTO_MAX, TIPO_CONOCIMIENTO_LABEL, TITULO_MAX, actualizarConocimiento, borrarConocimiento, crearConocimiento, fetchConocimiento } from "../lib/conocimiento-client.ts";
@@ -54,13 +55,17 @@ function mensaje(err: unknown, porDefecto: string): string {
   return err instanceof Error ? err.message : porDefecto;
 }
 
+const tr = traductorActivo(restaurantesConocimiento);
+
 function vigenciaTexto(e: EntradaConocimiento): string | null {
   if (!e.vigenteDesde && !e.vigenteHasta) return null;
-  if (e.vigenteDesde && e.vigenteHasta) return e.vigenteDesde === e.vigenteHasta ? `Solo el ${e.vigenteDesde}` : `Del ${e.vigenteDesde} al ${e.vigenteHasta}`;
-  return e.vigenteDesde ? `Desde el ${e.vigenteDesde}` : `Hasta el ${e.vigenteHasta}`;
+  if (e.vigenteDesde && e.vigenteHasta)
+    return e.vigenteDesde === e.vigenteHasta ? tr("restaurantes.conocimiento.soloEl", { fecha: e.vigenteDesde }) : tr("restaurantes.conocimiento.delAl", { desde: e.vigenteDesde, hasta: e.vigenteHasta });
+  return e.vigenteDesde ? tr("restaurantes.conocimiento.desdeEl", { fecha: e.vigenteDesde }) : tr("restaurantes.conocimiento.hastaEl", { fecha: e.vigenteHasta ?? "" });
 }
 
 export function ConocimientoNegocio({ apiBaseUrl, token, propertyId, canal }: Props) {
+  const t = useT(restaurantesConocimiento);
   const { confirmar, dialogo } = useConfirm();
   const [lista, setLista] = useState<ListaConocimiento | null>(null);
   const [sucursales, setSucursales] = useState<readonly BranchDetail[]>([]);
@@ -81,7 +86,7 @@ export function ConocimientoNegocio({ apiBaseUrl, token, propertyId, canal }: Pr
         setSucursales(ramas);
         setError(null);
       } catch (err) {
-        if (!cancelado) setError(mensaje(err, "No se pudo cargar el conocimiento del negocio."));
+        if (!cancelado) setError(mensaje(err, t("restaurantes.conocimiento.errorCarga")));
       }
     })();
     return () => {
@@ -89,7 +94,7 @@ export function ConocimientoNegocio({ apiBaseUrl, token, propertyId, canal }: Pr
     };
   }, [apiBaseUrl, token, propertyId, recarga]);
 
-  const nombreSucursal = useCallback((id: string | null) => (id === null ? "Toda la organización" : (sucursales.find((s) => s.propertyId === id)?.name ?? "Sucursal")), [sucursales]);
+  const nombreSucursal = useCallback((id: string | null) => (id === null ? t("restaurantes.conocimiento.todaOrganizacion") : (sucursales.find((s) => s.propertyId === id)?.name ?? t("restaurantes.conocimiento.sucursal"))), [sucursales, t]);
   const borradores = useMemo(() => (lista?.entradas ?? []).filter((e) => e.estado === "borrador"), [lista]);
   const publicadas = useMemo(() => (lista?.entradas ?? []).filter((e) => e.estado === "publicado"), [lista]);
   const generales = useMemo(() => publicadas.filter((e) => e.sucursalId === null), [publicadas]);
@@ -103,15 +108,15 @@ export function ConocimientoNegocio({ apiBaseUrl, token, propertyId, canal }: Pr
     if (!form) return;
     const prioridad = Number(form.prioridad);
     if (!form.titulo.trim() || !form.texto.trim()) {
-      setFallo("El título y el texto no pueden quedar vacíos.");
+      setFallo(t("restaurantes.conocimiento.faltaTexto"));
       return;
     }
     if (!Number.isInteger(prioridad) || prioridad < 0 || prioridad > 100) {
-      setFallo("La prioridad debe ser un entero de 0 a 100.");
+      setFallo(t("restaurantes.conocimiento.prioridadInvalida"));
       return;
     }
     if (form.vigenteDesde && form.vigenteHasta && form.vigenteHasta < form.vigenteDesde) {
-      setFallo("La fecha final no puede ser anterior a la inicial.");
+      setFallo(t("restaurantes.conocimiento.fechasInvalidas"));
       return;
     }
     setOcupado(true);
@@ -121,11 +126,11 @@ export function ConocimientoNegocio({ apiBaseUrl, token, propertyId, canal }: Pr
     try {
       if (form.id) await actualizarConocimiento(fetch, apiBaseUrl, token, propertyId, form.id, comun);
       else await crearConocimiento(fetch, apiBaseUrl, token, propertyId, { ...comun, sucursalId: form.sucursalId || null } satisfies EntradaConocimientoInput);
-      setAviso(form.id ? "Cambios guardados." : "Entrada guardada: el agente ya la usa.");
+      setAviso(t(form.id ? "restaurantes.conocimiento.cambiosGuardados" : "restaurantes.conocimiento.entradaGuardada"));
       setForm(null);
       setRecarga((n) => n + 1);
     } catch (err) {
-      setFallo(mensaje(err, "No se pudo guardar la entrada."));
+      setFallo(mensaje(err, t("restaurantes.conocimiento.errorGuardar")));
     } finally {
       setOcupado(false);
     }
@@ -140,7 +145,7 @@ export function ConocimientoNegocio({ apiBaseUrl, token, propertyId, canal }: Pr
       setAviso(ok);
       setRecarga((n) => n + 1);
     } catch (err) {
-      setFallo(mensaje(err, "No se pudo actualizar la entrada."));
+      setFallo(mensaje(err, t("restaurantes.conocimiento.errorActualizar")));
     } finally {
       setOcupado(false);
     }
@@ -148,11 +153,11 @@ export function ConocimientoNegocio({ apiBaseUrl, token, propertyId, canal }: Pr
 
   async function borrar(e: EntradaConocimiento) {
     const ok = await confirmar({
-      titulo: e.estado === "borrador" ? "Descartar borrador" : "Eliminar entrada",
-      descripcion: `«${e.titulo}» dejará de estar disponible para el agente. ¿Continuar?`,
+      titulo: t(e.estado === "borrador" ? "restaurantes.conocimiento.descartarBorrador" : "restaurantes.conocimiento.eliminarEntrada"),
+      descripcion: t("restaurantes.conocimiento.confirmarBorrar", { titulo: e.titulo }),
       tono: "danger",
-      confirmar: e.estado === "borrador" ? "Descartar" : "Eliminar",
-      cancelar: "Volver",
+      confirmar: t(e.estado === "borrador" ? "restaurantes.conocimiento.descartar" : "restaurantes.conocimiento.eliminar"),
+      cancelar: t("restaurantes.conocimiento.volver"),
     });
     if (!ok) return;
     setOcupado(true);
@@ -160,10 +165,10 @@ export function ConocimientoNegocio({ apiBaseUrl, token, propertyId, canal }: Pr
     setAviso(null);
     try {
       await borrarConocimiento(fetch, apiBaseUrl, token, propertyId, e.id);
-      setAviso("Entrada eliminada.");
+      setAviso(t("restaurantes.conocimiento.entradaEliminada"));
       setRecarga((n) => n + 1);
     } catch (err) {
-      setFallo(mensaje(err, "No se pudo eliminar la entrada."));
+      setFallo(mensaje(err, t("restaurantes.conocimiento.errorEliminar")));
     } finally {
       setOcupado(false);
     }
@@ -175,29 +180,29 @@ export function ConocimientoNegocio({ apiBaseUrl, token, propertyId, canal }: Pr
         <p className="m-0 flex flex-wrap items-center gap-1.5 font-semibold text-foreground">
           {e.titulo}
           <StatusBadge tone="info">{TIPO_CONOCIMIENTO_LABEL[e.tipo]}</StatusBadge>
-          {e.estado === "borrador" ? <StatusBadge tone="warning">Borrador por aprobar</StatusBadge> : e.activo ? <StatusBadge tone="success">Activa</StatusBadge> : <StatusBadge tone="neutral">Apagada</StatusBadge>}
+          {e.estado === "borrador" ? <StatusBadge tone="warning">{t("restaurantes.conocimiento.borradorPorAprobar")}</StatusBadge> : e.activo ? <StatusBadge tone="success">{t("restaurantes.conocimiento.activa")}</StatusBadge> : <StatusBadge tone="neutral">{t("restaurantes.conocimiento.apagada")}</StatusBadge>}
         </p>
         <p className="mt-1 line-clamp-3 whitespace-pre-line text-xs text-muted-foreground">{e.texto}</p>
         <p className="mt-1 text-xs text-muted-foreground">
           {nombreSucursal(e.sucursalId)}
           {vigenciaTexto(e) ? ` · ${vigenciaTexto(e)}` : ""}
-          {e.origen === "importado" ? " · Importada de un documento" : ""}
+          {e.origen === "importado" ? t("restaurantes.conocimiento.importada") : ""}
         </p>
       </div>
       <div className="flex shrink-0 flex-wrap items-center gap-1">
         {e.estado === "borrador" ? (
-          <Button type="button" size="sm" disabled={ocupado} onClick={() => void cambiarEstado(e, { estado: "publicado" }, "Borrador aprobado: el agente ya lo usa.")}>
-            Aprobar
+          <Button type="button" size="sm" disabled={ocupado} onClick={() => void cambiarEstado(e, { estado: "publicado" }, t("restaurantes.conocimiento.borradorAprobado"))}>
+            {t("restaurantes.conocimiento.aprobar")}
           </Button>
         ) : (
-          <Button type="button" size="sm" variant="outline" disabled={ocupado} onClick={() => void cambiarEstado(e, { activo: !e.activo }, e.activo ? "Entrada apagada: el agente ya no la usa." : "Entrada encendida.")}>
-            {e.activo ? "Apagar" : "Encender"}
+          <Button type="button" size="sm" variant="outline" disabled={ocupado} onClick={() => void cambiarEstado(e, { activo: !e.activo }, t(e.activo ? "restaurantes.conocimiento.entradaApagada" : "restaurantes.conocimiento.entradaEncendida"))}>
+            {t(e.activo ? "restaurantes.conocimiento.apagar" : "restaurantes.conocimiento.encender")}
           </Button>
         )}
-        <Button type="button" size="icon-sm" variant="ghost" aria-label={`Editar ${e.titulo}`} disabled={ocupado} onClick={() => setForm(formDe(e))}>
+        <Button type="button" size="icon-sm" variant="ghost" aria-label={t("restaurantes.conocimiento.editarTitulo", { titulo: e.titulo })} disabled={ocupado} onClick={() => setForm(formDe(e))}>
           <Pencil className="h-4 w-4" strokeWidth={1.75} />
         </Button>
-        <Button type="button" size="icon-sm" variant="ghost" aria-label={`Eliminar ${e.titulo}`} disabled={ocupado} onClick={() => void borrar(e)}>
+        <Button type="button" size="icon-sm" variant="ghost" aria-label={t("restaurantes.conocimiento.eliminarTitulo", { titulo: e.titulo })} disabled={ocupado} onClick={() => void borrar(e)}>
           <Trash2 className="h-4 w-4" strokeWidth={1.75} />
         </Button>
       </div>
@@ -212,18 +217,18 @@ export function ConocimientoNegocio({ apiBaseUrl, token, propertyId, canal }: Pr
       <CardHeader className="p-4">
         <CardTitle className="flex items-center gap-2 text-base">
           <BookOpen className="h-4 w-4" strokeWidth={1.75} />
-          Conocimiento del negocio
+          {t("restaurantes.conocimiento.titulo")}
         </CardTitle>
         <CardDescription>
-          Políticas, preguntas frecuentes y avisos del día que el agente de {canal === "voz" ? "voz" : "WhatsApp"} usa al contestar; es el mismo contenido para voz y WhatsApp. No son reglas ni cambian precios: el menú y los precios los toma siempre del menú real con la cotización, así que aquí no se escriben.
+          {t("restaurantes.conocimiento.descripcion", { canal: t(canal === "voz" ? "restaurantes.conocimiento.canalVoz" : "restaurantes.conocimiento.canalWhatsapp") })}
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-3 p-4 pt-0">
         {error && <EstadoError mensaje={error} onReintentar={() => setRecarga((n) => n + 1)} />}
-        {!lista && !error && <EstadoCargando etiqueta="Cargando el conocimiento del negocio…" />}
+        {!lista && !error && <EstadoCargando etiqueta={t("restaurantes.conocimiento.cargando")} />}
         {lista && !lista.disponible && (
-          <Callout tone="warning" titulo="No disponible aún" data-testid="conocimiento-no-disponible">
-            Esta base de datos todavía no tiene el conocimiento del negocio: requiere aplicar la migración 053. Mientras tanto el agente funciona sin él y no se puede guardar nada aquí.
+          <Callout tone="warning" titulo={t("restaurantes.conocimiento.noDisponible")} data-testid="conocimiento-no-disponible">
+            {t("restaurantes.conocimiento.noDisponibleTexto")}
           </Callout>
         )}
         {lista?.disponible && (
@@ -240,27 +245,27 @@ export function ConocimientoNegocio({ apiBaseUrl, token, propertyId, canal }: Pr
             )}
 
             {borradores.length > 0 && (
-              <section aria-label="Borradores por aprobar" className="flex flex-col gap-2">
-                <h3 className="m-0 text-sm font-semibold">Borradores por aprobar</h3>
-                <p className="m-0 text-xs text-muted-foreground">Nada de esto llega al agente hasta que usted lo apruebe.</p>
+              <section aria-label={t("restaurantes.conocimiento.borradores")} className="flex flex-col gap-2">
+                <h3 className="m-0 text-sm font-semibold">{t("restaurantes.conocimiento.borradores")}</h3>
+                <p className="m-0 text-xs text-muted-foreground">{t("restaurantes.conocimiento.borradoresAyuda")}</p>
                 <ul className="m-0 flex list-none flex-col gap-2 p-0">{borradores.map(fila)}</ul>
               </section>
             )}
 
-            <section aria-label="Entradas de conocimiento" className="flex flex-col gap-2">
+            <section aria-label={t("restaurantes.conocimiento.entradasAria")} className="flex flex-col gap-2">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <h3 className="m-0 text-sm font-semibold">Entradas</h3>
+                <h3 className="m-0 text-sm font-semibold">{t("restaurantes.conocimiento.entradas")}</h3>
                 <span data-testid="conocimiento-uso" className="text-xs text-muted-foreground">
-                  En uso: {entero(caracteres)} de {entero(lista.topeCaracteres)} caracteres que caben en el agente
+                  {t("restaurantes.conocimiento.enUso", { usados: entero(caracteres), tope: entero(lista.topeCaracteres) })}
                 </span>
               </div>
               {publicadas.length === 0 ? (
-                <EstadoVacio compacto titulo="Sin conocimiento cargado" mensaje="Agregue sus políticas, preguntas frecuentes (por ejemplo «¿hay estacionamiento?») o un aviso de hoy, y el agente las usará al contestar." />
+                <EstadoVacio compacto titulo={t("restaurantes.conocimiento.sinConocimiento")} mensaje={t("restaurantes.conocimiento.sinConocimientoTexto")} />
               ) : (
                 <ul className="m-0 flex list-none flex-col gap-2 p-0">{publicadas.map(fila)}</ul>
               )}
               {caracteres > lista.topeCaracteres && (
-                <Callout tone="warning">Hay más texto del que cabe: el agente usa las entradas de mayor prioridad y deja fuera las últimas. Apague o acorte entradas.</Callout>
+                <Callout tone="warning">{t("restaurantes.conocimiento.excede")}</Callout>
               )}
             </section>
 
@@ -268,17 +273,17 @@ export function ConocimientoNegocio({ apiBaseUrl, token, propertyId, canal }: Pr
               <div>
                 <Button type="button" size="sm" onClick={() => setForm(FORM_VACIO)} disabled={ocupado}>
                   <Plus className="mr-1.5 h-4 w-4" strokeWidth={1.75} />
-                  Agregar entrada
+                  {t("restaurantes.conocimiento.agregar")}
                 </Button>
               </div>
             ) : (
-              <section aria-label={form.id ? "Editar entrada" : "Nueva entrada"} className="flex flex-col gap-3 rounded-card border border-border p-3">
-                <h3 className="m-0 text-sm font-semibold">{form.id ? "Editar entrada" : "Nueva entrada"}</h3>
+              <section aria-label={t(form.id ? "restaurantes.conocimiento.editar" : "restaurantes.conocimiento.nueva")} className="flex flex-col gap-3 rounded-card border border-border p-3">
+                <h3 className="m-0 text-sm font-semibold">{t(form.id ? "restaurantes.conocimiento.editar" : "restaurantes.conocimiento.nueva")}</h3>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <FormField label="Título" hint={`${form.titulo.length}/${TITULO_MAX}`}>
-                    <Input value={form.titulo} maxLength={TITULO_MAX} placeholder="Estacionamiento" onChange={(e) => cambiar("titulo", e.target.value)} />
+                  <FormField label={t("restaurantes.conocimiento.campoTitulo")} hint={`${form.titulo.length}/${TITULO_MAX}`}>
+                    <Input value={form.titulo} maxLength={TITULO_MAX} placeholder={t("restaurantes.conocimiento.tituloEjemplo")} onChange={(e) => cambiar("titulo", e.target.value)} />
                   </FormField>
-                  <FormField label="Tipo">
+                  <FormField label={t("restaurantes.conocimiento.campoTipo")}>
                     <Selector value={form.tipo} onChange={(e) => cambiar("tipo", e.target.value as TipoConocimiento)}>
                       {(Object.keys(TIPO_CONOCIMIENTO_LABEL) as TipoConocimiento[]).map((t) => (
                         <option key={t} value={t}>
@@ -287,35 +292,35 @@ export function ConocimientoNegocio({ apiBaseUrl, token, propertyId, canal }: Pr
                       ))}
                     </Selector>
                   </FormField>
-                  <FormField label="Aplica a" hint={form.id ? "No se puede cambiar: cree otra entrada para otra sucursal." : undefined}>
+                  <FormField label={t("restaurantes.conocimiento.aplicaA")} hint={form.id ? t("restaurantes.conocimiento.aplicaAyuda") : undefined}>
                     <Selector value={form.sucursalId} disabled={form.id !== null} onChange={(e) => setForm((f) => (f ? { ...f, sucursalId: e.target.value, reemplazaId: "" } : f))}>
-                      <option value="">Toda la organización</option>
+                      <option value="">{t("restaurantes.conocimiento.todaOrganizacion")}</option>
                       {sucursales.map((s) => (
                         <option key={s.propertyId} value={s.propertyId}>
-                          Solo {s.name}
+                          {t("restaurantes.conocimiento.soloSucursal", { sucursal: s.name })}
                         </option>
                       ))}
                     </Selector>
                   </FormField>
-                  <FormField label="Prioridad (0 a 100)" hint="Las de mayor prioridad entran primero si no cabe todo.">
+                  <FormField label={t("restaurantes.conocimiento.prioridad")} hint={t("restaurantes.conocimiento.prioridadAyuda")}>
                     <Input type="number" min={0} max={100} value={form.prioridad} onChange={(e) => cambiar("prioridad", e.target.value)} />
                   </FormField>
                 </div>
-                <FormField label="Texto" hint={`${form.texto.length}/${TEXTO_MAX}. Sin precios ni nombres de productos del menú.`}>
-                  <Textarea rows={5} value={form.texto} maxLength={TEXTO_MAX} placeholder="Hay estacionamiento gratuito para clientes." onChange={(e) => cambiar("texto", e.target.value)} />
+                <FormField label={t("restaurantes.conocimiento.campoTexto")} hint={t("restaurantes.conocimiento.textoAyuda", { contador: `${form.texto.length}/${TEXTO_MAX}` })}>
+                  <Textarea rows={5} value={form.texto} maxLength={TEXTO_MAX} placeholder={t("restaurantes.conocimiento.textoEjemplo")} onChange={(e) => cambiar("texto", e.target.value)} />
                 </FormField>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <FormField label="Vigente desde (opcional)" hint="Fecha local de la sucursal.">
+                  <FormField label={t("restaurantes.conocimiento.vigenteDesde")} hint={t("restaurantes.conocimiento.fechaLocal")}>
                     <Input type="date" value={form.vigenteDesde} onChange={(e) => cambiar("vigenteDesde", e.target.value)} />
                   </FormField>
-                  <FormField label="Vigente hasta (opcional)" hint="Pasada esa fecha el agente deja de usarla.">
+                  <FormField label={t("restaurantes.conocimiento.vigenteHasta")} hint={t("restaurantes.conocimiento.vigenteHastaAyuda")}>
                     <Input type="date" value={form.vigenteHasta} onChange={(e) => cambiar("vigenteHasta", e.target.value)} />
                   </FormField>
                 </div>
                 {editandoSucursal && candidatasReemplazo.length > 0 && (
-                  <FormField label="Sustituye a una entrada general (opcional)" hint="En esta sucursal el agente usa esta entrada en lugar de la general elegida.">
+                  <FormField label={t("restaurantes.conocimiento.sustituye")} hint={t("restaurantes.conocimiento.sustituyeAyuda")}>
                     <Selector value={form.reemplazaId} onChange={(e) => cambiar("reemplazaId", e.target.value)}>
-                      <option value="">No sustituye ninguna</option>
+                      <option value="">{t("restaurantes.conocimiento.noSustituye")}</option>
                       {candidatasReemplazo.map((g) => (
                         <option key={g.id} value={g.id}>
                           {g.titulo}
@@ -326,10 +331,10 @@ export function ConocimientoNegocio({ apiBaseUrl, token, propertyId, canal }: Pr
                 )}
                 <div className="flex flex-wrap gap-2">
                   <Button type="button" size="sm" loading={ocupado} onClick={() => void guardar()}>
-                    Guardar entrada
+                    {t("restaurantes.conocimiento.guardar")}
                   </Button>
                   <Button type="button" size="sm" variant="outline" disabled={ocupado} onClick={() => setForm(null)}>
-                    Cancelar
+                    {t("restaurantes.conocimiento.cancelar")}
                   </Button>
                 </div>
               </section>
