@@ -6,6 +6,7 @@ import { fusionarRenglonesPorProducto } from "../promotions.ts";
 import type { RestaurantesRepository } from "../repository.ts";
 import type { PersistedOrderItem } from "../types.ts";
 import type { PastOrder } from "./types.ts";
+import { buscarSucursalParaClientes } from "../solo-venta-local.ts";
 
 export interface CambioDeRepeticion {
   readonly producto: string;
@@ -46,7 +47,7 @@ export function elegirPedido(orders: readonly PastOrder[], numero: number | unde
  * existiendo y se detectan los cambios para avisarlos al cliente.
  */
 export async function repetirPedido(repo: RestaurantesRepository, args: { readonly organizationId: string; readonly branchSlug: string; readonly order: PastOrder }): Promise<PedidoRepetido> {
-  const branch = await repo.findBranch(args.organizationId, { slug: args.branchSlug });
+  const branch = await buscarSucursalParaClientes(repo, args.organizationId, { slug: args.branchSlug });
   if (!branch || branch.status !== "active") throw new OrderValidationError(`Sucursal '${args.branchSlug}' no encontrada o inactiva`);
   const catalog = await repo.listAvailableProductsForBranch(branch.propertyId);
 
