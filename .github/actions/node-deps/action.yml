@@ -1,0 +1,59 @@
+name: Node 22 + dependencias (npm ci con cache de node_modules)
+description: >-
+  Instala Node 22 y deja node_modules listo. Si existe un cache de node_modules con la MISMA llave
+  (lockfile + todos los package.json de workspaces + version exacta de Node + SO/arquitectura), lo restaura y
+  se salta `npm ci`; si no, corre `npm ci` normal. El cache SOLO se guarda desde main (push/schedule/dispatch):
+  los PRs lo leen pero no lo escriben, para que ~35 PRs abiertos no llenen los 10 GB del repo con copias
+  identicas y se desalojen entre si.
+
+# Por que la llave incluye los package.json y no solo package-lock.json: `npm ci` falla si un package.json
+# de un workspace no coincide con el lockfile. Con un cache que solo dependiera del lockfile, ese PR se
+# saltaria `npm ci` y el error nunca saldria. Con los package.json en la llave, cualquier cambio en ellos
+# es un cache miss y `npm ci` corre (y falla) como antes.
+#
+# Rutas: npm workspaces instala casi todo en ./node_modules; el lockfile hoy solo tiene node_modules anidados
+# en apps/web y packages/ui. Los globs cubren cualquier workspace que los tenga en el futuro.
+runs:
+  using: composite
+  steps:
+    - name: Setup Node
+      uses: actions/setup-node@v7
+      with:
+        node-version: "22"
+        cache: npm
+
+    - name: Llave del cache de node_modules
+      id: llave
+      shell: bash
+      run: |
+        echo "key=node-modules-v1-${RUNNER_OS}-${RUNNER_ARCH}-$(node -v)-${{ hashFiles('package-lock.json', 'package.json', 'apps/*/package.json', 'packages/*/package.json', 'packages/mcp-servers/*/package.json') }}" >> "$GITHUB_OUTPUT"
+
+    - name: Restaurar node_modules
+      id: cache
+      uses: actions/cache/restore@v6
+      with:
+        path: |
+          node_modules
+          apps/*/node_modules
+          packages/*/node_modules
+          packages/mcp-servers/*/node_modules
+        key: ${{ steps.llave.outputs.key }}
+
+    - name: npm ci (sin cache de node_modules)
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: npm ci
+
+    # Se guarda justo despues de `npm ci`, antes de que las pruebas escriban caches propios dentro de
+    # node_modules (.vite, .vitest). Si varios jobs de main fallan el cache a la vez, solo el primero lo
+    # reserva; los demas dejan un aviso y siguen.
+    - name: Guardar node_modules (solo main)
+      if: steps.cache.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+      uses: actions/cache/save@v6
+      with:
+        path: |
+          node_modules
+          apps/*/node_modules
+          packages/*/node_modules
+          packages/mcp-servers/*/node_modules
+        key: ${{ steps.llave.outputs.key }}
