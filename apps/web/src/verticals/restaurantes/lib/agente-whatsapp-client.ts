@@ -1,31 +1,33 @@
 // Cliente HTTP tipado del editor del agente de WhatsApp (R-10, migracion 033). Contrato real:
 // apps/api/src/routes/verticals/restaurantes/admin-config.ts (`.../admin/config/agente-whatsapp[/opciones|/vista-previa|/historial|/restablecer]`).
 // Mismo criterio que el resto de lib/*.ts: `fetchImpl` inyectado y renovacion de sesion via `fetchJson`/`sendJson`.
+import { etiquetasTraducidas } from "@atiende/ui";
+import { restaurantesAgenteWhatsapp } from "@atiende/ui/i18n/restaurantes/agenteWhatsapp";
 import { fetchJson, sendJson } from "./admin-client.ts";
 
 export type PerfilAgente = "generico" | "taqueria_pm";
 export type TonoAgente = "calido_cercano" | "formal_directo" | "profesional_neutro" | "divertido_desenfadado";
 export type AlcanceAgente = "organizacion" | "sucursal";
 
-export const PERFIL_LABEL: Readonly<Record<PerfilAgente, string>> = {
-  generico: "Genérico (tutea, solo domicilio)",
-  taqueria_pm: "Taquería PM (de usted, recoger y domicilio)",
-};
+// Etiquetas en el idioma activo de la consola (i18n): cada lectura traduce; en espanol, los textos de siempre.
+export const PERFIL_LABEL: Readonly<Record<PerfilAgente, string>> = etiquetasTraducidas<PerfilAgente>(
+  ["generico", "taqueria_pm"],
+  (p) => `restaurantes.agenteWhatsapp.perfil.${p}` as const,
+  restaurantesAgenteWhatsapp,
+);
 
-export const TONO_LABEL: Readonly<Record<TonoAgente, string>> = {
-  calido_cercano: "Cálido y cercano",
-  formal_directo: "Formal y directo",
-  profesional_neutro: "Profesional y neutro",
-  divertido_desenfadado: "Divertido y desenfadado",
-};
+export const TONO_LABEL: Readonly<Record<TonoAgente, string>> = etiquetasTraducidas<TonoAgente>(
+  ["calido_cercano", "formal_directo", "profesional_neutro", "divertido_desenfadado"],
+  (t) => `restaurantes.agenteWhatsapp.tono.${t}` as const,
+  restaurantesAgenteWhatsapp,
+);
 
 /** Motivos de escalacion que se pueden apagar (los demas protegen al cliente y no se tocan). */
-export const MOTIVO_LABEL: Readonly<Record<string, string>> = {
-  pedido_grande: "Pedido muy grande",
-  zona_ambigua: "El cliente insiste en otra sucursal para domicilio",
-  producto_agotado: "Producto agotado sin alternativa",
-  no_entiende: "No se le entiende al cliente",
-};
+export const MOTIVO_LABEL: Readonly<Record<string, string>> = etiquetasTraducidas<"pedido_grande" | "zona_ambigua" | "producto_agotado" | "no_entiende">(
+  ["pedido_grande", "zona_ambigua", "producto_agotado", "no_entiende"],
+  (m) => `restaurantes.agenteWhatsapp.motivo.${m}` as const,
+  restaurantesAgenteWhatsapp,
+);
 
 /** Campos editables. Texto vacio = usar el valor del perfil. */
 export interface ConfigAgenteForm {
@@ -176,19 +178,8 @@ export function restablecerAgente(fetchImpl: typeof fetch, apiBaseUrl: string, t
   return sendJson<ConfigAgenteWire>(fetchImpl, `${base(apiBaseUrl, propertyId)}/restablecer`, token, "POST", { alcance, ...(versionEsperada === null ? {} : { versionEsperada }) });
 }
 
-const CAMPO_LABEL: Readonly<Record<string, string>> = {
-  perfil: "Perfil",
-  agentName: "Nombre del agente",
-  businessName: "Nombre del negocio",
-  toneStyle: "Tono",
-  deliveryTimeText: "Tiempos de entrega",
-  greetingText: "Saludo",
-  salsasText: "Salsas incluidas",
-  promosText: "Promociones",
-  escalationReasonsOff: "Motivos de escalación desactivados",
-  largeOrderText: "Umbral de pedido grande",
-  replyDebounceSeconds: "Espera de ráfagas (segundos)",
-};
+const CAMPOS_FOTO = ["perfil", "agentName", "businessName", "toneStyle", "deliveryTimeText", "greetingText", "salsasText", "promosText", "escalationReasonsOff", "largeOrderText", "replyDebounceSeconds"] as const;
+const CAMPO_LABEL: Readonly<Record<string, string>> = etiquetasTraducidas<(typeof CAMPOS_FOTO)[number]>(CAMPOS_FOTO, (c) => `restaurantes.agenteWhatsapp.campo.${c}` as const, restaurantesAgenteWhatsapp);
 
 function comoTexto(v: unknown): string {
   if (v === null || v === undefined) return "";
