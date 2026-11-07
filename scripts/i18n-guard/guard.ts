@@ -45,6 +45,9 @@ function listar(raiz: string, ruta: string): string[] {
 
 export function revisar(raiz: string, config: ConfigGuard): ResultadoArchivo[] {
   const excluido = (r: string) => config.excluir.some((e) => r === e || r.startsWith(e.endsWith("/") ? e : `${e}/`));
+  const vacias = config.alcance.filter((a) => listar(raiz, a).length === 0);
+  // Una ruta del alcance que no existe (renombrada, errata) dejaria de vigilarse en silencio: es error.
+  if (vacias.length > 0) throw new Error(`alcance sin archivos: ${vacias.map((a) => `«${a}»`).join(", ")} (¿se renombro o tiene errata?)`);
   const archivos = [...new Set(config.alcance.flatMap((a) => listar(raiz, a)))].filter((r) => !excluido(r)).sort();
   return archivos.map((ruta) => ({ ruta, hallazgos: detectar(readFileSync(join(raiz, ruta), "utf8"), ruta), permitido: config.baseline[ruta] ?? 0 }));
 }

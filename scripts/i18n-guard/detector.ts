@@ -39,7 +39,7 @@ export const ATRIBUTOS_VISIBLES: ReadonlySet<string> = new Set([
 ]);
 
 /** Nombres compuestos que tambien son texto visible: `volverEtiqueta`, `confirmLabel`, `tituloVacio`, `mensajeError`... */
-const SUFIJO_VISIBLE = /(label|etiqueta|titulo|title|mensaje|texto|placeholder|descripcion|subtitulo|ayuda|tooltip|rotulo)$|^(label|etiqueta|titulo|title|mensaje|texto|placeholder|descripcion)[A-Z]/i;
+const SUFIJO_VISIBLE = /(label|labels|etiqueta|etiquetas|titulo|titulos|title|mensaje|mensajes|texto|textos|placeholder|descripcion|subtitulo|ayuda|tooltip|rotulo)$|^(label|etiqueta|titulo|title|mensaje|texto|placeholder|descripcion)[A-Z]/i;
 
 export function nombreVisible(nombre: string): boolean {
   return ATRIBUTOS_VISIBLES.has(nombre) || SUFIJO_VISIBLE.test(nombre);
@@ -79,7 +79,7 @@ function esArgumentoDeTraduccion(n: ts.Node): boolean {
 /** Sube por `?:`, `||`, `??` y parentesis hasta el nodo que da contexto al literal. */
 function contexto(n: ts.Node): ts.Node {
   let p = n.parent;
-  while (p && (ts.isConditionalExpression(p) || ts.isParenthesizedExpression(p) || (ts.isBinaryExpression(p) && [ts.SyntaxKind.BarBarToken, ts.SyntaxKind.QuestionQuestionToken].includes(p.operatorToken.kind)))) {
+  while (p && (ts.isConditionalExpression(p) || ts.isParenthesizedExpression(p) || (ts.isBinaryExpression(p) && [ts.SyntaxKind.BarBarToken, ts.SyntaxKind.QuestionQuestionToken, ts.SyntaxKind.PlusToken].includes(p.operatorToken.kind)))) {
     p = p.parent;
   }
   return p;
@@ -96,7 +96,9 @@ function esVisible(lit: ts.Node): boolean {
   if (ts.isJsxAttribute(c)) return nombreVisible(nombreDe(c.name) ?? "");
   if (ts.isPropertyAssignment(c)) return nombreVisible(nombreDe(c.name) ?? "");
   // Valor por omision de una prop o parametro: `({ volverEtiqueta = "Volver al panel" })`.
-  if ((ts.isBindingElement(c) || ts.isParameter(c)) && ts.isIdentifier(c.name)) return nombreVisible(c.name.text);
+  if ((ts.isBindingElement(c) || ts.isParameter(c) || ts.isVariableDeclaration(c)) && ts.isIdentifier(c.name)) return nombreVisible(c.name.text);
+  // Arreglo de textos con nombre visible: `const etiquetas = ["Lunes", "Martes"]`.
+  if (ts.isArrayLiteralExpression(c) && c.parent && ts.isVariableDeclaration(c.parent) && ts.isIdentifier(c.parent.name)) return nombreVisible(c.parent.name.text);
   return false;
 }
 
@@ -109,7 +111,8 @@ function textoDeLiteral(n: ts.Node): string | null {
 function lineasIgnoradas(codigo: string): Set<number> {
   const s = new Set<number>();
   codigo.split("\n").forEach((l, i) => {
-    if (l.includes("i18n-ignorar")) {
+    // Solo un comentario `// i18n-ignorar` (al final de la linea o en la linea anterior); nunca dentro de un literal.
+    if (/\/\/\s*i18n-ignorar\b/.test(l) && !/["'`][^"'`]*\/\/\s*i18n-ignorar/.test(l)) {
       s.add(i + 1);
       s.add(i + 2);
     }
