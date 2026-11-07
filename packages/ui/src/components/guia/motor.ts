@@ -58,11 +58,24 @@ export type EventoRecorrido =
 
 export const estadoInicial = (): EstadoRecorrido => ({ abierto: false, indice: 0, terminado: false, iniciadoPorPersona: false });
 
+/** Quita las barras finales sin expresion regular (lineal ante entradas largas; evita ReDoS). */
+export function sinBarraFinal(v: string): string {
+  let fin = v.length;
+  while (fin > 0 && v.charCodeAt(fin - 1) === 47) fin--;
+  return v.slice(0, fin);
+}
+/** Quita las barras iniciales sin expresion regular. */
+function sinBarraInicial(v: string): string {
+  let i = 0;
+  while (i < v.length && v.charCodeAt(i) === 47) i++;
+  return v.slice(i);
+}
+
 /** ¿La ruta actual es la pantalla `href`? Coincidencia exacta o subruta (las fichas de detalle cuentan como su pantalla). */
 export function enPantalla(ruta: string | null | undefined, href: string | null | undefined): boolean {
   if (typeof ruta !== "string" || typeof href !== "string" || href === "") return false;
-  const r = ruta.replace(/\/+$/, "") || "/";
-  const h = href.replace(/\/+$/, "") || "/";
+  const r = sinBarraFinal(ruta) || "/";
+  const h = sinBarraFinal(href) || "/";
   return r === h || r.startsWith(`${h}/`);
 }
 
@@ -370,9 +383,9 @@ export const cssString = (v: string): string => v.replace(/\\/g, "\\\\").replace
 
 /** «/restaurantes/x/operacion/viajes» con base «/restaurantes/x» → «operacion/viajes»; la raiz → "". */
 export function rutaRelativa(href: string, base: string): string {
-  const b = base.replace(/\/+$/, "");
+  const b = sinBarraFinal(base);
   if (href === b) return "";
-  return href.startsWith(`${b}/`) ? href.slice(b.length + 1).replace(/\/+$/, "") : href.replace(/^\/+/, "");
+  return href.startsWith(`${b}/`) ? sinBarraFinal(href.slice(b.length + 1)) : sinBarraInicial(href);
 }
 /** Slug estable para el id del paso: «operacion/viajes» → «operacion-viajes»; la raiz → «resumen». */
 export const slugDe = (relativa: string): string => (relativa === "" ? "resumen" : relativa.replace(/[^a-z0-9]+/gi, "-").toLowerCase().replace(/^-|-$/g, "").slice(0, 60) || "pantalla");
