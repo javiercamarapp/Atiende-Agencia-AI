@@ -76,6 +76,8 @@ describe("«¿algo más?» una sola vez por pedido y promociones de una sola fue
     ];
     expect(quitarAlgoMasRepetido("Perfecto, con tarjeta. ¿Desea agregar algo más?", hist)).toBe("Perfecto, con tarjeta.");
     expect(quitarAlgoMasRepetido("Perfecto. ¿Desea agregar algo más?", hist.slice(0, 1))).toBe("Perfecto. ¿Desea agregar algo más?");
+    // Un resumen repetido conserva su pregunta de confirmación (sin la coletilla de «algo más»).
+    expect(quitarAlgoMasRepetido("Resumen... Total $95.\n\n¿Es correcto o desea agregar algo más?", hist)).toBe("Resumen... Total $95.\n\n¿Es correcto?");
     const trasCrear = [...hist, { role: "assistant" as const, content: "Su pedido ya quedó registrado." }, { role: "user" as const, content: "quiero otro pedido" }];
     expect(quitarAlgoMasRepetido("Claro. ¿Algo más?", trasCrear)).toBe("Claro. ¿Algo más?");
   });

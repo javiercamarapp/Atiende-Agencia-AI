@@ -65,7 +65,7 @@ import { enforcePromoPolicy, stripUnpromptedTip } from "./cerebro-v2/politicas-p
 import { PM_POLICY_RULES_V2, adaptarPromptPmV2 } from "./cerebro-v2/prompt-v2.ts";
 import { cambioSoloDeFormaDePago } from "./cerebro-v2/pago.ts";
 import { normalizePhone } from "../phone.ts";
-import { consultasDeMenuParaPromesa, corregirPromesaSinBuscar, promesaDeProductoSinBuscar } from "./cerebro-v2/texto-final.ts";
+import { consultasDeMenuParaPromesa, corregirPromesaSinBuscar, promesaDeProductoSinBuscar, quitarAlgoMasRepetido } from "./cerebro-v2/texto-final.ts";
 import { buscarEnCatalogo } from "./cerebro-v2/busqueda.ts";
 import { PM_AGENT_NAME_POR_OMISION, PM_COPY, buildPmSystemPrompt, saludoPorHora } from "./perfil-pm.ts";
 import { bloqueConocimientoPrompt, listarConocimientoVigente } from "../conocimiento/dominio.ts";
@@ -787,7 +787,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         const base = enforceQuotedTotal(enforceBistecPackNotice(lastQuoteRespaldaCortesia === false ? quitarCortesiaNoRespaldada(reply) : reply, working), lastQuoteTotal, lastQuoteAmounts);
         const conHorario = perfil === "taqueria_pm" ? corregirPromesaDeHorarioNocturno(base, horaLocalDelTurno) : base;
         // Cerebro v2 (politicas del 31-oct del suelto): sin propina no preguntada y sin promociones ofrecidas a domicilio o sin que el cliente pregunte.
-        return cerebroV2 && perfil === "taqueria_pm" ? enforcePromoPolicy(stripUnpromptedTip(conHorario, messages), messages) : conHorario;
+        return cerebroV2 && perfil === "taqueria_pm" ? quitarAlgoMasRepetido(enforcePromoPolicy(stripUnpromptedTip(conHorario, messages), messages), messages) : conHorario;
       };
       /** Zona horaria de la SUCURSAL del pedido (la misma que usa el servidor para validar la hora de recogida); si no se puede leer, la del agente. */
       const zonaDeLaSucursal = async (propertyIdDelPedido: string | null | undefined, branchSlug: unknown): Promise<string> => {

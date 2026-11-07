@@ -888,3 +888,23 @@ export function guardiaTextoFinal(
   }
   return { texto: actual, reemplazado: actual !== original, motivo, alertar: veraz.alertar };
 }
+
+// ── Default del dueño (7-nov): «¿algo más?» UNA sola vez por pedido ─────────────────────────────────────────────────────────────────────────────
+// El prompt base lo pedía en el resumen y otra vez al cerrar; v2 lo prohibía tras el pago. Regla única: una vez por pedido, justo antes del resumen. Si en ESTE pedido (desde el
+// último «quedó registrado») el asistente ya lo preguntó, la segunda pregunta se quita de la respuesta. No toca preguntas con alternativa («¿… algo más o prefiere recoger?»).
+const PREGUNTA_ALGO_MAS = /¿[^¿?]*\balgo m[aá]s(?![a-záéíóúñ])[^¿?]*\?/gi;
+const ALTERNATIVA = /\b(?:o prefiere|recoger|sucursal)\b/i;
+const PEDIDO_REGISTRADO = /qued[oó] registrado|pedido (?:ya )?(?:qued[oó]|est[aá]) (?:registrado|confirmado)|n[uú]mero de pedido/i;
+
+/** Respuesta sin un segundo «¿algo más?» en el mismo pedido. Pura. */
+export function quitarAlgoMasRepetido(reply: string, historial: readonly { readonly role: string; readonly content: unknown }[]): string {
+  let yaPreguntado = false;
+  for (const m of historial) {
+    if (m.role !== "assistant" || typeof m.content !== "string") continue;
+    if (PEDIDO_REGISTRADO.test(m.content)) yaPreguntado = false;
+    else if (Array.from(m.content.matchAll(PREGUNTA_ALGO_MAS)).some((p) => !ALTERNATIVA.test(p[0]))) yaPreguntado = true;
+  }
+  if (!yaPreguntado) return reply;
+  const limpio = reply.replace(PREGUNTA_ALGO_MAS, (p) => (ALTERNATIVA.test(p) ? p : /correct|confirm/i.test(p) ? "¿Es correcto?" : "")).replace(/[ \t]+\n/g, "\n").replace(/[ \t]{2,}/g, " ").trim();
+  return limpio === "" ? reply : limpio;
+}

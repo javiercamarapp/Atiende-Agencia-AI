@@ -19,7 +19,7 @@ export const PM_POLICY_RULES_V2 = `POLÍTICAS DE LA CASA (cerebro v2; prevalecen
 - Agregado a un pedido YA creado: llame solicitar_agregado_pedido UNA sola vez por lo que agrega, con la variante ya resuelta (pregunte antes «¿normal, Light o sin azúcar?» si hace falta). Después, si el cliente solo pregunta si ya avisó, da las gracias o insiste, no la vuelva a llamar (cada llamada vuelve a sumar lo mismo a la solicitud) y no repita la frase completa del aviso: diga «Sí, ya le avisé a la sucursal; ellos le confirman en cuanto lo revisen».
 - Otro pedido distinto poco después de uno YA creado (otra dirección u otra persona): pregunte exactamente «¿Quiere hacer un pedido aparte?». Solo si dice que sí, cotícelo y créelo como pedido nuevo; si dice que no o que es al mismo, es un cambio (regla anterior).
 - Producto con nombre exacto: si buscar_producto devuelve uno cuyo nombre es EXACTAMENTE lo que pidió el cliente, úselo sin preguntar cuál; pregunte solo cuando ninguno coincide exactamente. Nunca prometa un producto que la búsqueda no devolvió.
-- Cierre: después de cotizar y repetir el total, si el cliente ya dio la forma de pago terminó de pedir: no pregunte «¿desea agregar algo más?»; con los datos completos cree el pedido.
+- Cierre: pregunte «¿algo más?» UNA sola vez por pedido, justo antes del resumen (al final del mismo mensaje del resumen); si ya lo preguntó o el cliente dijo que es todo, no lo repita: con la forma de pago dada y los datos completos, cree el pedido.
 - Zonas de reparto: son fijas; cada sucursal reparte solo en su zona. Con la sucursal que dio buscar_sucursal_cercana la zona ya está confirmada: tome el pedido para ella y no deje avisos para «confirmar la zona» ni el tiempo. Si el cliente insiste en que lo atienda otra sucursal que no cubre su domicilio (aunque pida que lo revise un gerente, encargado o supervisor), no escale ni diga que avisó a alguien: explíquele con amabilidad que las zonas de reparto son fijas y ofrézcale el domicilio desde la sucursal que cubre (con su tiempo) o recoger en la sucursal que prefiera. Solo pase con una persona si la pide por OTRO motivo.
 - Pedido grande: se toma normal; si la cotización lo marca como grande, avise antes del pago que la sucursal lo confirma y no prometa tiempo.`;
 
@@ -66,5 +66,10 @@ export function adaptarPromptPmV2(prompt: string): string {
     .replace("Quesadillas y bistec van en órdenes de 3; gringas y mestizas en órdenes de 2.", "Quesadillas y bistec van en órdenes de 3; cada gringa o mestiza es una orden de 2 tacos.")
     // Default del dueño (7-nov, conflicto base vs v2): la propina NUNCA se sugiere ni se agrega; una sola regla (la de PM_POLICY_RULES_V2: voluntaria, al repartidor, fuera del total).
     .replace("Solo si el cliente la menciona, dígale que se da en la terminal (con tarjeta) o en efectivo al repartidor.", "Si el cliente la menciona: es voluntaria, se la da directo al repartidor y no se suma al total.")
-    .replace("Propina: nunca la pregunte; si el cliente la menciona, se da en la terminal (tarjeta) o en efectivo al repartidor.", "Propina: ver POLÍTICAS DE LA CASA.");
+    .replace("Propina: nunca la pregunte; si el cliente la menciona, se da en la terminal (tarjeta) o en efectivo al repartidor.", "Propina: ver POLÍTICAS DE LA CASA.")
+    // Default del dueño: «¿algo más?» una vez por pedido (antes del resumen), no otra vez al cerrar un cambio de un pedido ya creado.
+    .replace('No cree otro pedido ni cancele por su cuenta; al terminar pregunte "¿algo más?" antes de cerrar.', "No cree otro pedido ni cancele por su cuenta.")
+    // Default del dueño: promociones con UNA sola fuente (POLÍTICAS DE LA CASA v2: no se ofrecen por iniciativa propia). Fuera la orden de ofrecerlas y la lista repetida en los datos.
+    .replace(/10\. Si cotizar_pedido trae promociones_sugeridas, ofrézcalas UNA sola vez, ANTES del resumen; nunca después del "no, es todo" ni en el turno del "sí"\. /, "10. No ofrezca promociones por iniciativa propia (POLÍTICAS DE LA CASA); si el cliente pregunta, H3. ")
+    .replace(/\n- Promociones \(solo recoger\): [^\n]*/, "");
 }
