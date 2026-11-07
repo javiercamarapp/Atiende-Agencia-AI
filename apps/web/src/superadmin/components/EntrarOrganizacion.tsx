@@ -4,7 +4,9 @@
 import { useCallback, useState } from "react";
 import type { ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
-import { ConfirmDialog, notify } from "@atiende/ui";
+import { ConfirmDialog, notify, useT } from "@atiende/ui";
+import { superadminComun } from "@atiende/ui/i18n/superadmin/comun";
+import { superadminOrganizaciones } from "@atiende/ui/i18n/superadmin/organizaciones";
 import { fetchJson } from "../lib/fetch-json.ts";
 import { MOTIVO_IMPERSONACION_MINIMO } from "../lib/organizaciones.ts";
 
@@ -14,6 +16,7 @@ export interface OrganizacionObjetivo {
 }
 
 export function useEntrarOrganizacion(apiBaseUrl: string, token: string): { readonly entrar: (org: OrganizacionObjetivo) => void; readonly dialogo: ReactNode } {
+  const t = useT(superadminComun, superadminOrganizaciones);
   const navigate = useNavigate();
   const [objetivo, setObjetivo] = useState<OrganizacionObjetivo | null>(null);
 
@@ -26,30 +29,30 @@ export function useEntrarOrganizacion(apiBaseUrl: string, token: string): { read
       try {
         await fetchJson(apiBaseUrl, token, "/superadmin/impersonacion/sesiones", { method: "POST", body: JSON.stringify({ organizationId: objetivo.id, reason: texto }) });
       } catch (err) {
-        notify.error(err instanceof Error ? err.message : "No se pudo abrir la sesión de impersonación.");
+        notify.error(err instanceof Error ? err.message : t("superadmin.organizaciones.entrar.error"));
         throw err;
       }
-      notify.success(`Sesión de solo lectura abierta en ${objetivo.nombre} (15 minutos).`);
+      notify.success(t("superadmin.organizaciones.entrar.abierta", { nombre: objetivo.nombre }));
       setObjetivo(null);
       navigate("/superadmin/impersonacion");
     },
-    [apiBaseUrl, token, objetivo, navigate],
+    [apiBaseUrl, token, objetivo, navigate, t],
   );
 
   const dialogo = (
     <ConfirmDialog
       open={objetivo !== null}
       onOpenChange={(open) => !open && setObjetivo(null)}
-      titulo={objetivo ? `Entrar a ${objetivo.nombre}` : "Entrar"}
-      descripcion="Abre una sesión de solo lectura de 15 minutos en esta organización. Queda en la bitácora de impersonación con tu motivo."
-      confirmar="Abrir sesión"
+      titulo={objetivo ? t("superadmin.comun.entrarA", { nombre: objetivo.nombre }) : t("superadmin.comun.entrar")}
+      descripcion={t("superadmin.organizaciones.entrar.descripcion")}
+      confirmar={t("superadmin.organizaciones.entrar.confirmar")}
       campo={{
-        etiqueta: "Motivo",
+        etiqueta: t("superadmin.comun.col.motivo"),
         multilinea: true,
         minLength: MOTIVO_IMPERSONACION_MINIMO,
         maxLength: 500,
-        ayuda: `Obligatorio, mínimo ${MOTIVO_IMPERSONACION_MINIMO} caracteres.`,
-        placeholder: "Ej. Revisar por qué el cliente no recibe sus mensajes de WhatsApp.",
+        ayuda: t("superadmin.comun.motivoAyuda", { n: MOTIVO_IMPERSONACION_MINIMO }),
+        placeholder: t("superadmin.organizaciones.entrar.placeholder"),
       }}
       onConfirm={confirmar}
     />

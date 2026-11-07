@@ -6,11 +6,17 @@
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Copy, MailPlus, RefreshCw, Trash2, Users } from "lucide-react";
-import { Button, Callout, Card, CardContent, CardHeader, CardTitle, Checkbox, ConfirmDialog, EstadoCargando, EstadoError, EstadoVacio, FormDialog, Input, Label, NativeSelect, StatusBadge, Textarea, notify } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, CardHeader, CardTitle, Checkbox, ConfirmDialog, EstadoCargando, EstadoError, EstadoVacio, FormDialog, Input, Label, NativeSelect, StatusBadge, Textarea, notify, traductorActivo, useT } from "@atiende/ui";
+import { comun } from "@atiende/ui/i18n/comun";
+import { superadminComun } from "@atiende/ui/i18n/superadmin/comun";
+import { superadminEquipo } from "@atiende/ui/i18n/superadmin/equipo";
 import { fechaHoraEsMx } from "../../lib/formato-fecha.ts";
 import { fetchConStepUp } from "../lib/stepup.ts";
 import { MOTIVO_EQUIPO_MINIMO, nombreRolEquipo, rolesEquipoDe } from "../lib/equipo.ts";
 import type { EquipoInvitacion, RespuestaEquipo, ResultadoInvitacion } from "../lib/equipo.ts";
+
+// Textos fuera de React (errores de red, etiqueta de sucursales): siguen al idioma activo; los componentes usan `useT`.
+const tr = traductorActivo(superadminComun, superadminEquipo);
 
 type Carga = { readonly estado: "cargando" } | { readonly estado: "error"; readonly mensaje: string } | { readonly estado: "ok"; readonly datos: RespuestaEquipo };
 
@@ -30,18 +36,19 @@ async function llamar(apiBaseUrl: string, token: string, path: string, init: Req
       headers: { authorization: `Bearer ${token}`, ...(init.body ? { "content-type": "application/json" } : {}) },
     });
     const cuerpo = (await res.json().catch(() => null)) as { code?: string; message?: string } | null;
-    return { ok: res.ok, status: res.status, code: cuerpo?.code ?? null, mensaje: cuerpo?.message ?? "No se pudo completar la solicitud.", cuerpo };
+    return { ok: res.ok, status: res.status, code: cuerpo?.code ?? null, mensaje: cuerpo?.message ?? tr("superadmin.comun.error.solicitud"), cuerpo };
   } catch {
-    return { ok: false, status: 0, code: null, mensaje: "No se pudo conectar con el servidor.", cuerpo: null };
+    return { ok: false, status: 0, code: null, mensaje: tr("superadmin.equipo.error.conexion"), cuerpo: null };
   }
 }
 
 function etiquetaSucursales(ids: readonly string[] | null, nombres: ReadonlyMap<string, string>): string {
-  if (ids === null) return "Todas las sucursales";
-  return ids.map((id) => nombres.get(id) ?? "Sucursal").join(", ");
+  if (ids === null) return tr("superadmin.equipo.todasSucursales");
+  return ids.map((id) => nombres.get(id) ?? tr("superadmin.equipo.sucursal")).join(", ");
 }
 
 export function EquipoOrganizacion({ apiBaseUrl, token, organizacionId }: { readonly apiBaseUrl: string; readonly token: string; readonly organizacionId: string }) {
+  const t = useT(comun, superadminComun, superadminEquipo);
   const base = `/superadmin/organizaciones/${encodeURIComponent(organizacionId)}/invitaciones`;
   const [carga, setCarga] = useState<Carga>({ estado: "cargando" });
   const [invitando, setInvitando] = useState(false);
@@ -53,13 +60,13 @@ export function EquipoOrganizacion({ apiBaseUrl, token, organizacionId }: { read
     setCarga({ estado: "cargando" });
     const r = await llamar(apiBaseUrl, token, base);
     if (!r.ok) {
-      setCarga({ estado: "error", mensaje: r.status === 404 ? "No encontramos esta organización." : "No se pudo cargar el equipo de la organización." });
+      setCarga({ estado: "error", mensaje: tr(r.status === 404 ? "superadmin.equipo.error.noEncontrada" : "superadmin.equipo.error.cargar") });
       return;
     }
     const datos = r.cuerpo as RespuestaEquipo | null;
     // Una respuesta que no tiene la forma esperada (proxy, version vieja) es un error de carga, no un estado inventado.
     if (!datos || !Array.isArray(datos.miembros) || !Array.isArray(datos.invitaciones) || !Array.isArray(datos.sucursales)) {
-      setCarga({ estado: "error", mensaje: "La respuesta del servidor no tiene el formato esperado." });
+      setCarga({ estado: "error", mensaje: tr("superadmin.equipo.error.formato") });
       return;
     }
     setCarga({ estado: "ok", datos });
@@ -84,7 +91,7 @@ export function EquipoOrganizacion({ apiBaseUrl, token, organizacionId }: { read
       throw new Error(r.mensaje);
     }
     setEnlace(r.cuerpo as ResultadoInvitacion);
-    notify.success("Invitación reenviada: el enlace anterior ya no sirve.");
+    notify.success(t("superadmin.equipo.reenviada"));
     setReenviando(null);
     void cargar();
   };
@@ -98,7 +105,7 @@ export function EquipoOrganizacion({ apiBaseUrl, token, organizacionId }: { read
       notify.error(r.mensaje);
       throw new Error(r.mensaje);
     }
-    notify.success("Invitación revocada.");
+    notify.success(t("superadmin.equipo.revocada"));
     setRevocando(null);
     void cargar();
   };
@@ -106,9 +113,9 @@ export function EquipoOrganizacion({ apiBaseUrl, token, organizacionId }: { read
   const copiar = async (url: string) => {
     try {
       await navigator.clipboard.writeText(url);
-      notify.success("Enlace copiado.");
+      notify.success(t("superadmin.equipo.copiado"));
     } catch {
-      notify.error("No se pudo copiar: selecciona el enlace y cópialo a mano.");
+      notify.error(t("superadmin.equipo.noCopiado"));
     }
   };
 
@@ -117,18 +124,18 @@ export function EquipoOrganizacion({ apiBaseUrl, token, organizacionId }: { read
       <CardHeader className="flex-row items-center justify-between gap-3">
         <CardTitle className="flex items-center gap-2">
           <Users className="size-4" strokeWidth={1.75} aria-hidden="true" />
-          Equipo
+          {t("superadmin.equipo.titulo")}
         </CardTitle>
         {puedeInvitar && (
           <Button type="button" size="sm" className="gap-1.5" onClick={() => setInvitando(true)}>
             <MailPlus className="size-3.5" strokeWidth={1.75} aria-hidden="true" />
-            Invitar
+            {t("superadmin.equipo.invitar")}
           </Button>
         )}
       </CardHeader>
       <CardContent className="space-y-3">
-        {carga.estado === "cargando" && <EstadoCargando etiqueta="Cargando el equipo…" />}
-        {carga.estado === "error" && <EstadoError compacto titulo="No se pudo cargar el equipo" mensaje={carga.mensaje} onReintentar={() => void cargar()} />}
+        {carga.estado === "cargando" && <EstadoCargando etiqueta={t("superadmin.equipo.cargando")} />}
+        {carga.estado === "error" && <EstadoError compacto titulo={t("superadmin.equipo.error.titulo")} mensaje={carga.mensaje} onReintentar={() => void cargar()} />}
         {datos && !datos.disponible && (
           <Callout tone="warning" role="status">
             {datos.mensaje}
@@ -137,18 +144,18 @@ export function EquipoOrganizacion({ apiBaseUrl, token, organizacionId }: { read
 
         {enlace && (
           <Callout tone="info" role="status" data-testid="enlace-activacion">
-            <p className="font-medium">Enlace de activación para {enlace.invitacion.correo}</p>
+            <p className="font-medium">{t("superadmin.equipo.enlacePara", { correo: enlace.invitacion.correo })}</p>
             <p className="text-xs text-muted-foreground">
-              Se muestra una sola vez (solo se guarda su huella). {enlace.correoEncolado ? "El correo de invitación quedó encolado." : "El correo no pudo encolarse: comparte este enlace por otro medio."}
+              {t("superadmin.equipo.unaVez")} {t(enlace.correoEncolado ? "superadmin.equipo.correoEncolado" : "superadmin.equipo.correoNoEncolado")}
             </p>
             <div className="mt-2 flex items-center gap-2">
-              <Input readOnly aria-label="Enlace de activación" value={enlace.acceptUrl} onFocus={(e) => e.currentTarget.select()} />
+              <Input readOnly aria-label={t("superadmin.equipo.enlace")} value={enlace.acceptUrl} onFocus={(e) => e.currentTarget.select()} />
               <Button type="button" variant="outline" size="sm" className="shrink-0 gap-1.5" onClick={() => void copiar(enlace.acceptUrl)}>
                 <Copy className="size-3.5" strokeWidth={1.75} aria-hidden="true" />
-                Copiar
+                {t("superadmin.equipo.copiar")}
               </Button>
               <Button type="button" variant="ghost" size="sm" className="shrink-0" onClick={() => setEnlace(null)}>
-                Listo
+                {t("superadmin.equipo.listo")}
               </Button>
             </div>
           </Callout>
@@ -157,11 +164,11 @@ export function EquipoOrganizacion({ apiBaseUrl, token, organizacionId }: { read
         {datos?.disponible && (
           <>
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Miembros · {datos.miembros.length}</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("superadmin.equipo.miembrosN", { n: datos.miembros.length })}</p>
               {datos.miembros.length === 0 ? (
-                <EstadoVacio compacto titulo="Sin miembros todavía" mensaje="Nadie puede entrar al panel de esta organización. Invita al primer dueño con el botón Invitar." />
+                <EstadoVacio compacto titulo={t("superadmin.equipo.sinMiembrosTitulo")} mensaje={t("superadmin.equipo.sinMiembros")} />
               ) : (
-                <ul className="divide-y divide-dashed divide-line2" aria-label="Miembros">
+                <ul className="divide-y divide-dashed divide-line2" aria-label={t("superadmin.equipo.miembros")}>
                   {datos.miembros.map((m) => (
                     <li key={m.userId} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 py-1.5 text-ui">
                       <span className="min-w-0">
@@ -170,7 +177,7 @@ export function EquipoOrganizacion({ apiBaseUrl, token, organizacionId }: { read
                       </span>
                       <span className="flex shrink-0 items-center gap-2">
                         <StatusBadge tone="neutral">{nombreRolEquipo(datos.vertical, m.rol)}</StatusBadge>
-                        <span className="text-xs text-muted-foreground">Alta {fechaHoraEsMx(m.altaEn)}</span>
+                        <span className="text-xs text-muted-foreground">{t("superadmin.equipo.alta", { fecha: fechaHoraEsMx(m.altaEn) })}</span>
                       </span>
                     </li>
                   ))}
@@ -179,29 +186,29 @@ export function EquipoOrganizacion({ apiBaseUrl, token, organizacionId }: { read
             </div>
 
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Invitaciones pendientes · {datos.invitaciones.length}</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("superadmin.equipo.invitacionesN", { n: datos.invitaciones.length })}</p>
               {datos.invitaciones.length === 0 ? (
-                <p className="py-1.5 text-ui text-muted-foreground">No hay invitaciones pendientes.</p>
+                <p className="py-1.5 text-ui text-muted-foreground">{t("superadmin.equipo.sinInvitaciones")}</p>
               ) : (
-                <ul className="divide-y divide-dashed divide-line2" aria-label="Invitaciones pendientes">
+                <ul className="divide-y divide-dashed divide-line2" aria-label={t("superadmin.equipo.invitaciones")}>
                   {datos.invitaciones.map((i) => (
                     <li key={i.id} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 py-1.5 text-ui" data-invitacion={i.id}>
                       <span className="min-w-0">
                         <span className="block truncate text-foreground">{i.correo}</span>
                         <span className="block truncate text-xs text-muted-foreground">
-                          {nombreRolEquipo(datos.vertical, i.rol)} · {etiquetaSucursales(i.propertyIds, nombres)} · {i.vencida ? "Vencida" : `Vence ${fechaHoraEsMx(i.venceEn)}`}
+                          {nombreRolEquipo(datos.vertical, i.rol)} · {etiquetaSucursales(i.propertyIds, nombres)} · {i.vencida ? t("superadmin.equipo.vencida") : t("superadmin.equipo.vence", { fecha: fechaHoraEsMx(i.venceEn) })}
                         </span>
                       </span>
                       <span className="flex shrink-0 items-center gap-1.5">
                         <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => setReenviando(i)}>
                           <RefreshCw className="size-3.5" strokeWidth={1.75} aria-hidden="true" />
-                          Reenviar
-                          <span className="sr-only"> a {i.correo}</span>
+                          {t("superadmin.equipo.reenviar")}
+                          <span className="sr-only"> {t("superadmin.equipo.srA", { correo: i.correo })}</span>
                         </Button>
                         <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => setRevocando(i)}>
                           <Trash2 className="size-3.5" strokeWidth={1.75} aria-hidden="true" />
-                          Revocar
-                          <span className="sr-only"> a {i.correo}</span>
+                          {t("superadmin.equipo.revocar")}
+                          <span className="sr-only"> {t("superadmin.equipo.srA", { correo: i.correo })}</span>
                         </Button>
                       </span>
                     </li>
@@ -226,7 +233,7 @@ export function EquipoOrganizacion({ apiBaseUrl, token, organizacionId }: { read
           onCreada={(r) => {
             setEnlace(r);
             setInvitando(false);
-            notify.success("Invitación creada.");
+            notify.success(t("superadmin.equipo.creada"));
             void cargar();
           }}
         />
@@ -235,20 +242,20 @@ export function EquipoOrganizacion({ apiBaseUrl, token, organizacionId }: { read
       <ConfirmDialog
         open={reenviando !== null}
         onOpenChange={(v) => !v && setReenviando(null)}
-        titulo="Reenviar la invitación"
-        descripcion={reenviando ? `Se genera un enlace nuevo para ${reenviando.correo}; el anterior deja de servir y la vigencia vuelve a 7 días.` : undefined}
-        confirmar="Reenviar"
-        campo={{ etiqueta: "Motivo", ayuda: `Obligatorio, mínimo ${MOTIVO_EQUIPO_MINIMO} caracteres.`, multilinea: true, minLength: MOTIVO_EQUIPO_MINIMO, maxLength: 500 }}
+        titulo={t("superadmin.equipo.reenviarTitulo")}
+        descripcion={reenviando ? t("superadmin.equipo.reenviarDescripcion", { correo: reenviando.correo }) : undefined}
+        confirmar={t("superadmin.equipo.reenviar")}
+        campo={{ etiqueta: t("superadmin.comun.col.motivo"), ayuda: t("superadmin.comun.motivoAyuda", { n: MOTIVO_EQUIPO_MINIMO }), multilinea: true, minLength: MOTIVO_EQUIPO_MINIMO, maxLength: 500 }}
         onConfirm={reenviar}
       />
       <ConfirmDialog
         open={revocando !== null}
         onOpenChange={(v) => !v && setRevocando(null)}
-        titulo="Revocar la invitación"
+        titulo={t("superadmin.equipo.revocarTitulo")}
         tono="danger"
-        descripcion={revocando ? `${revocando.correo} ya no podrá aceptar esta invitación. Se registra en la bitácora.` : undefined}
-        confirmar="Revocar"
-        campo={{ etiqueta: "Motivo", ayuda: `Obligatorio, mínimo ${MOTIVO_EQUIPO_MINIMO} caracteres.`, multilinea: true, minLength: MOTIVO_EQUIPO_MINIMO, maxLength: 500 }}
+        descripcion={revocando ? t("superadmin.equipo.revocarDescripcion", { correo: revocando.correo }) : undefined}
+        confirmar={t("superadmin.equipo.revocar")}
+        campo={{ etiqueta: t("superadmin.comun.col.motivo"), ayuda: t("superadmin.comun.motivoAyuda", { n: MOTIVO_EQUIPO_MINIMO }), multilinea: true, minLength: MOTIVO_EQUIPO_MINIMO, maxLength: 500 }}
         onConfirm={revocar}
       />
     </Card>
@@ -276,6 +283,7 @@ function FormularioInvitar({
   readonly hayOwner: boolean;
   readonly onCreada: (r: ResultadoInvitacion) => void;
 }) {
+  const t = useT(comun, superadminComun, superadminEquipo);
   const roles = rolesEquipoDe(vertical);
   const rolDueno = roles.find((r) => r.esDueno)?.valor ?? "owner";
   const [email, setEmail] = useState("");
@@ -305,9 +313,9 @@ function FormularioInvitar({
   const enviar = async (e: FormEvent) => {
     e.preventDefault();
     if (guardando) return;
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return setError("Escribe un correo válido.");
-    if (motivo.trim().length < MOTIVO_EQUIPO_MINIMO) return setError(`El motivo es obligatorio (mínimo ${MOTIVO_EQUIPO_MINIMO} caracteres).`);
-    if (mostrarSegundoOwner && !segundoOwner) return setError("Esta organización ya tiene un owner: confirma que quieres invitar a un segundo owner.");
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return setError(t("superadmin.equipo.error.correo"));
+    if (motivo.trim().length < MOTIVO_EQUIPO_MINIMO) return setError(t("superadmin.equipo.error.motivo", { n: MOTIVO_EQUIPO_MINIMO }));
+    if (mostrarSegundoOwner && !segundoOwner) return setError(t("superadmin.equipo.error.segundoOwner"));
     setError(null);
     setGuardando(true);
     const r = await llamar(apiBaseUrl, token, base, {
@@ -330,28 +338,28 @@ function FormularioInvitar({
     <FormDialog
       open={open}
       onOpenChange={onOpenChange}
-      titulo="Invitar al equipo"
-      subtitulo="La persona define su contraseña al aceptar. Solo se guarda la huella del enlace."
+      titulo={t("superadmin.equipo.form.titulo")}
+      subtitulo={t("superadmin.equipo.form.subtitulo")}
       anchoClase="max-w-lg"
       bloquearCierre={guardando}
       footer={
         <>
           <Button type="button" variant="outline" className="rounded-full px-6" onClick={() => onOpenChange(false)} disabled={guardando}>
-            Cancelar
+            {t("comun.cancelar")}
           </Button>
           <Button type="submit" form="form-invitar-equipo" className="rounded-full px-6" disabled={guardando}>
-            {guardando ? "Invitando…" : "Invitar"}
+            {guardando ? t("superadmin.equipo.invitando") : t("superadmin.equipo.invitar")}
           </Button>
         </>
       }
     >
       <form id="form-invitar-equipo" onSubmit={(ev) => void enviar(ev)} className="flex flex-col gap-3" noValidate>
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="equipo-email">Correo</Label>
-          <Input id="equipo-email" type="email" autoComplete="off" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="persona@restaurante.mx" />
+          <Label htmlFor="equipo-email">{t("superadmin.equipo.form.correo")}</Label>
+          <Input id="equipo-email" type="email" autoComplete="off" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t("superadmin.equipo.form.correoPlaceholder")} />
         </div>
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="equipo-rol">Rol</Label>
+          <Label htmlFor="equipo-rol">{t("superadmin.equipo.form.rol")}</Label>
           <NativeSelect id="equipo-rol" value={rol} onChange={(e) => setRol(e.target.value)}>
             {roles.map((r) => (
               <option key={r.valor} value={r.valor}>
@@ -362,8 +370,8 @@ function FormularioInvitar({
         </div>
         {sucursales.length > 0 && (
           <fieldset className="flex flex-col gap-1.5">
-            <legend className="text-ui font-medium text-foreground">Sucursales</legend>
-            <p className="text-xs text-muted-foreground">Sin ninguna marcada tiene acceso a todas.</p>
+            <legend className="text-ui font-medium text-foreground">{t("superadmin.equipo.form.sucursales")}</legend>
+            <p className="text-xs text-muted-foreground">{t("superadmin.equipo.form.sucursalesAyuda")}</p>
             {sucursales.map((s) => (
               <Checkbox
                 key={s.id}
@@ -382,11 +390,11 @@ function FormularioInvitar({
           </fieldset>
         )}
         {mostrarSegundoOwner && (
-          <Checkbox label="Confirmo invitar a un segundo owner" descripcion="Esta organización ya tiene un owner (activo o con invitación pendiente)." checked={segundoOwner} onChange={(e) => setSegundoOwner(e.target.checked)} />
+          <Checkbox label={t("superadmin.equipo.form.segundoOwner")} descripcion={t("superadmin.equipo.form.segundoOwnerAyuda")} checked={segundoOwner} onChange={(e) => setSegundoOwner(e.target.checked)} />
         )}
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="equipo-motivo">Motivo (obligatorio, mínimo {MOTIVO_EQUIPO_MINIMO} caracteres)</Label>
-          <Textarea id="equipo-motivo" value={motivo} onChange={(e) => setMotivo(e.target.value)} rows={3} placeholder="Ej. Alta del dueño de la organización para el arranque en producción." />
+          <Label htmlFor="equipo-motivo">{t("superadmin.comun.motivoEtiqueta", { n: MOTIVO_EQUIPO_MINIMO })}</Label>
+          <Textarea id="equipo-motivo" value={motivo} onChange={(e) => setMotivo(e.target.value)} rows={3} placeholder={t("superadmin.equipo.form.motivoPlaceholder")} />
         </div>
         {error && (
           <p role="alert" className="text-ui text-destructive">
