@@ -17,6 +17,9 @@
 --       - Con organizacion (por slug): la persona debe ser miembro de ESA organizacion (si no, 42501) y la pista debe empezar con la
 --         vertical de la organizacion (22023). Sin organizacion: solo la pista «superadmin» y solo para un superadmin de plataforma
 --         (core.is_platform_superadmin, si no 42501).
+--       - La pista de una organizacion es «<vertical>» o «<vertical>.<rol>» y el rol debe ser el rol REAL de la persona en esa
+--         organizacion (membership.vertical_role normalizado): nadie crea filas con roles inventados (crecimiento acotado a una fila
+--         por persona, organizacion y rol). 22023 si no coincide.
 --       - Formato acotado (22023): pista, modo y paso con lista/expresion cerrada; el paso mide a lo sumo 80.
 --
 -- Rollback (no se aplica a produccion con este PR; si hiciera falta revertir tras aplicarla):
@@ -29,7 +32,8 @@
 -- ═══════════════════════════════════════════════════════════════════════════
 create table if not exists core.onboarding_progreso (
   id              uuid primary key default gen_random_uuid(),
-  user_id         uuid not null,
+  -- La fila se borra con la persona (ARCO/retencion), como todas las tablas de persona de core.
+  user_id         uuid not null references core.staff_user(id) on delete cascade,
   organization_id uuid references core.organization(id) on delete cascade,
   pista           text not null check (pista ~ '^[a-z]{3,20}(\.[a-z_]{2,20})?$'),
   modo            text check (modo in ('corto', 'completo')),
@@ -74,6 +78,7 @@ declare
   v_uid uuid := auth.uid();
   v_org uuid;
   v_vertical text;
+  v_rol text;
   v_ahora timestamptz := now();
 begin
   if v_uid is null then
@@ -104,6 +109,16 @@ begin
     end if;
     if split_part(p_pista, '.', 1) is distinct from v_vertical then
       raise exception 'guardar_onboarding_progreso: la pista no corresponde a la vertical' using errcode = '22023';
+    end if;
+    if position('.' in p_pista) > 0 then
+      -- Mismo criterio que pistaGuia (apps/web/src/lib/guia-progreso.ts): minusculas, sin acentos, lo demas a «_», sin «_» en las orillas.
+      select left(trim(both '_' from regexp_replace(translate(lower(coalesce(m.vertical_role, '')), 'áéíóúüñ', 'aeiouun'), '[^a-z_]+', '_', 'g')), 20)
+        into v_rol
+        from core.membership m where m.organization_id = v_org and m.user_id = v_uid
+        limit 1;
+      if v_rol is distinct from split_part(p_pista, '.', 2) then
+        raise exception 'guardar_onboarding_progreso: la pista no corresponde a tu rol' using errcode = '22023';
+      end if;
     end if;
   end if;
 
