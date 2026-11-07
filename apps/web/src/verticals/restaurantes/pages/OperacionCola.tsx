@@ -134,7 +134,7 @@ export function OperacionColaPage({ apiBaseUrl, token, propertyId, orgSlug }: Re
       else if (accion === "listo") await marcarListo(fetchImpl, apiBaseUrl, token, propertyId, p.id, llave);
       else await entregarEnMostrador(fetchImpl, apiBaseUrl, token, propertyId, p.id, llave);
       llaves.current.delete(clave);
-      notify.success(t(accion === "aceptar" ? "restaurantes.operacion.cola.toast.aceptar" : accion === "listo" ? "restaurantes.operacion.cola.toast.listo" : "restaurantes.operacion.cola.toast.entregar", { numero: String(p.numero) }));
+      notify.success(t(accion === "aceptar" ? "restaurantes.operacion.cola.exito.aceptar" : accion === "listo" ? "restaurantes.operacion.cola.exito.listo" : "restaurantes.operacion.cola.exito.entregar", { numero: String(p.numero) }));
     } catch (e) {
       if (e instanceof ErrorOperacion && e.esEstadoCambio) {
         llaves.current.delete(clave);
