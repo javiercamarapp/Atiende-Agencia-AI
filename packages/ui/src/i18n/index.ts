@@ -1,4 +1,4 @@
-export { IdiomaProvider, useI18n, useT, type ContextoI18n, type IdiomaProviderProps } from "./proveedor";
+export { I18nContexto, IdiomaProvider, useI18n, useT, type ContextoI18n, type IdiomaProviderProps } from "./proveedor";
 export { traducir, crearTraductor, type Traductor } from "./traducir";
 export { LOCALE_POR_IDIOMA } from "./tipos";
 // Formato (useFormatos / crearFormatos) NO va en el barril: se importa de "@atiende/ui/i18n/formato" para no pesar en la entrada.

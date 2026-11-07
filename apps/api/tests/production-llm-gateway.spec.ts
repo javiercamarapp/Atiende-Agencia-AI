@@ -13,6 +13,7 @@ import { InMemoryTenancyEngine } from "@atiende/db";
 import { breakerEnvName } from "../src/env.ts";
 import { ALL_PRODUCTION_ROLES, RESTAURANTES_DATA_CHAT_ROLE, buildBreakerStore, buildCircuitBreaker, buildProductionLlmGateway, buildRoleLadder, loadLlmModelsConfig } from "../src/production/llm-gateway.ts";
 import { TEST_ENV } from "./fixtures.ts";
+import { ACTIVIDADES_LLM } from "../src/production/llm-models.ts";
 import type { ApiEnv } from "../src/env.ts";
 
 // Llaves generadas en tiempo de ejecucion: ningun literal con forma de credencial.
@@ -42,26 +43,21 @@ describe("buildProductionLlmGateway", () => {
     expect(gateway).toBeInstanceOf(LlmGateway);
   });
 
-  it("con solo el proveedor LEGADO de OpenAI (API key + modelo) construye un LlmGateway real", () => {
-    const gateway = buildProductionLlmGateway(envWith({ openai: { apiKey: fakeKey(), model: "gpt-5.6-test" }, openrouter: null }), fakeEngine());
-    expect(gateway).toBeInstanceOf(LlmGateway);
+  it("con solo el proveedor LEGADO de OpenAI (sin retencion cero garantizada) NO hay gateway: falla cerrado y el llamador usa su modo sin IA", () => {
+    expect(buildProductionLlmGateway(envWith({ openai: { apiKey: fakeKey(), model: "gpt-5.6-test" }, openrouter: null }), fakeEngine())).toBeUndefined();
   });
 
   it("con OpenRouter Y OpenAI legado, la escalera usa SOLO OpenRouter (proveedor unico por defecto)", () => {
     const env = envWith({ openai: { apiKey: fakeKey(), model: "gpt-5.6-test" }, openrouter: OPENROUTER });
     const ladder = buildRoleLadder(env, "restaurantes:data_chat", { roles: {} })!;
-    expect(ladder.map((p) => p.id)).toEqual([
-      "openrouter:openai/gpt-6-luna",
-      "openrouter:deepseek/deepseek-v4.1-flash",
-      "openrouter:google/gemini-2.5-flash-lite",
-      "openrouter:meta/muse-spark-1.3",
-    ]);
+    expect(ladder.map((p) => p.id)).toEqual(ACTIVIDADES_LLM.datos_preguntas.route.models.map((m) => `openrouter:${m.model}`));
   });
 
-  it("cada rol de produccion recibe su escalera; el copiloto de superadmin usa Claude Sonnet 5.5 primero y los reportes Gemini 3.8 Flash", () => {
+  it("cada rol de produccion recibe su escalera; el copiloto de superadmin usa la ruta de su actividad (sin Sonnet) y los reportes Gemini 3.8 Flash", () => {
     const env = envWith({ openai: null, openrouter: OPENROUTER });
     for (const role of ALL_PRODUCTION_ROLES) expect(buildRoleLadder(env, role, { roles: {} })!.length).toBeGreaterThan(0);
-    expect(buildRoleLadder(env, "superadmin:copiloto", { roles: {} })![0]!.model).toBe("anthropic/claude-sonnet-5.5");
+    expect(buildRoleLadder(env, "superadmin:copiloto", { roles: {} })!.map((p) => p.model)).toEqual(ACTIVIDADES_LLM.copiloto_superadmin.route.models.map((m) => m.model));
+    expect(buildRoleLadder(env, "superadmin:copiloto", { roles: {} })!.map((p) => p.model)).not.toContain("anthropic/claude-sonnet-5.5");
     expect(buildRoleLadder(env, "plataforma:resumen_diario", { roles: {} })![0]!.model).toBe("google/gemini-3.8-flash");
   });
 

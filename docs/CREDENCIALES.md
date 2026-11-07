@@ -192,10 +192,10 @@ extracción de licitaciones cae a solo reglas deterministas.
 | Variable | Dónde se obtiene | Secreta |
 |---|---|:-:|
 | `OPENROUTER_API_KEY` | openrouter.ai (fijar un límite de gasto y la política de datos en el panel al crearla) | Sí |
-| `LLM_MODELS_JSON` | opcional: JSON `{"roles": {...}}` para cambiar modelos por rol (ver docs/LLM-GATEWAY.md) | No |
-| `OPENROUTER_ZDR` | opcional: `1` exige endpoints Zero Data Retention (habilitarlo antes en la cuenta de OpenRouter) | No |
+| `LLM_MODELS_JSON` | opcional: JSON `{"roles": {...}}` para cambiar modelos por rol (ver docs/LLM-GATEWAY.md). No cambia WhatsApp (decisión del dueño) ni manda el audio a modelos de solo texto | No |
+| `OPENROUTER_ZDR` | ya no cambia nada: el gateway de texto exige Zero Data Retention en todas sus rutas (habilitar ZDR en la cuenta de OpenRouter ANTES de desplegar) | No |
 | `OPENROUTER_COUNTRY_OF_RESIDENCE` | opcional: ISO 3166-1 alpha-2 SOLO si confirmaste que la ruta cumple | No |
-| `OPENAI_API_KEY` + `OPENAI_MODEL` | LEGADO: solo si no hay llave de OpenRouter | Sí / No |
+| `OPENAI_API_KEY` + `OPENAI_MODEL` | LEGADO: ya NO enciende el LLM (no garantiza ZDR); sin `OPENROUTER_API_KEY` el gateway queda en modo sin IA | No |
 | `PM_URL_FACTURACION` | enlace https de facturación en línea del negocio (Los Taquitos de PM); sin ella el agente no inventa uno y escala la factura a una persona | No |
 | `WHATSAPP_CONTEXTO_PRECARGADO` | `1` enciende (R11, Arquitectura A) el contexto precargado + llamadas en lote del agente de WhatsApp de restaurantes (perfil PM): el servidor hace antes de la primera vuelta las lecturas `buscar_cliente`/`buscar_producto` y se las entrega al modelo. Apagada por omisión; sin efecto en preview ni en otros perfiles. Pensada para el A/B, no la enciendas en producción sin medirla | No |
 | `WHATSAPP_CIERRE_UNA_VUELTA` | Interruptor del cierre del «sí» en una sola llamada al modelo (R21, perfil PM). **Viene ENCENDIDA por omisión** (variable ausente o vacía = encendida): ante un «sí» (o el toque «Confirmar pedido») a un resumen vigente, el servidor ejecuta `confirmar_resumen` y `crear_pedido` con lo ya cotizado antes de la primera vuelta y el modelo solo redacta el texto (1 llamada en vez de 3). **Para apagarla** pon `0`, `false`, `off` o `no` (cualquier otro valor la deja encendida) y redespliega; el flujo vuelve al de 3 vueltas. Sin efecto en preview ni en otros perfiles. Si una regla rechaza el pedido o faltan datos, el modelo ve el resultado y sigue como siempre | No |
