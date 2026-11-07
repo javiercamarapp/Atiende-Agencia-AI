@@ -104,6 +104,7 @@ de las 6 verticales no cambian. La lectura y la escritura pasan por `core.list_n
 | `restaurantes.plan.mensajes_80` | cobranza | atencion | owner/admin | Gauge | `/restaurantes/{orgSlug}/plan` | una por organizacion por mes | 10 d | conectado: `apps/api/src/plan-topes/medidor.ts` (solo mide el WhatsApp saliente de citas, hoteles y restaurantes) |
 | `restaurantes.plan.mensajes_excedido` | cobranza | critica | owner/admin | Gauge | `/restaurantes/{orgSlug}/plan` | una por organizacion por mes | 10 d | conectado: `apps/api/src/plan-topes/medidor.ts` (solo mide el WhatsApp saliente de citas, hoteles y restaurantes) |
 | `restaurantes.plan.prueba_por_vencer` | cobranza | atencion | owner/admin | Clock | `/restaurantes/{orgSlug}/plan` | una por organizacion por umbral (7, 3 y 1 dia) y fecha de fin | 8 d | conectado: `apps/api/src/plan-topes/aviso-prueba.ts` (sale en el cron diario /internal/plataforma/prueba-avisos (vercel.json, 14:00 UTC)) |
+| `restaurantes.plan.prueba_terminada` | cobranza | atencion | owner/admin | Clock | `/restaurantes/{orgSlug}/plan` | una por organizacion por fecha de fin | 30 d | conectado: `apps/api/src/plan-topes/aviso-prueba.ts` (sale en el cron diario /internal/plataforma/prueba-avisos (vercel.json, 14:00 UTC); la cuenta sigue operando al terminar la prueba (no hay apagado automatico) y las demos no lo reciben (migracion 0072)) |
 
 ### hoteles
 
@@ -126,6 +127,7 @@ de las 6 verticales no cambian. La lectura y la escritura pasan por `core.list_n
 | `hoteles.plan.mensajes_80` | cobranza | atencion | owner/admin | Gauge | `/hoteles/{orgSlug}/plan` | una por organizacion por mes | 10 d | conectado: `apps/api/src/plan-topes/medidor.ts` (solo mide el WhatsApp saliente de citas, hoteles y restaurantes) |
 | `hoteles.plan.mensajes_excedido` | cobranza | critica | owner/admin | Gauge | `/hoteles/{orgSlug}/plan` | una por organizacion por mes | 10 d | conectado: `apps/api/src/plan-topes/medidor.ts` (solo mide el WhatsApp saliente de citas, hoteles y restaurantes) |
 | `hoteles.plan.prueba_por_vencer` | cobranza | atencion | owner/admin | Clock | `/hoteles/{orgSlug}/plan` | una por organizacion por umbral (7, 3 y 1 dia) y fecha de fin | 8 d | conectado: `apps/api/src/plan-topes/aviso-prueba.ts` (sale en el cron diario /internal/plataforma/prueba-avisos (vercel.json, 14:00 UTC)) |
+| `hoteles.plan.prueba_terminada` | cobranza | atencion | owner/admin | Clock | `/hoteles/{orgSlug}/plan` | una por organizacion por fecha de fin | 30 d | conectado: `apps/api/src/plan-topes/aviso-prueba.ts` (sale en el cron diario /internal/plataforma/prueba-avisos (vercel.json, 14:00 UTC); la cuenta sigue operando al terminar la prueba (no hay apagado automatico) y las demos no lo reciben (migracion 0072)) |
 
 ### rentas
 
@@ -143,6 +145,7 @@ de las 6 verticales no cambian. La lectura y la escritura pasan por `core.list_n
 | `rentas.plan.mensajes_80` | cobranza | atencion | owner/admin | Gauge | `/rentas/{orgSlug}/plan` | una por organizacion por mes | 10 d | conectado: `apps/api/src/plan-topes/medidor.ts` (solo mide el WhatsApp saliente de citas, hoteles y restaurantes) |
 | `rentas.plan.mensajes_excedido` | cobranza | critica | owner/admin | Gauge | `/rentas/{orgSlug}/plan` | una por organizacion por mes | 10 d | conectado: `apps/api/src/plan-topes/medidor.ts` (solo mide el WhatsApp saliente de citas, hoteles y restaurantes) |
 | `rentas.plan.prueba_por_vencer` | cobranza | atencion | owner/admin | Clock | `/rentas/{orgSlug}/plan` | una por organizacion por umbral (7, 3 y 1 dia) y fecha de fin | 8 d | conectado: `apps/api/src/plan-topes/aviso-prueba.ts` (sale en el cron diario /internal/plataforma/prueba-avisos (vercel.json, 14:00 UTC)) |
+| `rentas.plan.prueba_terminada` | cobranza | atencion | owner/admin | Clock | `/rentas/{orgSlug}/plan` | una por organizacion por fecha de fin | 30 d | conectado: `apps/api/src/plan-topes/aviso-prueba.ts` (sale en el cron diario /internal/plataforma/prueba-avisos (vercel.json, 14:00 UTC); la cuenta sigue operando al terminar la prueba (no hay apagado automatico) y las demos no lo reciben (migracion 0072)) |
 
 ### despachos
 
@@ -161,6 +164,7 @@ de las 6 verticales no cambian. La lectura y la escritura pasan por `core.list_n
 | `despachos.plan.mensajes_80` | cobranza | atencion | owner/admin | Gauge | `/despachos/{orgSlug}/plan` | una por organizacion por mes | 10 d | conectado: `apps/api/src/plan-topes/medidor.ts` (solo mide el WhatsApp saliente de citas, hoteles y restaurantes) |
 | `despachos.plan.mensajes_excedido` | cobranza | critica | owner/admin | Gauge | `/despachos/{orgSlug}/plan` | una por organizacion por mes | 10 d | conectado: `apps/api/src/plan-topes/medidor.ts` (solo mide el WhatsApp saliente de citas, hoteles y restaurantes) |
 | `despachos.plan.prueba_por_vencer` | cobranza | atencion | owner/admin | Clock | `/despachos/{orgSlug}/plan` | una por organizacion por umbral (7, 3 y 1 dia) y fecha de fin | 8 d | conectado: `apps/api/src/plan-topes/aviso-prueba.ts` (sale en el cron diario /internal/plataforma/prueba-avisos (vercel.json, 14:00 UTC)) |
+| `despachos.plan.prueba_terminada` | cobranza | atencion | owner/admin | Clock | `/despachos/{orgSlug}/plan` | una por organizacion por fecha de fin | 30 d | conectado: `apps/api/src/plan-topes/aviso-prueba.ts` (sale en el cron diario /internal/plataforma/prueba-avisos (vercel.json, 14:00 UTC); la cuenta sigue operando al terminar la prueba (no hay apagado automatico) y las demos no lo reciben (migracion 0072)) |
 
 ### licitaciones
 
@@ -175,6 +179,7 @@ de las 6 verticales no cambian. La lectura y la escritura pasan por `core.list_n
 | `licitaciones.plan.mensajes_80` | cobranza | atencion | owner/admin | Gauge | `/licitaciones/{orgSlug}/plan` | una por organizacion por mes | 10 d | conectado: `apps/api/src/plan-topes/medidor.ts` (solo mide el WhatsApp saliente de citas, hoteles y restaurantes) |
 | `licitaciones.plan.mensajes_excedido` | cobranza | critica | owner/admin | Gauge | `/licitaciones/{orgSlug}/plan` | una por organizacion por mes | 10 d | conectado: `apps/api/src/plan-topes/medidor.ts` (solo mide el WhatsApp saliente de citas, hoteles y restaurantes) |
 | `licitaciones.plan.prueba_por_vencer` | cobranza | atencion | owner/admin | Clock | `/licitaciones/{orgSlug}/plan` | una por organizacion por umbral (7, 3 y 1 dia) y fecha de fin | 8 d | conectado: `apps/api/src/plan-topes/aviso-prueba.ts` (sale en el cron diario /internal/plataforma/prueba-avisos (vercel.json, 14:00 UTC)) |
+| `licitaciones.plan.prueba_terminada` | cobranza | atencion | owner/admin | Clock | `/licitaciones/{orgSlug}/plan` | una por organizacion por fecha de fin | 30 d | conectado: `apps/api/src/plan-topes/aviso-prueba.ts` (sale en el cron diario /internal/plataforma/prueba-avisos (vercel.json, 14:00 UTC); la cuenta sigue operando al terminar la prueba (no hay apagado automatico) y las demos no lo reciben (migracion 0072)) |
 | `licitaciones.sala_guerra.paquete_no_listo` | cierres | critica | owner/admin, analyst, writer, reviewer | TimerReset | `/licitaciones/{orgSlug}/convocatorias` | una por convocatoria (clave = id de la convocatoria) | 3 d | conectado: `apps/api/src/routes/verticals/licitaciones/salaGuerra.ts` |
 | `licitaciones.renovacion.por_vencer` | operacion | atencion | owner/admin, analyst | CalendarClock | `/licitaciones/{orgSlug}/radar-renovaciones` | una por organizacion por dia (solo cuando el barrido creo alertas nuevas) | 7 d | conectado: `apps/api/src/routes/verticals/licitaciones/avisos-campana.ts` (sale del barrido /internal/licitaciones/alert-notifications (cron existente de vercel.json)) |
 | `licitaciones.cobranza.factura_vencida` | cobranza | atencion | owner/admin, analyst | Receipt | `/licitaciones/{orgSlug}/radar-renovaciones` | una por organizacion por semana (mientras sigan vencidas) | 7 d | conectado: `apps/api/src/routes/verticals/licitaciones/avisos-campana.ts` (sale del barrido /internal/licitaciones/alert-notifications (cron existente de vercel.json)) |
@@ -206,6 +211,7 @@ de las 6 verticales no cambian. La lectura y la escritura pasan por `core.list_n
 | `citas.plan.mensajes_80` | cobranza | atencion | owner/admin | Gauge | `/citas/{orgSlug}/plan` | una por organizacion por mes | 10 d | conectado: `apps/api/src/plan-topes/medidor.ts` (solo mide el WhatsApp saliente de citas, hoteles y restaurantes) |
 | `citas.plan.mensajes_excedido` | cobranza | critica | owner/admin | Gauge | `/citas/{orgSlug}/plan` | una por organizacion por mes | 10 d | conectado: `apps/api/src/plan-topes/medidor.ts` (solo mide el WhatsApp saliente de citas, hoteles y restaurantes) |
 | `citas.plan.prueba_por_vencer` | cobranza | atencion | owner/admin | Clock | `/citas/{orgSlug}/plan` | una por organizacion por umbral (7, 3 y 1 dia) y fecha de fin | 8 d | conectado: `apps/api/src/plan-topes/aviso-prueba.ts` (sale en el cron diario /internal/plataforma/prueba-avisos (vercel.json, 14:00 UTC)) |
+| `citas.plan.prueba_terminada` | cobranza | atencion | owner/admin | Clock | `/citas/{orgSlug}/plan` | una por organizacion por fecha de fin | 30 d | conectado: `apps/api/src/plan-topes/aviso-prueba.ts` (sale en el cron diario /internal/plataforma/prueba-avisos (vercel.json, 14:00 UTC); la cuenta sigue operando al terminar la prueba (no hay apagado automatico) y las demos no lo reciben (migracion 0072)) |
 
 ### superadmin
 
@@ -228,6 +234,7 @@ de las 6 verticales no cambian. La lectura y la escritura pasan por `core.list_n
 | `superadmin.organizacion.accion_pendiente` | aprobaciones | atencion | superadmins de plataforma | UserRoundCheck | `/superadmin/organizaciones?tab=gestion` | una por solicitud | 2 d | conectado: `apps/api/src/routes/superadmin-organizaciones.ts` |
 | `superadmin.organizacion.miembro_aceptado` | onboarding | info | superadmins de plataforma | UserRoundCheck | `/superadmin/organizaciones/{entidadId}` | una por invitacion | 14 d | conectado: `apps/api/src/routes/superadmin-organizaciones-equipo.ts` (POST /auth/accept-invite llama a core.superadmin_invite_acceptance_for_system (0053, solo sistema) y emite en su propia transaccion; solo para invitaciones creadas por un superadmin) |
 | `superadmin.plan.mensajes_80` | cobranza | atencion | superadmins de plataforma | Gauge | `/superadmin/planes` | una por organizacion por mes | 10 d | conectado: `apps/api/src/plan-topes/medidor.ts` (solo mide el WhatsApp saliente de citas, hoteles y restaurantes) |
+| `superadmin.plan.prueba_terminada` | cobranza | atencion | superadmins de plataforma | Clock | `/superadmin/organizaciones/{entidadId}` | una por organizacion por fecha de fin | 30 d | conectado: `apps/api/src/plan-topes/aviso-prueba.ts` (sale en el cron diario /internal/plataforma/prueba-avisos junto con el aviso al dueno (plan.prueba_terminada); las demos no lo reciben (migracion 0072)) |
 | `superadmin.plan.mensajes_excedido` | cobranza | atencion | superadmins de plataforma | Gauge | `/superadmin/planes` | una por organizacion por mes | 10 d | conectado: `apps/api/src/plan-topes/medidor.ts` (solo mide el WhatsApp saliente de citas, hoteles y restaurantes) |
 
 

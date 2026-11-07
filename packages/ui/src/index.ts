@@ -292,3 +292,5 @@ export type { ProgresoLocal, ServidorProgreso } from "./components/guia/estado";
 export { TEXTOS_GUIA, traductorGuia, useIdiomaGuia } from "./components/guia/textos";
 export type { ClaveGuia, IdiomaGuia } from "./components/guia/textos";
 export { Ilustracion as IlustracionGuia, TIPOS_ILUSTRACION } from "./components/guia/ilustraciones";
+// i18n ES/EN (ds3): proveedor, `t()` con claves tipadas, plurales y formato es-MX / en-US. La preferencia vive en lib/idioma.
+export * from "./i18n/index.js";

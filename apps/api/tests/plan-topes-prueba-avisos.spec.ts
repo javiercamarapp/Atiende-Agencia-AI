@@ -1,4 +1,4 @@
-// Avisos de fin de prueba a 7 / 3 / 1 dias (PL-16): cron `/internal/plataforma/prueba-avisos`. El reclamo "exactamente una vez" y el
+// Avisos de fin de prueba a 7 / 3 / 1 dias (PL-16) y de prueba terminada (dias 0, migracion 0072): cron `/internal/plataforma/prueba-avisos`. El reclamo "exactamente una vez" y el
 // calculo del dia en la zona del negocio viven en SQL y se prueban contra Postgres real (scripts/verify-planes-topes-prueba); aqui:
 // autenticacion del cron, notificacion in-app + correo por cada aviso reclamado, marcado del estado del correo, reintentos y
 // compatibilidad con la base sin migrar (AbortAwareFakeSession reproduce el 25P02 real).
@@ -89,6 +89,68 @@ describe("POST /internal/plataforma/prueba-avisos", () => {
 
     const m = llamadas.find((l) => mark.test(l.sql))!;
     expect(m.params).toEqual([ORG, 7, ENDS, "enviado"]);
+  });
+
+  it("prueba terminada (dias 0): aviso neutro «elija un plan» al dueno (in-app y correo) y alerta a superadmin, misma clave de dedupe", async () => {
+    const sesion = new AbortAwareFakeSession([
+      { match: claim, respond: () => [fila(0)] },
+      { match: emit, respond: () => [{ emit_notification: 1 }] },
+      { match: recipients, respond: () => [{ email: "owner@example.com" }] },
+      { match: mark, respond: () => [{ trial_notice_mark: true }] },
+    ]);
+    const enviados: Array<{ init: RequestInit }> = [];
+    const fetchImpl = (async (_url: string, init: RequestInit) => {
+      enviados.push({ init });
+      return new Response("{}", { status: 200 });
+    }) as unknown as typeof fetch;
+    const { res, llamadas } = await ejecutar({ sesion, fetchImpl });
+    expect(await res.json()).toMatchObject({ reclamados: 1, notificados: 1, correos: { enviado: 1 } });
+
+    const emisiones = llamadas.filter((l) => emit.test(l.sql));
+    expect(emisiones.map((e) => e.params[2])).toEqual(["hoteles.plan.prueba_terminada", "superadmin.plan.prueba_terminada"]);
+    const [duenio, superadmin] = emisiones;
+    expect(duenio!.params[0]).toBe(ORG);
+    expect(duenio!.params[5]).toBe("Su prueba terminó: elija un plan");
+    expect(duenio!.params[6]).toBe("Revise Plan y uso para elegir el plan de su cuenta.");
+    expect(duenio!.params[10]).toBe(`hoteles.plan.prueba_terminada:${ORG}:0:2026-11-10`);
+    expect(superadmin!.params[0]).toBeNull();
+    expect(superadmin!.params[6]).toContain("Organización: hotel-c.");
+    expect(superadmin!.params[10]).toBe(`superadmin.plan.prueba_terminada:${ORG}:0:2026-11-10`);
+
+    const cuerpo = JSON.parse(String(enviados[0]!.init.body)) as { subject: string; text: string; html: string };
+    expect(cuerpo.subject).toBe("Su prueba de atiende terminó: elija un plan");
+    expect((enviados[0]!.init.headers as Record<string, string>)["Idempotency-Key"]).toBe(`prueba/${ORG}/0/2026-11-10`);
+    expect(llamadas.find((l) => mark.test(l.sql))!.params).toEqual([ORG, 0, ENDS, "enviado"]);
+  });
+
+  it("ningun aviso al dueno (previo o de prueba terminada) promete ni amenaza un corte: el texto es neutro", async () => {
+    for (const dias of [7, 3, 1, 0]) {
+      const sesion = new AbortAwareFakeSession([
+        { match: claim, respond: () => [fila(dias)] },
+        { match: emit, respond: () => [{ emit_notification: 1 }] },
+        { match: recipients, respond: () => [{ email: "owner@example.com" }] },
+        { match: mark, respond: () => [{}] },
+      ]);
+      const enviados: string[] = [];
+      const fetchImpl = (async (_url: string, init: RequestInit) => {
+        enviados.push(String(init.body));
+        return new Response("{}", { status: 200 });
+      }) as unknown as typeof fetch;
+      const { llamadas } = await ejecutar({ sesion, fetchImpl });
+      const textos = [...enviados, ...llamadas.filter((l) => emit.test(l.sql) && !String(l.params[2]).startsWith("superadmin.")).map((l) => `${String(l.params[5])} ${String(l.params[6])}`)].join("\n");
+      expect(textos).not.toMatch(/apag|perder el acceso|suspend|bloque|desactiv/i);
+    }
+  });
+
+  it("un reintento de correo de la prueba terminada no repite la alerta de superadmin", async () => {
+    const sesion = new AbortAwareFakeSession([
+      { match: claim, respond: () => [fila(0, { es_reintento: true })] },
+      { match: emit, respond: () => [{ emit_notification: 0 }] },
+      { match: recipients, respond: () => [] },
+      { match: mark, respond: () => [{}] },
+    ]);
+    const { llamadas } = await ejecutar({ sesion });
+    expect(llamadas.filter((l) => emit.test(l.sql)).map((l) => l.params[2])).toEqual(["hoteles.plan.prueba_terminada"]);
   });
 
   it("a 1 dia la notificacion no cae en el plural incorrecto ('1 dias'): el titulo no lleva el numero", async () => {

@@ -49,6 +49,8 @@ export interface AperturaLlamada {
   readonly historial?: readonly { readonly rol: "cliente" | "agente"; readonly texto: string }[];
   /** Nombres y apodos del menu que el STT de la cascada recibe como pista de vocabulario (tope `cascada.vocabularioMax`). Gemini Live no lo usa. */
   readonly vocabulario?: readonly string[];
+  /** Voz telefonica de la sucursal para el TTS de la cascada v2 (id de ElevenLabs, `branch_voice_config.tts_voice_id`); null = la de la plataforma (Regina). Gemini Live no la usa. */
+  readonly vozTelefono?: string | null;
 }
 
 export interface VozSesionLlamada {

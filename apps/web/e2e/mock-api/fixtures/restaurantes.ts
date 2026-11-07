@@ -92,7 +92,9 @@ const BLOQUE_VENTAS = {
 };
 const TEXTO_VENTAS = "En los últimos 7 días vendiste $18,450 MXN en 96 pedidos.";
 const FUENTE_VENTAS = { tool: "ventas_por_dia", source: "Pedidos completados", periodLabel: "últimos 7 días", scopeLabel: "todas tus sucursales" };
-const conversacionesMock = (p: { estado: { obtener<T>(k: string, s: () => T): T } }) => p.estado.obtener<ConversacionMock[]>("rest.copiloto.conversaciones", () => []);
+// Como la API real (RLS de 0041 + filtro por usuario y organizacion): cada persona ve SOLO sus conversaciones.
+const conversacionesMock = (p: { estado: { obtener<T>(k: string, s: () => T): T }; persona: { id: string } | null }) =>
+  p.estado.obtener<ConversacionMock[]>(`rest.copiloto.conversaciones:${p.persona?.id ?? "anonimo"}`, () => []);
 
 
 // ---- Comandas al POS (captura asistida) y cartera de clientes: estado mutable por escenario --------------------------------------------------
@@ -357,10 +359,10 @@ export const rutasRestaurantes: readonly Ruta[] = [
 // ---- Ajustes del agente (migración 055) y conocimiento automatico. Solo existe en la API simulada de e2e: reproduce el contrato de
 // apps/api/src/routes/verticals/restaurantes/ajustes-agente.ts (PUT completo, lista permitida, temperatura solo donde el modelo la admite). ----
 const MODELOS_AJUSTES = [
-  { id: "openai/gpt-6-luna", etiqueta: "GPT-6 Luna", nivel: "economico", descripcion: "El predeterminado de la plataforma: rapido y barato; sigue bien las reglas.", aceptaTemperatura: false, predeterminado: true, costoWhatsappMicroUsdPorMensaje: 800, costoVozMicroUsdPorMinuto: 1850, precioVerificadoEn: "2026-10-01" },
-  { id: "deepseek/deepseek-v4.1-flash", etiqueta: "DeepSeek V4.1 Flash", nivel: "economico", descripcion: "Economico, servido solo desde proveedores de EE.UU. con retencion cero.", aceptaTemperatura: true, predeterminado: false, costoWhatsappMicroUsdPorMensaje: 1440, costoVozMicroUsdPorMinuto: 2640, precioVerificadoEn: "2026-10-02" },
-  { id: "google/gemini-2.5-flash-lite", etiqueta: "Gemini 2.5 Flash-Lite", nivel: "economico", descripcion: "El mas barato; respuestas cortas y directas.", aceptaTemperatura: true, predeterminado: false, costoWhatsappMicroUsdPorMensaje: 760, costoVozMicroUsdPorMinuto: 1400, precioVerificadoEn: "2026-10-02" },
-  { id: "anthropic/claude-sonnet-5.5", etiqueta: "Claude Sonnet 5.5", nivel: "premium", descripcion: "El de mayor calidad y el mas caro; solo si el volumen es bajo.", aceptaTemperatura: false, predeterminado: false, costoWhatsappMicroUsdPorMensaje: 16000, costoVozMicroUsdPorMinuto: 29000, precioVerificadoEn: "2026-10-01" },
+  { id: "openai/gpt-6-luna", etiqueta: "GPT-6 Luna", nivel: "economico", descripcion: "El predeterminado de la plataforma: rapido y barato; sigue bien las reglas.", vozZdr: true, aceptaTemperatura: false, predeterminado: true, costoWhatsappMicroUsdPorMensaje: 800, costoVozMicroUsdPorMinuto: 1850, precioVerificadoEn: "2026-10-01" },
+  { id: "deepseek/deepseek-v4.1-flash", etiqueta: "DeepSeek V4.1 Flash", nivel: "economico", descripcion: "Economico, servido solo desde proveedores de EE.UU. con retencion cero.", vozZdr: true, aceptaTemperatura: true, predeterminado: false, costoWhatsappMicroUsdPorMensaje: 1440, costoVozMicroUsdPorMinuto: 2640, precioVerificadoEn: "2026-10-02" },
+  { id: "google/gemini-2.5-flash-lite", etiqueta: "Gemini 2.5 Flash-Lite", nivel: "economico", descripcion: "El mas barato; respuestas cortas y directas.", vozZdr: false, aceptaTemperatura: true, predeterminado: false, costoWhatsappMicroUsdPorMensaje: 760, costoVozMicroUsdPorMinuto: 1400, precioVerificadoEn: "2026-10-02" },
+  { id: "anthropic/claude-sonnet-5.5", etiqueta: "Claude Sonnet 5.5", nivel: "premium", descripcion: "El de mayor calidad y el mas caro; solo si el volumen es bajo.", vozZdr: true, aceptaTemperatura: false, predeterminado: false, costoWhatsappMicroUsdPorMensaje: 16000, costoVozMicroUsdPorMinuto: 29000, precioVerificadoEn: "2026-10-01" },
 ];
 const AJUSTES_POR_OMISION = { whatsappModelo: null as string | null, whatsappTemperatura: null as number | null, vozModeloCascada: null as string | null, vozTemperatura: null as number | null, vozRitmo: "normal", vozEstilo: "neutro", vozFondoActivo: false, vozFondoVolumen: 8 };
 type AjustesMock = typeof AJUSTES_POR_OMISION;
