@@ -13,7 +13,7 @@
 import * as React from "react";
 import { flushSync } from "react-dom";
 import { Link, useLocation } from "react-router-dom";
-import { Compass } from "lucide-react";
+import { Compass, ShieldCheck } from "lucide-react";
 import { AtiendeWordmark } from "./AtiendeLogo";
 import { BottomNav, MobileHeader, type BottomNavItem } from "./BottomNav";
 import { BarraPagina } from "./BarraPagina";
@@ -240,6 +240,13 @@ export interface VerticalShellProps {
   readonly panelLateral?: React.ReactNode;
   /** `key` del <main>: al cambiar (sucursal activa) las paginas hijas se remontan. */
   readonly contentKey?: string;
+  /** Nombre de la organizacion activa: en ds3 la tarjeta de cuenta del pie lo muestra junto al rol. Opcional. */
+  readonly organizacion?: string;
+  /**
+   * Enlace a la administracion de la plataforma (solo para administradores de plataforma; quien arma el shell decide si lo pasa).
+   * Va como ultima fila del pie del sidebar y de la hoja «Más». Sin el, no se pinta.
+   */
+  readonly adminHref?: string;
   readonly children: React.ReactNode;
 }
 
@@ -257,8 +264,13 @@ export function VerticalShell({
   sidebarPie,
   contentKey,
   panelLateral,
+  organizacion,
+  adminHref,
   children,
 }: VerticalShellProps) {
+  const pie: SidebarPiePildora[] | undefined = adminHref
+    ? [...(sidebarPie ?? []), { label: "Administración de Atiende", to: adminHref, icon: ShieldCheck }]
+    : sidebarPie;
   const { pathname } = useLocation();
   const mainRef = React.useRef<HTMLElement>(null);
   const [sinH1, setSinH1] = React.useState(false);
@@ -280,8 +292,8 @@ export function VerticalShell({
   // Los destinos del pie del Sidebar ("Ver los otros paneles") tambien son paginas del panel aunque no esten en `sections`:
   // la barra les pone su nombre en vez del titulo de la consola. Van DESPUES de `sections`, asi un destino que ya es de una
   // categoria (p. ej. "Costos de IA" -> "Costos y margen") conserva el nombre de su categoria.
-  const destinosPie: SidebarSection[] = (sidebarPie ?? []).some((p) => p.to)
-    ? [{ title: "Cuenta", items: (sidebarPie ?? []).filter((p) => p.to).map((p) => ({ to: p.to as string, label: p.label, icon: p.icon ?? Compass })) }]
+  const destinosPie: SidebarSection[] = (pie ?? []).some((p) => p.to)
+    ? [{ title: "Cuenta", items: (pie ?? []).filter((p) => p.to).map((p) => ({ to: p.to as string, label: p.label, icon: p.icon ?? Compass })) }]
     : [];
   const activo = itemActivo([...sections, ...destinosPie], pathname);
   const esResumen = header.resumenTo !== undefined && pathname === header.resumenTo;
@@ -300,7 +312,7 @@ export function VerticalShell({
     ) : undefined;
 
   return (
-    <div data-vertical={vertical} className="min-h-[100dvh] bg-background flex w-full">
+    <div data-vertical={vertical} className="ds3-shell min-h-[100dvh] bg-background flex w-full">
       <a
         href={`#${VERTICAL_SHELL_MAIN_ID}`}
         className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[60] focus:rounded-lg focus:border focus:border-border focus:bg-card focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-foreground focus:shadow-elevated"
@@ -308,8 +320,8 @@ export function VerticalShell({
         Saltar al contenido
       </a>
 
-      <div className="hidden md:block md:p-4 md:pr-0">
-        <Sidebar sections={sections} user={user} onLogout={onLogout} hotelSelector={selectores} storageScope={vertical} pie={sidebarPie} />
+      <div className="ds3-shell-lateral hidden md:block md:p-4 md:pr-0">
+        <Sidebar sections={sections} user={user} onLogout={onLogout} hotelSelector={selectores} storageScope={vertical} pie={pie} organizacion={organizacion} />
       </div>
 
       <MobileHeader
@@ -325,7 +337,7 @@ export function VerticalShell({
 
       {/* Marco de Likida: columna de contenido gris tenue (--sunken = --g1) con hairline y esquinas
           redondeadas; la barra queda dentro, blanca, y las tarjetas blancas encima. */}
-      <div ref={fijarMarco} className="relative flex min-w-0 flex-1 flex-col bg-sunken md:sticky md:top-4 md:m-4 md:h-[calc(100dvh-2rem)] md:overflow-hidden md:rounded-2xl md:border md:border-border">
+      <div ref={fijarMarco} className="ds3-shell-marco relative flex min-w-0 flex-1 flex-col bg-sunken md:sticky md:top-4 md:m-4 md:h-[calc(100dvh-2rem)] md:overflow-hidden md:rounded-2xl md:border md:border-border">
         <div className="hidden md:block shrink-0">
           <BarraPagina icon={iconoBarra} title={tituloBarra} acciones={accionesBarra} comoH1={sinH1} />
         </div>
@@ -335,10 +347,10 @@ export function VerticalShell({
           id={VERTICAL_SHELL_MAIN_ID}
           tabIndex={-1}
           key={contentKey}
-          className="flex-1 min-h-0 overflow-y-auto focus:outline-none px-4 pt-[calc(5.5rem+var(--safe-area-top))] pb-[calc(7rem+var(--safe-area-bottom))] md:px-5 md:pt-3.5 md:pb-5"
+          className="ds3-shell-contenido flex-1 min-h-0 overflow-y-auto focus:outline-none px-4 pt-[calc(5.5rem+var(--safe-area-top))] pb-[calc(7rem+var(--safe-area-bottom))] md:px-5 md:pt-3.5 md:pb-5"
         >
           {/* Transicion de navegacion: entrada breve (tokens de motion) al cambiar de ruta, solo con movimiento permitido. Sin `max-w`: ancho completo del marco. */}
-          <div key={pathname} className="motion-safe:animate-page-in">
+          <div key={pathname} className="ds3-shell-pagina motion-safe:animate-page-in">
             <TituloBarraContext.Provider value={fijarTitulo}>
               <AccionesBarraContext.Provider value={fijarAcciones}>
                 <MarcoShellContext.Provider value={marco}>
@@ -352,7 +364,7 @@ export function VerticalShell({
 
       {panelLateral}
 
-      <BottomNav items={mobileItems} moreSections={sections} pie={sidebarPie} />
+      <BottomNav items={mobileItems} moreSections={sections} pie={pie} />
     </div>
   );
 }

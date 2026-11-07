@@ -973,8 +973,15 @@
     --login-particle-ambient: hsl(199 89% 55%);
   }
 
-  /* Cuerpo: 13 px / 1.5, sin tracking global, cifras tabulares, sin cursivas ni negritas sinteticas. */
-  html[data-diseno="ds3"],
+  /* Cuerpo: 13 px / 1.5, sin tracking global, cifras tabulares, sin cursivas ni negritas sinteticas. El tamano va SOLO en body: la raiz <html> se
+     queda en 16 px para que todo lo que mide en rem (alturas h-*, radios, paddings, --control-*, text-*) conserve su valor de
+     referencia; con 13 px en la raiz cada rem encogia al 81 % (cuerpo de 10,6 px, encabezado de 36 en vez de 44, radios de 9,75). */
+  html[data-diseno="ds3"] {
+    line-height: 1.5;
+    letter-spacing: 0;
+    font-variant-numeric: tabular-nums;
+    font-synthesis: weight;
+  }
   html[data-diseno="ds3"] body {
     font-size: 0.8125rem;
     line-height: 1.5;

@@ -1,0 +1,331 @@
+/*
+ * ds3 / shell de la app (lote 5): hoja unica del shell. Cada PR del carril agrega su seccion numerada (1. marco, ...).
+ *
+ * Reglas de esta hoja:
+ *  - TODO va bajo `html[data-diseno="ds3"]`: sin la bandera ninguna regla coincide y produccion queda igual.
+ *  - Las clases `ds3-*` las ponen los componentes de @atiende/ui; doble clase o atributo para ganar a las utilidades de
+ *    Tailwind sin !important.
+ *  - Solo tokens (hsl(var(--x))); ningun color literal. La paleta la define el bloque ds3 de index.css.
+ *  - Valores de referencia del sistema de diseno: marco 16, tarjetas de 1 px con radio 12 y sin sombra, contenido gris
+ *    con padding 24/24/28, easing unico cubic-bezier(.22,1,.36,1).
+ *  - Movimiento: el apagado global por prefers-reduced-motion vive en index.css; aqui no se duplica.
+ */
+
+/* ---- Elementos solo-ds3 ------------------------------------------------------------------------------------------
+ * Un elemento nuevo del shell que no existe en el diseno actual se pinta con el atributo `hidden` y la clase
+ * `ds3-solo`: sin la bandera queda oculto (y fuera del arbol accesible); con ella se muestra como bloque, o con el display
+ * que fije la regla de su componente (`revert` no sirve: volveria al `display:none` de [hidden] de la hoja del navegador).
+ * A la inversa, `ds3-no` oculta bajo ds3 una pieza del diseno actual que el shell nuevo reemplaza.
+ */
+html[data-diseno="ds3"] .ds3-solo[hidden] { display: block; }
+html[data-diseno="ds3"] .ds3-no.ds3-no { display: none; }
+
+/* ---- 1. Marco (escritorio >= 768) ---------------------------------------------------------------------------------
+ * Tres niveles de gris: lienzo (--background) -> tarjetas blancas (--card: sidebar y marco) -> contenido sumido (--sunken).
+ * El lienzo lleva padding 16 y gap 16; sidebar y marco son tarjetas de 1 px, radio 12, sin sombra. Solo el contenido
+ * hace scroll (el documento no se bloquea: se conserva la impresion del ticket de cocina y las anclas).
+ */
+@media (min-width: 768px) {
+  html[data-diseno="ds3"] .ds3-shell.ds3-shell {
+    gap: 16px;
+    padding: 16px;
+    background-color: hsl(var(--background));
+  }
+  html[data-diseno="ds3"] .ds3-shell-lateral.ds3-shell-lateral { padding: 0; }
+  html[data-diseno="ds3"] .ds3-shell-marco.ds3-shell-marco {
+    top: 16px;
+    margin: 0;
+    height: calc(100dvh - 32px);
+    border: 1px solid hsl(var(--border));
+    border-radius: 12px;
+    background-color: hsl(var(--card));
+    box-shadow: none;
+    overflow: clip;
+  }
+  html[data-diseno="ds3"] .ds3-shell-contenido.ds3-shell-contenido {
+    padding: 24px 24px 28px;
+    background-color: hsl(var(--sunken));
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+  }
+  /* Panel lateral del Copiloto de superadmin (Cmd+J): es un hijo flex mas del lienzo. Bajo el marco de 16 no lleva margen vertical
+     propio (el lienzo ya da el 16) y cerrado (ancho 0) cancela el gap con -16 px, asi el documento no hace scroll y el borde derecho
+     queda a 16. Abierto: el gap de 16 lo separa del marco y el padding del lienzo da el 16 al borde. */
+  html[data-diseno="ds3"] .ds3-shell.ds3-shell > .copiloto-panel-lateral {
+    top: 16px;
+    height: calc(100dvh - 32px);
+    margin-top: 0;
+    margin-bottom: 0;
+    margin-right: 0;
+  }
+  html[data-diseno="ds3"] .ds3-shell.ds3-shell > .copiloto-panel-lateral[data-abierto="false"] { margin-left: -16px; }
+  html[data-diseno="ds3"] .ds3-sidebar.ds3-sidebar {
+    top: 16px;
+    height: calc(100dvh - 32px);
+    border: 1px solid hsl(var(--border));
+    border-radius: 12px;
+    background-color: hsl(var(--card));
+    box-shadow: none;
+  }
+}
+
+/* Entrada de pagina: solo transform (sin fade), 5 px, 250 ms con el easing unico. */
+@keyframes ds3-entrada {
+  from { transform: translateY(5px); }
+  to { transform: none; }
+}
+html[data-diseno="ds3"] .ds3-shell-pagina.ds3-shell-pagina {
+  animation: ds3-entrada 250ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Modo de alto contraste (forced-colors), solo escritorio (en movil el marco va a sangre, sin borde): las tarjetas conservan su
+   contorno con el color del sistema. Misma especificidad que las reglas del marco y despues de ellas, para ganarles. */
+@media (min-width: 768px) and (forced-colors: active) {
+  html[data-diseno="ds3"] .ds3-shell-marco.ds3-shell-marco,
+  html[data-diseno="ds3"] .ds3-sidebar.ds3-sidebar { border: 1px solid CanvasText; }
+}
+
+/* ---- 2. Sidebar (escritorio >= 768) --------------------------------------------------------------------------------
+ * 232 px expandido / 72 contraido (persistido por vertical), 180 ms con el easing unico. Arriba: logo + boton de contraer.
+ * En medio: navegacion con scroll propio y sombras de «hay mas». Abajo, fijo: organizacion, filas del pie (Notificaciones con
+ * contador, Seguridad, Pregúntale a tus datos, administracion), tema + idioma y la tarjeta de cuenta.
+ * El orden visual (organizacion al pie) se fija con `order`: el arbol del diseno actual no cambia.
+ * Item 32 px 13/500 con icono 16; activo = tinte de tinta al 7 % + filete interior de 2 px en el resaltado de marca (celeste).
+ * Grupos: acordeon de uno abierto (logica del diseno actual), titulos en IBM Plex Mono 11 mayusculas.
+ */
+@media (min-width: 768px) {
+  html[data-diseno="ds3"] .ds3-sidebar.ds3-sidebar {
+    width: 232px;
+    transition: width var(--dur-base, 180ms) cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  html[data-diseno="ds3"] .ds3-sidebar.ds3-sidebar[data-colapsado] { width: 72px; }
+
+  /* Etiquetas, titulos de grupo y selectores visibles desde 768 (el diseno actual los esconde hasta 1024). */
+  html[data-diseno="ds3"] .ds3-sidebar:not([data-colapsado]) .ds3-etiqueta { display: block; }
+  html[data-diseno="ds3"] .ds3-sidebar:not([data-colapsado]) .ds3-sidebar-logo,
+  html[data-diseno="ds3"] .ds3-sidebar:not([data-colapsado]) .ds3-sidebar-organizacion,
+  html[data-diseno="ds3"] .ds3-sidebar:not([data-colapsado]) .ds3-cuenta-texto { display: block; }
+  html[data-diseno="ds3"] .ds3-sidebar:not([data-colapsado]) .ds3-nav-grupo-toggle,
+  html[data-diseno="ds3"] .ds3-sidebar:not([data-colapsado]) .ds3-sidebar-ajustes { display: flex; }
+
+  /* Marca: padding 12, alto minimo 52; logo a la izquierda y boton de 32 a la derecha. Contraido: columna centrada, gap 12. */
+  html[data-diseno="ds3"] .ds3-sidebar-marca.ds3-sidebar-marca {
+    order: 0;
+    min-height: 52px;
+    padding: 12px;
+    gap: 8px;
+    justify-content: space-between;
+  }
+  html[data-diseno="ds3"] .ds3-sidebar[data-colapsado] .ds3-sidebar-marca {
+    flex-direction: column;
+    justify-content: center;
+    gap: 12px;
+    padding: 12px 15px;
+  }
+  html[data-diseno="ds3"] .ds3-sidebar-simbolo.ds3-solo[hidden] { display: inline-flex; line-height: 0; }
+  html[data-diseno="ds3"] .ds3-icono-boton.ds3-icono-boton {
+    width: 32px;
+    height: 32px;
+    margin-left: 0;
+    border-radius: 8px;
+    color: hsl(var(--muted-foreground));
+    background: transparent;
+  }
+  html[data-diseno="ds3"] .ds3-icono-boton.ds3-icono-boton:hover { background-color: hsl(var(--soft)); color: hsl(var(--foreground)); }
+  html[data-diseno="ds3"] .ds3-icono-boton svg { width: 16px; height: 16px; }
+
+  /* Navegacion: scroll propio con sombras de «hay mas» (degradados local/scroll con tokens). */
+  html[data-diseno="ds3"] .ds3-sidebar-nav.ds3-sidebar-nav {
+    order: 1;
+    min-height: 96px;
+    padding: 0 8px 8px;
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border)) transparent;
+    overscroll-behavior: contain;
+    background:
+      linear-gradient(hsl(var(--card)) 30%, transparent) center top / 100% 24px no-repeat local,
+      linear-gradient(transparent, hsl(var(--card)) 70%) center bottom / 100% 24px no-repeat local,
+      radial-gradient(farthest-side at 50% 0, hsl(var(--border)), transparent) center top / 100% 10px no-repeat scroll,
+      radial-gradient(farthest-side at 50% 100%, hsl(var(--border)), transparent) center bottom / 100% 10px no-repeat scroll;
+  }
+  html[data-diseno="ds3"] .ds3-sidebar-nav.ds3-sidebar-nav > * + * { margin-top: 0; }
+  html[data-diseno="ds3"] .ds3-nav-grupo.ds3-nav-grupo { margin: 0 0 7px; }
+  html[data-diseno="ds3"] .ds3-sidebar[data-colapsado] .ds3-nav-grupo + .ds3-nav-grupo { padding-top: 5px; }
+
+  html[data-diseno="ds3"] .ds3-nav-grupo-toggle.ds3-nav-grupo-toggle {
+    align-items: center;
+    gap: 8px;
+    min-height: 32px;
+    margin: 0;
+    padding: 6px 10px;
+    border-radius: 8px;
+    font-family: "IBM Plex Mono DS3", "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1.5;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: hsl(var(--muted-foreground));
+  }
+  html[data-diseno="ds3"] .ds3-nav-grupo-toggle.ds3-nav-grupo-toggle:hover { background-color: hsl(var(--soft)); color: hsl(var(--foreground)); }
+  html[data-diseno="ds3"] .ds3-nav-grupo-toggle svg { width: 13px; height: 13px; transition: transform var(--dur-fast, 120ms) cubic-bezier(0.22, 1, 0.36, 1); }
+
+  /* Item: 32 px, padding 6x10, radio 8, 13/500, gap 9, icono 16 del color del texto. */
+  html[data-diseno="ds3"] .ds3-nav-item.ds3-nav-item,
+  html[data-diseno="ds3"] .ds3-pie-fila.ds3-pie-fila {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    min-height: 32px;
+    margin: 0;
+    padding: 6px 10px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1.35;
+    color: hsl(var(--foreground-2));
+    text-decoration: none;
+  }
+  html[data-diseno="ds3"] .ds3-nav-item.ds3-nav-item:hover,
+  html[data-diseno="ds3"] .ds3-pie-fila.ds3-pie-fila:hover { background-color: hsl(var(--soft)); color: hsl(var(--foreground)); }
+  html[data-diseno="ds3"] .ds3-nav-item .ds3-nav-icono,
+  html[data-diseno="ds3"] .ds3-pie-fila .ds3-nav-icono { width: 16px; height: 16px; color: currentColor; }
+  html[data-diseno="ds3"] .ds3-nav-item.ds3-nav-item[aria-current="page"],
+  html[data-diseno="ds3"] .ds3-pie-fila.ds3-pie-fila[aria-current="page"] {
+    font-weight: 500;
+    color: hsl(var(--foreground));
+    background-color: color-mix(in srgb, hsl(var(--foreground)) 7%, transparent);
+    box-shadow: inset 2px 0 0 hsl(var(--highlight, var(--primary)));
+  }
+  /* Contraido: solo iconos centrados en filas de 40; el title del item hace de tooltip. */
+  html[data-diseno="ds3"] .ds3-sidebar[data-colapsado] .ds3-nav-item.ds3-nav-item,
+  html[data-diseno="ds3"] .ds3-sidebar[data-colapsado] .ds3-pie-fila.ds3-pie-fila { justify-content: center; min-height: 40px; padding: 8px; }
+
+  /* Pie fijo: gris sumido, filete arriba, padding 10/8/8, maximo 55 % del alto con scroll propio. */
+  html[data-diseno="ds3"] .ds3-sidebar-organizacion.ds3-sidebar-organizacion {
+    order: 2;
+    padding: 10px 10px 2px;
+    border-top: 1px solid hsl(var(--border));
+    background-color: hsl(var(--sunken));
+  }
+  html[data-diseno="ds3"] .ds3-sidebar-pie.ds3-sidebar-pie {
+    order: 3;
+    max-height: 55%;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    padding: 10px 8px 0;
+    background-color: hsl(var(--sunken));
+  }
+  html[data-diseno="ds3"] .ds3-sidebar-organizacion + .ds3-sidebar-nav + .ds3-sidebar-pie { border-top: 0; }
+  html[data-diseno="ds3"] .ds3-sidebar-pie.ds3-sidebar-pie > * + * { margin-top: 0; }
+  html[data-diseno="ds3"] .ds3-contador.ds3-solo[hidden] {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    margin-left: auto;
+    padding: 0 5px;
+    border-radius: 999px;
+    background-color: hsl(var(--action));
+    color: hsl(var(--action-foreground));
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  html[data-diseno="ds3"] .ds3-contador.ds3-solo[hidden]::before { content: attr(data-contador); }
+  html[data-diseno="ds3"] .ds3-sidebar[data-colapsado] .ds3-contador.ds3-solo[hidden] { display: none; }
+
+  /* Tema e idioma: dos pildoras de 32 con celdas de 26 e iconos de 16, en la misma fila. */
+  html[data-diseno="ds3"] .ds3-sidebar-ajustes.ds3-sidebar-ajustes {
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin: 0;
+    padding: 6px 0 10px;
+  }
+  html[data-diseno="ds3"] .ds3-sidebar-idioma.ds3-solo[hidden] { display: inline-flex; }
+  html[data-diseno="ds3"] .ds3-tema.ds3-tema,
+  html[data-diseno="ds3"] .ds3-idioma.ds3-idioma {
+    height: 32px;
+    gap: 2px;
+    padding: 2px;
+    border: 1px solid hsl(var(--border));
+    border-radius: 999px;
+    background-color: hsl(var(--soft));
+  }
+  html[data-diseno="ds3"] .ds3-tema-opcion.ds3-tema-opcion,
+  html[data-diseno="ds3"] .ds3-idioma-opcion.ds3-idioma-opcion {
+    min-width: 26px;
+    width: 26px;
+    height: 26px;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: hsl(var(--muted-foreground));
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    transition: background-color var(--dur-base, 180ms) cubic-bezier(0.22, 1, 0.36, 1), color var(--dur-base, 180ms) cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  html[data-diseno="ds3"] .ds3-tema-opcion.ds3-tema-opcion:hover,
+  html[data-diseno="ds3"] .ds3-idioma-opcion.ds3-idioma-opcion:hover { color: hsl(var(--foreground)); }
+  html[data-diseno="ds3"] .ds3-tema-opcion.ds3-tema-opcion[aria-checked="true"],
+  html[data-diseno="ds3"] .ds3-idioma-opcion.ds3-idioma-opcion[aria-pressed="true"] {
+    background-color: hsl(var(--card));
+    color: hsl(var(--foreground));
+    box-shadow: 0 0 0 1px hsl(var(--border));
+  }
+  html[data-diseno="ds3"] .ds3-tema-opcion svg { width: 16px; height: 16px; }
+
+  /* Tarjeta de cuenta: borde, radio 12, padding 8; monograma 28 con radio 8 y tinte de tinta; salir en gris (rojo al pasar). */
+  html[data-diseno="ds3"] .ds3-sidebar-cuenta-zona.ds3-sidebar-cuenta-zona {
+    order: 4;
+    padding: 2px 8px 8px;
+    border-top: 0;
+    background-color: hsl(var(--sunken));
+  }
+  html[data-diseno="ds3"] .ds3-cuenta.ds3-cuenta {
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 8px;
+    padding: 8px;
+    border: 1px solid hsl(var(--border));
+    border-radius: 12px;
+    background-color: hsl(var(--card));
+  }
+  html[data-diseno="ds3"] .ds3-sidebar[data-colapsado] .ds3-cuenta.ds3-cuenta { flex-direction: column; justify-content: center; padding: 4px; }
+  html[data-diseno="ds3"] .ds3-monograma.ds3-monograma {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    background-color: color-mix(in srgb, hsl(var(--foreground)) 7%, hsl(var(--card)));
+    color: hsl(var(--foreground));
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, hsl(var(--foreground)) 12%, transparent);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+  html[data-diseno="ds3"] .ds3-cuenta-organizacion.ds3-solo[hidden] { display: block; }
+  /* Rol bajo el nombre: 12 px en caja normal (no mayusculas), gris. Contraido: solo el boton de salir (sin monograma). */
+  html[data-diseno="ds3"] .ds3-cuenta-texto.ds3-cuenta-texto > p:last-child { font-size: 12px; line-height: 1.35; text-transform: none; color: hsl(var(--muted-foreground)); }
+  html[data-diseno="ds3"] .ds3-sidebar[data-colapsado] .ds3-monograma.ds3-monograma { display: none; }
+  html[data-diseno="ds3"] .ds3-cuenta-salir.ds3-cuenta-salir {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    color: hsl(var(--muted-foreground));
+    background: transparent;
+  }
+  html[data-diseno="ds3"] .ds3-cuenta-salir.ds3-cuenta-salir:hover { color: hsl(var(--danger-ink)); background-color: hsl(var(--soft)); }
+}
+
+/* forced-colors: el filete interior (box-shadow) no se pinta en alto contraste; el item activo usa un borde del sistema. */
+@media (forced-colors: active) {
+  html[data-diseno="ds3"] .ds3-nav-item[aria-current="page"],
+  html[data-diseno="ds3"] .ds3-pie-fila[aria-current="page"] { border-left: 2px solid Highlight; }
+}

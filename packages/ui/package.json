@@ -9,6 +9,7 @@
     "./logos-marca": "./src/lib/logos-marca.generated.ts",
     "./styles.css": "./src/index.css",
     "./cifra.css": "./src/cifra.css",
+    "./ds3-shell.css": "./src/ds3/shell.css",
     "./tailwind-preset": "./src/tailwind-preset.ts",
     "./tailwind-ambito": "./src/tailwind-ambito.ts"
   },
