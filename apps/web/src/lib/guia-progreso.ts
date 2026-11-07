@@ -5,7 +5,12 @@ import type { ProgresoLocal, ServidorProgreso } from "@atiende/ui";
 
 /** Pista del progreso: «<vertical>.<rol>» (el rol se normaliza a minusculas sin espacios) o «superadmin». */
 export function pistaGuia(vertical: string, rol: string | undefined): string {
-  const r = (rol ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z_]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 20);
+  const crudo = (rol ?? "").slice(0, 60).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z_]+/g, "_");
+  let i = 0;
+  let f = crudo.length;
+  while (i < f && crudo[i] === "_") i++;
+  while (f > i && crudo[f - 1] === "_") f--;
+  const r = crudo.slice(i, f).slice(0, 20);
   return r.length >= 2 ? `${vertical}.${r}` : vertical;
 }
 
