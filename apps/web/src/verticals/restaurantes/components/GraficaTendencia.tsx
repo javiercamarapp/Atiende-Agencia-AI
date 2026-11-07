@@ -2,6 +2,8 @@
 // del periodo, linea de 2 px y un punto por cubeta. SVG plano (sin libreria nueva), tokens de color por clase de Tailwind.
 // Nunca inventa datos: sin cubetas no dibuja una linea plana, avisa. Cada punto lleva su <title> (tooltip nativo) con la cifra exacta.
 import { useId } from "react";
+import { useT } from "@atiende/ui";
+import { restaurantesResumen } from "@atiende/ui/i18n/restaurantes/resumen";
 
 export interface PuntoTendencia {
   readonly etiqueta: string;
@@ -39,10 +41,12 @@ export function GraficaTendencia({
   readonly tono?: "primary" | "secondary";
 }) {
   const idTitulo = useId();
+  const t = useT(restaurantesResumen);
   if (puntos.length === 0) {
     return (
       <p role="status" data-testid="tendencia-sin-datos" className="py-10 text-center text-xs text-faint">
-        Sin datos en este periodo
+        {t("restaurantes.resumen.sinDatosPeriodo")}
+
       </p>
     );
   }
