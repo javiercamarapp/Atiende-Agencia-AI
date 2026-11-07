@@ -255,8 +255,10 @@ class SesionCascadaV2 implements VozSesionLlamada {
     if (!enCurso && !this.reproduciendo()) return;
     // Lo que ya sono se fija AHORA: despues el reloj sigue avanzando.
     this.oidasAlInterrumpir = this.oidasAhora();
-    // Interrumpir una lectura que aun suena: el cliente puede no haber oido el resumen completo; el siguiente «si» no cuenta como respuesta al resumen (se lee de nuevo).
-    this.esperandoAlCliente.huellaOida = null;
+    // Interrumpir una lectura que aun suena: el resumen cuenta como leido SOLO si la frase con el TOTAL ya termino de sonar (el cliente contesta «si» en cuanto oye el
+    // total, encima del «¿es correcto?» final: E2E r2 7-nov-2026). Si el total no alcanzo a sonar completo, el siguiente «si» no responde al resumen (se lee de nuevo).
+    this.resumenOidoAlInterrumpir();
+    this.log("v2_interrupcion", { motivo: enCurso ? "generando" : "sonando", ok: (this.esperandoAlCliente.huellaOida ?? null) !== null });
     if (enCurso) {
       this.generacion += 1;
       this.control?.abort();
@@ -811,6 +813,39 @@ class SesionCascadaV2 implements VozSesionLlamada {
       });
     }
     return oidas;
+  }
+
+  /** Frases del turno (todas sus vueltas, sin rellenos) cuyo audio ya TERMINO de sonar: la siguiente frase de su ola ya empezo o la ola entera ya sono. */
+  private oidasCompletas(): string[] {
+    const a = this.audio;
+    if (!a || a.t0 === null) return [];
+    const transcurrido = this.ahora() - a.t0;
+    const oidas: string[] = [];
+    for (const ola of a.olas) {
+      const total = ola.chars.reduce((n, c) => n + c, 0) || 1;
+      let antes = 0;
+      ola.frases.forEach((f, i) => {
+        antes += ola.chars[i] ?? 0;
+        const fin = ola.inicioMs + ola.ms * (antes / total);
+        if (fin <= transcurrido && ola.esperas[i] !== true) oidas.push(f);
+      });
+    }
+    return oidas;
+  }
+
+  /** Al interrumpir: el resumen vigente (el cotizado en este turno o el ya leido antes) queda como oido solo si su total ya sono completo en este turno. */
+  private resumenOidoAlInterrumpir(): void {
+    const e = this.esperandoAlCliente;
+    const enTurno = e.cotizoEnTurno === true;
+    const huella = enTurno ? (e.huellaCotizada ?? null) : (e.huellaOida ?? null);
+    const total = enTurno ? (e.totalCotizado ?? null) : (e.totalOido ?? null);
+    if (huella !== null && total !== null && contieneTotal(this.oidasCompletas().join(" "), total)) {
+      e.huellaOida = huella;
+      e.totalOido = total;
+      this.log("v2_resumen_oido_al_interrumpir", { ok: true });
+      return;
+    }
+    e.huellaOida = null;
   }
 
   /** El turno se interrumpio: el historial debe reflejar lo que el cliente SI oyo, no lo que el modelo alcanzo a escribir ni lo que el TTS alcanzo a generar. */
