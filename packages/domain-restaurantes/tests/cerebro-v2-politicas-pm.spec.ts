@@ -113,8 +113,9 @@ describe("promos", () => {
     expect(p.branchPolicyFacts({ promos_en_recoger: true }, ahora).promos_en_recoger).toBe(true);
     expect(p.branchPolicyFacts({ promos_en_recoger: false }, ahora).promos_en_recoger).toBe(false);
     expect(p.branchPolicyFacts(null, ahora).promos_en_recoger).toBe(false);
-    for (const slug of ["fco-montejo", "pensiones", "galerias"]) expect(p.filaPoliticaPm(slug)?.promos_en_recoger).toBe(true);
-    for (const slug of ["prol-montejo", "garcia-lavin", "altabrisa", "playa"]) expect(p.filaPoliticaPm(slug)?.promos_en_recoger).toBe(false);
+    for (const slug of ["fco-montejo", "pensiones"]) expect(p.filaPoliticaPm(slug)?.promos_en_recoger).toBe(true);
+    // Galerías: solo venta local (6-nov-2026, migración 105), fuera del agente.
+    for (const slug of ["prol-montejo", "garcia-lavin", "altabrisa", "playa", "galerias"]) expect(p.filaPoliticaPm(slug)?.promos_en_recoger).toBe(false);
   });
   it("la política de promos del prompt es una sola línea y apunta al dato por sucursal", () => {
     const l = p.PM_POLICY_RULES.split("\n").filter((x) => /^- Promociones/.test(x));
@@ -124,8 +125,8 @@ describe("promos", () => {
     expect(p.PM_POLICY_RULES).not.toMatch(/SOLO para comer en el restaurante/);
   });
   it("contexto: sucursal, dato de promos y modalidad salen del hilo", () => {
-    const ctx = p.contextoPromo([user("hola"), busqueda("galerias", true), llamada({ branch_slug: "galerias", entrega: "recoger" })]);
-    expect(ctx).toEqual({ sucursal: "galerias", promos: true, entrega: "recoger" });
+    const ctx = p.contextoPromo([user("hola"), busqueda("fco-montejo", true), llamada({ branch_slug: "fco-montejo", entrega: "recoger" })]);
+    expect(ctx).toEqual({ sucursal: "fco-montejo", promos: true, entrega: "recoger" });
     expect(p.contextoPromo([]).sucursal).toBeNull();
     expect(p.contextoPromo([]).promos).toBeNull();
     expect(p.contextoPromo([llamada({ branch_slug: "pensiones" })]).promos).toBe(true);
@@ -142,14 +143,15 @@ describe("promos", () => {
     const out = p.enforcePromoPolicy("Sí, hoy tenemos 2x1 en pastor. ¿Cuántos desea?", [busqueda("garcia-lavin", false), user("El pastor es dos por uno hoy verdad?")]);
     expect(out).not.toMatch(/2x1/);
     expect(out).toMatch(/no manejamos promociones/);
-    expect(out).toMatch(/Francisco de Montejo, Pensiones y Plaza Galerías/);
+    expect(out).toMatch(/Francisco de Montejo y Pensiones\./);
+    expect(out).not.toMatch(/galer/i);
     expect(out).toMatch(/¿Cuántos desea\?/);
     expect(TUTEO.test(out)).toBe(false);
     expect(TUTEO.test(p.PROMO_SIN_SUCURSAL_NOTICE)).toBe(false);
   });
   it("sucursal participante + recoger: la respuesta se respeta", () => {
-    const hilo = [busqueda("galerias", true), llamada({ branch_slug: "galerias", entrega: "recoger" }), user("¿hay promociones para recoger?")];
-    const reply = "Sí, en Plaza Galerías hay promociones para pedidos a recoger; las aplica el personal en mostrador.";
+    const hilo = [busqueda("fco-montejo", true), llamada({ branch_slug: "fco-montejo", entrega: "recoger" }), user("¿hay promociones para recoger?")];
+    const reply = "Sí, en Francisco de Montejo hay promociones para pedidos a recoger; las aplica el personal en mostrador.";
     expect(p.enforcePromoPolicy(reply, hilo)).toBe(reply);
   });
   it("sucursal participante pero a domicilio: se aclara que es solo para recoger", () => {
@@ -171,7 +173,7 @@ describe("promos", () => {
     expect(mezcla).toMatch(/¿Algo más\?/);
   });
   it("sin que el cliente pregunte, la promo no se ofrece en ningún caso", () => {
-    for (const hilo of [[busqueda("galerias", true), llamada({ branch_slug: "galerias", entrega: "recoger" }), user("quiero 6 tacos")], [user("hola")]]) {
+    for (const hilo of [[busqueda("fco-montejo", true), llamada({ branch_slug: "fco-montejo", entrega: "recoger" }), user("quiero 6 tacos")], [user("hola")]]) {
       const out = p.enforcePromoPolicy("Tenemos promoción de 2x1. ¿Qué le sirvo?", hilo);
       expect(out).not.toMatch(/2x1|promo/i);
       expect(out).toMatch(/¿Qué le sirvo\?/);
@@ -181,7 +183,6 @@ describe("promos", () => {
     const casos: Array<[string, string, boolean]> = [
       ["Hola, quiero recoger en Garcia Lavin, ahi aplica el 2x1 de pastor?", "garcia-lavin", false],
       ["quiero recoger en la de Pensiones, hay 2x1?", "pensiones", true],
-      ["aplica la promo en plaza galerias?", "galerias", true],
       ["voy a recoger a Francisco de Montejo", "fco-montejo", true],
       ["en Prolongación Montejo hay promo?", "prol-montejo", false],
     ];
@@ -190,19 +191,20 @@ describe("promos", () => {
       expect([ctx.sucursal, ctx.promos], texto).toEqual([slug, promos]);
     }
     expect(p.contextoPromo([user("hola, hay 2x1?")]).sucursal).toBeNull();
+    // Galerías es solo venta local: su nombre no fija sucursal (ni promos) en el texto del cliente.
+    expect(p.contextoPromo([user("aplica la promo en plaza galerias?")]).sucursal).toBeNull();
   });
   it("promo preguntada para una sucursal sin promos dice que ahí no aplica y dónde sí", () => {
     const out = p.enforcePromoPolicy("Para recoger, las promociones las aplica el personal en mostrador si están vigentes en esa sucursal. ¿Me comparte su nombre?", [user("Hola, quiero recoger en Garcia Lavin, ahi aplica el 2x1 de pastor?")]);
     expect(out).toMatch(/no manejamos promociones/);
     expect(out).toMatch(/Pensiones/);
   });
-  it.each(["mi dirección es Paseo de Montejo 450", "calle 60 por Montejo", "vivo en Altabrisa", "estoy en Residencial Pensiones", "me lo mandan por Galerías", "es en Chicxulub", "a domicilio, colonia Pensiones", "voy a estar en mi casa en Altabrisa", "Montejo"])("sucursalNombrada: «%s» no es sucursal", (t) => {
+  it.each(["mi dirección es Paseo de Montejo 450", "calle 60 por Montejo", "vivo en Altabrisa", "estoy en Residencial Pensiones", "me lo mandan por Galerías", "voy por mi pedido a Galerías", "es en Chicxulub", "a domicilio, colonia Pensiones", "voy a estar en mi casa en Altabrisa", "Montejo"])("sucursalNombrada: «%s» no es sucursal", (t) => {
     expect(p.sucursalNombrada(t)).toBeNull();
   });
   it.each([
     ["Hola, quiero recoger en Garcia Lavin, ahi aplica el 2x1 de pastor?", "garcia-lavin"],
     ["paso por Pensiones en un rato", "pensiones"],
-    ["voy por mi pedido a Galerías", "galerias"],
     ["la sucursal de Altabrisa abre hoy?", "altabrisa"],
     ["hay promo en la de Pensiones?", "pensiones"],
     ["recojo en Francisco de Montejo", "fco-montejo"],
@@ -310,7 +312,7 @@ describe("horarios", () => {
     expect(f.acepta_domicilio).toBe(true);
   });
   it("datos: el horario de POLITICAS_PM coincide con la política del dueño (antes: horario sembrado en la migración)", () => {
-    const casos: Array<[string, string, boolean]> = [
+    const casos: Array<[string, string, boolean | null]> = [
       ["garcia-lavin", "2026-11-04T11:59:00", false], ["garcia-lavin", "2026-11-04T12:00:00", true],
       ["garcia-lavin", "2026-11-05T00:59:00", true], ["garcia-lavin", "2026-11-05T01:00:00", false],
       ["altabrisa", "2026-11-04T12:00:00", true], ["altabrisa", "2026-11-05T01:00:00", false],
@@ -319,19 +321,22 @@ describe("horarios", () => {
       ["pensiones", "2026-11-08T12:00:00", false], ["pensiones", "2026-11-08T18:00:00", true],
       ["prol-montejo", "2026-11-04T12:00:00", false], ["prol-montejo", "2026-11-04T18:00:00", true],
       ["prol-montejo", "2026-11-06T12:00:00", true], ["prol-montejo", "2026-11-07T00:30:00", true],
-      ["galerias", "2026-11-04T20:59:00", true], ["galerias", "2026-11-04T21:00:00", false],
+      // Galerías: solo venta local, sin horario en las políticas del agente (no bloquea ni afirma nada).
+      ["galerias", "2026-11-04T20:59:00", null],
     ];
     for (const [slug, iso, esperado] of casos) {
       expect(p.estadoHorario(p.filaPoliticaPm(slug)?.branch_schedule, merida(iso)).abierta_ahora, `${slug} ${iso}`).toBe(esperado);
     }
   });
-  it("datos: T5 (playa/Chicxulub) cerrada sin horario; Galerías reparte y tiene los 7 días; Pensiones = catálogo de T7", () => {
+  it("datos: T5 (playa/Chicxulub) cerrada sin horario; Galerías solo venta local (fuera del agente); Pensiones = catálogo de T7", () => {
     const playa = p.POLITICAS_PM.sucursales.playa;
     expect(playa.activa).toBe(false);
     expect(playa.horario).toHaveLength(0);
     expect(p.filaPoliticaPm("playa")?.acepta_domicilio).toBe(false);
     expect(p.sucursalesAperturaPm().map((s) => s.slug)).not.toContain("playa");
-    expect(p.POLITICAS_PM.sucursales.galerias.horario).toHaveLength(7);
+    expect(p.POLITICAS_PM.sucursales.galerias.activa).toBe(false);
+    expect(p.filaPoliticaPm("galerias")?.acepta_domicilio).toBe(false);
+    expect(p.sucursalesAperturaPm().map((s) => s.slug)).not.toContain("galerias");
     expect(Object.values(p.POLITICAS_PM.sucursales).filter((s) => s.activa).every((s) => s.aceptaDomicilio)).toBe(true);
     expect(p.POLITICAS_PM.sucursales.pensiones.catalogoDe).toBe("garcia-lavin");
     expect(p.filaPoliticaPm("chicxulub")).toBeNull();
@@ -474,10 +479,11 @@ describe("programados y apertura", () => {
     expect(p.avisoCierreAlInicio(mal, sucs, true, merida("2026-11-04T13:00:00"))).toBe(mal);
     expect(p.avisoCierreAlInicio(mal, [{ name: "A", branch_schedule: [] }], true, ahora)).toBe(mal);
   });
-  it("sucursalesAperturaPm alimenta el bloque con las 6 activas", () => {
+  it("sucursalesAperturaPm alimenta el bloque con las 5 activas del agente (sin Chicxulub ni Galerías)", () => {
     const b = p.bloqueAperturaHoy(p.sucursalesAperturaPm(), merida("2026-11-04T13:00:00")) ?? "";
-    expect(b.split("\n").filter((l) => l.startsWith("- "))).toHaveLength(6);
-    expect(b).toMatch(/Plaza Galerías: ABIERTA ahora/);
+    expect(b.split("\n").filter((l) => l.startsWith("- "))).toHaveLength(5);
+    expect(b).not.toMatch(/galer/i);
+    expect(b).toMatch(/Altabrisa: ABIERTA ahora/);
     expect(b).toMatch(/Pensiones: CERRADA ahora, abre HOY a las 6:00 pm/);
   });
 });
