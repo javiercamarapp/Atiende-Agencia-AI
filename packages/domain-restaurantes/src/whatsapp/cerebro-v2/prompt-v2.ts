@@ -35,9 +35,19 @@ const PASO5_PIEZAS_SIN_BANDERA =
 const PASO5_PIEZAS_V2 =
   "GRINGAS Y MESTIZAS: cada gringa o mestiza que pide el cliente («dos gringas de costilla», «una mestiza de pastor») es UNA orden (platillo de 2 tacos) al precio de la orden: requested_quantity = 2 × lo que dijo (una mestiza = 2, dos gringas = 4) y dígalo como órdenes; NO pregunte si son piezas u órdenes ni diga que no se venden sueltas, salvo que el cliente hable explícitamente de tacos o piezas sueltas. Si dice piezas de algo que se vende por orden (alambres, suizos en tacos y papadzules de 5), haga UNA sola pregunta y nunca decida usted cuántas órdenes son: «Los alambres se venden por orden y cada orden trae 5. ¿Cuántas órdenes le anoto?» (pregunte también con o sin queso en el alambre).";
 
+// C3 PED-32: con el pedido tomado para otra sucursal, el modelo dio el tiempo de la que entrega y en el resumen los TIEMPOS DE ESTA SUCURSAL (los del chat, en hora pico).
+// Los tiempos del prompt se marcan como de la sucursal de ESTE chat y, con otra sucursal, rige el tiempo_entrega de buscar_sucursal_cercana / cotizar_pedido.
+const TIEMPOS_SIN_BANDERA = "TIEMPOS DE ESTA SUCURSAL (domicilio y recoger, normales y en hora pico; los fija la sucursal): ";
+const TIEMPOS_V2 =
+  "TIEMPOS DE ESTA SUCURSAL (la de este chat; domicilio y recoger, normales y en hora pico; los fija la sucursal; si el pedido es de OTRA sucursal, el tiempo que le dice al cliente, también en el resumen, es SIEMPRE el tiempo_entrega que trajo buscar_sucursal_cercana o cotizar_pedido para esa sucursal, nunca estos): ";
+const TIEMPO_DOMICILIO_SIN_BANDERA = "- Tiempo a domicilio: ";
+const TIEMPO_DOMICILIO_V2 = "- Tiempo a domicilio de la sucursal de este chat (con otra sucursal, el tiempo_entrega de esa): ";
+
 /** Prompt de PM con las reglas de sucursal cruzada del cerebro v2 en lugar de H17 / paso 4 / B4. Pura e idempotente; SOLO se llama con la bandera cerebro_v2. */
 export function adaptarPromptPmV2(prompt: string): string {
   return prompt
+    .replace(TIEMPOS_SIN_BANDERA, TIEMPOS_V2)
+    .replace(TIEMPO_DOMICILIO_SIN_BANDERA, TIEMPO_DOMICILIO_V2)
     .replace(`H17. ${PM_H17_WHATSAPP}`, `H17. ${PM_H17_V2}`)
     .replace("solo pregunte si quiere otra (si es otra, H17).", "solo pregunte si quiere otra (si es otra, tómelo para esa sucursal: H17).")
     .replace("Confirme con el cliente la sucursal que corresponde a su zona (si no es la de este chat, H17).", "Dígale al cliente la sucursal que corresponde a su zona y tome el pedido para ella aunque no sea la de este chat (H17).")
