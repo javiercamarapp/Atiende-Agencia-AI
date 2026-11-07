@@ -18,6 +18,35 @@ import type { CrearSocketDeepgram, SocketDeepgram } from "./socket.ts";
 
 export const ELEVENLABS_STT_URL = "wss://api.elevenlabs.io/v1/speech-to-text/realtime";
 
+/** Limites de `keyterms` de Scribe v2 Realtime (respuesta `invalid_request` de la API, verificado el 6-nov-2026): hasta 50 terminos de hasta 20 caracteres.
+ * Con uno solo fuera de limite la sesion NO abre (y todo cae al respaldo). */
+export const ELEVENLABS_KEYTERM_MAX_CHARS = 20;
+export const ELEVENLABS_KEYTERMS_MAX = 50;
+
+/** Terminos del menu para Scribe RT: sin parentesis de presentacion («(orden de 5)»); si un nombre pasa de 20 caracteres se queda con sus ULTIMAS palabras que
+ * quepan («Orden de tacos de cochinita pibil» -> «cochinita pibil»: lo distintivo va al final); sin repetir y hasta `max` (tope 50). */
+export function keytermsElevenLabs(vocabulario: readonly string[] | undefined, max: number): string[] {
+  const out = new Map<string, string>();
+  for (const t of keytermsDe(vocabulario, 500)) {
+    if (out.size >= Math.min(max, ELEVENLABS_KEYTERMS_MAX)) break;
+    let limpio = t.replace(/\([^)]*\)/g, " ").replace(/\s+/g, " ").trim();
+    if (limpio.length > ELEVENLABS_KEYTERM_MAX_CHARS) {
+      const palabras = limpio.split(" ");
+      let cola = "";
+      for (let i = palabras.length - 1; i >= 0; i -= 1) {
+        const cand = cola === "" ? palabras[i]! : `${palabras[i]} ${cola}`;
+        if (cand.length > ELEVENLABS_KEYTERM_MAX_CHARS) break;
+        cola = cand;
+      }
+      // Sin articulo o preposicion suelta al inicio («de cochinita pibil» -> «cochinita pibil»).
+      limpio = cola.replace(/^(?:(?:de|del|con|la|el|los|las|y|a)\s+)+/i, "");
+    }
+    if (limpio.length < 3 || out.has(limpio.toLowerCase())) continue;
+    out.set(limpio.toLowerCase(), limpio);
+  }
+  return [...out.values()];
+}
+
 /** Tasas que admite `audio_format=pcm_<hz>`. */
 const TASAS_PCM = [8_000, 16_000, 22_050, 24_000, 44_100, 48_000];
 
@@ -30,7 +59,7 @@ export function urlSttElevenLabs(c: ConfigElevenLabs["stt"], opciones: OpcionesS
     commit_strategy: "vad",
     vad_silence_threshold_secs: String(c.vadSilencioS),
   });
-  for (const t of keytermsDe(opciones.vocabulario, c.keytermsMax)) q.append("keyterms", t);
+  for (const t of keytermsElevenLabs(opciones.vocabulario, c.keytermsMax)) q.append("keyterms", t);
   return `${ELEVENLABS_STT_URL}?${q.toString()}`;
 }
 
@@ -262,7 +291,7 @@ export function crearSttElevenLabs(opts: ElevenLabsSttOpciones): PuertoSttVoz {
     async abrir(opciones, eventos) {
       const crear = opts.crearSocket ?? crearSocketDeepgramGlobal;
       const socket = crear(urlSttElevenLabs(opts.config, opciones), { headers: { "xi-api-key": opts.apiKey } });
-      const sesion = new SesionElevenLabsStt(socket, eventos, opts, opciones.hzEntrada, keytermsDe(opciones.vocabulario, opts.config.keytermsMax).length > 0);
+      const sesion = new SesionElevenLabsStt(socket, eventos, opts, opciones.hzEntrada, keytermsElevenLabs(opciones.vocabulario, opts.config.keytermsMax).length > 0);
       await sesion.conectar();
       return sesion;
     },

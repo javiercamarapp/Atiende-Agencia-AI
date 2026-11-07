@@ -14,7 +14,7 @@ export { crearSocketDeepgramGlobal } from "./socket.ts";
 export type { CrearSocketDeepgram, OpcionesSocketDeepgram, SocketDeepgram } from "./socket.ts";
 export { crearRecortadorInicial } from "./recorte.ts";
 export type { OpcionesRecorte, RecortadorInicial } from "./recorte.ts";
-export { ELEVENLABS_STT_URL, crearSttElevenLabs, urlSttElevenLabs } from "./elevenlabs-stt.ts";
+export { ELEVENLABS_KEYTERMS_MAX, ELEVENLABS_KEYTERM_MAX_CHARS, ELEVENLABS_STT_URL, crearSttElevenLabs, keytermsElevenLabs, urlSttElevenLabs } from "./elevenlabs-stt.ts";
 export type { ElevenLabsSttOpciones } from "./elevenlabs-stt.ts";
 export { ELEVENLABS_API_URL, crearTtsElevenLabs, esVozElevenLabs, resolverVozElevenLabs } from "./elevenlabs-tts.ts";
 export type { ElevenLabsTtsOpciones } from "./elevenlabs-tts.ts";
