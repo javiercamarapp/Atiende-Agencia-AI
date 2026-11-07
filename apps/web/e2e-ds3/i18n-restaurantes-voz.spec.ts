@@ -1,4 +1,4 @@
-// i18n ES/EN — restaurantes, agente de voz (resumen, pestanas e indicadores). Para cada pantalla migrada: la recorre en espanol (captura), elige ingles (misma clave que
+// i18n ES/EN — restaurantes, agente de voz (resumen, pestanas e indicadores) y ajustes del agente. Para cada pantalla migrada: la recorre en espanol (captura), elige ingles (misma clave que
 // el selector del sidebar, `atiende-idioma`), recarga y captura. Exige que en ingles el contenido propio de la pagina ya no salga en
 // espanol (frases fijas de cada pantalla) y que nunca se pinte una clave cruda del catalogo. Las capturas ES/EN quedan como adjuntos
 // del reporte y, con DS3_CAPTURAS=1, en la carpeta de evidencia (i18n-restaurantes-voz/<pantalla>/). Los datos del negocio (productos,
@@ -14,6 +14,7 @@ const CLAVE_CRUDA = /\brestaurantes\.[a-z]+\.[A-Za-z0-9.]+/;
 /** Pantallas migradas y las frases que, en espanol, solo puede pintar esa pagina (si alguna sigue con EN, falta migrar algo). */
 const PANTALLAS: ReadonlyArray<{ readonly id: string; readonly ruta: string; readonly es: RegExp; readonly en: RegExp }> = [
   { id: "agente-voz", ruta: "/agente-voz", es: /Antes de salir en vivo|Servicio de voz|Abrir llamada de prueba/, en: /Before going live|Voice service|Open test call/ },
+  { id: "agente-ajustes", ruta: "/agente-ajustes", es: /Sonido de fondo de restaurante|Guardar ajustes|Voz y saludo de esta sucursal/, en: /Restaurant background sound|Save settings|Voice and greeting for this branch/ },
 ];
 
 test.beforeEach(async ({ page }) => {
