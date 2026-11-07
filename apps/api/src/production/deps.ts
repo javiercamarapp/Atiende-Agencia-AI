@@ -1,4 +1,5 @@
 import { buildDemoAgents } from "../demo-agents/production.ts";
+import { turnoAsincronoDeEntorno } from "../en-segundo-plano.ts";
 // buildProductionDeps — ensambla el `AppDeps` real que consume el handler de Vercel
 // (`../../api/index.ts` en la raíz del repo). Ver `not-ready.ts` para el detalle
 // completo de qué NO es un adaptador de producción todavía y por qué.
@@ -199,12 +200,6 @@ export function buildRestaurantesTurnHandlerForSession(
     leerCerebroV2: (organizationId) => leerCerebroV2(db, organizationId),
     ...canal.opciones,
   });
-}
-
-/** `WHATSAPP_TURNO_ASINCRONO` (1/true/on/si): turno asincrono del webhook de WhatsApp de restaurantes para TODAS las organizaciones. Apagada por omision. */
-export function turnoAsincronoDeEntorno(env: NodeJS.ProcessEnv = process.env): boolean {
-  const v = (env.WHATSAPP_TURNO_ASINCRONO ?? "").trim().toLowerCase();
-  return v === "1" || v === "true" || v === "on" || v === "si";
 }
 
 /** Enlace de facturación en línea del negocio (variable `PM_URL_FACTURACION`, solo https). Sin ella el agente no inventa uno. */

@@ -29,7 +29,7 @@ import type {
 import type { TenancyEngine, TenantDbSession } from "@atiende/core-tenancy";
 import type { AuditSink } from "@atiende/core-authz";
 import type { DataChatDeps } from "./data-chat/deps.ts";
-import type { AgregadosRepository, AutopilotoRepository, CierreRepository, ResultadoAlertasVozSistema, ConversacionesRepository, RepartidorPerfilRepository, DemoRepository, HandoffAgentGate, PrivacidadRepository, PuertoNotasDeVoz, RestaurantesRepository, VoiceAgentProvider, VozKpiRepository, VozLlamadaRepository, VozRepository, WhatsAppTurnHandler, WhatsappKpiRepository, AjustesAgenteRepository } from "@atiende/domain-restaurantes";
+import type { AgregadosRepository, AutopilotoRepository, CierreRepository, ResultadoAlertasVozSistema, ConversacionesRepository, RepartidorPerfilRepository, DemoRepository, HandoffAgentGate, PrivacidadRepository, PuertoNotasDeVoz, RestaurantesRepository, VoiceAgentProvider, VozKpiRepository, VozLlamadaRepository, VozRepository, WhatsAppTurnHandler, WhatsappKpiRepository, AjustesAgenteRepository, TurnoHuerfano } from "@atiende/domain-restaurantes";
 import type { CfoRepository as CfoRestaurantesRepository } from "@atiende/domain-restaurantes/cfo";
 import type { ComandaOutboxStore, ResolverCodigosPos, ResolverSucursalPos, SoftRestaurantPort } from "@atiende/domain-restaurantes/softrestaurant";
 import type { HotelesRepository, GuestTicketRepository, AgentesRepository, GruposRepository, HuespedesRepository, RecepcionRepository, CambioFechasRepository, ListaEsperaRepository, ReservasAgenteRepository, HotelesWhatsAppTurnHandler, HousekeepingRepository, HousekeepingResidualRepository, HousekeepingDiaSistemaRepository, MensajeriaConfigRepository, IdentityRepository, PaymentsPort, PrivacyRepository, PublicPrivacyRepository, GuestDataRepository, ConversacionesRepository as HotelesConversacionesRepository, ConversacionesSistemaPort as HotelesConversacionesSistemaPort } from "@atiende/domain-hoteles";
@@ -172,6 +172,9 @@ export interface AppDeps {
   readonly enSegundoPlano?: (p: Promise<unknown>) => void;
   /** Indicador de «escribiendo» + leido de la Cloud API al tomar un turno asincrono. Best-effort: un fallo nunca toca el turno. OPCIONAL (sin token de Meta no hay). */
   readonly escribiendoWhatsApp?: (a: { readonly phoneNumberId: string; readonly messageId: string }) => Promise<void>;
+  /** Reclamo de turnos huerfanos del WhatsApp asincrono (migracion 192). OPCIONAL: por omision `reclamarTurnosHuerfanos` de @atiende/domain-restaurantes
+   * (Postgres, degrada a null sin la 192); los tests inyectan uno en memoria. */
+  readonly reclamarTurnosHuerfanos?: (db: TenantDbSession, opts: { readonly organizationId?: string | null; readonly todas: boolean; readonly limite: number }) => Promise<readonly TurnoHuerfano[] | null>;
   /** "Chatea con tus datos" (restaurantes piloto). OPCIONAL: si falta, la ruta responde honesta
    * "no disponible" en vez de fingir. En produccion lo arma `buildProductionDataChat` (lector Postgres
    * sobre la sesion RLS del usuario, bitacora en `core.data_chat_query_log`, gateway LLM compartido con

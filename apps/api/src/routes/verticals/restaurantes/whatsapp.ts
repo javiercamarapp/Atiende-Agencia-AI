@@ -21,9 +21,12 @@ import { triggerRestaurantesWhatsAppDispatchInline } from "../../internal/whatsa
 import { triggerRestaurantesEmailDispatchInline } from "./email-dispatch.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { waitUntilDeVercel } from "../../../en-segundo-plano.ts";
+import { barrerTurnosHuerfanosWhatsApp } from "./whatsapp-turnos-huerfanos.ts";
 import { ALTA_CONFIRMADA_TEXTO, BAJA_CONFIRMADA_TEXTO, esPalabraBaja, procesarBajaOAlta } from "../../../supresion/index.ts";
 
 const MAX_BODY_BYTES = 256 * 1024;
+/** El webhook solo barre un turno huerfano si a su funcion le quedan al menos esto (un turno del agente + cierre). */
+const MARGEN_BARRIDO_EN_WEBHOOK_MS = 25_000;
 
 /** Dia calendario (America/Merida) para la clave de dedupe de la notificacion de tope. */
 const diaMerida = (): string => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Merida", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
@@ -223,6 +226,12 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
               ...(asincrono ? { leaseSegundos: LEASE_TURNO_ASINCRONO_SEGUNDOS } : {}),
             });
             if (recepcion.estado === "responder") {
+              // Asincrono: la conversacion guarda desde ya la sucursal de entrada. Si el PRIMER turno muere, el barredor de turnos huerfanos (migracion 192)
+              // saca de aqui el numero emisor de la sucursal; sin esto solo tendria el numero por defecto de la organizacion. Best-effort en savepoint.
+              if (asincrono && channel?.propertyId) {
+                const propertyId = channel.propertyId;
+                await repo.runWithRowSavepoint(() => repo.whatsappAppendTurn(organizationId, `+${message.from}`, [], null, null, propertyId)).catch(() => undefined);
+              }
               diferidos.push({ organizationId, messageId: message.id, phone: `+${message.from}`, phoneNumberId: phoneNumberIdOfBatch, propertyId: channel?.propertyId ?? null, esperaSegundos, asincrono, ...(message.recibidoEnMs !== undefined ? { recibidoEnMs: message.recibidoEnMs } : {}) });
             } else if (recepcion.estado === "fallo") {
               hadRetryableFailure = true;
@@ -335,14 +344,20 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
     const asincronos = diferidos.filter((d) => d.asincrono);
     if (sincronos.length > 0 && (await faseB(sincronos, false))) hadRetryableFailure = true;
     if (asincronos.length > 0) {
+      const enSegundoPlano = deps.enSegundoPlano ?? waitUntilDeVercel();
       const tarea = (async () => {
         // «Escribiendo» + leido al tomar el turno: el cliente ve que se le atiende aunque el turno tarde. Sin await: nunca retrasa ni rompe el turno.
         if (deps.escribiendoWhatsApp) {
           for (const d of asincronos) void deps.escribiendoWhatsApp({ phoneNumberId: d.phoneNumberId, messageId: d.messageId }).catch(() => undefined);
         }
-        return faseB(asincronos, true);
+        const reintento = await faseB(asincronos, true);
+        // Con tiempo de sobra en la funcion, se recoge UN turno huerfano de esta organizacion (una funcion anterior que murio tras su 200): sin cron,
+        // en horas con trafico el huerfano se contesta en segundos. Solo en segundo plano (nunca retrasa la respuesta del arnes local) y best-effort.
+        if (enSegundoPlano && (deps.relojMs ?? Date.now)() - inicioMs <= FUNCION_ASINCRONA_MAX_MS - MARGEN_BARRIDO_EN_WEBHOOK_MS) {
+          await barrerTurnosHuerfanosWhatsApp(deps, { inicioMs, organizationId: asincronos[0]!.organizationId, limite: 1 }).catch(() => undefined);
+        }
+        return reintento;
       })();
-      const enSegundoPlano = deps.enSegundoPlano ?? waitUntilDeVercel();
       if (enSegundoPlano) {
         // Meta ya tiene su 200 (sin reintento): un fallo aqui deja el mensaje `failed` / con el lease vencido y lo retoma el barredor
         // `/internal/restaurantes/whatsapp/turnos-huerfanos`. La promesa nunca rechaza (faseB atrapa todo), pero se blinda igual.

@@ -12,3 +12,10 @@ export function waitUntilDeVercel(): ((p: Promise<unknown>) => void) | null {
   const waitUntil = contexto?.get?.()?.waitUntil;
   return typeof waitUntil === "function" ? (p) => waitUntil(p) : null;
 }
+
+/** `WHATSAPP_TURNO_ASINCRONO` (1/true/on/si): turno asincrono del webhook de WhatsApp de restaurantes para TODAS las organizaciones (sin ella, solo las de
+ * cerebro v2). Apagada por omision. Vive aqui (y no en production/deps.ts) porque tambien la lee el barredor de turnos huerfanos. */
+export function turnoAsincronoDeEntorno(env: NodeJS.ProcessEnv = process.env): boolean {
+  const v = (env.WHATSAPP_TURNO_ASINCRONO ?? "").trim().toLowerCase();
+  return v === "1" || v === "true" || v === "on" || v === "si";
+}

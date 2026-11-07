@@ -20,6 +20,14 @@ Vercel invoca por GET con `Authorization: Bearer $CRON_SECRET` (mismo valor que 
 - Verificar a mano: `curl -H "Authorization: Bearer $CRON_SECRET" https://<dominio><path>`; o `vercel crons run <path>`.
   Revisa el latido en `/superadmin/salud/crons` (más señales en [Cómo saber que corren](#cómo-saber-que-corren)). **No lo hagas contra producción con WhatsApp/correo reales sin querer enviar mensajes.**
 
+## Rutas internas que NO son cron (cupo de 40 agotado)
+
+- `/internal/restaurantes/whatsapp/turnos-huerfanos` — barredor de turnos huérfanos del turno asíncrono de WhatsApp (cerebro v2 /
+  `WHATSAPP_TURNO_ASINCRONO`, migración 192). Hoy lo dispara el propio webhook en segundo plano (un huérfano de su organización tras cada turno
+  asíncrono con tiempo de sobra). Para barrer también en horas sin tráfico debería correr cada minuto, pero el proyecto ya tiene los 40 crons del
+  plan Pro: programarlo exige liberar un cupo (p. ej. unir dos drenadores `*/email-dispatch`) y agregarlo a `SWITCHABLE_CRONS`. Mismo guard
+  (`Authorization: Bearer $CRON_SECRET`); sin la 192 responde 200 `not_available`.
+
 ## Tabla de crons
 
 | Path | Schedule (UTC) | Qué hace |
