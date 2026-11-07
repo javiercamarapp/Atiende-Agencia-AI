@@ -990,7 +990,8 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       // R19 (G4 / T7-012): «4 tacos de bistec» / «3 gringas» no son ordenes exactas; el servidor le fija al modelo que explique y ofrezca las opciones con precio. Solo los mensajes sin responder.
       const cantidadNoMultiploBloque = perfil === "taqueria_pm" && !preview ? bloqueCantidadNoMultiplo(mensajesSinResponder(messages).map((m) => m.content)) : "";
       // R11 A (bandera apagada por omision): contexto precargado + llamadas en lote. Solo PM, nunca en preview.
-      const precargaActiva = options.contextoPrecargado === true && perfil === "taqueria_pm" && !preview;
+      // Cerebro v2: con ZDR la unica ruta de Luna es Azure (3-7 s por vuelta) y el turno tiene ~18 s; el contexto precargado y la instruccion de LOTE quitan vueltas.
+      const precargaActiva = (options.contextoPrecargado === true || cerebroV2) && perfil === "taqueria_pm" && !preview;
       // R21 (T7-008): un producto que el menu no tiene (chistorra, longaniza, salchichas...) se rechaza con la alternativa correcta, no con un platillo inventado.
       const productoNoManejadoBloque = perfil === "taqueria_pm" && !preview ? bloqueProductoNoManejado(mensajesSinResponder(messages).map((m) => m.content)) : "";
       // R21 (arreglo 2 R20): tras un aviso de falla del sistema el mensaje previo del cliente sigue pendiente (un solo bloque de falla; vive en falla-pendiente.ts).
