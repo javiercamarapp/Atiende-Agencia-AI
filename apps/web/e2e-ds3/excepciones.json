@@ -12,5 +12,54 @@
     "selector": "Continuar con Google",
     "motivo": "Boton de Google >= 40 px por las pautas de la marca",
     "vence": "lote 6.3"
+  },
+  {
+    "ruta": "/login",
+    "tipo": "radio",
+    "selector": "div «Atiende ·",
+    "motivo": "Login identico a Rovaq AI (decision del dueno, 6-nov): el login no usa la escala de la app (AUDITORIA-VEXA-4 §8): panel oscuro de radio 24",
+    "vence": "retiro de la bandera ds3"
+  },
+  {
+    "ruta": "/login",
+    "tipo": "padding-superficie",
+    "selector": "Continuar con Google",
+    "motivo": "Login identico a Rovaq AI (decision del dueno, 6-nov): el login no usa la escala de la app (AUDITORIA-VEXA-4 §8): pildora con padding 10/20",
+    "vence": "retiro de la bandera ds3"
+  },
+  {
+    "ruta": "/login",
+    "tipo": "padding-superficie",
+    "selector": "Continuar con correo",
+    "motivo": "Login identico a Rovaq AI (decision del dueno, 6-nov): el login no usa la escala de la app (AUDITORIA-VEXA-4 §8): pildora con padding 10/20",
+    "vence": "retiro de la bandera ds3"
+  },
+  {
+    "ruta": "/login",
+    "tipo": "gap-fuera-de-escala",
+    "selector": "span «atiende»",
+    "motivo": "Separacion simbolo-texto del AtiendeWordmark (logo actual, componente compartido; excepcion de logo de CLAUDE.md)",
+    "vence": "retiro de la bandera ds3"
+  },
+  {
+    "ruta": "/login",
+    "tipo": "gap-fuera-de-escala",
+    "selector": "div «Correo»",
+    "motivo": "Gap interno de FormField (componente compartido de @atiende/ui) con etiqueta sr-only; lo ajusta el carril de primitivos L1",
+    "vence": "retiro de la bandera ds3"
+  },
+  {
+    "ruta": "/login",
+    "tipo": "boton-gordo",
+    "selector": "«ES»",
+    "motivo": "Selector de idioma del login de Rovaq: 44 px de alto tambien en escritorio (area de toque del selector ES/EN)",
+    "vence": "retiro de la bandera ds3"
+  },
+  {
+    "ruta": "/login",
+    "tipo": "boton-gordo",
+    "selector": "«EN»",
+    "motivo": "Selector de idioma del login de Rovaq: 44 px de alto tambien en escritorio (area de toque del selector ES/EN)",
+    "vence": "retiro de la bandera ds3"
   }
 ]

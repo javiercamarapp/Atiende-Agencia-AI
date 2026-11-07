@@ -1,0 +1,134 @@
+// Inicio de sesion ds3 = el de Rovaq AI, en las 6 verticales (escritorio y movil de la matriz ds3, claro y oscuro).
+// Comprueba en el navegador lo que jsdom no ve: la rejilla de dos columnas iguales con el panel oscuro a la IZQUIERDA (radio 24)
+// y la esfera de particulas en un canvas real; en movil una sola columna sin canvas; tipografias y medidas de Rovaq (titular
+// Fraunces 36, kicker IBM Plex Mono 11, campo de 44 con radio 12, botones en pildora de 48, columna de 470); tema SIEMPRE claro
+// aunque el sistema este en oscuro; sin scroll horizontal; y el medidor ds3 (medidas.js: contraste, areas de toque, fuentes)
+// sin defectos. Accesibilidad con axe: el repo no trae @axe-core/playwright (agregarlo requiere visto bueno), asi que el
+// barrido de axe corre solo si AXE_CORE_JS apunta a un axe.min.js local; sin la variable se omite y lo dice en la salida.
+//
+// Capturas antes/despues: DS3_CAPTURAS=1 DS3_ETAPA=antes|despues (antes = bandera apagada, solo captura y no afirma ds3).
+// API simulada de e2e/mock-api, nunca la real.
+import { existsSync, readFileSync } from "node:fs";
+import type { Page } from "@playwright/test";
+import { expect, test } from "../e2e/helpers/fixtures.ts";
+import { VERTICALES } from "../e2e/mock-api/personas.ts";
+import { ETAPA, medir } from "./comun.ts";
+
+const ANTES = ETAPA === "antes";
+const AXE = process.env["AXE_CORE_JS"];
+
+test.beforeEach(async ({ page }) => {
+  // Este spec es del login ds3: enciende la bandera siempre, salvo en la captura «antes».
+  await page.addInitScript((antes: boolean) => {
+    try {
+      if (antes) window.localStorage.removeItem("atiende-diseno");
+      else window.localStorage.setItem("atiende-diseno", "ds3");
+    } catch {
+      // sin almacenamiento la prueba usa ?diseno=ds3
+    }
+  }, ANTES);
+});
+
+async function abrir(page: Page, vertical: string): Promise<void> {
+  await page.goto(`/${vertical}/login${ANTES ? "?diseno=off" : "?diseno=ds3"}`);
+  await expect(page.locator("main")).toHaveCount(1);
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => document.fonts.ready);
+}
+
+async function caja(page: Page, selector: string) {
+  const b = await page.locator(selector).first().boundingBox();
+  expect(b, selector).not.toBeNull();
+  return b!;
+}
+
+for (const vertical of VERTICALES) {
+  test(`login ds3 · ${vertical}`, async ({ page }, info) => {
+    await abrir(page, vertical);
+    if (ANTES) {
+      await medir(page, info, "login", `/${vertical}/login`);
+      return;
+    }
+    const escritorio = (page.viewportSize()?.width ?? 0) >= 1024;
+    const main = page.locator("main.login-ds3");
+    await expect(main).toBeVisible();
+
+    // Siempre claro (Rovaq): ni la clase `dark` ni color-scheme oscuro, aunque el proyecto emule el sistema en oscuro.
+    expect(await page.evaluate(() => document.documentElement.classList.contains("dark"))).toBe(false);
+    expect(await main.evaluate((el) => getComputedStyle(el).colorScheme)).toBe("light");
+
+    // Orden y metodos de Rovaq.
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(`Bienvenido a atiende ${vertical}`);
+    await expect(page.getByRole("button", { name: "Continuar con Google" })).toBeVisible();
+    await expect(page.getByRole("textbox", { name: "Correo" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Continuar con correo" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "¿Olvidaste tu contraseña?" })).toBeVisible();
+    await expect(page.locator("details.ld3-ayuda summary")).toHaveText("¿Necesitas ayuda para entrar?");
+    await expect(page.locator(".ld3-invitacion")).toBeVisible();
+
+    // Tipografia y medidas.
+    const h1 = await page.locator("h1").evaluate((el) => ({ familia: getComputedStyle(el).fontFamily, tamano: getComputedStyle(el).fontSize }));
+    expect(h1.familia).toContain("Fraunces");
+    expect(["32px", "34px", "36px"]).toContain(h1.tamano);
+    const kicker = await page.locator(".ld3-copia .ld3-kicker").evaluate((el) => ({ familia: getComputedStyle(el).fontFamily, tamano: getComputedStyle(el).fontSize }));
+    expect(kicker.familia).toContain("IBM Plex Mono");
+    expect(kicker.tamano).toBe("11px");
+    expect(await main.evaluate((el) => getComputedStyle(el).fontFamily)).toContain("Instrument Sans");
+    const campo = page.getByRole("textbox", { name: "Correo" });
+    expect(Math.round((await campo.boundingBox())!.height)).toBeGreaterThanOrEqual(44);
+    expect(await campo.evaluate((el) => getComputedStyle(el).borderRadius)).toBe("12px");
+    const cta = page.getByRole("button", { name: "Continuar con correo" });
+    expect(Math.round((await cta.boundingBox())!.height)).toBe(48);
+    const ctaEstilo = await cta.evaluate((el) => ({ fondo: getComputedStyle(el).backgroundColor, radio: parseFloat(getComputedStyle(el).borderRadius) }));
+    expect(ctaEstilo.radio).toBeGreaterThan(100); // pildora
+    // Boton en tinta: casi negro (luminancia baja), no el azul.
+    const [r, g, b] = ctaEstilo.fondo.match(/\d+/g)!.map(Number);
+    expect(Math.max(r!, g!, b!)).toBeLessThan(40);
+    expect((await caja(page, ".ld3-copia")).width).toBeLessThanOrEqual(470.5);
+
+    // Sin scroll horizontal.
+    expect(await page.evaluate(() => document.scrollingElement!.scrollWidth <= window.innerWidth)).toBe(true);
+
+    if (escritorio) {
+      const panel = await caja(page, ".ld3-visual");
+      const columna = await caja(page, ".ld3-columna");
+      const ancho = page.viewportSize()!.width;
+      expect(panel.x).toBeLessThan(columna.x); // panel a la izquierda
+      expect(Math.abs(panel.width - columna.width)).toBeLessThanOrEqual(2); // dos columnas iguales
+      expect(Math.abs(panel.width + columna.width - ancho)).toBeLessThanOrEqual(2);
+      const superficie = page.locator(".ld3-superficie");
+      expect(await superficie.evaluate((el) => getComputedStyle(el).borderTopLeftRadius)).toBe("24px");
+      await expect(page.locator(".ld3-visual h2")).toBeVisible();
+      const canvas = page.locator(".ld3-visual canvas");
+      await expect(canvas).toHaveCount(1);
+      expect((await canvas.boundingBox())!.height).toBeGreaterThan(100);
+      // La esfera sigue al puntero (o queda quieta con movimiento reducido): el motor marca el modo en el canvas.
+      await expect(canvas).toHaveAttribute("data-motion", /^(interactive|reduced)$/);
+    } else {
+      await expect(page.locator(".ld3-visual")).toBeHidden();
+      await expect(page.locator("canvas")).toHaveCount(0);
+    }
+
+    const { linea } = await medir(page, info, "login", `/${vertical}/login`);
+    expect(linea, linea.join("\n")).toEqual([]);
+
+    if (AXE && existsSync(AXE)) {
+      await page.addScriptTag({ content: readFileSync(AXE, "utf8") });
+      const violaciones = await page.evaluate(async () => {
+        const axe = (window as unknown as { axe: { run: (c: Document, o: object) => Promise<{ violations: Array<{ id: string; nodes: unknown[] }> }> } }).axe;
+        const r = await axe.run(document, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"] } });
+        return r.violations.map((v) => `${v.id} (${v.nodes.length})`);
+      });
+      expect(violaciones, violaciones.join(", ")).toEqual([]);
+    } else {
+      test.info().annotations.push({ type: "axe", description: "omitido: define AXE_CORE_JS con la ruta a axe.min.js" });
+    }
+  });
+}
+
+test("login ds3 · movimiento reducido: la esfera queda quieta", async ({ page }) => {
+  test.skip(ANTES || (page.viewportSize()?.width ?? 0) < 1024, "solo escritorio con la bandera");
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await abrir(page, "citas");
+  await expect(page.locator(".ld3-visual canvas")).toHaveAttribute("data-motion", "reduced");
+});
