@@ -42,6 +42,9 @@ const ruta = (org: string) => `/superadmin/organizaciones/${org}/invitaciones`;
 const post = (c: Ctx, org: string, body: unknown, token: string, extra: Record<string, string> = {}) => c.app.request(ruta(org), jsonRequestInit(body, bearer(token, extra)));
 const delBody = (body: unknown, headers: Record<string, string>): RequestInit => ({ ...jsonRequestInit(body, headers), method: "DELETE" });
 const correoDe = (c: Ctx) => c.s.base.restaurantesRepo.getOutbox().filter((o) => o.channel === "email" && o.eventType === "staff.invite");
+// Los dobles de cada vertical son instancias unicas detras de `deps.<vertical>Repo(db)` (fixtures.ts); se obtienen sin sesion.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const repoDe = (c: Ctx, nombre: "citasRepo" | "hotelesRepo" | "despachosRepo" | "licitacionesRepo" | "rentasRepo"): any => (c.deps[nombre] as (db: unknown) => unknown)(undefined);
 const valido = (parche: Record<string, unknown> = {}) => ({ email: "dueno@lostaquitos.mx", verticalRole: "owner", motivo: MOTIVO, ...parche });
 
 describe("alta de equipo -- gateo y validacion", () => {
@@ -75,11 +78,110 @@ describe("alta de equipo -- gateo y validacion", () => {
     expect((await post(c, INEXISTENTE, valido(), sa.token)).status).toBe(404);
   });
 
-  it("sucursal de otra organizacion -> 400; vertical sin lista blanca (citas) -> 400", async () => {
+  it("sucursal de otra organizacion -> 400; rol de otra vertical (repartidor en citas) -> 400", async () => {
     const c = await setup();
     const sa = await c.superadmin();
     expect((await post(c, c.org, valido({ verticalRole: "staff", propertyIds: [SUC_OTRA_ORG] }), sa.token)).status).toBe(400);
-    expect((await post(c, ORG_CITAS, valido({ verticalRole: "admin" }), sa.token)).status).toBe(400);
+    expect((await post(c, ORG_CITAS, valido({ verticalRole: "repartidor" }), sa.token)).status).toBe(400);
+    // admin_gestora es de rentas: en una organizacion de restaurantes la lista blanca lo rechaza.
+    expect((await post(c, c.org, valido({ verticalRole: "admin_gestora" }), sa.token)).status).toBe(400);
+  });
+});
+
+describe("alta de equipo -- todas las verticales (migracion 0070)", () => {
+  const ORG_DESPACHOS = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+  const ORG_RENTAS = "ffffffff-ffff-4fff-8fff-ffffffffffff";
+
+  it("citas: invita al dueño (owner) con la plantilla de citas y la vertical en la lectura", async () => {
+    const c = await setup();
+    const sa = await c.superadmin();
+    const res = await post(c, ORG_CITAS, valido({ email: "duena@consultorio.mx" }), sa.token);
+    expect(res.status).toBe(201);
+    // El correo va al outbox de CITAS (lo drena su despachador), nunca al de restaurantes.
+    expect(correoDe(c).find((o) => o.organizationId === ORG_CITAS)).toBeUndefined();
+    const job = repoDe(c, "citasRepo").getOutbox().find((o: Json) => o.organizationId === ORG_CITAS && o.eventType === "staff.invite");
+    expect((job?.payload as { to: string }).to).toBe("duena@consultorio.mx");
+    const lectura = (await (await c.app.request(ruta(ORG_CITAS), { headers: bearer(sa.token) })).json()) as Json;
+    expect(lectura.vertical).toBe("citas");
+    expect(lectura.invitaciones).toEqual([expect.objectContaining({ rol: "owner", platformRole: "owner" })]);
+  });
+
+  it("despachos: el dueño es vertical_role admin (platform owner); un segundo dueño exige confirmacion", async () => {
+    const c = await setup();
+    c.equipo?.seedOrganizacion(ORG_DESPACHOS, "despachos");
+    const sa = await c.superadmin();
+    expect((await post(c, ORG_DESPACHOS, valido({ email: "socio@despacho.mx", verticalRole: "admin" }), sa.token)).status).toBe(201);
+    expect(c.equipo?.todas().at(-1)).toMatchObject({ verticalRole: "admin", platformRole: "owner" });
+    const segundo = await post(c, ORG_DESPACHOS, valido({ email: "otro@despacho.mx", verticalRole: "admin" }), sa.token);
+    expect(segundo.status).toBe(409);
+    expect(await segundo.json()).toMatchObject({ code: "segundo_owner_requiere_confirmacion" });
+    expect((await post(c, ORG_DESPACHOS, valido({ email: "otro@despacho.mx", verticalRole: "admin", confirmarSegundoOwner: true }), sa.token)).status).toBe(201);
+  });
+
+  it("rentas: admin_gestora -> owner; 'owner' (rol de otra vertical) -> 400", async () => {
+    const c = await setup();
+    c.equipo?.seedOrganizacion(ORG_RENTAS, "rentas");
+    const sa = await c.superadmin();
+    expect((await post(c, ORG_RENTAS, valido({ email: "gestora@rentas.mx", verticalRole: "admin_gestora" }), sa.token)).status).toBe(201);
+    expect(c.equipo?.todas().at(-1)).toMatchObject({ verticalRole: "admin_gestora", platformRole: "owner" });
+    expect((await post(c, ORG_RENTAS, valido({ email: "x@rentas.mx", verticalRole: "owner" }), sa.token)).status).toBe(400);
+  });
+});
+
+describe("alta de equipo -- el correo va al outbox de la vertical de la organizacion", () => {
+  const ORG_HOTEL = "a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1";
+  const ORG_DESP = "b2b2b2b2-b2b2-4b2b-8b2b-b2b2b2b2b2b2";
+  const ORG_LICI = "c3c3c3c3-c3c3-4c3c-8c3c-c3c3c3c3c3c3";
+  const ORG_RENT = "d4d4d4d4-d4d4-4d4d-8d4d-d4d4d4d4d4d4";
+  const PROP_HOTEL = "e5e5e5e5-e5e5-4e5e-8e5e-e5e5e5e5e5e5";
+  const PROP_RENT = "f6f6f6f6-f6f6-4f6f-8f6f-f6f6f6f6f6f6";
+
+  async function invitarEn(org: string, vertical: string, rol: string, sucursales: ReadonlyArray<{ id: string; nombre: string }> = [], antes?: (c: Ctx) => void) {
+    const c = await setup();
+    c.equipo?.seedOrganizacion(org, vertical, sucursales);
+    antes?.(c);
+    const sa = await c.superadmin();
+    const res = await post(c, org, valido({ email: `dueno@${vertical}.mx`, verticalRole: rol }), sa.token);
+    expect(res.status).toBe(201);
+    return { c, cuerpo: (await res.json()) as Json };
+  }
+
+  it.each([
+    ["despachos", "despachosRepo", ORG_DESP, "admin"],
+    ["licitaciones", "licitacionesRepo", ORG_LICI, "owner"],
+  ] as const)("%s: se encola en su propio outbox (por organizacion) y nada en restaurantes", async (vertical, repoNombre, org, rol) => {
+    const spy = vi.fn().mockResolvedValue(undefined);
+    {
+      const { c, cuerpo } = await invitarEn(org, vertical, rol, [], (c) => vi.spyOn(repoDe(c, repoNombre), "enqueueMessagingOutbox").mockImplementation(spy));
+      expect(cuerpo.correoEncolado).toBe(true);
+      expect(spy).toHaveBeenCalledWith(org, "email", "staff.invite", expect.stringMatching(/^staff-invite:/u), expect.objectContaining({ to: `dueno@${vertical}.mx` }));
+      expect(correoDe(c).find((o) => o.organizationId === org)).toBeUndefined();
+    }
+  });
+
+  it.each([
+    ["hoteles", "hotelesRepo", ORG_HOTEL, "owner", PROP_HOTEL],
+    ["rentas", "rentasRepo", ORG_RENT, "admin_gestora", PROP_RENT],
+  ] as const)("%s: el outbox es por propiedad; usa la sucursal de la organizacion", async (vertical, repoNombre, org, rol, prop) => {
+    const spy = vi.fn().mockResolvedValue(undefined);
+    {
+      const { c, cuerpo } = await invitarEn(org, vertical, rol, [{ id: prop, nombre: "Principal" }], (c) => vi.spyOn(repoDe(c, repoNombre), "enqueueMessagingOutbox").mockImplementation(spy));
+      expect(cuerpo.correoEncolado).toBe(true);
+      expect(spy).toHaveBeenCalledWith(prop, org, "email", "staff.invite", expect.stringMatching(/^staff-invite:/u), expect.objectContaining({ to: `dueno@${vertical}.mx` }));
+      expect(correoDe(c).find((o) => o.organizationId === org)).toBeUndefined();
+    }
+  });
+
+  it("hoteles sin ninguna propiedad: no hay outbox donde encolar -> 201 con correoEncolado=false (el token sigue en la respuesta)", async () => {
+    const err = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      const { c, cuerpo } = await invitarEn(ORG_HOTEL, "hoteles", "owner");
+      expect(cuerpo.correoEncolado).toBe(false);
+      expect(typeof cuerpo.inviteToken).toBe("string");
+      expect(correoDe(c).find((o) => o.organizationId === ORG_HOTEL)).toBeUndefined();
+    } finally {
+      err.mockRestore();
+    }
   });
 });
 

@@ -81,7 +81,15 @@ export async function medir(page: Page, info: TestInfo, consola: string, ruta: s
 }
 
 /** Lee el estado del foco actual: anillo (outline/box-shadow), si esta dentro del viewport y si algo fijo lo tapa (2.4.7 / 2.4.11). */
-export async function leerFoco(page: Page): Promise<{ el: string; sinAnillo: boolean; tapadoPor: string | null; fuera: boolean; tabindexPositivo: boolean } | null> {
+export async function leerFoco(page: Page): Promise<{
+  el: string;
+  sinAnillo: boolean;
+  tapadoPor: string | null;
+  fuera: boolean;
+  tabindexPositivo: boolean;
+  /** Contraste del outline contra el fondo opaco por detras del elemento (1.4.11, >= 3:1); null si no hay outline solido. */
+  anilloContraste: number | null;
+} | null> {
   return page.evaluate(() => {
     const el = document.activeElement as HTMLElement | null;
     if (!el || el === document.body) return null;
@@ -91,12 +99,34 @@ export async function leerFoco(page: Page): Promise<{ el: string; sinAnillo: boo
     const sinAnillo = (s.outlineStyle === "none" || parseFloat(s.outlineWidth) === 0) && s.boxShadow === "none";
     const t = document.elementFromPoint(Math.min(Math.max(r.left + r.width / 2, 0), innerWidth - 1), Math.min(Math.max(r.top + r.height / 2, 0), innerHeight - 1));
     const tapado = t && t !== el && !el.contains(t) && !t.contains(el) ? nombre(t) : null;
+    // El anillo (offset 2 px) se pinta sobre el fondo del contenedor: primer ancestro con fondo opaco (si no, blanco).
+    const rgb = (c: string): [number, number, number, number] | null => {
+      const m = /rgba?\(([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:[,\s/]+([\d.]+))?/.exec(c);
+      return m ? [Number(m[1]), Number(m[2]), Number(m[3]), m[4] === undefined ? 1 : Number(m[4])] : null;
+    };
+    const lum = ([r, g, b]: [number, number, number, number]) => {
+      const f = (v: number) => ((v /= 255) <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+      return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+    };
+    let fondo: [number, number, number, number] = [255, 255, 255, 1];
+    for (let p = el.parentElement; p; p = p.parentElement) {
+      const c = rgb(getComputedStyle(p).backgroundColor);
+      if (c && c[3] >= 0.99) {
+        fondo = c;
+        break;
+      }
+    }
+    const anillo = s.outlineStyle !== "none" && parseFloat(s.outlineWidth) > 0 ? rgb(s.outlineColor) : null;
+    const anilloContraste = anillo && anillo[3] >= 0.99
+      ? +((Math.max(lum(anillo), lum(fondo)) + 0.05) / (Math.min(lum(anillo), lum(fondo)) + 0.05)).toFixed(2)
+      : null;
     return {
       el: nombre(el),
       sinAnillo,
       tapadoPor: tapado,
       fuera: r.bottom < 0 || r.top > innerHeight || r.right < 0 || r.left > innerWidth,
       tabindexPositivo: el.tabIndex > 0,
+      anilloContraste,
     };
   });
 }

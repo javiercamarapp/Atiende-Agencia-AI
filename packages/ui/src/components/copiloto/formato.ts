@@ -111,6 +111,26 @@ export function agruparConversaciones(
   return ORDEN_GRUPOS.filter((g) => por.has(g)).map((g) => ({ grupo: g, items: por.get(g) ?? [] }));
 }
 
+/**
+ * Parte el grupo «Anteriores» en «Últimos 30 días» (8 a 30 dias, en la zona de la organizacion) y el resto, conservando el
+ * orden. El diseno ds3 los muestra como dos grupos; el actual, como uno solo.
+ */
+export function partirUltimoMes(
+  items: readonly ConversacionResumen[],
+  ahora: Date,
+  zona: string | undefined,
+): { mes: ConversacionResumen[]; resto: ConversacionResumen[] } {
+  const hoy = diaEnZona(ahora, zona);
+  const mes: ConversacionResumen[] = [];
+  const resto: ConversacionResumen[] = [];
+  for (const c of items) {
+    const t = new Date(c.actualizadaEn);
+    const dif = Number.isNaN(t.getTime()) ? Infinity : diasEntre(hoy, diaEnZona(t, zona));
+    (dif <= 30 ? mes : resto).push(c);
+  }
+  return { mes, resto };
+}
+
 /** Rutas de fuente: solo internas (lista blanca), nunca URLs externas ni protocolos. */
 export function rutaInternaSegura(ruta: string | undefined): string | undefined {
   if (!ruta) return undefined;

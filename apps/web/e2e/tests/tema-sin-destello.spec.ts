@@ -1,12 +1,13 @@
 // ds3 / 0.1 (ThemeBoot externo): el tema se aplica ANTES del primer pintado en rutas sin ThemeSelector ni shell (login y paginas
-// publicas), sin destello (E24) y sin `data-theme`. La bandera de diseno (`?diseno=ds3`) llega a <html> y se recuerda.
+// publicas), sin destello (E24) y con el puente `data-theme` igual a `.dark` (solo con ds3). La bandera de diseno (`?diseno=ds3`) llega a <html> y se recuerda.
 // Los proyectos "-oscuro" siguen al sistema (la fixture guarda `atiende-tema=sistema` y el navegador emula colorScheme dark).
 import type { Page } from "@playwright/test";
 import { expect, test } from "../helpers/fixtures.ts";
 import { afirmarModo } from "../helpers/ds.ts";
 
-// Con la bandera ds3 encendida por URL (con ella apagada el tema global no cambia: produccion intacta).
-const RUTAS_SIN_SELECTOR = ["/restaurantes/login?diseno=ds3", "/restaurantes/restablecer-contrasena?diseno=ds3"] as const;
+// Con la bandera ds3 encendida por URL (con ella apagada el tema global no cambia: produccion intacta). El login NO esta aqui:
+// es siempre claro (como el de Rovaq AI), lo cubre la prueba de abajo.
+const RUTAS_SIN_SELECTOR = ["/restaurantes/restablecer-contrasena?diseno=ds3"] as const;
 
 interface Captura {
   dark: boolean;
@@ -37,7 +38,7 @@ for (const ruta of RUTAS_SIN_SELECTOR) {
     await page.goto(ruta);
     const alInicio = await leerCaptura(page);
     expect(alInicio.dark, "html.dark en DOMContentLoaded").toBe(oscuro);
-    expect(alInicio.tema, "html no lleva data-theme").toBeNull();
+    expect(alInicio.tema, "puente data-theme (solo con ds3) igual a la clase dark").toBe(oscuro ? "dark" : "light");
     await page.waitForLoadState("networkidle");
     await afirmarModo(page, oscuro ? "oscuro" : "claro");
     const alFinal = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
@@ -45,9 +46,20 @@ for (const ruta of RUTAS_SIN_SELECTOR) {
   });
 }
 
+test("@oscuro el login es siempre claro desde el primer pintado, aunque el sistema este en oscuro (sin destello)", async ({ page }) => {
+  await vigilarPrimerPintado(page);
+  await page.goto("/restaurantes/login?diseno=ds3");
+  const alInicio = await leerCaptura(page);
+  expect(alInicio.dark, "html.dark en DOMContentLoaded").toBe(false);
+  await page.waitForLoadState("networkidle");
+  await afirmarModo(page, "claro");
+  expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe(alInicio.fondo);
+  expect(await page.locator('meta[name="theme-color"]').getAttribute("content")).toBe("#ffffff");
+});
+
 test("@oscuro el color de la barra del navegador sigue al tema", async ({ page }, info) => {
   const oscuro = info.project.name.endsWith("oscuro");
-  await page.goto("/restaurantes/login?diseno=ds3");
+  await page.goto("/restaurantes/restablecer-contrasena?diseno=ds3");
   const color = await page.locator('meta[name="theme-color"]').getAttribute("content");
   expect(color).toBe(oscuro ? "#0e0e10" : "#ffffff");
 });

@@ -132,6 +132,7 @@ export const MATRIZ_GUARDAS: Readonly<Record<string, AccesoRuta>> = {
   "GET /habitaciones": "todos",
   "POST /tipos-habitacion/:roomTypeId/habitaciones": ["owner", "gm"],
   "POST /tarifas": ["owner", "gm"],
+  "POST /inventario/generar": ["owner", "gm"],
   "GET /configuracion": "todos",
   "PUT /configuracion": ["owner", "gm"],
   "GET /revenue/gate": "todos",

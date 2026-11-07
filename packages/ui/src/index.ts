@@ -1,6 +1,8 @@
 export { cn } from "./lib/utils.js";
 export { GRAFICA_TEMA, duracionEntradaGrafica } from "./lib/graficas-tema.js";
 export { formatMoney } from "./lib/formatMoney.js";
+export { Cifra, CifraTexto, type CifraProps, type CifraTextoProps, type CifraTamano } from "./components/Cifra.js";
+export { CIFRA_CONTEO_MS, SIN_CIFRA, curvaRovaq, formatearCifra, partesCifra, partirTextoCifra, type CifraLocale, type CifraVariante, type OpcionesCifra, type PartesCifra } from "./lib/cifra.js";
 export { contraste, luminancia, parseHsl, type Hsl } from "./lib/contraste.js";
 export { useAmbitoVertical, ATRIBUTO_AMBITO } from "./lib/ambito.js";
 
@@ -47,9 +49,9 @@ export {
 } from "./lib/arranque.js";
 export { CLAVE_IDIOMA, IDIOMAS, IDIOMA_CAMBIO_EVENTO, guardarIdioma, leerIdioma, type Idioma } from "./lib/idioma.js";
 export { ThemeBoot, useTemaGlobal } from "./components/ThemeBoot.js";
-export { aplicarTema, aplicarBanderaDiseno, leerTema, type Tema } from "./lib/tema.js";
-export { DISENO_DS3, leerDisenoDs3 } from "./lib/diseno.js";
-export { StatCard, TrendStatCard, type StatCardVariante } from "./components/StatCard.js";
+export { aplicarTema, aplicarBanderaDiseno, leerTema, sincronizarDisenoOrganizacion, type Tema } from "./lib/tema.js";
+export { DISENO_DS3, disenoPorDefecto, leerDisenoDs3 } from "./lib/diseno.js";
+export { StatCard, TrendStatCard, type StatCardSello, type StatCardVariante } from "./components/StatCard.js";
 export { EstadoVacio, VarianteEstadoVacioProvider } from "./components/EstadoVacio.js";
 export { EstadoError } from "./components/EstadoError.js";
 export { EstadoCargando, type EstadoCargandoVariante } from "./components/EstadoCargando.js";
@@ -118,9 +120,11 @@ export { NotificationBell, type NotificationBellProps } from "./components/Notif
 export { CentroNotificaciones, type CentroNotificacionesProps, type CentroNotificacionItem, type CentroSeveridad } from "./components/CentroNotificaciones.js";
 
 export { Button, buttonVariants, TEXTO_GUARDANDO, type ButtonProps } from "./components/ui/button.js";
+export type { CardProps, CardTono, CardVariante } from "./components/ui/card.js";
 export { Panel, Card, CardHeader, CardFooter, CardTitle, CardDescription, CardContent } from "./components/ui/card.js";
 export { Badge, badgeVariants, type BadgeProps } from "./components/ui/badge.js";
 export { StatusBadge, STATUS_TONES, statusTone, type StatusBadgeProps, type StatusTone } from "./components/ui/status-badge.js";
+export { KindBadge, KIND_TIPOS, KIND_ETIQUETAS, type KindBadgeProps, type KindTipo } from "./components/ui/kind-badge.js";
 export {
   Table,
   TableHeader,

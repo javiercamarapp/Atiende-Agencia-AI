@@ -3,6 +3,8 @@ import { Link } from "react-router-dom";
 import { AtiendeMark } from "../AtiendeLogo";
 import { Card, CardContent } from "../ui/card";
 import { CopilotoAcciones } from "./CopilotoAcciones";
+import { CopilotoComoSeCalculo } from "./CopilotoComoSeCalculo";
+import { CopilotoTraza } from "./CopilotoTraza";
 import { CopilotoTarjetaAccion, TOOL_PROPONER_ACCION, propuestaDeBloque } from "./CopilotoTarjetaAccion";
 import { GraficaBloque, Sparkline, planGrafica } from "./CopilotoGraficas";
 import { formatoCelda, rutaInternaSegura } from "./formato";
@@ -126,6 +128,7 @@ export function CopilotoMensajeVista({
   onPreguntar,
   vertical,
   acciones,
+  etiquetasHerramienta,
 }: {
   mensaje: CopilotoMensaje;
   esUltima: boolean;
@@ -139,11 +142,13 @@ export function CopilotoMensajeVista({
   vertical?: string;
   /** Solo Copiloto de superadmin: dibuja los bloques `proponer_accion` como tarjeta de accion. */
   acciones?: CopilotoAccionesCliente;
+  /** Etiquetas legibles de las herramientas del catalogo (para «Cómo se calculó» en ds3). */
+  etiquetasHerramienta?: Readonly<Record<string, string>>;
 }) {
   if (mensaje.role === "user") {
     return (
-      <div className="flex justify-end copiloto-categorias-entra">
-        <div className="max-w-[80%] bg-card border border-border rounded-2xl px-4 py-2 text-sm text-foreground shadow-sm whitespace-pre-wrap break-words">
+      <div data-ds3="usuario" className="flex justify-end copiloto-categorias-entra">
+        <div data-ds3="burbuja" className="max-w-[80%] bg-card border border-border rounded-2xl px-4 py-2 text-sm text-foreground shadow-sm whitespace-pre-wrap break-words">
           {mensaje.text}
         </div>
       </div>
@@ -160,7 +165,7 @@ export function CopilotoMensajeVista({
   const exito = !aviso;
 
   return (
-    <div className="space-y-3 copiloto-categorias-entra">
+    <div data-ds3="respuesta" className="space-y-3 copiloto-categorias-entra">
       <div className="flex items-start gap-2">
         <AtiendeMark className="h-4 w-auto shrink-0 mt-0.5" />
         {aviso ? (
@@ -201,7 +206,7 @@ export function CopilotoMensajeVista({
               ) : null;
             }
             return (
-              <div key={`${b.tool}-${i}`} className="ml-6">
+              <div key={`${b.tool}-${i}`} data-ds3="bloque" className="ml-6">
                 <BloqueDatos bloque={b} />
               </div>
             );
@@ -209,7 +214,7 @@ export function CopilotoMensajeVista({
         : null}
 
       {exito && mensaje.sources && mensaje.sources.length > 0 ? (
-        <div className="ml-6 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+        <div data-ds3="fuentes" className="ml-6 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
           <span>Fuentes:</span>
           {mensaje.sources.map((s, i) => {
             const ruta = rutaInternaSegura(rutasFuente?.[s.tool]);
@@ -226,6 +231,17 @@ export function CopilotoMensajeVista({
               </span>
             );
           })}
+        </div>
+      ) : null}
+
+      {exito && ((mensaje.traza?.length ?? 0) > 0 || (mensaje.sources?.length ?? 0) > 0 || (mensaje.blocks ?? []).some((b) => b.tool !== TOOL_PROPONER_ACCION)) ? (
+        <div hidden className="ds3-solo ds3-copiloto-evidencia ml-6">
+          {mensaje.traza && mensaje.traza.length > 0 ? <CopilotoTraza traza={mensaje.traza} duracionMs={mensaje.duracionMs} etiquetas={etiquetasHerramienta} /> : null}
+          <CopilotoComoSeCalculo
+            bloques={(mensaje.blocks ?? []).filter((b) => b.tool !== TOOL_PROPONER_ACCION)}
+            fuentes={mensaje.sources ?? []}
+            etiquetasHerramienta={etiquetasHerramienta}
+          />
         </div>
       ) : null}
 

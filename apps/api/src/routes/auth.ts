@@ -14,6 +14,7 @@ import type { Context } from "hono";
 import { avisarAceptacionInvitacionSuperadmin } from "./superadmin-organizaciones-equipo.ts";
 import { authMiddleware, hashInviteToken, signAccessToken, signRefreshToken, verifyRefreshToken } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
+import type { MembershipRow } from "@atiende/db";
 import { hashPassword, verifyPassword, StaffInviteInvalidError, StaffSecurityUnavailableError } from "@atiende/db";
 import { getDefaultLoginLockout, rateLimit } from "@atiende/core-ratelimit";
 import { Errors } from "../errors.ts";
@@ -158,8 +159,32 @@ async function registrarInicioSesionBestEffort(deps: AppDeps, ctx: IssueSessionC
   }
 }
 
+/** Disenos por organizacion (migracion 0060) para el payload de sesion. Best-effort A PROPOSITO: es solo presentacion y un fallo
+ *  aqui nunca debe tumbar un login; sin dato, cada organizacion lleva `diseno: null` (diseno actual). */
+async function disenosBestEffort(deps: AppDeps, memberships: readonly MembershipRow[]): Promise<ReadonlyMap<string, string>> {
+  try {
+    return await deps.coreRepo.findDisenoPorOrganizacion(memberships.map((m) => m.organizationId));
+  } catch (err) {
+    console.error("auth: no se pudo leer el diseno por organizacion (se usa el actual).", err instanceof Error ? err.message : "error");
+    return new Map();
+  }
+}
+
+/** Forma publica de cada organizacion en la sesion (login/refresh/accept-invite y GET /auth/me). */
+export function organizacionesDeSesion(memberships: readonly MembershipRow[], disenos: ReadonlyMap<string, string>) {
+  return memberships.map((m) => ({
+    id: m.organizationId,
+    slug: m.organizationSlug,
+    nombre: m.organizationName,
+    vertical: m.vertical,
+    rol: m.verticalRole,
+    diseno: disenos.get(m.organizationId) ?? null,
+  }));
+}
+
 export async function issueSession(deps: AppDeps, staffId: string, email: string, fullName: string, ctx?: IssueSessionContext) {
   const memberships = await deps.coreRepo.findMembershipsByUserId(staffId);
+  const disenos = await disenosBestEffort(deps, memberships);
   const first = memberships[0];
   // Fase 1: un token corresponde a UNA organización activa (mismo patrón que
   // hoteles). Un staff con memberships en varias organizaciones (ej. dueño de 2
@@ -189,7 +214,7 @@ export async function issueSession(deps: AppDeps, staffId: string, email: string
     // saludo real ("Buenos días, {nombre}") de cada Dashboard tenga algo mejor que el
     // correo, sin depender de una llamada aparte.
     fullName,
-    organizations: memberships.map((m) => ({ id: m.organizationId, slug: m.organizationSlug, nombre: m.organizationName, vertical: m.vertical, rol: m.verticalRole })),
+    organizations: organizacionesDeSesion(memberships, disenos),
   };
 }
 
@@ -403,7 +428,7 @@ export function authRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       id: userId,
       email: c.get("userEmail"),
       fullName: staff?.fullName ?? "",
-      organizations: memberships.map((m) => ({ id: m.organizationId, slug: m.organizationSlug, nombre: m.organizationName, vertical: m.vertical, rol: m.verticalRole })),
+      organizations: organizacionesDeSesion(memberships, await disenosBestEffort(deps, memberships)),
       // Back office de plataforma (`apps/web/src/superadmin/**`) -- el puente
       // de login compartido (`shell/GoogleCallback.tsx`) redirige aquí en vez
       // del landing normal de una vertical cuando esto es `true`.

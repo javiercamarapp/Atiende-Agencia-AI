@@ -134,8 +134,8 @@ function FormularioPoliza({ cuentas, inicial, guardando, errorServidor, onGuarda
               ))}
             </NativeSelect>
             <Input aria-label={`Concepto de la partida ${i + 1}`} value={p.concepto} maxLength={300} onChange={(e) => setPartida(i, { concepto: e.target.value })} placeholder="Concepto (opcional)" />
-            <Input aria-label={`Debe de la partida ${i + 1}`} inputMode="decimal" value={p.debe} className="text-right font-mono" onChange={(e) => setPartida(i, { debe: e.target.value })} placeholder="Debe" />
-            <Input aria-label={`Haber de la partida ${i + 1}`} inputMode="decimal" value={p.haber} className="text-right font-mono" onChange={(e) => setPartida(i, { haber: e.target.value })} placeholder="Haber" />
+            <Input aria-label={`Debe de la partida ${i + 1}`} inputMode="decimal" value={p.debe} className="text-right tabular-nums" onChange={(e) => setPartida(i, { debe: e.target.value })} placeholder="Debe" />
+            <Input aria-label={`Haber de la partida ${i + 1}`} inputMode="decimal" value={p.haber} className="text-right tabular-nums" onChange={(e) => setPartida(i, { haber: e.target.value })} placeholder="Haber" />
             <Button type="button" variant="ghost" size="sm" aria-label={`Quitar la partida ${i + 1}`} disabled={f.partidas.length <= 2} onClick={() => setF((prev) => ({ ...prev, partidas: prev.partidas.filter((_, j) => j !== i) }))}>
               <Trash2 />
             </Button>
@@ -151,7 +151,7 @@ function FormularioPoliza({ cuentas, inicial, guardando, errorServidor, onGuarda
             <Plus />
             Agregar partida
           </Button>
-          <p role="status" className={`font-mono text-xs ${cuadre.cuadra ? "text-success" : "text-muted-foreground"}`}>
+          <p role="status" className={`tabular-nums text-xs ${cuadre.cuadra ? "text-success" : "text-muted-foreground"}`}>
             Debe {dinero(cuadre.debeCentavos)} · Haber {dinero(cuadre.haberCentavos)} · {cuadre.cuadra ? "Cuadra" : `Diferencia ${dinero(Math.abs(cuadre.diferenciaCentavos))}`}
           </p>
         </div>
@@ -356,7 +356,7 @@ export function LibroContablePage({ apiBaseUrl, token, propertyId, role }: Despa
                 { id: "fecha", encabezado: "Fecha", valorOrden: (p) => p.fecha, celda: (p) => formatFechaSolo(p.fecha) },
                 { id: "concepto", encabezado: "Concepto", celda: (p) => <span className="text-foreground">{p.concepto}</span> },
                 { id: "origen", encabezado: "Origen", celda: (p) => <span className="text-muted-foreground">{ETIQUETA_ORIGEN_POLIZA[p.origen] ?? p.origen}</span> },
-                { id: "total", encabezado: "Total", alinear: "right", valorOrden: (p) => p.totalCentavos, celda: (p) => <span className="font-mono text-xs">{dinero(p.totalCentavos)}</span> },
+                { id: "total", encabezado: "Total", alinear: "right", valorOrden: (p) => p.totalCentavos, celda: (p) => <span className="tabular-nums text-xs">{dinero(p.totalCentavos)}</span> },
                 { id: "estado", encabezado: "Estado", celda: (p) => (p.reversada ? <StatusBadge tone="warning">Revertida</StatusBadge> : p.origen === "reversa" ? <StatusBadge tone="info">Reversa</StatusBadge> : <StatusBadge tone="success">Vigente</StatusBadge>) },
                 {
                   id: "acciones",
@@ -403,7 +403,7 @@ export function LibroContablePage({ apiBaseUrl, token, propertyId, role }: Despa
                   { id: "folio", encabezado: "CFDI", principal: true, celda: (c) => <span className="font-mono text-xs">{c.folioFiscal.slice(0, 8)}…</span> },
                   { id: "tipo", encabezado: "Tipo", celda: (c) => <span className="text-muted-foreground">{c.tipo} · {c.direccion === "emitido" ? "Emitido" : c.direccion === "recibido" ? "Recibido" : "Sin sentido"}</span> },
                   { id: "fecha", encabezado: "Fecha", valorOrden: (c) => c.fecha, celda: (c) => formatFechaSolo(c.fecha) },
-                  { id: "total", encabezado: "Total", alinear: "right", celda: (c) => <span className="font-mono text-xs">{dinero(c.totalCentavos)}</span> },
+                  { id: "total", encabezado: "Total", alinear: "right", celda: (c) => <span className="tabular-nums text-xs">{dinero(c.totalCentavos)}</span> },
                   {
                     id: "poliza",
                     encabezado: "Póliza",
@@ -446,10 +446,10 @@ export function LibroContablePage({ apiBaseUrl, token, propertyId, role }: Despa
               vacio={{ mensaje: "No hay movimientos en este periodo: la balanza se deriva de las pólizas registradas." }}
               columnas={[
                 { id: "cuenta", encabezado: "Cuenta", principal: true, valorOrden: (l) => l.cuenta, celda: (l) => <><span className="font-mono text-xs">{l.cuenta}</span> <span className="text-muted-foreground">{l.descripcion}</span></> },
-                { id: "ini", encabezado: "Saldo inicial", alinear: "right", celda: (l) => <span className="font-mono text-xs">{dinero(l.saldoInicialCentavos)}</span> },
-                { id: "debe", encabezado: "Debe", alinear: "right", celda: (l) => <span className="font-mono text-xs">{dinero(l.debeCentavos)}</span> },
-                { id: "haber", encabezado: "Haber", alinear: "right", celda: (l) => <span className="font-mono text-xs">{dinero(l.haberCentavos)}</span> },
-                { id: "fin", encabezado: "Saldo final", alinear: "right", celda: (l) => <span className={`font-mono text-xs ${l.saldoFinalCentavos < 0 ? "text-destructive" : ""}`}>{dinero(l.saldoFinalCentavos)}</span> },
+                { id: "ini", encabezado: "Saldo inicial", alinear: "right", celda: (l) => <span className="tabular-nums text-xs">{dinero(l.saldoInicialCentavos)}</span> },
+                { id: "debe", encabezado: "Debe", alinear: "right", celda: (l) => <span className="tabular-nums text-xs">{dinero(l.debeCentavos)}</span> },
+                { id: "haber", encabezado: "Haber", alinear: "right", celda: (l) => <span className="tabular-nums text-xs">{dinero(l.haberCentavos)}</span> },
+                { id: "fin", encabezado: "Saldo final", alinear: "right", celda: (l) => <span className={`tabular-nums text-xs ${l.saldoFinalCentavos < 0 ? "text-destructive" : ""}`}>{dinero(l.saldoFinalCentavos)}</span> },
               ]}
             />
           </TabsContent>
@@ -585,8 +585,8 @@ export function LibroContablePage({ apiBaseUrl, token, propertyId, role }: Despa
             columnas={[
               { id: "cuenta", encabezado: "Cuenta", principal: true, celda: (m) => <span className="font-mono text-xs">{m.cuenta}</span> },
               { id: "concepto", encabezado: "Concepto", celda: (m) => m.concepto || "—" },
-              { id: "debe", encabezado: "Debe", alinear: "right", celda: (m) => <span className="font-mono text-xs">{m.debeCentavos ? centavosAPesos(m.debeCentavos) : ""}</span> },
-              { id: "haber", encabezado: "Haber", alinear: "right", celda: (m) => <span className="font-mono text-xs">{m.haberCentavos ? centavosAPesos(m.haberCentavos) : ""}</span> },
+              { id: "debe", encabezado: "Debe", alinear: "right", celda: (m) => <span className="tabular-nums text-xs">{m.debeCentavos ? centavosAPesos(m.debeCentavos) : ""}</span> },
+              { id: "haber", encabezado: "Haber", alinear: "right", celda: (m) => <span className="tabular-nums text-xs">{m.haberCentavos ? centavosAPesos(m.haberCentavos) : ""}</span> },
             ]}
           />
         )}
