@@ -79,6 +79,14 @@ export function SeleccionarVerticalPage() {
         ))}
       </div>
 
+      {/* Alta autoservicio: hoy solo restaurantes tiene registro sin superadmin (rentas tiene el suyo en /rentas/registro). */}
+      <p className="login-entra [--retraso:150ms] mt-5 text-center text-sm text-muted-foreground">
+        ¿Tienes un restaurante?{" "}
+        <Link to="/restaurantes/registro" className="font-semibold text-foreground underline underline-offset-2 hover:opacity-70 transition-opacity">
+          Crea tu cuenta en minutos, con 14 días de prueba
+        </Link>
+      </p>
+
       <p className="login-entra [--retraso:180ms] mt-6 text-pretty text-center text-xs leading-relaxed text-muted-foreground">
         Al continuar, aceptas los{" "}
         <Link to="/terminos" className="underline underline-offset-2 text-foreground hover:opacity-70 transition-opacity">
