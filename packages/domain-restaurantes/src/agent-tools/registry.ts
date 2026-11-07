@@ -2248,6 +2248,10 @@ async function dispatchTool(
       if (sesionPrevia?.ultimoPedidoId) idsEnMemoria.add(sesionPrevia.ultimoPedidoId);
       try {
         order = await createOrder(repo, createInput, {
+          // Cerebro v2 (turno asincrono): un turno re-ejecutado para el MISMO mensaje de Meta no duplica el pedido aunque cambien las notas. Si la sesion ya creo
+          // un pedido no se usa: la deduplicacion por contenido de create_order_idempotent (5 min) es la que reconoce «otro igual» de un mensaje posterior
+          // (QA-PM-R2-reglas-15) y con llave esa rama no corre.
+          ...(ctx.cerebroV2 && ctx.channel === "whatsapp" && ctx.sourceEventId && !sesionPrevia?.ultimoPedidoId ? { idempotenciaDeMensaje: ctx.sourceEventId } : {}),
           beforePersist: async (prepared) => {
             // El precio lo fija SIEMPRE el catalogo vigente, pero el cliente solo acepto los precios que vio: si
             // cambiaron entre confirmar y crear, se pide re-cotizar en vez de cobrar un total distinto.
