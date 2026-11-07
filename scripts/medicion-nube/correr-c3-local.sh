@@ -37,7 +37,7 @@ nodo(){ ps -axo comm=,args= | awk -v re="$1" '$1 ~ /(^|\/)node$/ && $0 ~ re { f=
 ocupado(){ nodo "scripts/medicion/correr[.]mjs" && { echo "correr.mjs"; return 0; }; nodo "vite-node.*run[.]ts" && { echo "otro vite-node run.ts"; return 0; }
   pg_isready -h localhost -p 55491 -q 2>/dev/null && { echo "puerto 55491 ocupado"; return 0; }; return 1; }
 if [ "$SECO" != 1 ]; then
-  n=0; while q=$(ocupado); do [ $((n % 10)) = 0 ] && echo "$(date +%H:%M:%S) espero: $q"; n=$((n+1)); sleep 30; done
+  n=0; while q=$(ocupado); do [ $((n % 10)) = 0 ] && echo "$(date +%H:%M:%S) espero: $q"; n=$((n+1)); sleep 5; done
 else
   q=$(ocupado) && { case "$q" in correr.mjs) echo "(seco: corre aunque haya $q; no usa la llave)";; *) echo "ocupado: $q"; exit 9;; esac; }
 fi
