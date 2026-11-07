@@ -229,3 +229,36 @@ describe("POST /auth/logout", () => {
     expect(res.status).toBe(400);
   });
 });
+
+// Migracion 0060: `organizations[].diseno` en el payload de sesion (login, refresh y /auth/me). null = diseno actual.
+describe("diseno por organizacion en la sesion", () => {
+  it("login, refresh y /auth/me llevan diseno null por omision y 'ds3' cuando la organizacion lo tiene", async () => {
+    const { deps, ownerEmail, ownerPassword, organizationId } = await buildTestDeps();
+    const app = buildApp(deps);
+    const login = await app.request("/auth/login", jsonRequestInit({ email: ownerEmail, password: ownerPassword }));
+    const sinDiseno = (await login.json()) as { refreshToken: string; organizations: Array<{ id: string; diseno: string | null }> };
+    expect(sinDiseno.organizations).toEqual([expect.objectContaining({ id: organizationId, diseno: null })]);
+
+    const repo = deps.coreRepo as unknown as { addOrganization(o: object): void };
+    repo.addOrganization({ id: organizationId, slug: "los-taquitos-de-pm", name: "Los Taquitos de PM", vertical: "restaurantes", diseno: "ds3" });
+    const refreshed = await app.request("/auth/refresh", jsonRequestInit({ refreshToken: sinDiseno.refreshToken }));
+    const conDiseno = (await refreshed.json()) as { token: string; organizations: Array<{ id: string; diseno: string | null }> };
+    expect(conDiseno.organizations).toEqual([expect.objectContaining({ id: organizationId, diseno: "ds3" })]);
+
+    const me = await app.request("/auth/me", { headers: { authorization: `Bearer ${conDiseno.token}` } });
+    const meBody = (await me.json()) as { organizations: Array<{ id: string; diseno: string | null }> };
+    expect(meBody.organizations).toEqual([expect.objectContaining({ id: organizationId, diseno: "ds3" })]);
+  });
+
+  it("si la lectura del diseno falla, el login sigue (diseno null, best-effort)", async () => {
+    const { deps, ownerEmail, ownerPassword } = await buildTestDeps();
+    deps.coreRepo.findDisenoPorOrganizacion = async () => {
+      throw new Error("base caida");
+    };
+    const app = buildApp(deps);
+    const login = await app.request("/auth/login", jsonRequestInit({ email: ownerEmail, password: ownerPassword }));
+    expect(login.status).toBe(200);
+    const body = (await login.json()) as { organizations: Array<{ diseno: string | null }> };
+    expect(body.organizations.every((o) => o.diseno === null)).toBe(true);
+  });
+});

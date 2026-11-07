@@ -12,7 +12,7 @@
 // Nada de las paginas publicas debe precargar chunks con import() especulativo: el mismo evento recargaría con un formulario abierto.
 import { Component, lazy } from "react";
 import type { ErrorInfo, ReactNode } from "react";
-import { EstadoError } from "@atiende/ui";
+import { EstadoError } from "@atiende/ui/arranque";
 
 const CLAVE_RECARGA = "atiende:recarga-por-chunk";
 /** Ventana en la que NO se vuelve a recargar automáticamente (evita bucles si el chunk sigue sin existir). */

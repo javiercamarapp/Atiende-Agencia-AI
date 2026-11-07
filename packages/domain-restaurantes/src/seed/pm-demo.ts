@@ -958,7 +958,12 @@ begin
     raise exception 'seed-pm: el slug % ya existe en otra vertical (%); no se toca.', v->'organization'->>'slug', v_vertical;
   end if;
   if v_org is null then
-    insert into core.organization (vertical, name, slug) values ('restaurantes', v->'organization'->>'name', v->'organization'->>'slug') returning id into v_org;
+    -- Con --demo nace 'active' explicito: una demo no es una prueba (sin trial_ends_at de la 0072, sin avisos de fin de prueba).
+    -- Sin --demo (la cuenta real de PM) conserva el estado de siempre ('trial', el default de la columna).
+    insert into core.organization (vertical, name, slug, status)
+      values ('restaurantes', v->'organization'->>'name', v->'organization'->>'slug',
+              case when v->'demo' is not null and v->'demo' <> 'null'::jsonb then 'active' else 'trial' end)
+      returning id into v_org;
   else
     update core.organization set name = v->'organization'->>'name' where id = v_org;
   end if;

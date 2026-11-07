@@ -76,7 +76,7 @@ export const PM_SALSAS_A_PETICION = "crema de ajo, guacamolera, mexicana (pico d
 export const PM_TIEMPO_LLUVIA = "de 1 hora a 1 hora 20 minutos a domicilio";
 /** Umbral de pedido grande por omision (decision de Javier, 2-oct-2026): editable por organizacion. */
 export const PM_PEDIDO_GRANDE_POR_OMISION = "más de $4,000 o más de 5 kg; más de $2,500 si el número no tiene historial y paga en efectivo";
-export const PM_PROMOS_POR_OMISION = "lunes 2x1 en tacos al pastor y martes nachos de pastor con 2 aguas de cortesía; solo para recoger y solo en Francisco de Montejo, Pensiones y Galerías";
+export const PM_PROMOS_POR_OMISION = "lunes 2x1 en tacos al pastor y martes nachos de pastor con 2 aguas de cortesía; solo para recoger y solo en Francisco de Montejo y Pensiones";
 
 /** Reglas del agente vivo de PM que el original ya habia probado (rescate-orig-restaurantes-1 §4). UNA sola redaccion para los dos
  * canales: WhatsApp las lleva en su prompt completo y la voz en el bloque no borrable (`voz/perfil-voz-pm.ts`), porque el
@@ -180,12 +180,12 @@ function branchesBlockPm(branches: readonly BranchSummary[]): string {
 }
 
 /** Sucursales del mapa de Javier (T1-T8, no existe T6) con el telefono PUBLICO (del dueno y de la web). Es lo unico que el agente
- * puede dar cuando el pedido es de otra sucursal (fase 1, cerebro 6.8). Los WhatsApp por sucursal siguen pendientes (P2). */
+ * puede dar cuando el pedido es de otra sucursal (fase 1, cerebro 6.8). Los WhatsApp por sucursal siguen pendientes (P2).
+ * Galerias (T4) NO va: es solo venta local (decision del dueno 6-nov-2026, migracion 105); el agente nunca la nombra. */
 const PM_SUCURSALES_MAPA = [
   "Prolongación Montejo (999 944 0342)",
   "Francisco de Montejo (999 953 7122)",
   "Pensiones (999 987 5410)",
-  "Galerías (999 941 9612): solo informativa",
   "Playa, Chicxulub (969 688 4195): de temporada",
   "García Lavín, Victory Platz (999 518 2637)",
   "Victory Altabrisa (999 518 2857)",
@@ -317,7 +317,7 @@ ${w(`- El aviso de privacidad (y que habla con un asistente virtual) lo antepone
 
   const datos = `# DATOS DEL NEGOCIO (no afirme nada que no esté aquí)
 - Sucursales (el horario y el precio de cada una los da la herramienta de la sucursal, consultar_sucursal y buscar_producto): ${PM_SUCURSALES_MAPA.join("; ")}.
-- Horario: no lo afirme de memoria: lo da consultar_sucursal para cada sucursal (H16). Galerías no toma pedidos por este medio.
+- Horario: no lo afirme de memoria: lo da consultar_sucursal para cada sucursal (H16).
 - Menú grande (con comida regional: papadzules, codzitos, sopa de lima, cochinita) en Prolongación Montejo, García Lavín y Altabrisa; menú chico (sin regional) en las demás: lo que buscar_producto no devuelve en una sucursal no se vende ahí. Si piden regional en una sucursal chica: para recoger ofrezca una grande; a domicilio ofrezca otro platillo (las zonas son fijas).
 - Presentaciones (guía: si buscar_producto trae otro pack_size, por ejemplo 1 para una gringa suelta, manda la herramienta, y nunca cambie la cantidad que pidió el cliente): el taco al pastor, de rajas y de champiñón se vende por pieza. Gringas y mestizas, órdenes de 2. Alambres, tacos suizos y papadzules, órdenes de 5. Codzitos y cochinita, órdenes de 4. Bistec, chorizo, pechuga, chuleta, costilla, arrachera y poc-chuc, órdenes de 3. Media orden solo de nachos y frijoles charros. Si dicen "una orden de pastor", pregunte cuántos tacos. Una orden de flautas es UNA flauta grande y el precio de menú es por orden: "una orden" = 1; si piden N flautas son N órdenes (requested_quantity N); nunca multiplique por 4 ni invente piezas, y no pregunte cuántas flautas trae una orden, salvo que el cliente se contradiga («4 flautas, una orden»): ahí manda la herramienta (unidad_de_venta) y se pregunta. Cortesía de totopos y salsa mexicana: solo en comedor, no en pedidos por WhatsApp; ofrezca el frijol con tostadas. Quesadillas de maíz o harina, en órdenes de 3. Carnes por peso (pastor, bistec, chuleta, pechuga, poc-chuc, arrachera, costilla): 1/4, 1/2, 3/4, 1, 1.5 y 2 kg al precio proporcional del kilo; el precio lo da buscar_producto. Si piden los precios por kilo, liste TODAS esas carnes (con arrachera) con el precio de buscar_producto.
 - Nombres: "un agua" sin más es ambiguo (agua fresca, purificada o mineral): pregunte cuál. "Chela" o "cheve" es cerveza: pregunte cuál. "Bitek" es bistec. "Gringa" o "suizo" sin carne: pregunte la carne.
@@ -428,7 +428,7 @@ Avise primero al cliente que consulta al gerente y, en ese mismo turno, llame es
 
 # DATOS DEL NEGOCIO (no afirme nada que no esté aquí)
 - Sucursales: ${PM_SUCURSALES_MAPA.join("; ")}.
-- Horario: lo da consultar_sucursal (H16). Galerías no toma pedidos por este medio.
+- Horario: lo da consultar_sucursal (H16).
 - Regional (papadzules, codzitos, sopa de lima, cochinita): solo Prolongación Montejo, García Lavín y Altabrisa.
 - Por pieza: pastor, rajas y champiñón; lo demás va en órdenes (bistec, quesadillas y otras carnes de 3, gringas y mestizas de 2, codzitos y cochinita de 4, alambres, suizos y papadzules de 5). Carnes por peso: 1/4 a 2 kg, precio proporcional. "Frijol": ¿tostadas o charros? "Una orden de pastor": pregunte cuántos. "Un agua" o "chela": pregunte cuál. Precio viejo: "El precio vigente es de $X"; no iguale.
 - La doble porción de salsa cuesta extra.

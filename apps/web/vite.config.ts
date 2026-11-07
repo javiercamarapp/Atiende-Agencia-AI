@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import type { Plugin } from "vite";
 import react from "@vitejs/plugin-react-swc";
 
@@ -28,8 +28,19 @@ function manifiestoFueraDeDist(): Plugin {
   };
 }
 
-export default defineConfig({
-  plugins: [react(), manifiestoFueraDeDist()],
+// Rediseno ds3: interruptor del login (rutas previas a la organizacion). VITE_DISENO_LOGIN = lista de verticales separadas por
+// coma ("restaurantes,citas") o "*"; vacio (lo normal) = el login conserva el diseno actual. Se inyecta como <meta> ANTES de
+// /theme-boot.js para que el script lo lea antes del primer pintado. Solo letras, coma y "*": cualquier otro caracter se descarta.
+export function interruptorLogin(valor: string | undefined): Plugin {
+  const lista = (valor ?? "").replace(/[^a-z,*]/g, "");
+  return {
+    name: "interruptor-diseno-login",
+    transformIndexHtml: (html) => html.replace('<script src="/theme-boot.js"></script>', `<meta name="atiende-diseno-login" content="${lista}" />\n    <script src="/theme-boot.js"></script>`),
+  };
+}
+
+export default defineConfig(({ mode }) => ({
+  plugins: [react(), manifiestoFueraDeDist(), interruptorLogin(process.env.VITE_DISENO_LOGIN ?? loadEnv(mode, aqui, "VITE_").VITE_DISENO_LOGIN)],
   server: { port: 5173 },
   build: { manifest: true },
-});
+}));

@@ -96,30 +96,33 @@ export function composeWithPrivacyNotice(notice: string, reply: string): string 
   return body ? `${notice}\n\n${body}` : notice;
 }
 
-/** Frase hablada que avisa que la voz pasa por un proveedor externo (ElevenLabs) aunque no se autorice grabar. Corta a proposito: cada segundo
- * de la llamada cuesta. El detalle (proveedor, pais, su politica) va en el aviso integral. (Mismo texto que #743.) */
+/** Frase hablada que avisa que la voz pasa por un proveedor externo (ElevenLabs, ver `encargados.ts`) aunque no se autorice
+ * grabar. Corta a proposito: cada segundo de la llamada cuesta. El detalle (proveedor, pais, su politica) va en el aviso integral. */
 export const VOICE_PROCESSOR_NOTICE = "Su voz la procesa un proveedor externo para entenderle. ";
 
-/** Guion de apertura de la llamada: asistente virtual (IA) + aviso simplificado (finalidad, proveedor de voz, donde esta el aviso integral) + consentimiento
- * de grabacion en UNA pregunta. CORTO a proposito (E2E del 6-nov-2026: el guion anterior, de ~90 palabras, ocupaba los primeros 25 s y el cliente contestaba
- * con su pedido encima). Los derechos ARCO y el detalle van en el aviso integral. Con retencion de voz 0 la llamada NUNCA se graba y no se pide consentimiento. */
+/** Guion de apertura de la llamada: asistente virtual (IA) + aviso simplificado + consentimiento
+ * de grabacion. Con retencion de voz 0 la llamada NUNCA se graba y no se pide consentimiento. */
 export function voiceOpeningScript(config: PrivacyConfig): string {
   const businessName = businessNameOf(config);
   const intro =
-    `Soy el asistente virtual de ${businessName}, una inteligencia artificial. ` +
-    "Uso sus datos solo para su pedido. " +
+    `Hola, soy el asistente virtual de ${businessName}; soy una inteligencia artificial, no una persona. ` +
+    "Aviso de privacidad: uso sus datos solo para tomar y entregar su pedido. " +
     VOICE_PROCESSOR_NOTICE +
-    (config.noticeUrl ? "Aviso completo en nuestra página. " : "Aviso completo en la sucursal. ");
+    (config.noticeUrl ? "El aviso integral está en nuestra página; también puede pedirlo en la sucursal. " : "Puede pedir el aviso integral en la sucursal. ") +
+    "Para ejercer sus derechos sobre sus datos, escriba por WhatsApp o dígaselo a la sucursal. ";
   if (config.voiceRetentionDays === 0) return `${intro}Esta llamada no se graba.`;
   if (!config.recordingConsentRequired) {
-    return `${intro}La llamada se guarda ${config.voiceRetentionDays} días para mejorar el servicio.`;
+    return `${intro}Esta llamada se transcribe y se guarda ${config.voiceRetentionDays} días para mejorar el servicio.`;
   }
-  return `${intro}¿Autoriza grabar la llamada ${config.voiceRetentionDays} días, o le atiendo sin grabar?`;
+  return (
+    `${intro}¿Autoriza que esta llamada se grabe y se transcriba para mejorar el servicio? ` +
+    `Se guarda ${config.voiceRetentionDays} días. Si dice que no, lo atiendo igual, sin grabar.`
+  );
 }
 
 export const VOICE_CONSENT_GRANTED_REPLY = "Gracias, queda registrado. ¿Qué le gustaría pedir?";
 export const VOICE_CONSENT_DENIED_REPLY = "Sin problema: esta llamada no se graba. ¿Qué le gustaría pedir?";
-export const VOICE_CONSENT_REPEAT_REPLY = "¿Autoriza grabar la llamada? Diga sí o no; si no responde, no se graba.";
+export const VOICE_CONSENT_REPEAT_REPLY = "No lo escuché bien: ¿autoriza que se grabe la llamada? Puede decir sí o no; si no responde, no se graba.";
 
 function normalize(text: string): string {
   return text

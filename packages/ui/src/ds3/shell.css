@@ -1,0 +1,733 @@
+/*
+ * ds3 / shell de la app (lote 5): hoja unica del shell. Cada PR del carril agrega su seccion numerada (1. marco, ...).
+ *
+ * Reglas de esta hoja:
+ *  - TODO va bajo `html[data-diseno="ds3"]`: sin la bandera ninguna regla coincide y produccion queda igual.
+ *  - Las clases `ds3-*` las ponen los componentes de @atiende/ui; doble clase o atributo para ganar a las utilidades de
+ *    Tailwind sin !important.
+ *  - Solo tokens (hsl(var(--x))); ningun color literal. La paleta la define el bloque ds3 de index.css.
+ *  - Valores de referencia del sistema de diseno: marco 16, tarjetas de 1 px con radio 12 y sin sombra, contenido gris
+ *    con padding 24/24/28, easing unico cubic-bezier(.22,1,.36,1).
+ *  - Movimiento: el apagado global por prefers-reduced-motion vive en index.css; aqui no se duplica.
+ */
+
+/* ---- Elementos solo-ds3 ------------------------------------------------------------------------------------------
+ * Un elemento nuevo del shell que no existe en el diseno actual se pinta con el atributo `hidden` y la clase
+ * `ds3-solo`: sin la bandera queda oculto (y fuera del arbol accesible); con ella se muestra como bloque, o con el display
+ * que fije la regla de su componente (`revert` no sirve: volveria al `display:none` de [hidden] de la hoja del navegador).
+ * A la inversa, `ds3-no` oculta bajo ds3 una pieza del diseno actual que el shell nuevo reemplaza.
+ */
+html[data-diseno="ds3"] .ds3-solo[hidden] { display: block; }
+html[data-diseno="ds3"] .ds3-no.ds3-no { display: none; }
+
+/* ---- 1. Marco (escritorio >= 768) ---------------------------------------------------------------------------------
+ * Tres niveles de gris: lienzo (--background) -> tarjetas blancas (--card: sidebar y marco) -> contenido sumido (--sunken).
+ * El lienzo lleva padding 16 y gap 16; sidebar y marco son tarjetas de 1 px, radio 12, sin sombra. Solo el contenido
+ * hace scroll (el documento no se bloquea: se conserva la impresion del ticket de cocina y las anclas).
+ */
+@media (min-width: 768px) {
+  html[data-diseno="ds3"] .ds3-shell.ds3-shell {
+    gap: 16px;
+    padding: 16px;
+    background-color: hsl(var(--background));
+  }
+  html[data-diseno="ds3"] .ds3-shell-lateral.ds3-shell-lateral { padding: 0; }
+  html[data-diseno="ds3"] .ds3-shell-marco.ds3-shell-marco {
+    top: 16px;
+    margin: 0;
+    height: calc(100dvh - 32px);
+    border: 1px solid hsl(var(--border));
+    border-radius: 12px;
+    background-color: hsl(var(--card));
+    box-shadow: none;
+    overflow: clip;
+  }
+  html[data-diseno="ds3"] .ds3-shell-contenido.ds3-shell-contenido {
+    padding: 24px 24px 28px;
+    background-color: hsl(var(--sunken));
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+  }
+  /* Panel lateral del Copiloto de superadmin (Cmd+J): es un hijo flex mas del lienzo. Bajo el marco de 16 no lleva margen vertical
+     propio (el lienzo ya da el 16) y cerrado (ancho 0) cancela el gap con -16 px, asi el documento no hace scroll y el borde derecho
+     queda a 16. Abierto: el gap de 16 lo separa del marco y el padding del lienzo da el 16 al borde. */
+  html[data-diseno="ds3"] .ds3-shell.ds3-shell > .copiloto-panel-lateral {
+    top: 16px;
+    height: calc(100dvh - 32px);
+    margin-top: 0;
+    margin-bottom: 0;
+    margin-right: 0;
+  }
+  html[data-diseno="ds3"] .ds3-shell.ds3-shell > .copiloto-panel-lateral[data-abierto="false"] { margin-left: -16px; }
+  html[data-diseno="ds3"] .ds3-sidebar.ds3-sidebar {
+    top: 16px;
+    height: calc(100dvh - 32px);
+    border: 1px solid hsl(var(--border));
+    border-radius: 12px;
+    background-color: hsl(var(--card));
+    box-shadow: none;
+  }
+}
+
+/* Entrada de pagina: solo transform (sin fade), 5 px, 250 ms con el easing unico. */
+@keyframes ds3-entrada {
+  from { transform: translateY(5px); }
+  to { transform: none; }
+}
+html[data-diseno="ds3"] .ds3-shell-pagina.ds3-shell-pagina {
+  animation: ds3-entrada 250ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Modo de alto contraste (forced-colors), solo escritorio (en movil el marco va a sangre, sin borde): las tarjetas conservan su
+   contorno con el color del sistema. Misma especificidad que las reglas del marco y despues de ellas, para ganarles. */
+@media (min-width: 768px) and (forced-colors: active) {
+  html[data-diseno="ds3"] .ds3-shell-marco.ds3-shell-marco,
+  html[data-diseno="ds3"] .ds3-sidebar.ds3-sidebar { border: 1px solid CanvasText; }
+}
+
+/* ---- 2. Sidebar (escritorio >= 768) --------------------------------------------------------------------------------
+ * 232 px expandido / 72 contraido (persistido por vertical), 180 ms con el easing unico. Arriba: logo + boton de contraer.
+ * En medio: navegacion con scroll propio y sombras de «hay mas». Abajo, fijo: organizacion, filas del pie (Notificaciones con
+ * contador, Seguridad, Pregúntale a tus datos, administracion), tema + idioma y la tarjeta de cuenta.
+ * El orden visual (organizacion al pie) se fija con `order`: el arbol del diseno actual no cambia.
+ * Item 32 px 13/500 con icono 16; activo = tinte de tinta al 7 % + filete interior de 2 px en el resaltado de marca (celeste).
+ * Grupos: acordeon de uno abierto (logica del diseno actual), titulos en IBM Plex Mono 11 mayusculas.
+ */
+@media (min-width: 768px) {
+  html[data-diseno="ds3"] .ds3-sidebar.ds3-sidebar {
+    width: 232px;
+    transition: width var(--dur-base, 180ms) cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  html[data-diseno="ds3"] .ds3-sidebar.ds3-sidebar[data-colapsado] { width: 72px; }
+
+  /* Etiquetas, titulos de grupo y selectores visibles desde 768 (el diseno actual los esconde hasta 1024). */
+  html[data-diseno="ds3"] .ds3-sidebar:not([data-colapsado]) .ds3-etiqueta { display: block; }
+  html[data-diseno="ds3"] .ds3-sidebar:not([data-colapsado]) .ds3-sidebar-logo,
+  html[data-diseno="ds3"] .ds3-sidebar:not([data-colapsado]) .ds3-sidebar-organizacion,
+  html[data-diseno="ds3"] .ds3-sidebar:not([data-colapsado]) .ds3-cuenta-texto { display: block; }
+  html[data-diseno="ds3"] .ds3-sidebar:not([data-colapsado]) .ds3-nav-grupo-toggle,
+  html[data-diseno="ds3"] .ds3-sidebar:not([data-colapsado]) .ds3-sidebar-ajustes { display: flex; }
+
+  /* Marca: padding 12, alto minimo 52; logo a la izquierda y boton de 32 a la derecha. Contraido: columna centrada, gap 12. */
+  html[data-diseno="ds3"] .ds3-sidebar-marca.ds3-sidebar-marca {
+    order: 0;
+    min-height: 52px;
+    padding: 12px;
+    gap: 8px;
+    justify-content: space-between;
+  }
+  html[data-diseno="ds3"] .ds3-sidebar[data-colapsado] .ds3-sidebar-marca {
+    flex-direction: column;
+    justify-content: center;
+    gap: 12px;
+    padding: 12px 15px;
+  }
+  html[data-diseno="ds3"] .ds3-sidebar-simbolo.ds3-solo[hidden] { display: inline-flex; line-height: 0; }
+  html[data-diseno="ds3"] .ds3-icono-boton.ds3-icono-boton {
+    width: 32px;
+    height: 32px;
+    margin-left: 0;
+    border-radius: 8px;
+    color: hsl(var(--muted-foreground));
+    background: transparent;
+  }
+  html[data-diseno="ds3"] .ds3-icono-boton.ds3-icono-boton:hover { background-color: hsl(var(--soft)); color: hsl(var(--foreground)); }
+  html[data-diseno="ds3"] .ds3-icono-boton svg { width: 16px; height: 16px; }
+
+  /* Navegacion: scroll propio con sombras de «hay mas» (degradados local/scroll con tokens). */
+  html[data-diseno="ds3"] .ds3-sidebar-nav.ds3-sidebar-nav {
+    order: 1;
+    min-height: 96px;
+    padding: 0 8px 8px;
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border)) transparent;
+    overscroll-behavior: contain;
+    background:
+      linear-gradient(hsl(var(--card)) 30%, transparent) center top / 100% 24px no-repeat local,
+      linear-gradient(transparent, hsl(var(--card)) 70%) center bottom / 100% 24px no-repeat local,
+      radial-gradient(farthest-side at 50% 0, hsl(var(--border)), transparent) center top / 100% 10px no-repeat scroll,
+      radial-gradient(farthest-side at 50% 100%, hsl(var(--border)), transparent) center bottom / 100% 10px no-repeat scroll;
+  }
+  html[data-diseno="ds3"] .ds3-sidebar-nav.ds3-sidebar-nav > * + * { margin-top: 0; }
+  html[data-diseno="ds3"] .ds3-nav-grupo.ds3-nav-grupo { margin: 0 0 7px; }
+  html[data-diseno="ds3"] .ds3-sidebar[data-colapsado] .ds3-nav-grupo + .ds3-nav-grupo { padding-top: 5px; }
+
+  html[data-diseno="ds3"] .ds3-nav-grupo-toggle.ds3-nav-grupo-toggle {
+    align-items: center;
+    gap: 8px;
+    min-height: 32px;
+    margin: 0;
+    padding: 6px 10px;
+    border-radius: 8px;
+    font-family: "IBM Plex Mono DS3", "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1.5;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: hsl(var(--muted-foreground));
+  }
+  html[data-diseno="ds3"] .ds3-nav-grupo-toggle.ds3-nav-grupo-toggle:hover { background-color: hsl(var(--soft)); color: hsl(var(--foreground)); }
+  html[data-diseno="ds3"] .ds3-nav-grupo-toggle svg { width: 13px; height: 13px; transition: transform var(--dur-fast, 120ms) cubic-bezier(0.22, 1, 0.36, 1); }
+
+  /* Item: 32 px, padding 6x10, radio 8, 13/500, gap 9, icono 16 del color del texto. */
+  html[data-diseno="ds3"] .ds3-nav-item.ds3-nav-item,
+  html[data-diseno="ds3"] .ds3-pie-fila.ds3-pie-fila {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    min-height: 32px;
+    margin: 0;
+    padding: 6px 10px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1.35;
+    color: hsl(var(--foreground-2));
+    text-decoration: none;
+  }
+  html[data-diseno="ds3"] .ds3-nav-item.ds3-nav-item:hover,
+  html[data-diseno="ds3"] .ds3-pie-fila.ds3-pie-fila:hover { background-color: hsl(var(--soft)); color: hsl(var(--foreground)); }
+  html[data-diseno="ds3"] .ds3-nav-item .ds3-nav-icono,
+  html[data-diseno="ds3"] .ds3-pie-fila .ds3-nav-icono { width: 16px; height: 16px; color: currentColor; }
+  html[data-diseno="ds3"] .ds3-nav-item.ds3-nav-item[aria-current="page"],
+  html[data-diseno="ds3"] .ds3-pie-fila.ds3-pie-fila[aria-current="page"] {
+    font-weight: 500;
+    color: hsl(var(--foreground));
+    background-color: color-mix(in srgb, hsl(var(--foreground)) 7%, transparent);
+    box-shadow: inset 2px 0 0 hsl(var(--highlight, var(--primary)));
+  }
+  /* Contraido: solo iconos centrados en filas de 40; el title del item hace de tooltip. */
+  html[data-diseno="ds3"] .ds3-sidebar[data-colapsado] .ds3-nav-item.ds3-nav-item,
+  html[data-diseno="ds3"] .ds3-sidebar[data-colapsado] .ds3-pie-fila.ds3-pie-fila { justify-content: center; min-height: 40px; padding: 8px; }
+
+  /* Pie fijo: gris sumido, filete arriba, padding 10/8/8, maximo 55 % del alto con scroll propio. */
+  html[data-diseno="ds3"] .ds3-sidebar-organizacion.ds3-sidebar-organizacion {
+    order: 2;
+    padding: 10px 10px 2px;
+    border-top: 1px solid hsl(var(--border));
+    background-color: hsl(var(--sunken));
+  }
+  html[data-diseno="ds3"] .ds3-sidebar-pie.ds3-sidebar-pie {
+    order: 3;
+    max-height: 55%;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    padding: 10px 8px 0;
+    background-color: hsl(var(--sunken));
+  }
+  html[data-diseno="ds3"] .ds3-sidebar-organizacion + .ds3-sidebar-nav + .ds3-sidebar-pie { border-top: 0; }
+  html[data-diseno="ds3"] .ds3-sidebar-pie.ds3-sidebar-pie > * + * { margin-top: 0; }
+  html[data-diseno="ds3"] .ds3-contador.ds3-solo[hidden] {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    margin-left: auto;
+    padding: 0 5px;
+    border-radius: 999px;
+    background-color: hsl(var(--action));
+    color: hsl(var(--action-foreground));
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  html[data-diseno="ds3"] .ds3-contador.ds3-solo[hidden]::before { content: attr(data-contador); }
+  html[data-diseno="ds3"] .ds3-sidebar[data-colapsado] .ds3-contador.ds3-solo[hidden] { display: none; }
+
+  /* Tema e idioma: dos pildoras de 32 con celdas de 26 e iconos de 16, en la misma fila. */
+  html[data-diseno="ds3"] .ds3-sidebar-ajustes.ds3-sidebar-ajustes {
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin: 0;
+    padding: 6px 0 10px;
+  }
+  html[data-diseno="ds3"] .ds3-sidebar-idioma.ds3-solo[hidden] { display: inline-flex; }
+  html[data-diseno="ds3"] .ds3-tema.ds3-tema,
+  html[data-diseno="ds3"] .ds3-idioma.ds3-idioma {
+    height: 32px;
+    gap: 2px;
+    padding: 2px;
+    border: 1px solid hsl(var(--border));
+    border-radius: 999px;
+    background-color: hsl(var(--soft));
+  }
+  html[data-diseno="ds3"] .ds3-tema-opcion.ds3-tema-opcion,
+  html[data-diseno="ds3"] .ds3-idioma-opcion.ds3-idioma-opcion {
+    min-width: 26px;
+    width: 26px;
+    height: 26px;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: hsl(var(--muted-foreground));
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    transition: background-color var(--dur-base, 180ms) cubic-bezier(0.22, 1, 0.36, 1), color var(--dur-base, 180ms) cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  html[data-diseno="ds3"] .ds3-tema-opcion.ds3-tema-opcion:hover,
+  html[data-diseno="ds3"] .ds3-idioma-opcion.ds3-idioma-opcion:hover { color: hsl(var(--foreground)); }
+  html[data-diseno="ds3"] .ds3-tema-opcion.ds3-tema-opcion[aria-checked="true"],
+  html[data-diseno="ds3"] .ds3-idioma-opcion.ds3-idioma-opcion[aria-pressed="true"] {
+    background-color: hsl(var(--card));
+    color: hsl(var(--foreground));
+    box-shadow: 0 0 0 1px hsl(var(--border));
+  }
+  html[data-diseno="ds3"] .ds3-tema-opcion svg { width: 16px; height: 16px; }
+
+  /* Tarjeta de cuenta: borde, radio 12, padding 8; monograma 28 con radio 8 y tinte de tinta; salir en gris (rojo al pasar). */
+  html[data-diseno="ds3"] .ds3-sidebar-cuenta-zona.ds3-sidebar-cuenta-zona {
+    order: 4;
+    padding: 2px 8px 8px;
+    border-top: 0;
+    background-color: hsl(var(--sunken));
+  }
+  html[data-diseno="ds3"] .ds3-cuenta.ds3-cuenta {
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 8px;
+    padding: 8px;
+    border: 1px solid hsl(var(--border));
+    border-radius: 12px;
+    background-color: hsl(var(--card));
+  }
+  html[data-diseno="ds3"] .ds3-sidebar[data-colapsado] .ds3-cuenta.ds3-cuenta { flex-direction: column; justify-content: center; padding: 4px; }
+  html[data-diseno="ds3"] .ds3-monograma.ds3-monograma {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    background-color: color-mix(in srgb, hsl(var(--foreground)) 7%, hsl(var(--card)));
+    color: hsl(var(--foreground));
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, hsl(var(--foreground)) 12%, transparent);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+  html[data-diseno="ds3"] .ds3-cuenta-organizacion.ds3-solo[hidden] { display: block; }
+  /* Rol bajo el nombre: 12 px en caja normal (no mayusculas), gris. Contraido: solo el boton de salir (sin monograma). */
+  html[data-diseno="ds3"] .ds3-cuenta-texto.ds3-cuenta-texto > p:last-child { font-size: 12px; line-height: 1.35; text-transform: none; color: hsl(var(--muted-foreground)); }
+  html[data-diseno="ds3"] .ds3-sidebar[data-colapsado] .ds3-monograma.ds3-monograma { display: none; }
+  html[data-diseno="ds3"] .ds3-cuenta-salir.ds3-cuenta-salir {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    color: hsl(var(--muted-foreground));
+    background: transparent;
+  }
+  html[data-diseno="ds3"] .ds3-cuenta-salir.ds3-cuenta-salir:hover { color: hsl(var(--danger-ink)); background-color: hsl(var(--soft)); }
+}
+
+/* forced-colors: el filete interior (box-shadow) no se pinta en alto contraste; el item activo usa un borde del sistema. */
+@media (forced-colors: active) {
+  html[data-diseno="ds3"] .ds3-nav-item[aria-current="page"],
+  html[data-diseno="ds3"] .ds3-pie-fila[aria-current="page"] { border-left: 2px solid Highlight; }
+}
+
+/* ---- 3. Encabezado de 44 px, cabecera de pagina y barra de alcance -------------------------------------------------
+ * Encabezado (escritorio): icono de la pantalla (15, gris) + titulo 13/500 con elipsis + boton «Guía» (pildora de 28) a su lado;
+ * acciones de la pagina a la derecha. Sin campana, fecha ni migas. La cabecera interna se aplana (display: contents) para que
+ * titulo, Guía y acciones sean una sola fila con la zona.
+ */
+@media (min-width: 768px) {
+  html[data-diseno="ds3"] .ds3-cabecera-zona.ds3-cabecera-zona {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 44px;
+    padding: 0 20px;
+    border-bottom: 1px solid hsl(var(--border));
+    background-color: hsl(var(--card));
+  }
+  html[data-diseno="ds3"] .ds3-cabecera.ds3-cabecera { display: contents; }
+  html[data-diseno="ds3"] .ds3-cabecera-titulo.ds3-cabecera-titulo {
+    order: 0;
+    min-width: 0;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    color: hsl(var(--foreground));
+  }
+  html[data-diseno="ds3"] .ds3-cabecera-titulo svg { width: 15px; height: 15px; flex: none; color: hsl(var(--muted-foreground)); }
+  html[data-diseno="ds3"] .ds3-guia.ds3-solo[hidden] {
+    order: 1;
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 5px;
+    height: 28px;
+    padding: 0 10px 0 8px;
+    border: 1px solid hsl(var(--border));
+    border-radius: 999px;
+    background-color: hsl(var(--card));
+    color: hsl(var(--foreground-2));
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color var(--dur-fast, 120ms) cubic-bezier(0.22, 1, 0.36, 1), color var(--dur-fast, 120ms) cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  html[data-diseno="ds3"] .ds3-guia.ds3-solo[hidden]:hover { background-color: hsl(var(--soft)); color: hsl(var(--foreground)); }
+  html[data-diseno="ds3"] .ds3-guia.ds3-solo[hidden]:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
+  html[data-diseno="ds3"] .ds3-guia svg { width: 14px; height: 14px; }
+  html[data-diseno="ds3"] .ds3-cabecera-acciones.ds3-cabecera-acciones { order: 2; margin-left: auto; }
+  /* Nombre de la pagina tambien en el Resumen (la barra del diseno actual lleva ahi el titulo de la consola). */
+  html[data-diseno="ds3"] .ds3-cabecera-titulo-ds3.ds3-solo[hidden] { display: block; min-width: 0; }
+  html[data-diseno="ds3"] .ds3-cabecera-titulo-ds3.ds3-solo[hidden]::before { content: attr(data-titulo); }
+  /* Pantalla de chat (Pregúntale a tus datos / Copiloto): sin encabezado en escritorio y sin banners sobre la conversacion. */
+  html[data-diseno="ds3"] .ds3-cabecera-zona.ds3-cabecera-zona[data-sin-cabecera] { display: none; }
+  html[data-diseno="ds3"] .ds3-shell-marco[data-pantalla="chat"] [data-testid="banner-plan"],
+  html[data-diseno="ds3"] .ds3-shell-marco[data-pantalla="chat"] [data-testid="banner-agregados-global"] { display: none; }
+}
+
+/* PageHeader: flex con wrap y acciones a la derecha; eyebrow 12/600 mayusculas, H1 20/600, descripcion de UNA linea 13/1.4.
+   Ritmo de 12 con lo que sigue. En <= 640 las acciones pasan a una fila completa alineada a la izquierda. */
+html[data-diseno="ds3"] .ds3-encabezado.ds3-encabezado { gap: 8px; margin-bottom: 12px; }
+html[data-diseno="ds3"] .ds3-encabezado-fila.ds3-encabezado-fila {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px 24px;
+}
+html[data-diseno="ds3"] .ds3-encabezado-texto.ds3-encabezado-texto { flex: 1 1 320px; }
+/* Antetitulo derivado del grupo del menu (cuando la pantalla no trae uno propio): texto por CSS desde data-eyebrow. */
+html[data-diseno="ds3"] .ds3-eyebrow-derivado.ds3-solo[hidden] { display: block; }
+html[data-diseno="ds3"] .ds3-eyebrow-derivado.ds3-solo[hidden]::before { content: attr(data-eyebrow); }
+html[data-diseno="ds3"] .ds3-encabezado-eyebrow.ds3-encabezado-eyebrow {
+  margin: 0 0 5px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground));
+}
+html[data-diseno="ds3"] .ds3-encabezado-titulo.ds3-encabezado-titulo {
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+}
+html[data-diseno="ds3"] .ds3-encabezado-descripcion.ds3-encabezado-descripcion {
+  margin-top: 5px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: hsl(var(--muted-foreground));
+}
+html[data-diseno="ds3"] .ds3-encabezado-acciones.ds3-encabezado-acciones { margin-left: auto; padding-top: 0; gap: 8px; }
+@media (max-width: 640px) {
+  html[data-diseno="ds3"] .ds3-encabezado-acciones.ds3-encabezado-acciones { flex-basis: 100%; margin-left: 0; justify-content: flex-start; }
+}
+html[data-diseno="ds3"] .ds3-popover-guia.ds3-popover-guia { width: min(340px, calc(100vw - 24px)); padding: 12px; border-radius: 12px; }
+
+/* Barra de alcance: una fila de 32 sin wrap (scroll-x interno, sin barra visible), margen de 12 con el contenido. */
+html[data-diseno="ds3"] .ds3-alcance.ds3-alcance { min-height: 32px; gap: 8px; margin-bottom: 12px; }
+html[data-diseno="ds3"] .ds3-alcance-filtros.ds3-alcance-filtros { height: 32px; border-radius: 8px; }
+/* La raiz ds3 mide 13 px: las alturas en rem de Tailwind encogen, asi que los controles de la barra fijan su alto en px. */
+html[data-diseno="ds3"] .ds3-alcance-filtros.ds3-alcance-filtros { padding: 0 10px; font-size: 13px; }
+html[data-diseno="ds3"] .ds3-alcance-chip.ds3-alcance-chip { height: 28px; font-size: 12px; }
+html[data-diseno="ds3"] .ds3-alcance-chip button { width: 24px; height: 24px; }
+
+/* ---- 4. Superposiciones: Drawer (420/480/640), Modal (440/560), Popover (340) -------------------------------------
+ * Anatomia unica: cabecera (titulo 15/600 + subtitulo 12 + cerrar de 28 con radio 8), cuerpo con scroll propio (padding 16, gap 12,
+ * 13 px), pie con acciones a la derecha y, en el Drawer de escritorio, el logo de Atiende de 64 px al 60 % debajo del pie.
+ * Escritorio: el Drawer flota a 8 px del borde derecho con radio 12; entra con translateX(16px) + fundido en 180 ms y sale en 120.
+ * < 820 px: hoja inferior de 90dvh, radio 16 arriba, agarradera de 36x4, cerrar con area de 44 y sin logo; entra con translateY(32px).
+ */
+html[data-diseno="ds3"] .ds3-ov-cabecera.ds3-ov-cabecera { align-items: center; padding: 12px 16px; }
+html[data-diseno="ds3"] .ds3-ov-titulo.ds3-ov-titulo { font-size: 15px; font-weight: 600; line-height: 1.35; }
+html[data-diseno="ds3"] .ds3-ov-subtitulo.ds3-ov-subtitulo { font-size: 12px; line-height: 1.4; color: hsl(var(--muted-foreground)); }
+html[data-diseno="ds3"] .ds3-ov-cerrar.ds3-ov-cerrar { width: 28px; height: 28px; border-radius: 8px; }
+html[data-diseno="ds3"] .ds3-ov-cerrar svg { width: 14px; height: 14px; }
+html[data-diseno="ds3"] .ds3-ov-cuerpo.ds3-ov-cuerpo { padding: 16px; gap: 12px; font-size: 13px; }
+html[data-diseno="ds3"] .ds3-ov-pie.ds3-ov-pie { gap: 8px; padding-left: 16px; padding-right: 16px; }
+html[data-diseno="ds3"] .ds3-drawer-marca-logo [data-atiende-wordmark] { gap: 4px; height: 13px; }
+html[data-diseno="ds3"] .ds3-drawer-marca-logo [data-atiende-wordmark] svg { height: 12px; width: auto; }
+html[data-diseno="ds3"] .ds3-drawer-marca-logo [data-atiende-wordmark] > span { font-size: 13px; line-height: 13px; }
+html[data-diseno="ds3"] .ds3-modal.ds3-modal,
+html[data-diseno="ds3"] .ds3-drawer.ds3-drawer { border-radius: 12px; box-shadow: var(--shadow-pop); }
+
+@keyframes ds3-drawer-entra {
+  from { opacity: 0; transform: translateX(16px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes ds3-drawer-sale {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translateX(16px); }
+}
+@keyframes ds3-hoja-entra {
+  from { transform: translateY(32px); }
+  to { transform: none; }
+}
+@keyframes ds3-modal-entra {
+  from { opacity: 0; transform: scale(0.97); }
+  to { opacity: 1; transform: none; }
+}
+html[data-diseno="ds3"] .ds3-modal.ds3-modal[data-state="open"] { animation: ds3-modal-entra 160ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+html[data-diseno="ds3"] .ds3-velo.ds3-velo[data-state="open"] { animation-duration: 140ms; }
+
+@media (min-width: 820px) {
+  html[data-diseno="ds3"] .ds3-drawer.ds3-drawer[data-state="open"] { animation: ds3-drawer-entra var(--dur-base, 180ms) cubic-bezier(0.22, 1, 0.36, 1) both; }
+  html[data-diseno="ds3"] .ds3-drawer.ds3-drawer[data-state="closed"] { animation: ds3-drawer-sale 120ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+}
+@media (max-width: 819.98px) {
+  html[data-diseno="ds3"] .ds3-drawer.ds3-drawer { border-radius: 16px 16px 0 0; box-shadow: var(--shadow-hoja, var(--shadow-pop)); }
+  html[data-diseno="ds3"] .ds3-drawer.ds3-drawer[data-state="open"] { animation: ds3-hoja-entra var(--dur-slow, 240ms) cubic-bezier(0.22, 1, 0.36, 1) both; }
+  html[data-diseno="ds3"] .ds3-drawer .ds3-ov-cerrar.ds3-ov-cerrar { width: 32px; height: 32px; }
+  html[data-diseno="ds3"] .ds3-drawer-marca.ds3-drawer-marca { display: none; }
+}
+
+@media (forced-colors: active) {
+  html[data-diseno="ds3"] .ds3-drawer,
+  html[data-diseno="ds3"] .ds3-modal { border: 1px solid CanvasText; }
+}
+
+/* ---- 5. Carga: UNA capa de arranque a pantalla completa con el logo que respira -------------------------------------
+ * `#arranque` (index.html) cubre todo con un solo color y el logo de Atiende: opacidad .35 -> 1 y escala .985 -> 1 en 1,6 s con el
+ * easing unico. Visible mientras html no tenga data-arranque="suelto" (lo gobierna CapaArranque: suelta tras 600 ms estables; en una
+ * navegacion lenta vuelve si la carga pasa de 250 ms y dura >= 400 ms). Al soltarse se desvanece en 170 ms. Seguro CSS: a los 45 s se
+ * oculta aunque React nunca monte. Mientras la capa se ve, ningun otro logo animado se dibuja (uno a la vez); los cargadores de
+ * pagina completa nunca se dibujan: la capa los sustituye.
+ */
+@keyframes ds3-respira {
+  0%, 100% { opacity: 0.35; transform: scale(0.985); }
+  50% { opacity: 1; transform: scale(1); }
+}
+@keyframes ds3-arranque-tope {
+  to { opacity: 0; visibility: hidden; pointer-events: none; }
+}
+html[data-diseno="ds3"] #arranque.ds3-arranque[hidden] {
+  display: flex;
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  align-items: center;
+  justify-content: center;
+  background-color: hsl(var(--card));
+  color: hsl(var(--foreground));
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 170ms cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear 170ms;
+}
+html[data-diseno="ds3"].dark #arranque.ds3-arranque[hidden] { background-color: hsl(var(--background)); }
+html[data-diseno="ds3"]:not([data-arranque="suelto"]) #arranque.ds3-arranque[hidden] {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transition: none;
+  animation: ds3-arranque-tope 1ms linear 45s forwards;
+}
+html[data-diseno="ds3"] .ds3-arranque-logo.ds3-arranque-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  animation: ds3-respira 1.6s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+}
+html[data-diseno="ds3"] .ds3-arranque-logo svg { display: block; width: 30px; height: 24px; }
+html[data-diseno="ds3"] .ds3-arranque-punto.ds3-arranque-punto { fill: hsl(var(--primary)); }
+html[data-diseno="ds3"] .ds3-arranque-texto.ds3-arranque-texto { font-family: var(--font-display, inherit); font-size: 24px; font-weight: 700; line-height: 1; letter-spacing: -0.02em; }
+html[data-diseno="ds3"]:not([data-arranque="suelto"]) .carga-logo,
+html[data-diseno="ds3"] [data-carga-tamano="pantalla"] .carga-logo { visibility: hidden; }
+@media (prefers-reduced-motion: reduce) {
+  html[data-diseno="ds3"] .ds3-arranque-logo.ds3-arranque-logo { animation: none; opacity: 0.6; }
+  html[data-diseno="ds3"] #arranque.ds3-arranque[hidden] { transition: none; }
+}
+@media (forced-colors: active) {
+  html[data-diseno="ds3"] #arranque.ds3-arranque[hidden] { background-color: Canvas; color: CanvasText; }
+  html[data-diseno="ds3"] .ds3-arranque-punto.ds3-arranque-punto { fill: CanvasText; }
+}
+
+/* ---- 6. Movil (< 768) -----------------------------------------------------------------------------------------------
+ * Cabecera fija de vidrio de 56 px (+ area segura) en una sola fila: logo a la izquierda, selector y menu de cuenta (44, borde, radio 12)
+ * a la derecha; el nombre de la pagina queda solo para lectores de pantalla (sigue siendo el h1 de respaldo si la pagina no trae uno).
+ * Barra inferior flotante en pildora (64 px, a 12 px de los bordes) con 4 destinos + «Preguntar» + «Más»; se oculta con el teclado abierto.
+ * Decision de Omar 7-nov-2026 (igual que Rovaq): la cabecera lleva la campana de 44 con contador entre el selector y el menu de cuenta, y
+ * «Preguntar» (chat de datos) es el 5.o destino fijo de la barra, solo para roles con acceso.
+ * «Más» = el sidebar completo (secciones, filas de 44, cuenta) en una hoja inferior de 90dvh.
+ */
+@media (max-width: 767.98px) {
+  html[data-diseno="ds3"] .ds3-movil-cabecera.ds3-movil-cabecera {
+    background-color: color-mix(in srgb, hsl(var(--card)) 92%, transparent);
+    -webkit-backdrop-filter: saturate(1.4) blur(14px);
+    backdrop-filter: saturate(1.4) blur(14px);
+    border-bottom: 1px solid hsl(var(--border));
+  }
+  html[data-diseno="ds3"] .ds3-movil-cabecera-fila.ds3-movil-cabecera-fila {
+    min-height: 56px;
+    gap: 8px;
+    padding: 0 max(12px, env(safe-area-inset-right)) 0 max(12px, env(safe-area-inset-left));
+    border-bottom: 0;
+  }
+  html[data-diseno="ds3"] .ds3-movil-titulo.ds3-movil-titulo {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+  html[data-diseno="ds3"] .ds3-movil-menu.ds3-movil-menu {
+    width: 44px;
+    height: 44px;
+    border: 1px solid hsl(var(--border));
+    border-radius: 12px;
+    background-color: hsl(var(--card));
+    color: hsl(var(--foreground));
+  }
+  /* «Más» de 44 (borde, radio 12) a la derecha de la cabecera. */
+  html[data-diseno="ds3"] .ds3-movil-mas.ds3-solo[hidden] {
+    position: relative;
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    color: hsl(var(--foreground));
+  }
+  html[data-diseno="ds3"] .ds3-movil-mas.ds3-solo[hidden] { border: 1px solid hsl(var(--border)); background-color: hsl(var(--card)); }
+  html[data-diseno="ds3"] .ds3-movil-mas svg { width: 20px; height: 20px; }
+  html[data-diseno="ds3"] .ds3-movil-acciones.ds3-movil-acciones { gap: 8px; }
+  html[data-diseno="ds3"] .ds3-movil-campana.ds3-solo[hidden] {
+    display: inline-flex;
+    position: relative;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border: 1px solid hsl(var(--border));
+    border-radius: 12px;
+    background-color: hsl(var(--card));
+    color: hsl(var(--foreground));
+    touch-action: manipulation;
+  }
+  html[data-diseno="ds3"] .ds3-movil-campana svg { width: 20px; height: 20px; }
+  html[data-diseno="ds3"] .ds3-movil-campana[aria-current="page"] { background-color: hsl(var(--soft)); }
+  html[data-diseno="ds3"] .ds3-movil-campana-contador.ds3-movil-campana-contador {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background-color: hsl(var(--action));
+    color: hsl(var(--action-foreground));
+    box-shadow: 0 0 0 2px hsl(var(--card));
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 18px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
+  html[data-diseno="ds3"] .ds3-movil-campana-punto.ds3-movil-campana-punto {
+    position: absolute;
+    top: 9px;
+    right: 9px;
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background-color: hsl(var(--action));
+    box-shadow: 0 0 0 2px hsl(var(--card));
+  }
+  html[data-diseno="ds3"] .ds3-shell-contenido.ds3-shell-contenido {
+    padding: calc(56px + var(--safe-area-top, 0px) + 16px) 16px calc(64px + max(10px, env(safe-area-inset-bottom)) + 24px);
+  }
+
+  html[data-diseno="ds3"] .ds3-barra-inferior.ds3-barra-inferior {
+    left: max(12px, env(safe-area-inset-left));
+    right: max(12px, env(safe-area-inset-right));
+    bottom: max(10px, env(safe-area-inset-bottom));
+    height: 64px;
+    padding: 4px;
+    border: 1px solid hsl(var(--border));
+    border-radius: 999px;
+    background-color: color-mix(in srgb, hsl(var(--card)) 90%, transparent);
+    -webkit-backdrop-filter: blur(16px) saturate(1.4);
+    backdrop-filter: blur(16px) saturate(1.4);
+    box-shadow: var(--shadow-pop);
+  }
+  html[data-diseno="ds3"] .ds3-barra-inferior.ds3-barra-inferior > ul { height: 100%; gap: 2px; }
+  html[data-diseno="ds3"] .ds3-barra-destino.ds3-barra-destino {
+    height: 100%;
+    min-height: 44px;
+    gap: 2px;
+    padding: 2px 0;
+    border-radius: 999px;
+    color: hsl(var(--muted-foreground));
+    touch-action: manipulation;
+  }
+  html[data-diseno="ds3"] .ds3-barra-destino svg { width: 22px; height: 22px; }
+  html[data-diseno="ds3"] .ds3-barra-destino > span:not([aria-hidden]) { font-size: 12px; line-height: 1.1; }
+  html[data-diseno="ds3"] .ds3-barra-destino.ds3-barra-destino[aria-current="page"],
+  html[data-diseno="ds3"] .ds3-barra-destino.ds3-barra-destino[data-activo] {
+    background-color: hsl(var(--soft));
+    color: hsl(var(--foreground));
+    font-weight: 600;
+  }
+  /* «Preguntar» (solo-ds3) es un destino mas de la barra; si la ruta activa es la suya, «Más» deja de marcarse aunque el chat tambien
+     viva en las secciones (el Copiloto del superadmin). */
+  html[data-diseno="ds3"] .ds3-barra-preguntar.ds3-solo[hidden] { display: block; }
+  /* Con «Preguntar» son 6 lugares (a 360 px, ~52 px cada uno): sin hueco entre lugares ni margen en la etiqueta, y etiqueta de 11 px,
+     para que ninguna se recorte. */
+  html[data-diseno="ds3"] .ds3-barra-inferior.ds3-barra-inferior:has(.ds3-barra-preguntar) > ul { gap: 0; }
+  html[data-diseno="ds3"] .ds3-barra-inferior:has(.ds3-barra-preguntar) .ds3-barra-destino > span:not([aria-hidden]) {
+    padding-left: 0;
+    padding-right: 0;
+    font-size: 11px;
+    letter-spacing: -0.01em;
+  }
+  html[data-diseno="ds3"] .ds3-barra-inferior:has(.ds3-barra-preguntar [aria-current="page"]) .ds3-barra-mas.ds3-barra-mas[data-activo] {
+    background-color: transparent;
+    color: hsl(var(--muted-foreground));
+    font-weight: 500;
+  }
+  html[data-diseno="ds3"] .ds3-barra-inferior:has(.ds3-barra-preguntar [aria-current="page"]) .ds3-barra-mas[data-activo] > span { font-weight: 500; }
+  html[data-diseno="ds3"] .ds3-barra-inferior:has(.ds3-barra-preguntar [aria-current="page"]) .ds3-barra-mas[data-activo] svg { stroke-width: 1.75; }
+  html[data-diseno="ds3"][data-teclado="abierto"] .ds3-barra-inferior.ds3-barra-inferior { display: none; }
+
+  html[data-diseno="ds3"] .ds3-hoja-mas.ds3-hoja-mas {
+    max-height: 90dvh;
+    border-radius: 16px 16px 0 0;
+    padding: 20px 16px calc(16px + env(safe-area-inset-bottom));
+  }
+  html[data-diseno="ds3"] .ds3-hoja-mas a,
+  html[data-diseno="ds3"] .ds3-hoja-mas button { min-height: 44px; }
+  html[data-diseno="ds3"] .ds3-hoja-mas a[aria-current="page"] {
+    background-color: color-mix(in srgb, hsl(var(--foreground)) 7%, transparent);
+    color: hsl(var(--foreground));
+    box-shadow: inset 2px 0 0 hsl(var(--highlight, var(--primary)));
+  }
+  html[data-diseno="ds3"] .ds3-hoja-mas-ajustes > * { width: 100%; justify-content: stretch; }
+  html[data-diseno="ds3"] .ds3-hoja-mas-ajustes [role="radio"],
+  html[data-diseno="ds3"] .ds3-hoja-mas-ajustes button { flex: 1 1 0; }
+}
+html[data-diseno="ds3"] .ds3-hoja-mas-cuenta.ds3-solo[hidden] { display: block; }
+html[data-diseno="ds3"] .ds3-hoja-mas-ajustes .ds3-idioma { display: flex; height: 48px; }
+html[data-diseno="ds3"] .ds3-hoja-mas-ajustes .ds3-idioma-opcion { height: 44px; width: auto; }
+
+@media (max-width: 767.98px) and (pointer: coarse) {
+  html[data-diseno="ds3"] .ds3-shell input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="hidden"]),
+  html[data-diseno="ds3"] .ds3-shell select,
+  html[data-diseno="ds3"] .ds3-shell textarea { font-size: 16px; }
+}
+
+@media (forced-colors: active) {
+  html[data-diseno="ds3"] .ds3-barra-inferior,
+  html[data-diseno="ds3"] .ds3-movil-cabecera { border: 1px solid CanvasText; }
+  html[data-diseno="ds3"] .ds3-movil-campana-contador,
+  html[data-diseno="ds3"] .ds3-movil-campana-punto { forced-color-adjust: none; background-color: Highlight; color: HighlightText; }
+  html[data-diseno="ds3"] .ds3-barra-destino[aria-current="page"] { outline: 2px solid Highlight; }
+}

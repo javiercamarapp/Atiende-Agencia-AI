@@ -1,7 +1,7 @@
-import { useLayoutEffect, useRef, type HTMLAttributes } from "react";
+import { useEffect, useLayoutEffect, useRef, type HTMLAttributes } from "react";
 import { AtiendeMark, AtiendeWordmark } from "./AtiendeLogo";
 import { cn } from "../lib/utils";
-import { faseCarga, useCargaCoordinada, type CargaTamano } from "../lib/carga-coordinador";
+import { CARGA_TOPE_MS, faseCarga, useCargaCoordinada, type CargaTamano } from "../lib/carga-coordinador";
 
 export type CargandoLogoTamano = CargaTamano;
 
@@ -15,6 +15,11 @@ type Props = Omit<HTMLAttributes<HTMLDivElement>, "children" | "role" | "aria-la
    * `aria-busy`). Renderiza un `span` oculto a lectores de pantalla para ser contenido valido de un `<button>`.
    */
   decorativo?: boolean;
+  /**
+   * Tope de carga (20 s, `CARGA_TOPE_MS`): si el logo sigue montado pasado el tope se llama una sola vez. Quien carga responde con
+   * `EstadoError` + «Reintentar» (el logo no decide eso). Sin esta prop no hay temporizador.
+   */
+  alTope?: () => void;
 };
 
 const CONTENEDOR: Record<CargandoLogoTamano, string> = {
@@ -28,9 +33,18 @@ const CONTENEDOR: Record<CargandoLogoTamano, string> = {
  * unico dibujo visible a la vez; las demas instancias siguen siendo role=status con su texto sr-only. La region
  * conserva el `min-height` que le ponga quien llama (via `className`), asi no hay salto de layout.
  */
-export function CargandoLogo({ tamano = "panel", etiqueta = "Cargando…", decorativo = false, className, ...resto }: Props) {
+export function CargandoLogo({ tamano = "panel", etiqueta = "Cargando…", decorativo = false, alTope, className, ...resto }: Props) {
   const { visible } = useCargaCoordinada(tamano);
   const dibujo = useRef<HTMLSpanElement>(null);
+  const alTopeRef = useRef(alTope);
+  alTopeRef.current = alTope;
+  const conTope = alTope !== undefined;
+
+  useEffect(() => {
+    if (!conTope) return;
+    const t = setTimeout(() => alTopeRef.current?.(), CARGA_TOPE_MS);
+    return () => clearTimeout(t);
+  }, [conTope]);
 
   // Fase global: un logo remontado continua la respiracion en vez de reiniciarla.
   useLayoutEffect(() => {

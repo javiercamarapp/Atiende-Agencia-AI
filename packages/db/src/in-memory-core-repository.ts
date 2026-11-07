@@ -41,6 +41,7 @@ import type {
   SuperadminOrganizationBillingRow,
   SuperadminOrganizationRow,
   UpsertOrganizationBillingInput,
+  ActivacionPorPago,
 } from "./core-repository.ts";
 import {
   MembershipRemovalError,
@@ -62,6 +63,8 @@ export interface SeedOrganization {
    *  `listAllOrganizationsForSuperadmin` los necesita de verdad. */
   readonly status?: "trial" | "active" | "suspended";
   readonly createdAt?: string;
+  /** `core.organization.diseno` (0060): ausente/null = diseno actual. */
+  readonly diseno?: string | null;
 }
 
 export interface SeedMembership {
@@ -251,6 +254,15 @@ export class InMemoryCoreRepository implements CoreRepository, CoreStaffReposito
           propertyIds: m.propertyIds,
         };
       });
+  }
+
+  async findDisenoPorOrganizacion(organizationIds: readonly string[]): Promise<ReadonlyMap<string, string>> {
+    const salida = new Map<string, string>();
+    for (const id of organizationIds) {
+      const diseno = this.organizations.get(id)?.diseno;
+      if (diseno) salida.set(id, diseno);
+    }
+    return salida;
   }
 
   // ---- CoreStaffRepository (sesión real por-request en producción; aquí, misma
@@ -768,6 +780,18 @@ export class InMemoryCoreRepository implements CoreRepository, CoreStaffReposito
       currentPeriodEnd: input.currentPeriodEnd,
     });
     return this.buildOrganizationBillingRow(input.organizationId);
+  }
+
+  async activateOrganizationOnPayment(organizationId: string): Promise<ActivacionPorPago> {
+    // Misma regla que core.organization_activate_on_payment (0072): solo 'trial' -> 'active'; suspendida nunca se reactiva.
+    const org = this.organizations.get(organizationId);
+    if (!org) return "no_existe";
+    const status = org.status ?? "active";
+    if (status === "trial") {
+      this.organizations.set(organizationId, { ...org, status: "active" });
+      return "activada";
+    }
+    return status === "active" ? "ya_activa" : "suspendida";
   }
 
   async markBillingWebhookEventSeen(eventId: string): Promise<BillingWebhookEventMark> {

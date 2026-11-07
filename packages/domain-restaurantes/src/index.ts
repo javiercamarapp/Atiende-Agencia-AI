@@ -1,5 +1,6 @@
 export type { StorefrontCatalogRow } from "./types.ts";
 export { evaluarDomicilioSucursal, describirDiasDomicilio, insigniaDomicilio, mensajeDomicilioNoDisponible, type EstadoDomicilio } from "./domicilio-sucursal.ts";
+export { atiendeClientes, buscarSucursalParaClientes, resumenSucursalesParaClientes, sucursalesParaClientes } from "./solo-venta-local.ts";
 export type {
   Branch,
   BranchPolicy,

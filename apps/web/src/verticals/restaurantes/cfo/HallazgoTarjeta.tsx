@@ -3,7 +3,7 @@
 import { Link } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
 import type { Hallazgo, Urgencia } from "@atiende/domain-restaurantes/cfo";
-import { Card, Odometro, Semaforo } from "@atiende/ui";
+import { Card, CifraTexto, Odometro, Semaforo } from "@atiende/ui";
 import type { EstadoSemaforo } from "@atiende/ui";
 import { cn } from "@atiende/ui";
 import { ChipDeCifra } from "./piezas.tsx";
@@ -37,7 +37,7 @@ export function HallazgoTarjeta({ hallazgo: h, destacada = false, enlace }: Hall
         <div className="min-w-0">
           <h3 className={cn("font-display font-semibold", destacada ? "text-lg" : "text-sm")}>{h.titulo}</h3>
           <p className={cn("mt-1 font-display font-semibold tabular-nums", destacada ? "text-3xl" : "text-xl")} data-testid="hallazgo-cifra">
-            {h.cifraTexto}
+            <CifraTexto texto={h.cifraTexto} />
           </p>
           <p className="mt-0.5 text-xs text-muted-foreground">{h.comparacion}</p>
         </div>

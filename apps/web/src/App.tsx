@@ -7,7 +7,7 @@ import { Suspense, useCallback } from "react";
 import type { ComponentProps, ComponentType, LazyExoticComponent, ReactElement, ReactNode } from "react";
 import { REDIRECCIONES_SUPERADMIN } from "./superadmin/rutas.ts";
 import { cargaPerezosa, ErrorBoundaryRaiz } from "./lib/carga-perezosa.tsx";
-import { EstadoCargando, EstadoError, Toaster, VerticalNoEncontrado } from "@atiende/ui";
+import { EstadoCargando, EstadoError, Toaster, VerticalNoEncontrado } from "@atiende/ui/arranque";
 import { puedeVerPrivacidad as licitacionesPuedeVerPrivacidad } from "./verticals/licitaciones/roles-nav.ts";
 
 // R-37: cada pantalla es su propio chunk (ver lib/carga-perezosa.tsx: reintento, recarga protegida y ErrorBoundary raíz).
@@ -142,6 +142,8 @@ const OwnerPortalLoginPage = cargaPerezosa(() => import("./verticals/rentas/page
 const OwnerPortalActivarPage = cargaPerezosa(() => import("./verticals/rentas/pages/OwnerPortalActivar.tsx"), "OwnerPortalActivarPage");
 const OwnerPortalDashboardPage = cargaPerezosa(() => import("./verticals/rentas/pages/OwnerPortalDashboard.tsx"), "OwnerPortalDashboardPage");
 const SinOrganizacionPage = cargaPerezosa(() => import("./shell/SinOrganizacion.tsx"), "SinOrganizacionPage");
+const BillingExitoPage = cargaPerezosa(() => import("./shell/BillingRegreso.tsx"), "BillingExitoPage");
+const BillingCanceladoPage = cargaPerezosa(() => import("./shell/BillingRegreso.tsx"), "BillingCanceladoPage");
 const SeleccionarOrganizacionPage = cargaPerezosa(() => import("./shell/SeleccionarOrganizacion.tsx"), "SeleccionarOrganizacionPage");
 const CitasLoginPage = cargaPerezosa(() => import("./verticals/citas/pages/Login.tsx"), "CitasLoginPage");
 const CitasShell = cargaPerezosa(() => import("./verticals/citas/CitasShell.tsx"), "CitasShell");
@@ -1219,6 +1221,9 @@ export function App() {
         <Route path="/rentas/portal-propietario/activar" element={<RentasOwnerPortalActivarRoute />} />
         <Route path="/rentas/portal-propietario" element={<RentasOwnerPortalDashboardRoute />} />
         <Route path="/sin-organizacion" element={<SinOrganizacionPage />} />
+        {/* Regreso de Stripe Checkout (success_url / cancel_url de apps/api/src/routes/billing.ts): antes caian en NotFound. */}
+        <Route path="/billing/success" element={<BillingExitoPage />} />
+        <Route path="/billing/cancel" element={<BillingCanceladoPage />} />
         <Route path="/seleccionar-organizacion" element={<SeleccionarOrganizacionPage />} />
         <Route path="/citas/login" element={<CitasLoginRoute />} />
         {/* PL-21: enlaces del correo de citas (restablecer contraseña / verificar correo): públicos, sin shell ni sesión. */}

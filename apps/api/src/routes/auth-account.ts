@@ -28,11 +28,11 @@ import { issueSession } from "./auth.ts";
 import type { AppDeps } from "../deps.ts";
 
 const RESET_TTL_MS = 60 * 60_000;
-const VERIFY_TTL_MS = 24 * 60 * 60_000;
 const SOLICITAR_RATE_LIMIT = { max: 5, windowMs: 5 * 60_000 } as const;
 const CANJE_RATE_LIMIT = { max: 10, windowMs: 5 * 60_000 } as const;
+const REENVIO_PUBLICO_RATE_LIMIT = { porIp: 10, porCorreo: 3, windowMs: 15 * 60_000 } as const;
 const VERTICALS = ["hoteles", "restaurantes", "rentas", "licitaciones", "citas", "despachos"] as const;
-type Vertical = (typeof VERTICALS)[number];
+export type Vertical = (typeof VERTICALS)[number];
 const NOMBRE_VERTICAL: Record<Vertical, string> = {
   hoteles: "atiende hoteles",
   restaurantes: "atiende restaurantes",
@@ -105,6 +105,35 @@ function enlace(deps: AppDeps, vertical: Vertical, ruta: string, token: string):
   url.searchParams.set("token", token);
   return url.toString();
 }
+
+/**
+ * Correo de verificacion de la cuenta (enlace `/<vertical>/verificar-correo?token=`, canje en POST /auth/email-verification/confirmar).
+ * Compartido por el reenvio autenticado, el reenvio publico y el registro autoservicio de rentas (que lo encola en su outbox).
+ */
+export function correoVerificacionCuenta(deps: AppDeps, vertical: Vertical, email: string, tokenPlain: string): { to: string; subject: string; html: string; text: string } {
+  const url = enlace(deps, vertical, "verificar-correo", tokenPlain);
+  const nombre = NOMBRE_VERTICAL[vertical];
+  return {
+    to: email,
+    subject: `Confirma tu correo en ${nombre}`,
+    html: renderCorreo({
+      titulo: "Confirma tu correo",
+      preheader: "El enlace expira en 24 horas.",
+      etiqueta: { texto: "Verificación de correo", color: "#1D4ED8" },
+      parrafosHtml: [
+        `Confirma que <strong>${escapeHtml(email)}</strong> es tu correo en <strong>${escapeHtml(nombre)}</strong>. El enlace expira en 24 horas y solo funciona una vez.`,
+        botonPildoraHtml(url, "Confirmar mi correo"),
+        `Si el botón no funciona, copia y pega este enlace en tu navegador:<br><span style="word-break:break-all;color:#1D4ED8;">${escapeHtml(url)}</span>`,
+      ],
+      nota: "Si no reconoces esta cuenta, ignora este correo.",
+      piePorQueLlego: `Recibes este correo porque se pidió verificar ${email} en ${nombre}.`,
+    }),
+    text: `Confirma tu correo en ${nombre} (expira en 24 horas, un solo uso):\n${url}`,
+  };
+}
+
+/** Vigencia del enlace de verificacion de correo. */
+export const VERIFICACION_CORREO_TTL_MS = 24 * 60 * 60_000;
 
 export function authAccountRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
@@ -199,30 +228,39 @@ export function authAccountRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     if (staff.emailVerifiedAt) return c.json({ ok: true, alreadyVerified: true }, 200);
 
     const { tokenPlain, tokenHash } = generateInviteToken();
-    await orNoDisponible(() => repo.createEmailVerificationToken({ staffId: staff.id, tokenHash, expiresAt: new Date(Date.now() + VERIFY_TTL_MS).toISOString() }));
-    const url = enlace(deps, vertical, "verificar-correo", tokenPlain);
-    const nombre = NOMBRE_VERTICAL[vertical];
-    const enviado = await enviarCorreo(deps, c, "email_verification", {
-      to: staff.email,
-      subject: `Confirma tu correo en ${nombre}`,
-      html: renderCorreo({
-        titulo: "Confirma tu correo",
-        preheader: "El enlace expira en 24 horas.",
-        etiqueta: { texto: "Verificación de correo", color: "#1D4ED8" },
-        parrafosHtml: [
-          `Confirma que <strong>${escapeHtml(staff.email)}</strong> es tu correo en <strong>${escapeHtml(nombre)}</strong>. El enlace expira en 24 horas y solo funciona una vez.`,
-          botonPildoraHtml(url, "Confirmar mi correo"),
-          `Si el botón no funciona, copia y pega este enlace en tu navegador:<br><span style="word-break:break-all;color:#1D4ED8;">${escapeHtml(url)}</span>`,
-        ],
-        nota: "Si no reconoces esta cuenta, ignora este correo.",
-        piePorQueLlego: `Recibes este correo porque se pidió verificar ${staff.email} en ${nombre}.`,
-      }),
-      text: `Confirma tu correo en ${nombre} (expira en 24 horas, un solo uso):\n${url}`,
-    });
+    await orNoDisponible(() => repo.createEmailVerificationToken({ staffId: staff.id, tokenHash, expiresAt: new Date(Date.now() + VERIFICACION_CORREO_TTL_MS).toISOString() }));
+    const enviado = await enviarCorreo(deps, c, "email_verification", correoVerificacionCuenta(deps, vertical, staff.email, tokenPlain));
     // `sent` es honesto: sin Resend configurado (o si Resend lo rechaza) el token quedo creado pero NO
     // llego ningun correo; la UI no debe decir "enviado". (A diferencia de "olvide mi contrasena", este
     // endpoint es autenticado: no hay enumeracion que proteger.)
     return c.json({ ok: true, alreadyVerified: false, sent: enviado }, 200);
+  });
+
+  /**
+   * Reenvio PUBLICO (sin sesion) del correo de verificacion -- onboarding P0: una cuenta recien registrada (rentas) no puede iniciar sesion
+   * con contrasena hasta verificar su correo, asi que el reenvio autenticado de arriba le era inalcanzable. Anti-enumeracion: responde
+   * SIEMPRE el mismo 200 generico (exista o no el correo, este o no verificado, haya o no Resend o migracion). Tope por IP y por correo.
+   */
+  app.post("/auth/email-verification/reenviar", async (c) => {
+    const body = await readJsonCapped<{ email?: unknown; vertical?: unknown }>(c.req.raw, 2 * 1024);
+    if (typeof body.email !== "string" || !EMAIL_RE.test(body.email.trim()) || body.email.length > 254) throw Errors.validation("email inválido");
+    const email = body.email.trim().toLowerCase();
+    const vertical = parseVertical(body.vertical);
+    const porIp = await rateLimit(`auth:email-verification-publico:${requestActor(c.req.raw, "ip")}`, REENVIO_PUBLICO_RATE_LIMIT.porIp, REENVIO_PUBLICO_RATE_LIMIT.windowMs, { category: "auth:password-reset" });
+    const porCorreo = porIp && (await rateLimit(`auth:email-verification-publico-correo:${email}`, REENVIO_PUBLICO_RATE_LIMIT.porCorreo, REENVIO_PUBLICO_RATE_LIMIT.windowMs, { category: "auth:password-reset" }));
+    if (!porIp || !porCorreo) throw Errors.tooManyRequests("Demasiados intentos. Intenta de nuevo en unos minutos.");
+
+    const staff = await deps.coreRepo.findStaffByEmail(email);
+    if (staff && !staff.emailVerifiedAt && deps.staffSecurityRepo) {
+      try {
+        const { tokenPlain, tokenHash } = generateInviteToken();
+        await deps.staffSecurityRepo.createEmailVerificationToken({ staffId: staff.id, tokenHash, expiresAt: new Date(Date.now() + VERIFICACION_CORREO_TTL_MS).toISOString() });
+        await enviarCorreo(deps, c, "email_verification_publico", correoVerificacionCuenta(deps, vertical, staff.email, tokenPlain));
+      } catch (err) {
+        logEvent(c, err instanceof StaffSecurityUnavailableError ? "warn" : "error", "email_verification_publico_no_emitido", { message: err instanceof Error ? err.message : String(err) });
+      }
+    }
+    return c.json({ ok: true }, 200);
   });
 
   /** Canje del enlace de verificacion (POST, para que un escaner de correo no lo consuma). */

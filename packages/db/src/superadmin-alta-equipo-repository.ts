@@ -46,6 +46,8 @@ export interface EquipoSucursal {
 }
 
 export interface OrgEquipo {
+  /** Vertical de la organizacion (migracion 0070). Ausente contra una base con solo la 0053. */
+  readonly vertical?: string;
   readonly miembros: readonly EquipoMiembro[];
   readonly invitaciones: readonly EquipoInvitacionPendiente[];
   readonly sucursales: readonly EquipoSucursal[];
@@ -244,7 +246,36 @@ export class PostgresOrgEquipoRepository implements OrgEquipoRepository {
 // En memoria (tests de las rutas): replica las reglas de la 0053 (lo que valida la base real esta cubierto en
 // scripts/verify-superadmin-alta-equipo/, aqui solo se necesita el mismo contrato para probar el cableado HTTP).
 // ---------------------------------------------------------------------------------------------------------------------------------
-const ROLES_RESTAURANTES: Readonly<Record<string, string>> = { owner: "owner", admin: "admin", staff: "member", repartidor: "member" };
+/**
+ * Lista blanca de roles que el superadmin puede invitar, por vertical, con su platform_role FIJO. Espejo exacto del CASE de
+ * core.superadmin_invite_staff (migracion 0070) y de PLATFORM_ROLE_BY_VERTICAL_ROLE de cada packages/domain-<vertical>/src/roles.ts.
+ * La autoridad es la base; esta tabla solo la usan el doble en memoria y la validacion de forma de la ruta.
+ */
+export const ROLES_INVITABLES_POR_VERTICAL: Readonly<Record<string, Readonly<Record<string, "owner" | "admin" | "member" | "viewer">>>> = {
+  restaurantes: { owner: "owner", admin: "admin", staff: "member", repartidor: "member" },
+  citas: { owner: "owner", admin: "admin", staff: "member" },
+  hoteles: { owner: "owner", gm: "admin", frontdesk: "member", reservations: "member", housekeeping: "member", maintenance: "member", fnb: "member", accountant: "member" },
+  despachos: { admin: "owner", contador: "admin", auditor: "viewer", readonly: "viewer" },
+  licitaciones: { owner: "owner", admin: "admin", analyst: "member", writer: "member", reviewer: "member", viewer: "viewer" },
+  rentas: {
+    admin_gestora: "owner",
+    "operador:acceso_total": "member",
+    "operador:calendario_mensajeria": "member",
+    "operador:solo_calendario": "member",
+    limpieza: "member",
+    contador: "viewer",
+  },
+};
+
+/** ¿Es un rol invitable en ALGUNA vertical? (la ruta valida la forma; la base decide segun la vertical real de la organizacion). */
+export function esRolInvitableEnAlgunaVertical(rol: string): boolean {
+  return Object.values(ROLES_INVITABLES_POR_VERTICAL).some((roles) => Object.prototype.hasOwnProperty.call(roles, rol));
+}
+
+function platformRoleDe(vertical: string, rol: string): string | undefined {
+  const roles = ROLES_INVITABLES_POR_VERTICAL[vertical];
+  return roles && Object.prototype.hasOwnProperty.call(roles, rol) ? roles[rol] : undefined;
+}
 /** Forma minima de correo sin expresion regular de backtracking (el doble solo necesita rechazar lo obviamente invalido; la base valida el regex real). */
 function correoValido(email: string): boolean {
   if (email.length > 254 || /\s/.test(email)) return false;
@@ -304,7 +335,7 @@ export class InMemoryOrgEquipoRepository implements OrgEquipoRepository {
   seedMiembro(organizationId: string, m: { userId: string; email: string; rol: string; propertyIds?: string[] | null }): void {
     const org = this.orgs.get(organizationId);
     if (!org) throw new Error("seedMiembro: organizacion desconocida");
-    org.miembros.push({ userId: m.userId, email: m.email.toLowerCase(), rol: m.rol, platformRole: ROLES_RESTAURANTES[m.rol] ?? "member", propertyIds: m.propertyIds ?? null, altaEn: this.ahora().toISOString() });
+    org.miembros.push({ userId: m.userId, email: m.email.toLowerCase(), rol: m.rol, platformRole: platformRoleDe(org.vertical, m.rol) ?? "member", propertyIds: m.propertyIds ?? null, altaEn: this.ahora().toISOString() });
   }
   /** Marca como aceptada la invitacion cuyo hash se indica (lo hace core.accept_staff_invite en la base real). */
   marcarAceptada(tokenHash: string): void {
@@ -336,6 +367,7 @@ export class InMemoryOrgEquipoRepository implements OrgEquipoRepository {
     return {
       ok: true,
       data: {
+        vertical: org.vertical,
         miembros: org.miembros.map((m) => ({ userId: m.userId, correo: enmascararCorreo(m.email), rol: m.rol, platformRole: m.platformRole, propertyIds: m.propertyIds, altaEn: m.altaEn })),
         invitaciones: this.invitaciones
           .filter((i) => i.organizationId === organizationId && i.status === "pending")
@@ -353,9 +385,8 @@ export class InMemoryOrgEquipoRepository implements OrgEquipoRepository {
     if (!correoValido(email)) throw new EquipoInvitacionError("validation", "correo invalido");
     const org = this.orgs.get(input.organizationId);
     if (!org) throw new EquipoInvitacionError("not_found", "organizacion no encontrada");
-    if (org.vertical !== "restaurantes") throw new EquipoInvitacionError("validation", `el alta de equipo aun no esta disponible para la vertical ${org.vertical}`);
-    const platformRole = ROLES_RESTAURANTES[input.verticalRole];
-    if (!platformRole) throw new EquipoInvitacionError("validation", "rol fuera de la lista blanca (owner, admin, staff, repartidor)");
+    const platformRole = platformRoleDe(org.vertical, input.verticalRole);
+    if (!platformRole) throw new EquipoInvitacionError("validation", `rol fuera de la lista blanca de la vertical ${org.vertical}`);
     if (input.propertyIds !== null) {
       if (input.propertyIds.length === 0) throw new EquipoInvitacionError("validation", "property_ids vacio (usa null para todas las sucursales)");
       if (input.propertyIds.some((p) => !org.sucursales.has(p))) throw new EquipoInvitacionError("validation", "alguna sucursal no pertenece a la organizacion");
@@ -364,7 +395,7 @@ export class InMemoryOrgEquipoRepository implements OrgEquipoRepository {
     const ahora = this.ahora().getTime();
     const vigentes = this.invitaciones.filter((i) => i.organizationId === input.organizationId && i.status === "pending" && Date.parse(i.expiresAt) > ahora);
     if (vigentes.some((i) => i.email === email)) throw new EquipoInvitacionError("conflict", "ya hay una invitacion pendiente para ese correo (reenviala o revocala)");
-    if (input.verticalRole === "owner" && !input.confirmarSegundoOwner && (org.miembros.some((m) => m.platformRole === "owner") || vigentes.some((i) => i.platformRole === "owner"))) {
+    if (platformRole === "owner" && !input.confirmarSegundoOwner && (org.miembros.some((m) => m.platformRole === "owner") || vigentes.some((i) => i.platformRole === "owner"))) {
       throw new EquipoInvitacionError("segundo_owner", "la organizacion ya tiene un owner (confirma explicitamente un segundo owner)");
     }
     const inv: InvMem = {

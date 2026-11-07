@@ -9,7 +9,7 @@ import { Copy, MailPlus, RefreshCw, Trash2, Users } from "lucide-react";
 import { Button, Callout, Card, CardContent, CardHeader, CardTitle, Checkbox, ConfirmDialog, EstadoCargando, EstadoError, EstadoVacio, FormDialog, Input, Label, NativeSelect, StatusBadge, Textarea, notify } from "@atiende/ui";
 import { fechaHoraEsMx } from "../../lib/formato-fecha.ts";
 import { fetchConStepUp } from "../lib/stepup.ts";
-import { MOTIVO_EQUIPO_MINIMO, NOMBRE_ROL_EQUIPO, ROLES_EQUIPO } from "../lib/equipo.ts";
+import { MOTIVO_EQUIPO_MINIMO, nombreRolEquipo, rolesEquipoDe } from "../lib/equipo.ts";
 import type { EquipoInvitacion, RespuestaEquipo, ResultadoInvitacion } from "../lib/equipo.ts";
 
 type Carga = { readonly estado: "cargando" } | { readonly estado: "error"; readonly mensaje: string } | { readonly estado: "ok"; readonly datos: RespuestaEquipo };
@@ -169,7 +169,7 @@ export function EquipoOrganizacion({ apiBaseUrl, token, organizacionId }: { read
                         <span className="block truncate text-xs text-muted-foreground">{etiquetaSucursales(m.propertyIds, nombres)}</span>
                       </span>
                       <span className="flex shrink-0 items-center gap-2">
-                        <StatusBadge tone="neutral">{NOMBRE_ROL_EQUIPO[m.rol] ?? m.rol}</StatusBadge>
+                        <StatusBadge tone="neutral">{nombreRolEquipo(datos.vertical, m.rol)}</StatusBadge>
                         <span className="text-xs text-muted-foreground">Alta {fechaHoraEsMx(m.altaEn)}</span>
                       </span>
                     </li>
@@ -189,7 +189,7 @@ export function EquipoOrganizacion({ apiBaseUrl, token, organizacionId }: { read
                       <span className="min-w-0">
                         <span className="block truncate text-foreground">{i.correo}</span>
                         <span className="block truncate text-xs text-muted-foreground">
-                          {NOMBRE_ROL_EQUIPO[i.rol] ?? i.rol} · {etiquetaSucursales(i.propertyIds, nombres)} · {i.vencida ? "Vencida" : `Vence ${fechaHoraEsMx(i.venceEn)}`}
+                          {nombreRolEquipo(datos.vertical, i.rol)} · {etiquetaSucursales(i.propertyIds, nombres)} · {i.vencida ? "Vencida" : `Vence ${fechaHoraEsMx(i.venceEn)}`}
                         </span>
                       </span>
                       <span className="flex shrink-0 items-center gap-1.5">
@@ -221,6 +221,7 @@ export function EquipoOrganizacion({ apiBaseUrl, token, organizacionId }: { read
           token={token}
           base={base}
           sucursales={datos.sucursales}
+          vertical={datos.vertical}
           hayOwner={hayOwner}
           onCreada={(r) => {
             setEnlace(r);
@@ -261,6 +262,7 @@ function FormularioInvitar({
   token,
   base,
   sucursales,
+  vertical,
   hayOwner,
   onCreada,
 }: {
@@ -270,11 +272,14 @@ function FormularioInvitar({
   readonly token: string;
   readonly base: string;
   readonly sucursales: RespuestaEquipo["sucursales"];
+  readonly vertical: string | undefined;
   readonly hayOwner: boolean;
   readonly onCreada: (r: ResultadoInvitacion) => void;
 }) {
+  const roles = rolesEquipoDe(vertical);
+  const rolDueno = roles.find((r) => r.esDueno)?.valor ?? "owner";
   const [email, setEmail] = useState("");
-  const [rol, setRol] = useState("owner");
+  const [rol, setRol] = useState(rolDueno);
   const [elegidas, setElegidas] = useState<ReadonlySet<string>>(new Set());
   const [motivo, setMotivo] = useState("");
   const [segundoOwner, setSegundoOwner] = useState(false);
@@ -285,7 +290,7 @@ function FormularioInvitar({
   useEffect(() => {
     if (open) {
       setEmail("");
-      setRol("owner");
+      setRol(rolDueno);
       setElegidas(new Set());
       setMotivo("");
       setSegundoOwner(false);
@@ -293,9 +298,9 @@ function FormularioInvitar({
       setError(null);
       setGuardando(false);
     }
-  }, [open]);
+  }, [open, rolDueno]);
 
-  const mostrarSegundoOwner = rol === "owner" && (hayOwner || pideConfirmacion);
+  const mostrarSegundoOwner = roles.some((r) => r.valor === rol && r.esDueno) && (hayOwner || pideConfirmacion);
 
   const enviar = async (e: FormEvent) => {
     e.preventDefault();
@@ -348,7 +353,7 @@ function FormularioInvitar({
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="equipo-rol">Rol</Label>
           <NativeSelect id="equipo-rol" value={rol} onChange={(e) => setRol(e.target.value)}>
-            {ROLES_EQUIPO.map((r) => (
+            {roles.map((r) => (
               <option key={r.valor} value={r.valor}>
                 {r.nombre}
               </option>

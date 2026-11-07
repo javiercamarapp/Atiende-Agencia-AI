@@ -7,6 +7,7 @@ import {
   privacyNoticeWhatsApp,
   validatePrivacyConfig,
   voiceOpeningScript,
+  VOICE_PROCESSOR_NOTICE,
 } from "../src/privacidad/aviso.ts";
 import type { PrivacyConfig } from "../src/privacidad/aviso.ts";
 
@@ -84,6 +85,14 @@ describe("guion de apertura de la llamada", () => {
     const text = voiceOpeningScript({ ...CONFIG, recordingConsentRequired: false });
     expect(text).not.toContain("¿Autoriza");
     expect(text).toContain("15 días");
+  });
+
+  it("en todas las variantes avisa, en una frase corta, que la voz la procesa un proveedor externo (ElevenLabs)", () => {
+    for (const config of [CONFIG, { ...CONFIG, voiceRetentionDays: 0 }, { ...CONFIG, recordingConsentRequired: false }, PRIVACY_CONFIG_POR_DEFECTO]) {
+      expect(voiceOpeningScript(config)).toContain("Su voz la procesa un proveedor externo para entenderle.");
+    }
+    // la llamada se cobra por duracion: la frase agregada no pasa de 10 palabras
+    expect(VOICE_PROCESSOR_NOTICE.trim().split(/\s+/).length).toBeLessThanOrEqual(10);
   });
 });
 

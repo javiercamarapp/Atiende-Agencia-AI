@@ -1,4 +1,9 @@
 /* Sistema de diseño real de atiende.ai — ver packages/ui/src/index.css (fuente
    compartida entre repos standalone y este monorepo, nunca reinventar aquí). */
 @import "@atiende/ui/styles.css";
+@import "@atiende/ui/cifra.css";
 @import "./fuentes-ds3.css";
+/* ds3: piel del shell (marco, sidebar, encabezado, superposiciones, carga y movil); solo aplica bajo html[data-diseno="ds3"]. */
+@import "@atiende/ui/ds3-shell.css";
+/* ds3: «Pregúntale a tus datos» (chat, historial en Drawer, temas, «Cómo se calculó»); solo bajo html[data-diseno="ds3"]. */
+@import "@atiende/ui/ds3-copiloto.css";

@@ -199,3 +199,64 @@ rollback to savepoint sp_verify_branch_policy_057_read;
 release savepoint sp_verify_branch_policy_057_read;
 select 1 as transaccion_recuperada_tras_42703_deberia_ser_1;
 rollback;
+
+-- ---------------------------------------------------------------------------------------------------------------------
+-- F. Migracion 105 (105_sucursal_solo_venta_local.sql): branch_policy.solo_venta_local, mismo GRANT por columna y RLS de 057.
+-- ---------------------------------------------------------------------------------------------------------------------
+
+\echo '=== F1. DEFAULT: una politica existente queda solo_venta_local = false (aplicar la migracion no cambia ninguna sucursal) ==='
+select count(*)::int as filas_con_solo_venta_local_false_deberia_ser_1
+  from restaurantes.branch_policy where property_id = '00000000-0000-0000-0000-0000000c00a2' and solo_venta_local is false;
+
+\echo '=== F2. POSITIVO: owner de A marca A2 como solo venta local (UPDATE por columna concedida) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000c0011', true);
+update restaurantes.branch_policy set solo_venta_local = true, acepta_domicilio = false, updated_at = now()
+  where property_id = '00000000-0000-0000-0000-0000000c00a2'
+  returning property_id, solo_venta_local;
+rollback;
+
+\echo '=== F3. POSITIVO: admin de A crea la politica de A1 ya como solo venta local (INSERT por columna concedida) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000c0012', true);
+insert into restaurantes.branch_policy (property_id, organization_id, acepta_domicilio, solo_venta_local)
+  values ('00000000-0000-0000-0000-0000000c00a1', '00000000-0000-0000-0000-0000000c0001', false, true)
+  returning property_id, solo_venta_local;
+rollback;
+
+\echo '=== F4. RLS: staff de A no cambia la bandera (0 filas) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000c0013', true);
+with actualizado as (
+  update restaurantes.branch_policy set solo_venta_local = true where property_id = '00000000-0000-0000-0000-0000000c00a2' returning property_id
+)
+select count(*)::int as filas_actualizadas_por_staff_deberia_ser_0 from actualizado;
+rollback;
+
+\echo '=== F5. CROSS-TENANT: owner de B no cambia la bandera de A2 (0 filas) ==='
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000c0014', true);
+with actualizado as (
+  update restaurantes.branch_policy set solo_venta_local = true where property_id = '00000000-0000-0000-0000-0000000c00a2' returning property_id
+)
+select count(*)::int as filas_actualizadas_cross_tenant_deberia_ser_0 from actualizado;
+rollback;
+
+\echo '=== F6. RECHAZADO (debe fallar): anon no lee ni escribe solo_venta_local ==='
+begin;
+set local role anon;
+update restaurantes.branch_policy set solo_venta_local = true returning 1 as should_fail;
+rollback;
+
+\echo '=== F7. LECTURA DE SISTEMA: la sesion sin usuario (agente) lee la bandera, como lo hace listarSucursalesSoloVentaLocal ==='
+begin;
+update restaurantes.branch_policy set solo_venta_local = true where property_id = '00000000-0000-0000-0000-0000000c00a2';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '', true);
+select count(*)::int as solo_venta_local_visibles_sistema_deberia_ser_1
+  from restaurantes.branch_policy where organization_id = '00000000-0000-0000-0000-0000000c0001' and solo_venta_local;
+rollback;

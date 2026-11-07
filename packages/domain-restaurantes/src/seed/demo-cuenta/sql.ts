@@ -84,7 +84,8 @@ begin
     raise exception 'seed-demo-cuenta: el slug % ya existe en otra vertical (%); no se toca.', v->'organization'->>'slug', v_vertical;
   end if;
   if v_org is null then
-    insert into core.organization (vertical, name, slug) values ('restaurantes', v->'organization'->>'name', v->'organization'->>'slug') returning id into v_org;
+    -- Nace 'active' explicito: una demo no es una prueba (sin trial_ends_at de la 0072, sin avisos de fin de prueba).
+    insert into core.organization (vertical, name, slug, status) values ('restaurantes', v->'organization'->>'name', v->'organization'->>'slug', 'active') returning id into v_org;
   else
     update core.organization set name = v->'organization'->>'name' where id = v_org;
   end if;

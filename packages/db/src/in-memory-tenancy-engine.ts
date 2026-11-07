@@ -50,6 +50,8 @@ export class InMemoryTenancyEngine implements TenancyEngine {
   /** SA-L-46: lista de supresion de plataforma (core.supresion_contacto), solo `tipo:hash` (como la real). */
   private readonly suprimidos = new Set<string>();
   private readonly plantillasAprobadas = new Set<string>();
+  /** Onboarding P0: hitos de core.onboarding_evento (migracion 0073), `organizacion:vertical:tipo:sucursal`. Modelo minimo: sin RLS. */
+  readonly onboardingEventos = new Set<string>();
 
   seedProperty(property: SeedTenancyProperty): void {
     this.properties.set(property.id, property);
@@ -102,6 +104,18 @@ export class InMemoryTenancyEngine implements TenancyEngine {
         if (sql.includes("core.whatsapp_plantilla_aprobada")) {
           const [organizationId, nombre] = params as [string, string];
           return { rows: [{ aprobada: this.plantillasAprobadas.has(`${organizationId}:${nombre}`) }] as unknown as R[] };
+        }
+        if (sql.includes("core.registrar_onboarding_evento")) {
+          const [organizationId, vertical, tipo, propertyId] = params as [string, string, string, string | null];
+          const clave = `${organizationId}:${vertical}:${tipo}:${propertyId ?? ""}`;
+          const insertado = !this.onboardingEventos.has(clave);
+          this.onboardingEventos.add(clave);
+          return { rows: [{ insertado }] as unknown as R[] };
+        }
+        if (sql.includes("from core.onboarding_evento")) {
+          const [organizationId, vertical, tipo] = params as [string, string, string];
+          const prefijo = `${organizationId}:${vertical}:${tipo}:`;
+          return { rows: [{ hay: [...this.onboardingEventos].some((k) => k.startsWith(prefijo)) }] as unknown as R[] };
         }
         // H-20: las funciones de la bandeja de conversaciones (migracion 043) no existen en este motor de alcance angosto: se comporta como una
         // base SIN la 043 (SQLSTATE 42883, funcion inexistente), el camino que el codigo ya degrada. Asi el webhook de hoteles armado con este motor

@@ -49,7 +49,7 @@ export function VerticalShellConectado({ apiBaseUrl, token, notificacionesHref, 
   const pie: SidebarPiePildora[] = [
     ...(shell.sidebarPie ?? []),
     // La campana del encabezado se quito: las notificaciones (y su punto de "sin leer") viven aqui, en escritorio y en "Mas" > "Cuenta".
-    { label: "Notificaciones", to: notificacionesHref, icon: Bell, indicador: notif.hayNoLeidas },
+    { label: "Notificaciones", to: notificacionesHref, icon: Bell, indicador: notif.hayNoLeidas, contador: notif.unreadCount },
     ...(yaEnNavegacion ? [] : [{ label: "Seguridad de la cuenta", to: seguridadHref, icon: ShieldCheck }]),
     ...(chat && chatDisponible ? [copilotoHref ? { label: "Pregúntale a tus datos", to: copilotoHref, icon: MessageCircle } : { label: "Pregúntale a tus datos", onClick: () => setChatAbierto(true), icon: MessageCircle }] : []),
   ];
@@ -58,6 +58,10 @@ export function VerticalShellConectado({ apiBaseUrl, token, notificacionesHref, 
       <VerticalShell
         {...shell}
         sidebarPie={pie}
+        // ds3 (decision de Omar 7-nov-2026): campana con contador en la cabecera movil y «Preguntar» como destino fijo de la barra
+        // inferior, solo para roles con chat de datos y con el asistente confirmado por el servidor. Sin la bandera existen ocultos.
+        notificaciones={{ to: notificacionesHref, contador: notif.unreadCount, hayNoLeidas: notif.hayNoLeidas }}
+        preguntarHref={chat && chatDisponible && copilotoHref ? copilotoHref : undefined}
       >
         {/* PL-16: aviso de fin de prueba / tope de mensajes del plan, comun a las 6 verticales. */}
         <BannerPlan apiBaseUrl={apiBaseUrl} token={token} planHref={planHrefDe(notificacionesHref)} />

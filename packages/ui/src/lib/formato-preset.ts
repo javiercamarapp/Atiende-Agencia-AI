@@ -4,8 +4,13 @@
 // calculan ni redondean dinero (solo muestran la cifra que el backend ya calculo).
 export type FormatoPreset = "numero" | "entero" | "mxn" | "usd" | "usd4" | "porcentaje" | "porcentajeSigno";
 
-function miles(v: number, decimales: 0 | 2 | 4): string {
+/** Miles es-MX con decimales fijos: el formateador numerico canonico (lo reutilizan los presets y <Cifra>, lib/cifra.ts). */
+export function numeroEsMx(v: number, decimales: number): string {
   return v.toLocaleString("es-MX", { minimumFractionDigits: decimales, maximumFractionDigits: decimales });
+}
+
+function miles(v: number, decimales: 0 | 2 | 4): string {
+  return numeroEsMx(v, decimales);
 }
 
 export function resolverFormato(preset: FormatoPreset = "numero"): (v: number) => string {

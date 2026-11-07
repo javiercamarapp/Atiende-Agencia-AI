@@ -33,6 +33,7 @@ import type { DataRightStaffTargetStatus, DataRightStatus, DataRightType, Privac
 import { Errors } from "../../../errors.ts";
 import { readJsonCapped } from "../../../http-security.ts";
 import type { AppDeps } from "../../../deps.ts";
+import { conAvisoOnboardingListo } from "./onboarding-aviso.ts";
 
 const PRIVACIDAD_ROLES: readonly RestaurantesRole[] = ["owner", "admin"];
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -191,7 +192,9 @@ export function restaurantesPrivacidadRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
     const invalido = validatePrivacyConfig(entrada);
     if (invalido) throw Errors.validation(invalido);
 
-    const result = await privacidadRepo(c).updatePrivacyConfig(c.get("organizationId"), entrada);
+    // Onboarding: el aviso de privacidad es un punto obligatorio del checklist; si es el ULTIMO que faltaba, esta escritura emite
+    // `restaurantes.onboarding.listo` (mismo patron que catalogo, agente y horario). Antes no se emitia si el ultimo era el aviso.
+    const result = await conAvisoOnboardingListo(deps, c, c.get("organizationId"), () => privacidadRepo(c).updatePrivacyConfig(c.get("organizationId"), entrada));
     switch (result.outcome) {
       case "updated":
         return c.json({ configuracion: serializeConfig({ ...entrada, configurada: true }) }, 200);

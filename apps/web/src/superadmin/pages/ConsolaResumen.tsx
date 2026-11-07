@@ -177,7 +177,7 @@ export function SuperAdminConsolaResumenPage({ apiBaseUrl, token, staffFullName,
     <div className="flex min-w-0 flex-col items-end gap-2.5">
       <Odometro valor={mrrMxn} digitos={7} prefijo="$" etiqueta="MRR — META $1,000,000" sinDato={sinDatoMrr} tamano="lg" meta={META_MRR_MXN} />
       {/* El odometro solo se pinta desde `sm`: en movil el mismo dato va en texto. */}
-      <p className="text-ui text-muted-foreground sm:hidden">
+      <p className="ds3-resumen-movil text-ui text-muted-foreground sm:hidden">
         MRR <span className="font-medium tabular-nums text-foreground">{mrrMxn === null ? "—" : `$${entero(mrrMxn)}`}</span> · meta $1,000,000
       </p>
       {mrrMxn !== null && sinPrecio > 0 && <p className="text-xs text-muted-foreground">{plural(sinPrecio, "organización sin precio", "organizaciones sin precio")}</p>}
@@ -257,6 +257,14 @@ export function SuperAdminConsolaResumenPage({ apiBaseUrl, token, staffFullName,
         saludo={saludoMexico()}
         nombre={nombre}
         subtitulo="Toda Atiende en una pantalla — cifras reales, de todas las verticales"
+        frase={
+          mrrMxn === null ? undefined : (
+            <>
+              Toda Atiende en una pantalla. MRR <strong>${entero(mrrMxn)}</strong> de la meta de $1,000,000
+              {sinPrecio > 0 ? ` (${plural(sinPrecio, "organización sin precio", "organizaciones sin precio")} no suman)` : ""}.
+            </>
+          )
+        }
         destacado={destacado}
         kpis={kpis}
         acciones={acciones}

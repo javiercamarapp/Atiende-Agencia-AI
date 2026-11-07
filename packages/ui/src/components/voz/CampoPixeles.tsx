@@ -21,7 +21,11 @@ export function CampoPixeles({ color = 'hsl(var(--primary))' }: { color?: string
     const canvas = ref.current;
     const ctx = canvas?.getContext('2d');
     if (!canvas || !ctx) return;
-    const reducido = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    // «Reducir movimiento» se consulta en vivo: si cambia con la pantalla abierta, el campo se congela (un cuadro fijo) o vuelve a moverse.
+    const preferencia = typeof window.matchMedia === 'function' ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+    const reducido = () => preferencia?.matches === true;
+    // Fuera de pantalla (scroll, panel cerrado) no se dibuja: cuesta CPU y bateria sin que nadie lo vea.
+    let visible = true;
 
     const CELDA = 10;
     const PUNTO = 2.4;
@@ -37,9 +41,11 @@ export function CampoPixeles({ color = 'hsl(var(--primary))' }: { color?: string
     function medir() {
       if (!canvas || !ctx) return;
       const r = canvas.getBoundingClientRect();
-      canvas.width = Math.max(1, Math.round(r.width * devicePixelRatio));
-      canvas.height = Math.max(1, Math.round(r.height * devicePixelRatio));
-      ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+      // Densidad de pixeles con tope 2: en pantallas 3x el costo se triplica sin diferencia visible a 2.4 px por punto.
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      canvas.width = Math.max(1, Math.round(r.width * dpr));
+      canvas.height = Math.max(1, Math.round(r.height * dpr));
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
 
     function dibujar(t: number) {
@@ -76,20 +82,37 @@ export function CampoPixeles({ color = 'hsl(var(--primary))' }: { color?: string
     }
 
     function loop(ts: number) {
-      if (!vivo) return;
+      if (!vivo || !visible || document.hidden || reducido()) { raf = 0; return; }
       if (ts - ultimo > 50) { ultimo = ts; dibujar(ts); }
       raf = requestAnimationFrame(loop);
     }
 
+    const arrancar = () => {
+      if (!raf && vivo && visible && !document.hidden && !reducido()) raf = requestAnimationFrame(loop);
+    };
+    const parar = () => {
+      if (raf) cancelAnimationFrame(raf);
+      raf = 0;
+    };
+
     medir();
     dibujar(0);
-    if (!reducido) raf = requestAnimationFrame(loop);
+    arrancar();
 
-    const alCambiarTamano = () => { medir(); dibujar(performance.now()); };
+    const alCambiarTamano = () => { medir(); dibujar(reducido() ? 0 : performance.now()); };
     const alCambiarVisibilidad = () => {
-      cancelAnimationFrame(raf);
-      if (!document.hidden && !reducido && vivo) raf = requestAnimationFrame(loop);
+      if (document.hidden) parar();
+      else arrancar();
     };
+    const alCambiarPreferencia = () => {
+      if (reducido()) { parar(); dibujar(0); } else arrancar();
+    };
+    preferencia?.addEventListener?.('change', alCambiarPreferencia);
+    const enPantalla = typeof IntersectionObserver === 'undefined' ? null : new IntersectionObserver((es) => {
+      visible = es.some((e) => e.isIntersecting);
+      if (visible) arrancar(); else parar();
+    });
+    enPantalla?.observe(canvas);
     window.addEventListener('resize', alCambiarTamano);
     document.addEventListener('visibilitychange', alCambiarVisibilidad);
 
@@ -104,7 +127,9 @@ export function CampoPixeles({ color = 'hsl(var(--primary))' }: { color?: string
 
     return () => {
       vivo = false;
-      cancelAnimationFrame(raf);
+      parar();
+      preferencia?.removeEventListener?.('change', alCambiarPreferencia);
+      enPantalla?.disconnect();
       window.removeEventListener('resize', alCambiarTamano);
       document.removeEventListener('visibilitychange', alCambiarVisibilidad);
       observador.disconnect();
