@@ -1,5 +1,5 @@
 /* Inicio de sesion ds3 = el de Rovaq AI (rovaq app/(app)/login/login.css + globals.css), con la paleta de Atiende.
-   Todo cuelga de .login-ds3, que solo existe cuando la bandera ds3 pinta VerticalLoginDs3: sin la bandera nada de esto aplica.
+   Todo cuelga de .login-ds3 (VerticalLoginDs3, el login de las 6 verticales por omision; VITE_LOGIN_LEGADO=1 vuelve al anterior).
    Medidas 1:1 con Rovaq (medidas en vivo, AUDITORIA-VEXA-4 §8): titular Fraunces 36/1.13, cuerpo Instrument Sans, kicker IBM Plex
    Mono 11 px .14em, campo de 44 px radio 12, botones en pildora de 48 px, columna de 470 px, panel oscuro de radio 24.
    Colores SOLO por tokens: tinta = --foreground (el panel oscuro y el boton negro de Rovaq), filetes = --border, acento y foco =
@@ -67,7 +67,7 @@
 .login-ds3 .login-campo:focus-visible { outline: 2px solid var(--ld3-acento); outline-offset: 2px; border-color: hsl(var(--input)); box-shadow: 0 0 0 4px color-mix(in srgb, var(--ld3-acento) 12%, transparent); }
 /* Gesto de Rovaq: el simbolo aparece dentro del boton de correo al pasar el cursor o al enfocarlo. */
 .login-ds3 .login-glifo { display: inline-flex; align-items: center; justify-content: center; width: 0; height: auto; max-height: 18px; margin-right: 0; overflow: hidden; opacity: 0; transform: none; }
-.login-ds3 .login-btn:is(:hover, :focus-visible, [aria-busy="true"]) .login-glifo { width: 44px; opacity: 1; }
+.login-ds3 .login-btn:is(:hover, :focus-visible) .login-glifo { width: 44px; opacity: 1; }
 
 .login-ds3 .ld3-google { margin-top: 32px; }
 .login-ds3 .ld3-separador { display: flex; align-items: center; gap: 10px; margin: 24px 0 32px; font-size: 12px; text-align: center; color: var(--ld3-tenue); }
@@ -76,13 +76,14 @@
 .login-ds3 .ld3-correo { display: grid; gap: 16px; }
 .login-ds3 .ld3-correo-solo { margin-top: 32px; }
 /* Alto reservado (Rovaq: min-height 56): dos renglones de aviso o de error sin mover lo de abajo. */
-.login-ds3 .ld3-estado { min-height: 56px; margin: 0; font-size: 13px; line-height: 1.6; color: var(--ld3-tenue); }
-.login-ds3 .ld3-estado p { margin: 0; overflow-wrap: anywhere; }
+/* Alto FIJO (no min-height): enviado, error y reposo miden lo mismo y nada se mueve (CLS 0). Pisa la .login-estado de login.css. */
+.login-ds3 .ld3-estado { height: 56px; min-height: 0; margin: 0; overflow: hidden; font-size: 13px; line-height: 1.6; color: var(--ld3-tenue); }
+.login-ds3 .ld3-estado p { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.login-ds3 .ld3-estado .ld3-estado-error { white-space: normal; }
 .login-ds3 .ld3-estado-titulo, .login-ds3 .ld3-estado strong { color: var(--ld3-tinta); font-weight: 600; }
 .login-ds3 .ld3-estado-error { color: hsl(var(--destructive)); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 
-/* «¿Olvidaste tu contraseña?» y la ayuda: mismo enlace subrayado de 14 px que el <summary> de Rovaq. */
-.login-ds3 .ld3-enlace,
+/* Ayuda: el <summary> subrayado de 14 px de Rovaq. */
 .login-ds3 .ld3-ayuda summary {
   display: flex; align-items: center; min-height: 32px; padding: 0; border: 0; background: transparent;
   color: var(--ld3-tinta); font: 400 14px/1.4 var(--ld3-sans);
@@ -92,7 +93,6 @@
 .login-ds3 .ld3-ayuda summary { list-style: none; }
 .login-ds3 .ld3-ayuda summary::-webkit-details-marker { display: none; }
 .login-ds3 .ld3-ayuda p { margin: 8px 0 20px; font-size: 13px; line-height: 1.6; color: var(--ld3-tenue); }
-.login-ds3 .ld3-enlace:focus-visible,
 .login-ds3 .ld3-ayuda summary:focus-visible,
 .login-ds3 .ld3-idiomas button:focus-visible,
 .login-ds3 a:focus-visible { outline: 2px solid var(--ld3-acento); outline-offset: 3px; border-radius: 4px; }
@@ -135,8 +135,8 @@
   .login-ds3 .ld3-titulo { font-size: 34px; margin: 14px 0; }
   .login-ds3 .ld3-divisor, .login-ds3 .ld3-google { margin-top: 18px; }
   .login-ds3 .ld3-separador { margin-block: 14px; }
-  .login-ds3 .ld3-estado { min-height: 32px; }
-  /* Atiende agrega «¿Olvidaste tu contraseña?» y los enlaces legales: se aprietan las separaciones del pie para que
+  .login-ds3 .ld3-estado { height: 44px; }
+  /* Atiende agrega los enlaces legales a la nota: se aprietan las separaciones del pie para que
      1024x768, 1366x768 y 1280x720 sigan sin scroll (regla de Javier del 3-oct para las pantallas de acceso). */
   .login-ds3 .ld3-copia { padding: 12px 0; }
   .login-ds3 .ld3-ayuda { margin-top: 4px; }
@@ -150,10 +150,31 @@
   .login-ds3 .ld3-copia { padding: 40px 0 24px; }
   .login-ds3 .login-campo { font-size: 16px; } /* iOS no hace zoom con 16 px */
   /* En tactil, los enlaces de texto llegan a 44 px de alto (area de toque). */
-  .login-ds3 .ld3-enlace, .login-ds3 .ld3-ayuda summary { min-height: 44px; }
+  .login-ds3 .ld3-ayuda summary { min-height: 44px; }
+}
+/* Moviles (375x667, 360x740, 390x844): la pantalla de acceso cabe sin scroll (regla de Javier del 3-oct). Mismo orden y
+   piezas que Rovaq, con separaciones y titular mas compactos. */
+@media (max-width: 1023px) and (max-height: 900px) {
+  .login-ds3 .ld3-columna { padding: 12px 20px; }
+  .login-ds3 .ld3-marca { min-height: 44px; }
+  .login-ds3 .ld3-copia { padding: 8px 0 12px; }
+  .login-ds3 .ld3-titulo { font-size: 28px; margin: 6px 0 6px; }
+  .login-ds3 .ld3-intro { font-size: 14px; line-height: 1.45; }
+  .login-ds3 .ld3-divisor { margin-top: 12px; }
+  .login-ds3 .ld3-google, .login-ds3 .ld3-correo-solo { margin-top: 12px; }
+  .login-ds3 .ld3-separador { margin: 8px 0; }
+  .login-ds3 .ld3-correo { gap: 8px; }
+  .login-ds3 .ld3-estado { height: 42px; line-height: 1.6; }
+  .login-ds3 .ld3-ayuda { margin-top: 0; }
+  .login-ds3 .ld3-ayuda p { margin: 0 0 8px; }
+  .login-ds3 .ld3-invitacion { margin-top: 4px; font-size: 13px; line-height: 1.45; }
+  .login-ds3 .ld3-nota { margin-top: 8px; line-height: 1.45; }
 }
 @media (max-width: 380px) {
-  .login-ds3 .ld3-columna { padding: 20px; }
+  .login-ds3 .ld3-columna { padding-inline: 20px; }
+}
+@media (max-width: 380px) and (min-height: 901px) {
+  .login-ds3 .ld3-columna { padding-block: 20px; }
   .login-ds3 .ld3-titulo { font-size: 32px; }
   .login-ds3 .ld3-invitacion { font-size: 13px; }
 }

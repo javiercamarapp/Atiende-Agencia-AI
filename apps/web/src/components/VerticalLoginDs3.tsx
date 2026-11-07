@@ -2,17 +2,17 @@
 // con la paleta de Atiende. Misma composicion y medidas: >= 1024 px dos columnas iguales, panel oscuro a la IZQUIERDA
 // (radio 24, esfera de particulas que sigue al puntero) y formulario a la derecha a 470 px; en movil, solo el formulario.
 // Orden de Rovaq: logo + ES/EN, kicker, H1, bajada, filete, Google, «o», correo + boton en tinta (enlace con espera de
-// 60 s para reenviar), ayuda en <details>, «Pide una invitación», nota al pie. Atiende conserva sus metodos de hoy:
-// Google, enlace por correo y «¿Olvidaste tu contraseña?» (restablecer), mas el pie propio de cada vertical (alta en rentas,
-// acceso de repartidor en restaurantes). Siempre en tema claro, como Rovaq. El copy por vertical vive en login-ds3-copia.ts.
+// 60 s para reenviar), ayuda en <details>, «Pide una invitación», nota al pie. Decision del dueno (6-nov): SOLO enlace por
+// correo y Google, sin contrasena, exactamente como Rovaq. Quien hoy tiene contrasena entra igual con el enlace a su mismo
+// correo (POST /auth/magic-link/iniciar solo envia a cuentas existentes, nunca crea una) o con Google (vincula por correo
+// verificado). Se conserva el pie propio de cada vertical (alta en rentas, acceso de repartidor en restaurantes). Siempre en
+// tema claro, como Rovaq. El copy por vertical vive en login-ds3-copia.ts.
 import { useEffect, useId, useLayoutEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
 import { aplicarTema, AtiendeMark, AtiendeWordmark, FormField, GoogleIcon, leerTema } from "@atiende/ui";
 import { EtiquetaBoton } from "./EtiquetaBoton.tsx";
 import { LoginArtwork } from "./LoginArtwork.tsx";
-import { OlvidoContrasena } from "../shell/cuenta/OlvidoContrasena.tsx";
-import { esVerticalCuenta } from "../shell/cuenta/cuenta-client.ts";
 import { iniciarMagicLink, mensajeGoogleError, mensajeMagicLinkError, urlIniciarGoogleLogin, verificarGoogleConfigurado } from "../lib/google-auth.ts";
 import { esCorreoValido, useEscritorio, type VerticalLoginProps } from "./login-comun.ts";
 import { copiaLoginDs3 } from "./login-ds3-copia.ts";
@@ -38,14 +38,15 @@ export function VerticalLoginDs3({ apiBaseUrl, vertical, nombre, descripcion, ki
   useTemaClaro();
   const conGoogle = metodos?.google ?? true;
   const conMagicLink = metodos?.magicLink ?? true;
-  const conOlvido = (metodos?.olvidoContrasena ?? true) && esVerticalCuenta(vertical);
-  const [modoOlvido, setModoOlvido] = useState(false);
   const [correo, setCorreo] = useState("");
   const [errorCorreo, setErrorCorreo] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
   const [enviadoA, setEnviadoA] = useState<string | null>(null);
   const [errorEnvio, setErrorEnvio] = useState<string | null>(null);
-  const [espera, setEspera] = useState(0);
+  // Espera de reenvio por fecha limite (no por cuenta de ticks): sobrevive a pestanas en segundo plano y a relojes simulados.
+  const [hasta, setHasta] = useState(0);
+  const [ahora, setAhora] = useState(() => Date.now());
+  const espera = Math.max(0, Math.ceil((hasta - ahora) / 1000));
   const [searchParams, setSearchParams] = useSearchParams();
   const locale = searchParams.get("lang") === "en" ? "en" : "es";
   const en = locale === "en";
@@ -73,12 +74,12 @@ export function VerticalLoginDs3({ apiBaseUrl, vertical, nombre, descripcion, ki
     };
   }, [apiBaseUrl, conGoogle]);
 
-  // Cuenta regresiva del reenvio: un tick por segundo mientras quede espera.
+  // Cuenta regresiva del reenvio: se refresca cada segundo mientras falte tiempo.
   useEffect(() => {
-    if (espera <= 0) return undefined;
-    const t = setTimeout(() => setEspera((s) => s - 1), 1000);
-    return () => clearTimeout(t);
-  }, [espera]);
+    if (hasta <= ahora) return undefined;
+    const t = setInterval(() => setAhora(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [hasta, ahora]);
 
   function cambiarIdioma(siguiente: "es" | "en") {
     const params = new URLSearchParams(searchParams);
@@ -87,7 +88,7 @@ export function VerticalLoginDs3({ apiBaseUrl, vertical, nombre, descripcion, ki
   }
 
   const googleHabilitado = conGoogle && googleConfigurado && !comprobandoGoogle;
-  const avisoGoogle = comprobandoGoogle ? tr("Comprobando Google…", "Checking Google…") : tr("Google no está disponible por ahora.", "Google sign-in is currently unavailable.");
+  const avisoGoogle = comprobandoGoogle ? tr("Comprobando Google…", "Checking Google…") : tr("Google: pendiente de configurar en este entorno.", "Google sign-in is not configured in this environment.");
 
   function irAGoogle() {
     if (!googleHabilitado) return;
@@ -114,7 +115,9 @@ export function VerticalLoginDs3({ apiBaseUrl, vertical, nombre, descripcion, ki
         return;
       }
       setEnviadoA(correo.trim());
-      setEspera(ESPERA_REENVIO_S);
+      const t = Date.now();
+      setAhora(t);
+      setHasta(t + ESPERA_REENVIO_S * 1000);
     } finally {
       setEnviando(false);
     }
@@ -147,98 +150,84 @@ export function VerticalLoginDs3({ apiBaseUrl, vertical, nombre, descripcion, ki
             <p className="login-entra ld3-intro">{en ? copia.introEn : descripcion}</p>
             <div className="ld3-divisor" />
 
-            {alertaExterna && !modoOlvido && (
+            {alertaExterna && (
               <p className="ld3-mensaje" role="alert">
                 {alertaExterna}
               </p>
             )}
 
-            {modoOlvido && conOlvido && esVerticalCuenta(vertical) ? (
-              <OlvidoContrasena apiBaseUrl={apiBaseUrl} vertical={vertical} correoInicial={correo} locale={locale} onVolver={() => setModoOlvido(false)} />
-            ) : (
-              <>
-                {conGoogle && (
-                  <div className="login-entra ld3-google">
-                    <button type="button" onClick={irAGoogle} disabled={!googleHabilitado} aria-describedby={!googleHabilitado ? idDisponibilidad : undefined} className="login-btn login-btn-borde">
-                      <GoogleIcon />
-                      {tr("Continuar con Google", "Continue with Google")}
-                    </button>
-                  </div>
-                )}
+            {conGoogle && (
+              <div className="login-entra ld3-google">
+                <button type="button" onClick={irAGoogle} disabled={!googleHabilitado} aria-describedby={!googleHabilitado ? idDisponibilidad : undefined} className="login-btn login-btn-borde">
+                  <GoogleIcon />
+                  {tr("Continuar con Google", "Continue with Google")}
+                </button>
+              </div>
+            )}
 
-                {conGoogle && conMagicLink && (
-                  <div className="ld3-separador">
-                    <span />
-                    <p id={idDisponibilidad}>{googleHabilitado ? tr("o", "or") : avisoGoogle}</p>
-                    <span />
-                  </div>
-                )}
+            {conGoogle && conMagicLink && (
+              <div className="ld3-separador">
+                <span />
+                <p id={idDisponibilidad}>{googleHabilitado ? tr("o", "or") : avisoGoogle}</p>
+                <span />
+              </div>
+            )}
 
-                {conMagicLink && (
-                  <form onSubmit={enviarMagicLink} className={`login-entra ld3-correo${conGoogle ? "" : " ld3-correo-solo"}`} aria-label={tr("Acceder por correo", "Sign in by email")} noValidate>
-                    <FormField id={idCorreo} label={<span className="sr-only">{tr("Correo", "Email")}</span>}>
-                      {(campo) => (
-                        <input
-                          {...campo}
-                          type="email"
-                          placeholder={placeholderCorreo}
-                          autoComplete="email"
-                          maxLength={254}
-                          aria-required="true"
-                          aria-invalid={errorCorreo ? true : undefined}
-                          aria-describedby={errorFormulario ? idAlerta : undefined}
-                          value={correo}
-                          onChange={(e) => setCorreo(e.target.value)}
-                          className="login-campo"
-                        />
-                      )}
-                    </FormField>
-                    <button type="submit" disabled={enviando || espera > 0} aria-busy={enviando || undefined} className="login-btn login-btn-tinta">
-                      <span aria-hidden className="login-glifo">
-                        <AtiendeMark className="h-[17px] w-auto brightness-0 invert" />
-                      </span>
-                      <EtiquetaBoton ocupado={enviando} reposo={reposo} enCurso={tr("Enviando…", "Sending…")} />
-                    </button>
-                    {/* Ranura de alto reservado (Rovaq: role=status): enviado y errores ocupan el mismo espacio, el formulario no se mueve. */}
-                    <div className="ld3-estado" data-estado={enviadoA ? "enviado" : errorFormulario ? "error" : "reposo"}>
-                      <div role="status">
-                        {enviadoA && !errorFormulario && (
-                          <>
-                            <p className="ld3-estado-titulo">
-                              {tr("Te mandamos un enlace a", "We sent a link to")} <strong>{enviadoA}</strong>.
-                            </p>
-                            <p>{tr("Ábrelo en este dispositivo · expira en 15 minutos.", "Open it on this device · expires in 15 minutes.")}</p>
-                          </>
-                        )}
-                      </div>
-                      {errorFormulario && (
-                        <p id={idAlerta} role="alert" className="ld3-estado-error">
-                          {errorFormulario}
-                        </p>
-                      )}
+            {conMagicLink && (
+              <form onSubmit={enviarMagicLink} className={`login-entra ld3-correo${conGoogle ? "" : " ld3-correo-solo"}`} aria-label={tr("Acceder por correo", "Sign in by email")} noValidate>
+                <FormField id={idCorreo} label={<span className="sr-only">{tr("Correo", "Email")}</span>}>
+                  {(campo) => (
+                    <input
+                      {...campo}
+                      type="email"
+                      placeholder={placeholderCorreo}
+                      autoComplete="email"
+                      maxLength={254}
+                      aria-required="true"
+                      aria-invalid={errorCorreo ? true : undefined}
+                      aria-describedby={errorFormulario ? idAlerta : undefined}
+                      value={correo}
+                      onChange={(e) => setCorreo(e.target.value)}
+                      className="login-campo"
+                    />
+                  )}
+                </FormField>
+                <button type="submit" disabled={enviando || espera > 0} aria-busy={enviando || undefined} className="login-btn login-btn-tinta">
+                  <span aria-hidden className="login-glifo">
+                    <AtiendeMark className="h-[17px] w-auto brightness-0 invert" />
+                  </span>
+                  <EtiquetaBoton ocupado={enviando} reposo={reposo} enCurso={tr("Enviando…", "Sending…")} />
+                </button>
+                {/* Ranura de alto reservado (Rovaq: role=status): enviado y errores ocupan el mismo espacio, el formulario no se mueve. */}
+                <div className="login-estado ld3-estado" data-estado={enviadoA && !errorFormulario ? "enviado" : errorFormulario ? "error" : "reposo"}>
+                  {enviadoA && !errorFormulario && (
+                    <div role="status">
+                      <p className="ld3-estado-titulo">
+                        {tr("Te mandamos un enlace a", "We sent a link to")} <strong>{enviadoA}</strong>.
+                      </p>
+                      <p>{tr("Ábrelo en este dispositivo · expira en 15 minutos.", "Open it on this device · expires in 15 minutes.")}</p>
                     </div>
-                  </form>
-                )}
-
-                {conOlvido && (
-                  <button type="button" onClick={() => setModoOlvido(true)} className="ld3-enlace">
-                    {tr("¿Olvidaste tu contraseña?", "Forgot your password?")}
-                  </button>
-                )}
-              </>
+                  )}
+                  {errorFormulario && (
+                    <p id={idAlerta} role="alert" className="ld3-estado-error">
+                      {errorFormulario}
+                    </p>
+                  )}
+                </div>
+              </form>
             )}
 
             <details className="ld3-ayuda">
               <summary>{tr("¿Necesitas ayuda para entrar?", "Need help signing in?")}</summary>
               <p>
                 {tr(
-                  "Usa el correo con el que tu equipo te dio de alta: entra con Google o abre el enlace seguro que te enviamos. Revisa también la carpeta de correo no deseado. Si usas contraseña y la olvidaste, restablécela desde «¿Olvidaste tu contraseña?».",
-                  "Use the email your team added: sign in with Google or open the secure link we send you. Check your spam folder too. If you use a password and forgot it, reset it from “Forgot your password?”.",
+                  "No necesitas contraseña. Usa el correo con el que tu equipo te dio de alta y abre el enlace seguro que recibas, o entra con Google si es ese mismo correo. Revisa también la carpeta de correo no deseado.",
+                  "No password needed. Use the email your team added and open the secure link you receive, or sign in with Google if it is that same email. Check your spam folder too.",
                 )}
               </p>
             </details>
 
-            <p className="ld3-invitacion">
+            <p className="login-pie ld3-invitacion">
               {(!en && pie) || (
                 <>
                   {tr("¿Tu correo no tiene acceso?", "Does your email need access?")} <strong>{tr("Pide una invitación a tu equipo.", "Ask your team for an invitation.")}</strong>
@@ -246,8 +235,11 @@ export function VerticalLoginDs3({ apiBaseUrl, vertical, nombre, descripcion, ki
               )}
             </p>
 
-            <p className="ld3-nota">
-              {tr("Acceso reservado a equipos autorizados. Al continuar, aceptas los", "For authorized teams. By continuing, you accept the")}{" "}
+            <p className="login-legales ld3-nota">
+              {tr(
+                "Acceso reservado a equipos autorizados. Inicia sesión sin contraseña con Google o un enlace seguro en tu correo. Al continuar, aceptas los",
+                "For authorized teams. Sign in without a password using Google or a secure email link. By continuing, you accept the",
+              )}{" "}
               <a href="/terminos">{tr("Términos de Servicio", "Terms of Service")}</a> {tr("y el", "and the")}{" "}
               <a href="/privacidad">{tr("Aviso de Privacidad", "Privacy Notice")}</a> {tr("de atiende.ai.", "of atiende.ai.")}
             </p>

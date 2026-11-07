@@ -7,11 +7,13 @@
 // Los metodos son props: una vertical que no ofrece Google o magic link (o que
 // agregue contrasena el dia de manana) los enciende/apaga sin copiar la pantalla.
 //
-// ds3: con la bandera de diseno encendida se pinta `VerticalLoginDs3` (identica a la de Rovaq AI, misma API y mismos
-// metodos de acceso); apagada, la pantalla de siempre (`VerticalLoginLegado`), sin un solo cambio.
+// Decision del dueno (6-nov): el inicio de sesion de las 6 verticales es el de Rovaq AI (`VerticalLoginDs3`, misma API y
+// mismos metodos de acceso) para TODOS, sin bandera: el login ocurre antes de conocer la organizacion, asi que una bandera
+// por organizacion no puede aplicar. La pantalla anterior (`VerticalLoginLegado`) queda solo como interruptor de emergencia
+// de build: `VITE_LOGIN_LEGADO=1` (apagado por omision).
 import { useEffect, useId, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { AtiendeMark, AtiendeWordmark, DISENO_DS3, FormField, GoogleIcon } from "@atiende/ui";
+import { AtiendeMark, AtiendeWordmark, FormField, GoogleIcon } from "@atiende/ui";
 import type { FormEvent } from "react";
 import { EtiquetaBoton } from "./EtiquetaBoton.tsx";
 import { OlvidoContrasena } from "../shell/cuenta/OlvidoContrasena.tsx";
@@ -24,9 +26,18 @@ import "../pages/login.css";
 
 export { esCorreoValido, type VerticalLoginHero, type VerticalLoginProps } from "./login-comun.ts";
 
-/** Unica rama estructural de la bandera ds3 en el login: la constante no cambia en la sesion, asi que los hooks de cada pantalla no se mezclan. */
+type EntornoVite = { env?: { VITE_LOGIN_LEGADO?: string } };
+
+/** Interruptor de emergencia: solo `"1"` vuelve a la pantalla anterior; vacio o cualquier otro valor = login de Rovaq. */
+export function loginLegadoActivo(valor: string | undefined = (import.meta as unknown as EntornoVite).env?.VITE_LOGIN_LEGADO): boolean {
+  return (valor ?? "").trim() === "1";
+}
+
+const LOGIN_LEGADO = loginLegadoActivo();
+
+/** La constante se lee una vez al cargar el modulo: en una sesion siempre se monta la misma pantalla (los hooks no se mezclan). */
 export function VerticalLogin(props: VerticalLoginProps) {
-  return DISENO_DS3 ? <VerticalLoginDs3 {...props} /> : <VerticalLoginLegado {...props} />;
+  return LOGIN_LEGADO ? <VerticalLoginLegado {...props} /> : <VerticalLoginDs3 {...props} />;
 }
 
 export function VerticalLoginLegado({ apiBaseUrl, vertical, nombre, descripcion, kicker = "Acceso al panel", placeholderCorreo = "tu@negocio.com", metodos, hero, pie }: VerticalLoginProps) {
