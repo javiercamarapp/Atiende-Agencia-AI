@@ -79,6 +79,7 @@ import type { DespachadorAlertas } from "./alertas/tipos.ts";
 import type { SuperadminCopilotoDeps } from "./superadmin-copiloto/deps.ts";
 import type { LlmRouteConfig } from "./production/llm-models.ts";
 import type { SaludMetaDeps } from "./salud/salud-meta.ts";
+import type { ClonadorVoz } from "./voz-clonacion.ts";
 
 /** Todo lo que las rutas necesitan, inyectado — nunca construido dentro de una ruta.
  * En tests, `coreRepo`/`restaurantesRepo`/`hotelesRepo`/`rentasRepo` son los
@@ -212,6 +213,9 @@ export interface AppDeps {
    * privacidad responden 503. En produccion es `(db) => new PostgresPrivacidadRepository(db)`. */
   readonly privacidadRepo?: (db: TenantDbSession) => PrivacidadRepository;
   readonly voiceProvider?: VoiceAgentProvider;
+  /** Clonacion de la voz TELEFONICA de una sucursal (ElevenLabs IVC, `POST .../admin/voz/clonar`). OPCIONAL: solo existe con
+   * `ELEVENLABS_API_KEY` en la API; sin el la ruta responde 503 honesto. La llave nunca sale del servidor. */
+  readonly clonadorVoz?: ClonadorVoz;
   /** R-21 (migración 028): bandeja de conversaciones, handoff a humano, turnos y callbacks. OPCIONALES: sin ellos las
    * rutas responden 503 honesto y el webhook de WhatsApp sigue como antes (el agente responde siempre). */
   readonly conversacionesRepo?: (db: TenantDbSession) => ConversacionesRepository;

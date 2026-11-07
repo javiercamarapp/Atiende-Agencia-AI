@@ -9,6 +9,7 @@ import { navEn } from "./nav.ts";
 import { notifEn } from "./notif.ts";
 import { rolEn } from "./rol.ts";
 import { shellEn } from "./shell.ts";
+import { vozClonEn } from "./vozClon.ts";
 
 export const MODULOS_EN = {
   comun: comunEn,
@@ -17,4 +18,5 @@ export const MODULOS_EN = {
   rol: rolEn,
   consola: consolaEn,
   notif: notifEn,
+  vozClon: vozClonEn,
 } as const satisfies ModulosTraducidos;

@@ -141,6 +141,7 @@ import { conAjustesDeVoz, resolverAjustesVozPostgres } from "./voz-con-ajustes.t
 import { conBitacoraDeTurno } from "../agentes/corridas.ts";
 import { resolveRoleRoute } from "./llm-models.ts";
 import { buildProductionDataChat } from "../data-chat/deps.ts";
+import { clonadorVozDesdeEnv } from "../voz-clonacion.ts";
 import { buildProductionSuperadminCopiloto } from "../superadmin-copiloto/deps.ts";
 import {
   buildProductionLlmGateway,
@@ -422,6 +423,8 @@ export function buildProductionDeps(): AppDeps {
     // R-19: marca de organizacion demo (migración 037) para el widget publico de chat sin Meta; degrada con SAVEPOINT.
     demoRepo: (db) => new PostgresDemoRepository(db),
     // La vista previa aplica los ajustes de la organizacion (temperatura, ritmo/estilo, conocimiento automatico) sin tocar las rutas de voz.
+    // Clonacion de la voz telefonica (ElevenLabs IVC): sin ELEVENLABS_API_KEY no hay clonador y la ruta responde 503 honesto.
+    ...(env.elevenLabsApiKey ? { clonadorVoz: clonadorVozDesdeEnv(env.elevenLabsApiKey)! } : {}),
     voiceProvider: conAjustesDeVoz(new GeminiLiveProvider({ apiKey: env.geminiApiKey ?? null }), resolverAjustesVozPostgres(engine)),
     dataChat: buildProductionDataChat(llmGateway, engine),
     turnHandler: llmGateway

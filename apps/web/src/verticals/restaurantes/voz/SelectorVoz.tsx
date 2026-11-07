@@ -26,7 +26,7 @@ export interface SelectorVozProps {
 
 /** Fondo cónico del avatar de una voz: 8 giros fijos (cada clase completa debe aparecer literal para que Tailwind la genere) que
  * se eligen de forma determinista a partir del id, en lugar de un `style` con un ángulo calculado. Solo usa tokens de color. */
-const AVATARES_BASE = [
+export const AVATARES_BASE = [
   "bg-[conic-gradient(from_0deg,hsl(var(--primary)),hsl(var(--info)),hsl(var(--primary)))]",
   "bg-[conic-gradient(from_45deg,hsl(var(--primary)),hsl(var(--info)),hsl(var(--primary)))]",
   "bg-[conic-gradient(from_90deg,hsl(var(--primary)),hsl(var(--info)),hsl(var(--primary)))]",
@@ -47,7 +47,7 @@ const AVATARES_BRILLO = [
   "bg-[conic-gradient(from_315deg,transparent,hsl(var(--primary-foreground)/0.19),transparent)]",
 ] as const;
 
-function giroAvatar(semilla: number, tabla: readonly string[]): string {
+export function giroAvatar(semilla: number, tabla: readonly string[]): string {
   return tabla[Math.abs(semilla) % tabla.length]!;
 }
 
