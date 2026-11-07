@@ -6,6 +6,9 @@
 //  * Puro: sin red, sin base y sin reloj implícito: toda función con hora recibe `ahora` por parámetro.
 //  * Slugs del monorrepo: el suelto llamaba `chicxulub` a la T5; aquí es `playa` (cerrada definitivamente).
 //  * Pensiones (T3) usa el catálogo/precios de García Lavín (T7): decisión posterior del 31-oct (no los precios web 2025).
+//  * Galerías (T4) es solo venta local (decisión del dueño 6-nov-2026, migración 105, `solo-venta-local.ts`): fuera del agente como si estuviera
+//    cerrada (sin horario, domicilio ni promos, y su nombre no cuenta como sucursal en el texto del cliente). La base sigue siendo la puerta: esto
+//    solo evita que las políticas v2 la ofrezcan o la nombren.
 
 export type ChatMessage = { readonly role?: string; readonly content?: unknown; readonly tool_calls?: unknown };
 
@@ -45,7 +48,7 @@ export interface SucursalPm {
   /** false = cerrada definitivamente (no entra a horarios, zonas ni agente). */
   readonly activa: boolean;
   readonly aceptaDomicilio: boolean;
-  /** Promos solo para RECOGER y solo en estas sucursales (FdM, Pensiones, Galerías). */
+  /** Promos solo para RECOGER y solo en estas sucursales (FdM y Pensiones). */
   readonly promosEnRecoger: boolean;
   /** Slug cuyo catálogo y precios usa esta sucursal (Pensiones = T7). null = el suyo. */
   readonly catalogoDe: SlugSucursalPm | null;
@@ -97,7 +100,7 @@ export const POLITICAS_PM: PoliticasPm = {
   },
   pedidoGrande: { umbral: 4000, estado: "por_aprobar" },
   cancelacionVentanaMin: 10,
-  promos: { soloRecoger: true, sucursales: ["fco-montejo", "pensiones", "galerias"] },
+  promos: { soloRecoger: true, sucursales: ["fco-montejo", "pensiones"] },
   recoger: { esperaMinimaMin: 25, esperaPorOmisionMin: 30, anticipacionMaxMin: 720 },
   programado: { esperaPorOmisionMin: 45 },
   reglasDuras: { pedidoMinimoDomicilio: 200, radioEntregaKm: 8 },
@@ -121,9 +124,10 @@ export const POLITICAS_PM: PoliticasPm = {
       horario: turnos(TODOS, 1080, 1440),
     },
     galerias: {
-      slug: "galerias", clave: "T4", nombre: "Plaza Galerías", activa: true, aceptaDomicilio: true, promosEnRecoger: true, catalogoDe: null,
-      horarioTexto: "Todos los dias, 12:00 pm - 9:00 pm",
-      horario: turnos(TODOS, 720, 1260),
+      // T4: solo venta local (6-nov-2026): sigue abierta al público, pero el agente no la ofrece; sin horario ni domicilio ni promos aquí.
+      slug: "galerias", clave: "T4", nombre: "Plaza Galerías", activa: false, aceptaDomicilio: false, promosEnRecoger: false, catalogoDe: null,
+      horarioTexto: "Solo venta local",
+      horario: [],
     },
     playa: {
       // T5 Chicxulub: cerrada definitivamente (adenda 31-oct): sin horario y fuera del agente.
@@ -273,8 +277,13 @@ const PROMO_WORD =
   /\bpromo(?:s|ci[oó]n|ciones)?(?![a-záéíóúñ])|\b2\s*x\s*1\b|\bdos\s+por\s+uno\b|\bnachos\s*\+\s*aguas\b/i;
 export const PROMO_NOTICE = "Las promociones no aplican a domicilio; solo valen para recoger en las sucursales participantes.";
 export const PROMO_SUCURSALES: readonly string[] = POLITICAS_PM.promos.sucursales;
+/** Nombres de las sucursales con promo, de los datos (nunca de memoria): «Francisco de Montejo y Pensiones». */
+export const PROMO_SUCURSALES_TEXTO: string = (() => {
+  const nombres = POLITICAS_PM.promos.sucursales.map((slug) => POLITICAS_PM.sucursales[slug].nombre);
+  return nombres.length > 1 ? `${nombres.slice(0, -1).join(", ")} y ${nombres.at(-1)}` : (nombres[0] ?? "");
+})();
 export const PROMO_SIN_SUCURSAL_NOTICE =
-  "En esa sucursal no manejamos promociones; solo aplican, para recoger, en Francisco de Montejo, Pensiones y Plaza Galerías.";
+  `En esa sucursal no manejamos promociones; solo aplican, para recoger, en ${PROMO_SUCURSALES_TEXTO}.`;
 
 export interface ContextoPromo {
   sucursal: string | null;
@@ -320,8 +329,7 @@ const SUCURSALES_TEXTO: ReadonlyArray<{ slug: string; re: string; sinAmbiguedad:
   { slug: "prol-montejo", re: "prolongacion\\s+montejo|prol\\.?\\s+montejo", sinAmbiguedad: true },
   { slug: "garcia-lavin", re: "garcia\\s*lavin|victory\\s+platz", sinAmbiguedad: true },
   { slug: "fco-montejo", re: "franc(?:isco|\\.)?\\s+(?:de\\s+)?montejo|fco\\.?\\s+(?:de\\s+)?montejo|sucursal\\s+(?:de\\s+)?montejo", sinAmbiguedad: true },
-  { slug: "galerias", re: "plaza\\s+galerias", sinAmbiguedad: true },
-  { slug: "galerias", re: "galerias", sinAmbiguedad: false },
+  // Galerías no va: es solo venta local (el agente no la toma como sucursal; «Galerías» queda como colonia o plaza).
   { slug: "pensiones", re: "pensiones", sinAmbiguedad: false },
   { slug: "altabrisa", re: "altabrisa", sinAmbiguedad: false },
   { slug: "playa", re: "chicxulub", sinAmbiguedad: false },
@@ -414,7 +422,7 @@ export function contextoPromo(messages: readonly ChatMessage[], politicas: Polit
 
 /**
  * Guardia sobre la respuesta final: sin que el cliente pregunte no se ofrecen promos (se quitan esas oraciones); si
- * pregunta, la respuesta se ajusta a la sucursal y la modalidad que ya se saben (solo recoger y solo FdM/Pensiones/Galerías).
+ * pregunta, la respuesta se ajusta a la sucursal y la modalidad que ya se saben (solo recoger y solo en las sucursales de POLITICAS_PM.promos).
  */
 export function enforcePromoPolicy(reply: string, messages: readonly ChatMessage[], politicas: PoliticasPm = POLITICAS_PM): string {
   const nombres = nombresDeProductos(messages);

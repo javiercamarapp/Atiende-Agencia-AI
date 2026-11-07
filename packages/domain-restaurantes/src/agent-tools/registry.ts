@@ -793,7 +793,8 @@ const PIN_ANTES_DE_CREAR_MENSAJE =
  */
 async function tiempoDeSucursalCotizada(repo: RestaurantesRepository, ctx: AgentToolContext, organizationId: string, branchSlug: string): Promise<{ tiempo_entrega: string; aviso_tiempo: string } | null> {
   if (!ctx.cerebroV2 || ctx.channel !== "whatsapp" || !ctx.entryPropertyId || !branchSlug) return null;
-  const cotizada = await repo.findBranch(organizationId, { slug: branchSlug }).catch(() => null);
+  // Por la puerta de #741: una sucursal solo venta local nunca presta su tiempo (ni su nombre) a la cotizacion.
+  const cotizada = await buscarSucursalParaClientes(repo, organizationId, { slug: branchSlug }).catch(() => null);
   if (!cotizada || cotizada.propertyId === ctx.entryPropertyId) return null;
   const config = await repo.findWhatsAppAgentConfig(organizationId, cotizada.propertyId).catch(() => null);
   const tiempo = config?.perfil === "taqueria_pm" ? config.deliveryTimeText?.trim() || null : null;
