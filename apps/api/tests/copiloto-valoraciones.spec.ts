@@ -95,6 +95,7 @@ async function harness() {
     },
     audit: () => ({ record: async () => undefined }),
     rateLimiter: { allow: async () => true },
+    completion: undefined,
     valoraciones: () => repo,
   };
   const app = buildApp({ ...ctx.deps, dataChat });
