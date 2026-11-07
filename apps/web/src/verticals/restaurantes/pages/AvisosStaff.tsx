@@ -4,7 +4,7 @@
 // bitacora (apps/api/.../restaurantes/admin-avisos.ts); el servidor y la base re-validan quien puede editar a quien.
 import { useEffect, useState } from "react";
 import { BellRing } from "lucide-react";
-import { Button, Card, CardContent, Checkbox, DataTable, EstadoCargando, EstadoError, EstadoVacio, Input, PageContainer, StatusBadge, Switch } from "@atiende/ui";
+import { Button, Card, CardContent, Checkbox, DataTable, EstadoCargando, EstadoError, EstadoVacio, Input, PageContainer, PageHeader, StatusBadge, Switch } from "@atiende/ui";
 import { fetchAvisos, guardarPreferenciaAviso, guardarUmbralEntrega } from "../lib/avisos-client.ts";
 import type { AvisosWire, MiembroAvisosWire, PreferenciaAvisoWire } from "../lib/avisos-client.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
@@ -96,10 +96,8 @@ export function AvisosStaffPage({ apiBaseUrl, token, propertyId, role, staffEmai
 
   return (
     <PageContainer padding="none">
-      <header>
-        <h1 className="sr-only">Avisos</h1>
-        <p className="m-0 text-ui text-muted-foreground">Elige qué avisos recibes en la campana y en Notificaciones. Si apagas uno, dejas de recibirlo; el resto sigue igual.</p>
-      </header>
+      <PageHeader titulo="Avisos" />
+      <p className="m-0 text-ui text-muted-foreground">Elige qué avisos recibes en la campana y en Notificaciones. Si apagas uno, dejas de recibirlo; el resto sigue igual.</p>
 
       {error && <EstadoError mensaje={error} onReintentar={() => setVersion((n) => n + 1)} />}
       {!error && datos === null && <EstadoCargando lineas={3} />}

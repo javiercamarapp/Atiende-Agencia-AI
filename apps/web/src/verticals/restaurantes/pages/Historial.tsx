@@ -16,11 +16,11 @@ import {
   CardTitle,
   DataTable,
   EstadoError,
-  FormField,
   Input,
   cn,
   Selector,
   PageContainer,
+  PageHeader,
   StatusBadge,
   statusTone,
   useConfirm,
@@ -214,9 +214,29 @@ export function HistorialPage({ apiBaseUrl, token, propertyId, role }: Restauran
 
   return (
     <PageContainer padding="none">
-      <h1 className="sr-only">Historial de órdenes</h1>
+      <PageHeader
+        titulo="Historial de órdenes"
+        acciones={
+          // R-17: exporta con los filtros vigentes (mismos limites de fecha que la tabla). Solo owner/admin.
+          <BotonExportar
+            variante="default"
+            role={role}
+            token={token}
+            urlPara={(formato) =>
+              urlExportarHistorial(apiBaseUrl, propertyId, formato, {
+                status: statusFilter || undefined,
+                branchId: sucursal || undefined,
+                q: busqueda || undefined,
+                incidencias: soloIncidencias || undefined,
+                dateFrom: dateFrom ? medianocheLocalUTC(dateFrom).toISOString() : undefined,
+                dateTo: dateTo ? medianocheLocalUTC(sumarDiasFechaSolo(dateTo, 1)).toISOString() : undefined,
+              })
+            }
+          />
+        }
+      />
 
-      {/* Chips de filtro del original: periodo, sucursal, incidencias / no entregados y busqueda por cliente o telefono. */}
+      {/* Filtros en una sola linea de pildoras (Rovaq): periodo, sucursal, incidencias / no entregados, busqueda, estado y fechas. */}
       <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filtros rápidos del historial">
         <span className="relative inline-flex items-center">
           <CalendarDays className="pointer-events-none absolute left-3 z-10 size-3.5 text-muted-foreground" aria-hidden="true" />
@@ -261,48 +281,23 @@ export function HistorialPage({ apiBaseUrl, token, propertyId, role }: Restauran
             className="w-56 rounded-full pl-9"
           />
         </span>
-      </div>
-
-      <div className="flex flex-wrap items-end gap-3">
-        <FormField label="Estado">
-          <Selector
-            id="restaurantes-historial-estado"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as OrderStatus | "")}
-            wrapperClassName="w-auto min-w-44"
-          >
-            <option value="">Todos los estados</option>
-            {ALL_STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {ORDER_STATUS_LABELS[s]}
-              </option>
-            ))}
-          </Selector>
-        </FormField>
-        <FormField label="Desde">
-          <Input id="restaurantes-historial-desde" type="date" value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); setPeriodo("custom"); }} className="w-auto" />
-        </FormField>
-        <FormField label="Hasta">
-          <Input id="restaurantes-historial-hasta" type="date" value={dateTo} onChange={(e) => { setDateTo(e.target.value); setPeriodo("custom"); }} className="w-auto" />
-        </FormField>
-        {/* R-17: exporta con los filtros vigentes (mismos limites de fecha que la tabla). Solo owner/admin. */}
-        <div className="ml-auto">
-          <BotonExportar
-            variante="default"
-            role={role}
-            token={token}
-            urlPara={(formato) =>
-              urlExportarHistorial(apiBaseUrl, propertyId, formato, {
-                status: statusFilter || undefined,
-                branchId: sucursal || undefined,
-                q: busqueda || undefined,
-                incidencias: soloIncidencias || undefined,
-                dateFrom: dateFrom ? medianocheLocalUTC(dateFrom).toISOString() : undefined,
-                dateTo: dateTo ? medianocheLocalUTC(sumarDiasFechaSolo(dateTo, 1)).toISOString() : undefined,
-              })
-            }
-          />
-        </div>
+        <Selector
+          id="restaurantes-historial-estado"
+          aria-label="Estado"
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value as OrderStatus | "")}
+          wrapperClassName="w-auto"
+          className="rounded-full"
+        >
+          <option value="">Todos los estados</option>
+          {ALL_STATUSES.map((s) => (
+            <option key={s} value={s}>
+              {ORDER_STATUS_LABELS[s]}
+            </option>
+          ))}
+        </Selector>
+        <Input id="restaurantes-historial-desde" aria-label="Desde" title="Desde" type="date" value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); setPeriodo("custom"); }} className="w-auto rounded-full" />
+        <Input id="restaurantes-historial-hasta" aria-label="Hasta" title="Hasta" type="date" value={dateTo} onChange={(e) => { setDateTo(e.target.value); setPeriodo("custom"); }} className="w-auto rounded-full" />
       </div>
 
       {error && <EstadoError mensaje={error} onReintentar={() => { generacionRef.current += 1; void load(true); }} />}

@@ -4,7 +4,7 @@
 // migracion 028 todavia no esta aplicada: NUNCA se confunde con una bandeja vacia) y datos.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MessageSquare } from "lucide-react";
-import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, Selector, PageContainer, StatusBadge, Tabs, TabsContent, TabsList, TabsTrigger, Textarea, statusTone } from "@atiende/ui";
+import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, Selector, PageContainer, PageHeader, StatusBadge, Tabs, TabsContent, TabsList, TabsTrigger, Textarea, statusTone } from "@atiende/ui";
 import {
   CANAL_LABEL,
   ESTADO_LABEL,
@@ -82,10 +82,8 @@ export function ConversacionesPage(ctx: RestaurantesShellContext) {
 
   return (
     <PageContainer padding="none">
-      <header>
-        <h1 className="sr-only">Conversaciones</h1>
-        <p className="m-0 text-ui text-muted-foreground">WhatsApp y llamadas de esta sucursal. Toma una conversación para atenderla tú: mientras la tengas, el agente no responde.</p>
-      </header>
+      <PageHeader titulo="Conversaciones" />
+      <p className="m-0 text-ui text-muted-foreground">WhatsApp y llamadas de esta sucursal. Toma una conversación para atenderla tú: mientras la tengas, el agente no responde.</p>
 
       <Tabs defaultValue="bandeja">
         <TabsList>
