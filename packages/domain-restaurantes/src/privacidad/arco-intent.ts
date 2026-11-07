@@ -65,6 +65,13 @@ const RIGHT_PATTERNS: ReadonlyArray<{ readonly right: DataRightType; readonly re
   { right: "acceso", re: /\b(acceso|acceder|conocer|saber|ver|consultar|copia|obtener|que datos|cuales datos|entreguen|envien)\b/ },
 ];
 
+// Seguimiento de una solicitud ya hecha: pregunta por el aviso, el plazo o el estado del trámite. Sin una petición explícita en el mismo mensaje NO es una solicitud nueva
+// (antes «¿me avisan cuando pueda ver mis datos?» abría un ACCESO falso por «ver» y pedía CONFIRMO de algo que el cliente no pidió): sigue al agente.
+const FOLLOW_UP_RE =
+  /\b(me avisan|me avisas|me avisaran|me avisen|me van a avisar|me notifican|me notificaran|me van a notificar|me dicen|me confirman|cuanto tarda|cuanto tiempo|cuando me (responden|contestan)|ya quedo|como va|en que va|estatus|status|seguimiento)\b/;
+// Petición explícita («quiero / solicito / pido…», «que borren…»). «quiero saber» es la coletilla de una pregunta, no una petición.
+const EXPLICIT_REQUEST_RE = /\b(quiero|quisiera|solicito|deseo|pido|necesito|me gustaria)\b(?! saber\b)|\bque (los |las |me )?(borren|eliminen|corrijan|rectifiquen|den|envien|entreguen)\b/;
+
 export type ArcoIntent =
   | { readonly kind: "request"; readonly right: DataRightType }
   | { readonly kind: "menu" }
@@ -81,6 +88,7 @@ export function detectArcoIntent(message: string): ArcoIntent | null {
   if (!normalized || !PERSONAL_DATA_RE.test(normalized)) return null;
 
   if (THIRD_PARTY_RE.test(normalized)) return { kind: "third_party" };
+  if (FOLLOW_UP_RE.test(normalized) && !EXPLICIT_REQUEST_RE.test(normalized)) return null;
 
   const matched = RIGHT_PATTERNS.filter(({ re }) => re.test(normalized)).map(({ right }) => right);
   // "acceso" es el verbo más genérico ("ver", "saber"): si coincide junto con otro
