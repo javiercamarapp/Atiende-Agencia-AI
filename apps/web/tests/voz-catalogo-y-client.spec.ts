@@ -46,7 +46,7 @@ describe("voz-client (contrato real de apps/api voz-admin.ts)", () => {
       expect((init?.headers as Record<string, string>).authorization).toBe("Bearer tok");
       return JSON_RESP(WIRE_CONFIG);
     }) as unknown as typeof fetch;
-    await expect(fetchVozConfig(f1, "http://api.local", "tok", "prop-1")).resolves.toEqual({ vozId: "Kore", promptSistema: "p", mensajeInicial: "m", mensajeInicialInterrumpible: true, habilitado: true });
+    await expect(fetchVozConfig(f1, "http://api.local", "tok", "prop-1")).resolves.toEqual({ vozId: "Kore", promptSistema: "p", mensajeInicial: "m", mensajeInicialInterrumpible: true, habilitado: true, vozTelefono: null, vozTelefonoDisponible: false });
     const f2 = vi.fn(async () => JSON_RESP({ ...WIRE_CONFIG, configurada: false, habilitado: false, voiceId: "" })) as unknown as typeof fetch;
     await expect(fetchVozConfig(f2, "http://api.local", "tok", "prop-1")).resolves.toBeNull();
   });
@@ -83,7 +83,21 @@ describe("voz-client (contrato real de apps/api voz-admin.ts)", () => {
       return JSON_RESP({ ...WIRE_CONFIG, voiceId: "Puck", comportamiento: ENTRADA.promptSistema, mensajeInicial: ENTRADA.mensajeInicial });
     }) as unknown as typeof fetch;
     const r = await updateVozConfig(f, "http://api.local", "tok", "prop-1", ENTRADA);
-    expect(r).toEqual({ vozId: "Puck", promptSistema: ENTRADA.promptSistema, mensajeInicial: ENTRADA.mensajeInicial, mensajeInicialInterrumpible: true, habilitado: true });
+    expect(r).toEqual({ vozId: "Puck", promptSistema: ENTRADA.promptSistema, mensajeInicial: ENTRADA.mensajeInicial, mensajeInicialInterrumpible: true, habilitado: true, vozTelefono: null, vozTelefonoDisponible: false });
+  });
+
+  it("voz telefonica (migracion 101): se lee del GET y el PUT la manda SOLO si la base ya la admite", async () => {
+    const f1 = vi.fn(async () => JSON_RESP({ ...WIRE_CONFIG, vozTelefono: "sDh3eviBhiuHKi0MjTNq", vozTelefonoDisponible: true })) as unknown as typeof fetch;
+    await expect(fetchVozConfig(f1, "http://api.local", "tok", "prop-1")).resolves.toMatchObject({ vozTelefono: "sDh3eviBhiuHKi0MjTNq", vozTelefonoDisponible: true });
+    const cuerpos: Record<string, unknown>[] = [];
+    const f2 = vi.fn(async (_url: string, init?: RequestInit) => {
+      cuerpos.push(JSON.parse(init!.body as string) as Record<string, unknown>);
+      return JSON_RESP(WIRE_CONFIG);
+    }) as unknown as typeof fetch;
+    await updateVozConfig(f2, "http://api.local", "tok", "prop-1", { ...ENTRADA, vozTelefono: "sDh3eviBhiuHKi0MjTNq", vozTelefonoDisponible: true });
+    await updateVozConfig(f2, "http://api.local", "tok", "prop-1", { ...ENTRADA, vozTelefono: "sDh3eviBhiuHKi0MjTNq", vozTelefonoDisponible: false });
+    expect(cuerpos[0]).toMatchObject({ vozTelefono: "sDh3eviBhiuHKi0MjTNq" });
+    expect(cuerpos[1]).not.toHaveProperty("vozTelefono");
   });
 
   it("PUT sin voz elegida no llama a la red (la API exige voiceId)", async () => {
