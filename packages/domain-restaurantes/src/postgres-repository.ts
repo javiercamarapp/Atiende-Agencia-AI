@@ -96,6 +96,7 @@ import { fotoConfigAgente } from "./whatsapp/agent-config-editor.ts";
 import { leerHorarioPersistido } from "./horarios.ts";
 import type {
   ChannelStatsRow,
+  AvisoDelTelefono,
   ConversationMessage,
   CustomerOverviewRow,
   EmailOutboxJobRow,
@@ -1081,6 +1082,24 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       }
       throw err;
     }
+  }
+
+  async listarAvisosDelTelefono(organizationId: string, phone: string, horas: number): Promise<readonly AvisoDelTelefono[] | null> {
+    // Migracion 193 (funcion de SOLO SISTEMA: la sesion del agente no ve callback_requests por RLS). Dentro de la transaccion del turno: SAVEPOINT;
+    // sin la 193 (42883) -> null y el llamador decide con el hilo.
+    return runWithSavepointFallback<readonly AvisoDelTelefono[] | null>({
+      session: this.db,
+      savepointName: "sp_restaurantes_avisos_del_telefono",
+      primary: async () => {
+        const { rows } = await this.db.query<{ id: string; property_id: string | null; reason: string | null; message: string | null; resolved: boolean; created_at: string | Date }>(
+          `select id, property_id, reason, message, resolved, created_at from restaurantes.avisos_del_telefono($1, $2, $3);`,
+          [organizationId, phone, Math.min(48, Math.max(1, Math.trunc(horas)))],
+        );
+        return rows.map((r) => ({ ...r, created_at: r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at) }));
+      },
+      isRecoverable: (err) => (err as { code?: string } | null)?.code === "42883",
+      fallback: async () => null,
+    });
   }
 
   async createCallbackRequest(input: CallbackRequestInput): Promise<CallbackRequest> {

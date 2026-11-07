@@ -1589,7 +1589,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             const guardia = guardiaTextoFinal(respuesta, {
               pedidoCreadoEnTurno: orderId !== null,
               orderId,
-              pedidoPorAprobar: orderId !== null ? porAprobarEnTurno : customer.pedidoReciente?.estado === "por_confirmar",
+              pedidoPorAprobar: orderId !== null ? porAprobarEnTurno : !customer.isNew && customer.pedidoReciente?.estado === "por_confirmar",
               productosDevueltosPorHerramientas: [],
               productoPrometidoEnMenu: null,
               mensajes: hiloGuardia,
@@ -1658,7 +1658,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           const firmaPrecargada = result === undefined && lecturasPrecargadas.size > 0 ? firmaDeLecturaPrecargable(call.name, input, zonaDeColonia) : null;
           const memo = firmaPrecargada !== null && lecturasPrecargadas.has(firmaPrecargada) ? { result: lecturasPrecargadas.get(firmaPrecargada) } : null;
           if (result === undefined) {
-            const executed: AgentToolOutcome = memo ? { result: memo.result, orderId: null, propertyId: null } : await executeAgentToolSafely(repo, { organizationId, channel: "whatsapp", phone, ...(cerebroV2 ? { cerebroV2: true } : {}), conversacionReciente: messages.flatMap((m) => (m.role === "user" || m.role === "assistant") && typeof m.content === "string" ? [{ role: m.role, content: m.content }] : []).slice(-30), flow: { key: `wa:${phone}`, turn: userTurn }, sharedLocation, ubicacionEntrega, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...(options.autopiloto?.pedidoGrande ? { pedidoGrande: options.autopiloto.pedidoGrande } : {}), ...(options.agregados ? { agregados: options.agregados } : {}), ...(options.menuPdfBaseUrl ? { menuPdfBaseUrl: options.menuPdfBaseUrl } : {}), ...modoCtx }, call.name, input);
+            const executed: AgentToolOutcome = memo ? { result: memo.result, orderId: null, propertyId: null } : await executeAgentToolSafely(repo, { organizationId, channel: "whatsapp", phone, ...(cerebroV2 ? { cerebroV2: true } : {}), conversacionReciente: messages.flatMap((m) => (m.role === "user" || m.role === "assistant") && typeof m.content === "string" ? [{ role: m.role, content: m.content, ...(m.at ? { at: m.at } : {}) }] : []).slice(-30), flow: { key: `wa:${phone}`, turn: userTurn }, sharedLocation, ubicacionEntrega, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...(options.autopiloto?.pedidoGrande ? { pedidoGrande: options.autopiloto.pedidoGrande } : {}), ...(options.agregados ? { agregados: options.agregados } : {}), ...(options.menuPdfBaseUrl ? { menuPdfBaseUrl: options.menuPdfBaseUrl } : {}), ...modoCtx }, call.name, input);
             result = executed.result;
             fallaSistema = executed.fallaSistema === true;
             codigoDeRechazo = executed.rechazoDelFlujo ?? null;

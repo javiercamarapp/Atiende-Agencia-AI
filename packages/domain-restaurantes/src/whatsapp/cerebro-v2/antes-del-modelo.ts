@@ -100,7 +100,10 @@ export function decidirAntesDelModelo(pendientes: readonly string[], ctx: Contex
   const sustituye = ctx.mensajes ? SUSTITUYE_CON_CANCELACION : SUSTITUYE_SIEMPRE;
   if (salud.tipo !== null && !salud.seguirAlModelo) {
     const respuesta = transferencia.length > 0 && salud.respuesta ? `${salud.respuesta} ${TRANSFERENCIA_REALIZADA_REPLY}` : salud.respuesta;
-    return { avisos, respuestaFija: respuesta, prefijoRespuesta: null, bloquePrompt: null, sustituye, motivoToma: "alergia_salud", cancelacion: null };
+    // Como el suelto: la alergia sola NO cede la conversacion (el agente sigue y crear_pedido espera la confirmacion de la sucursal, guardaAlergiaV2);
+    // la salud (malestar, reaccion, emergencia) si abre la toma.
+    const soloAlergia = salud.tipo === "alergia" || salud.tipo === "alergia_en_curso";
+    return { avisos, respuestaFija: respuesta, prefijoRespuesta: null, bloquePrompt: null, sustituye, motivoToma: soloAlergia ? null : "alergia_salud", cancelacion: null };
   }
   if (transferencia.length > 0 && salud.tipo === null) {
     return { avisos, respuestaFija: TRANSFERENCIA_REALIZADA_REPLY, prefijoRespuesta: null, bloquePrompt: null, sustituye, motivoToma: "transferencia", cancelacion: null };

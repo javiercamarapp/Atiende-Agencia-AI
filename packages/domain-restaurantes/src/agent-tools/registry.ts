@@ -15,7 +15,8 @@
 import { descripcionSeguraDeError } from "../log-seguro.ts";
 import { createHash } from "node:crypto";
 import { registerCallbackRequest } from "../callback-requests.ts";
-import { MARCA_AVISO_URGENTE } from "../whatsapp/cerebro-v2/salud.ts";
+import { decidirBloqueoAlergia, evidenciaAlergiaEnSesion, MARCA_AVISO_URGENTE, notaAlergiaDelPedido, notaPreferenciaDelPedido, notasConAlergia, notasConPreferencia, rechazoAlergiaSinConfirmar, type EstadoAlergia, type MensajeSalud } from "../whatsapp/cerebro-v2/salud.ts";
+import type { AvisoDelTelefono } from "../repository.ts";
 import { MOTIVOS_AVISO_CON_PEDIDO, armarBloquePedidoParaAviso, componerMensajeAviso, corregirAvisoCotizado } from "../aviso-pedido-gerente.ts";
 import { cargarMemoria, evaluarReincidencia } from "../cliente-360/memoria.ts";
 import { elegirPedido, repetirPedido } from "../cliente-360/repetir.ts";
@@ -214,7 +215,7 @@ export interface AgentToolContext {
   readonly usarCoordenadasPropuestas?: boolean;
   /** Ultimos mensajes (cliente y agente) de esta conversacion de WhatsApp. Solo lo fija el servidor; alimenta guardas que comparan lo que dijo el cliente, y si ya se le aclaro, con lo que cotiza el
    * modelo (p. ej. «guacamole» contra «Extra Guacamole»). Ausente (voz, camino legado) = esas guardas no opinan. */
-  readonly conversacionReciente?: readonly { readonly role: "user" | "assistant"; readonly content: string }[];
+  readonly conversacionReciente?: readonly { readonly role: "user" | "assistant"; readonly content: string; readonly at?: string }[];
   /** Base https publica donde estan los PDF del menu por sucursal (`PM_MENU_PDF_BASE_URL`). Solo la fija el servidor. Ausente = `enviar_menu` comparte el enlace de la pagina oficial del menu. */
   readonly menuPdfBaseUrl?: string | null;
 }
@@ -2343,7 +2344,7 @@ async function dispatchTool(
         const compensacion = await compensacionPendiente(repo, ctx);
         if (compensacion) mapped = { ...mapped, promoCode: compensacion };
       }
-      const createInput = mapped;
+      let createInput = mapped;
       // La sucursal puede venir por slug o por nombre (contrato historico del checkout de voz).
       if (createInput.branchSlug || createInput.branchName) {
         await assertBranchAllowed(repo, ctx, createInput.branchSlug ?? "", createInput.branchName);
@@ -2361,6 +2362,12 @@ async function dispatchTool(
         throw new OrderValidationError(PIN_ANTES_DE_CREAR_MENSAJE);
       }
       if (ctx.modo === "preview") return simulatePreviewOrder(repo, ctx, createInput, expectedPrices, expectedTotal);
+      // Cerebro v2 (suelto R25-R28, whatsapp-agent-core.ts ~7961-7985 y ~8156): alergia avisada y sin confirmar -> no se toma el pedido (rechazo con el
+      // telefono de la sucursal y aviso URGENTE); pasada la ventana o resuelto el aviso, el pedido lleva «ALERGIA declarada: …» (y la preferencia) en las notas.
+      if (ctx.cerebroV2 && ctx.channel === "whatsapp" && ctx.phone && ctx.conversacionReciente) {
+        const notas = await guardaAlergiaV2(repo, ctx, createInput);
+        if (notas !== createInput.notes) createInput = { ...createInput, notes: notas };
+      }
       const retenido = await retenerPedidoDeReincidente(repo, ctx, createInput);
       if (retenido) return retenido;
       let order: Order;
@@ -2847,6 +2854,45 @@ async function retenerPedidoGrande(repo: RestaurantesRepository, ctx: AgentToolC
  * call y errores de negocio convertidos en una respuesta `{error}` normal, nunca en una
  * transaccion abortada ni en una excepcion que tumbe el resto del turno.
  */
+/** Razones de callback que son aviso de alergia (monorrepo: escalar_a_humano con motivo alergia_salud; suelto: alto_riesgo:alergia). */
+const RAZONES_AVISO_ALERGIA = new Set(["escalada:alergia_salud", "alto_riesgo:alergia"]);
+
+/**
+ * Cerebro v2: estadoAlergiaSinConfirmar del suelto con lo que hay en el monorrepo: la evidencia del hilo (evidenciaAlergiaEnSesion) y el aviso de alergia
+ * MAS RECIENTE del telefono (`filas` de listarAvisosDelTelefono; null = consulta no disponible, como la base caida del suelto). Pura.
+ */
+export function estadoAlergiaParaCrear(hilo: readonly MensajeSalud[], filas: readonly AvisoDelTelefono[] | null, ahoraMs: number): EstadoAlergia {
+  const fila = filas === null ? null : (filas.find((f) => RAZONES_AVISO_ALERGIA.has(String(f.reason ?? ""))) ?? null);
+  return decidirBloqueoAlergia(evidenciaAlergiaEnSesion(hilo), filas === null ? { ok: false, fila: null } : { ok: true, fila: fila ? { ...fila } : null }, ahoraMs);
+}
+
+/** La guarda de alergia de crear_pedido (cerebro v2). Lanza el rechazo si el pedido espera la confirmacion; si no, devuelve las notas con alergia/preferencia. */
+async function guardaAlergiaV2(repo: RestaurantesRepository, ctx: AgentToolContext, createInput: ReturnType<typeof mapCreateOrderToolInput>): Promise<string | undefined> {
+  const hilo = ctx.conversacionReciente ?? [];
+  const filas = repo.listarAvisosDelTelefono ? await repo.listarAvisosDelTelefono(ctx.organizationId, ctx.phone!, 48) : null;
+  const estado = estadoAlergiaParaCrear(hilo, filas, Date.now());
+  if (estado.bloquear) {
+    // Declaracion sin aviso registrado (el registro fallo o llego con el agente apagado): se registra YA, URGENTE (dueño: toda alergia escala urgente).
+    if (estado.sinAviso) {
+      const textos = evidenciaAlergiaEnSesion(hilo).pendiente?.textos ?? [];
+      await registerCallbackRequest(repo, {
+        organizationId: ctx.organizationId,
+        propertyId: ctx.lockedPropertyId ?? ctx.entryPropertyId ?? null,
+        customerName: textoOpcional(createInput.customerName)?.trim() || "Cliente",
+        customerPhone: ctx.phone!,
+        reason: "escalada:alergia_salud",
+        sourceEventId: ctx.sourceEventId ? `${ctx.sourceEventId}:alergia-bloqueo`.slice(0, 255) : null,
+        message: conMarcaUrgente(`El cliente quiere hacer un pedido y declaró una alergia que nadie ha confirmado: ${textos.join(" / ") || "ver la conversación"}`),
+        source: "whatsapp",
+        urgente: true,
+      });
+    }
+    const branch = createInput.branchSlug ? await repo.findBranch(ctx.organizationId, { slug: createInput.branchSlug }).catch(() => null) : null;
+    throw new OrderValidationError(rechazoAlergiaSinConfirmar(branch ? { name: branch.name, phone: branch.phone } : null));
+  }
+  return notasConAlergia(notaAlergiaDelPedido(hilo), notasConPreferencia(notaPreferenciaDelPedido(hilo), createInput.notes));
+}
+
 /** Cerebro v2: la marca URGENTE del suelto (MARCA_AVISO_URGENTE) va al INICIO del aviso, aunque el servidor anteponga el bloque del pedido. Pura. */
 function conMarcaUrgente(mensaje: string | undefined): string {
   const sin = String(mensaje ?? "").split(MARCA_AVISO_URGENTE).join("").replace(/^\s+/, "");

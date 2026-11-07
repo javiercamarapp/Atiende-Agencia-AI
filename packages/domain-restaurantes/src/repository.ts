@@ -123,6 +123,16 @@ export interface NewOrderRecord {
   readonly programadoPara?: string | null;
 }
 
+/** Fila de `restaurantes.avisos_del_telefono` (migracion 193), con los nombres de columna del suelto (FilaAviso / FilaAvisoAlergia). */
+export interface AvisoDelTelefono {
+  readonly id: string;
+  readonly property_id: string | null;
+  readonly reason: string | null;
+  readonly message: string | null;
+  readonly resolved: boolean;
+  readonly created_at: string;
+}
+
 export interface ConversationMessage {
   readonly role: "user" | "assistant";
   readonly content: string;
@@ -277,6 +287,10 @@ export interface RestaurantesRepository {
   createOrderIdempotent(order: NewOrderRecord, dedupeFingerprint: string, idempotencyKey: string | null): Promise<Order>;
 
   createCallbackRequest(input: CallbackRequestInput): Promise<CallbackRequest>;
+  /** Cerebro v2 (migracion 193): avisos al equipo (callback_requests) de ESTE telefono en las ultimas `horas` (1..48), del mas reciente al mas viejo, a lo
+   * mas 20. Lo leen la guarda de alergia de crear_pedido y el dedupe por categoria. `null` = no disponible (base sin la 193 o sin el metodo): el llamador
+   * degrada a lo que sabe el hilo, nunca falla. Opcional: los dobles de prueba que no lo implementan se comportan como base sin migrar. */
+  listarAvisosDelTelefono?(organizationId: string, phone: string, horas: number): Promise<readonly AvisoDelTelefono[] | null>;
 
   consumeRateLimit(scope: string, actorHash: string, maxRequests: number, windowSeconds: number): Promise<boolean>;
 
