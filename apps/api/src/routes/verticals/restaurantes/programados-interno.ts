@@ -28,6 +28,8 @@ import { CronPartialFailureError, withHeartbeat } from "../../../salud/with-hear
 import type { AppDeps } from "../../../deps.ts";
 import { softRestaurantComandaDeps } from "./softrestaurant-wiring.ts";
 import { barrerAutopilotoTick } from "./autopiloto-tick.ts";
+import { barrerCicloPedidoTick } from "./ciclo-pedido-tick.ts";
+import type { ResumenTickCiclo } from "./ciclo-pedido-tick.ts";
 import type { ResumenTickAutopiloto } from "./autopiloto-tick.ts";
 
 /** Ventana (horas) y tope por corrida de la reconciliacion de comandas perdidas. */
@@ -123,6 +125,13 @@ export function restaurantesProgramadosInternoRoutes(deps: AppDeps): Hono {
         autopilotoFallo = true;
         logEvent(c, "error", "restaurantes_autopiloto_tick_fallido", { error: descripcionSeguraDeError(err) });
       }
+      // Ciclo del pedido (migraciones 171/172): recordatorios de pedidos sin aceptar y encuestas post-entrega, cada uno en su propia sesion de sistema.
+      let ciclo: ResumenTickCiclo | null = null;
+      try {
+        ciclo = await barrerCicloPedidoTick(deps, c, new Date());
+      } catch (err) {
+        logEvent(c, "error", "restaurantes_ciclo_pedido_tick_fallido", { error: descripcionSeguraDeError(err) });
+      }
       const respuesta = c.json({
         ok: true,
         status: resultado.disponible ? "ok" : "not_available",
@@ -136,6 +145,7 @@ export function restaurantesProgramadosInternoRoutes(deps: AppDeps): Hono {
         marketing,
         silencio,
         autopiloto,
+        ciclo,
       });
       // Una corrida con comandas que no se pudieron encolar NO es 'ok': el latido y la bitacora la marcan (el cron no
       // reintenta por HTTP; la proxima corrida reconcilia). QA R2 automatizacion-06: lo mismo para los pasos del autopiloto, el barrido de
@@ -148,6 +158,7 @@ export function restaurantesProgramadosInternoRoutes(deps: AppDeps): Hono {
       if (avisosCocina.errores > 0) partes.push(`${avisosCocina.errores} aviso(s) de cocina fallaron`);
       if (autopilotoFallo) partes.push("el autopiloto fallo");
       else if (autopiloto && autopiloto.errores > 0) partes.push(`${autopiloto.errores} paso(s) del autopiloto fallaron`);
+      if (ciclo && ciclo.errores > 0) partes.push(`${ciclo.errores} paso(s) del ciclo del pedido fallaron`);
       if (partes.length > 0) throw new CronPartialFailureError(partes.join("; "), respuesta);
       return respuesta;
     })();
