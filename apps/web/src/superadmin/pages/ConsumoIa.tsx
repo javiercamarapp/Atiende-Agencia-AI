@@ -13,6 +13,7 @@ import { fetchJson } from "../lib/fetch-json.ts";
 import { fmtEntero, fmtPct } from "../lib/fichas-client.ts";
 import { useCarga } from "../lib/use-carga.ts";
 import { SuperAdminGastoApiPage } from "./GastoApi.tsx";
+import { ValoracionesCopiloto } from "../components/ValoracionesCopiloto.tsx";
 
 export interface InsightConsumo {
   readonly codigo: "rol_sin_techo" | "rol_con_fallbacks" | "organizacion_cerca_del_tope";
@@ -136,6 +137,9 @@ export function SuperAdminConsumoIaPage({ apiBaseUrl, token }: { readonly apiBas
           />
         </ChartCard>
       )}
+
+      {/* Calidad junto al gasto: cuántas respuestas del Copiloto marcaron «Útil / No fue útil» y por qué (solo conteos). */}
+      <ValoracionesCopiloto apiBaseUrl={apiBaseUrl} token={token} />
 
       <SuperAdminGastoApiPage apiBaseUrl={apiBaseUrl} token={token} incrustada />
     </PageContainer>

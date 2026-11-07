@@ -37,6 +37,7 @@ import type { AppDeps } from "../deps.ts";
 import { COMPACTACION_HISTORIAL_ROLE, TITULOS_RESUMENES_ROLE } from "../production/llm-models.ts";
 import { compactarHistorial } from "./compactacion.ts";
 import { generarTitulo, tituloPredeterminado } from "./titulos.ts";
+import { mountValoracionesRoutes } from "./valoraciones.ts";
 
 export const MAX_CONVERSACIONES = 200;
 export const MAX_MENSAJES_POR_CONVERSACION = 100;
@@ -634,4 +635,7 @@ export function mountConversacionesRoutes(app: Hono<CoreAuthHonoEnv>, deps: AppD
     if (!ok) throw Errors.notFound("Conversación no encontrada.");
     return c.body(null, 204);
   });
+
+  // «Útil / No fue útil» de cada respuesta guardada y su resumen para owner/admin (migracion 0076): mismas rutas base, roles y sesion RLS.
+  mountValoracionesRoutes(app, deps, cfg);
 }

@@ -45,6 +45,17 @@ const ES = {
   recortado: "La tabla se recortó: hay más filas en el sistema de las que se muestran.",
   sinFuente: "Sin fuente declarada para esta consulta.",
   notaCalculo: "Cifras leídas por consultas fijas del catálogo de Atiende: el modelo no inventa números.",
+  util: "Útil",
+  noUtil: "No fue útil",
+  utilAria: "Marcar la respuesta como útil",
+  noUtilAria: "Marcar la respuesta como no útil",
+  motivoPregunta: "¿Qué faltó? (opcional)",
+  motivo_dato_incorrecto: "Un dato está mal",
+  motivo_incompleta: "Le faltó información",
+  motivo_no_entendio: "No entendió la pregunta",
+  motivo_otro: "Otra cosa",
+  graciasValoracion: "Gracias, lo tomamos en cuenta.",
+  errorValoracion: "No se pudo guardar tu valoración; intenta de nuevo.",
 } as const;
 
 export type ClaveCopiloto = keyof typeof ES;
@@ -89,6 +100,17 @@ const EN: Readonly<Record<ClaveCopiloto, string>> = {
   recortado: "The table was cut: the system has more rows than shown.",
   sinFuente: "No source declared for this query.",
   notaCalculo: "Figures read by fixed queries from Atiende's catalog: the model never makes up numbers.",
+  util: "Helpful",
+  noUtil: "Not helpful",
+  utilAria: "Mark the answer as helpful",
+  noUtilAria: "Mark the answer as not helpful",
+  motivoPregunta: "What was missing? (optional)",
+  motivo_dato_incorrecto: "A figure is wrong",
+  motivo_incompleta: "It left something out",
+  motivo_no_entendio: "It misunderstood the question",
+  motivo_otro: "Something else",
+  graciasValoracion: "Thanks, we'll take it into account.",
+  errorValoracion: "Couldn't save your rating; please try again.",
 };
 
 const CATALOGOS: Readonly<Record<Idioma, Readonly<Record<ClaveCopiloto, string>>>> = { es: ES, en: EN };
