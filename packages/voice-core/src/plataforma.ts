@@ -115,7 +115,7 @@ export function crearEscalonesPlataforma(deps: DepsPlataformaVoz): EscalonLlamad
         elevenlabsApiKey: deps.elevenlabsApiKey ?? null,
         llm: deps.llmV2,
         ...(deps.dosNiveles === true
-          ? { modeloLlm: config.cascadaV2.llm.dosNiveles.modelo, modeloRapido: config.cascadaV2.llm.dosNiveles.modeloRapido, plazoLlm: { plazoMs: config.cascadaV2.llm.dosNiveles.plazoPrimerTokenMs, modeloRespaldo: config.cascadaV2.llm.dosNiveles.modeloRespaldo }, ignorarAsentimientosOcupado: true }
+          ? { modeloLlm: config.cascadaV2.llm.dosNiveles.modelo, modeloRapido: config.cascadaV2.llm.dosNiveles.modeloRapido, plazoLlm: { plazoMs: config.cascadaV2.llm.dosNiveles.plazoPrimerTokenMs, modeloRespaldo: config.cascadaV2.llm.dosNiveles.modeloRespaldo }, ignorarAsentimientosOcupado: true, acuseRapido: true }
           : {}),
         ...(deps.fetchFn ? { fetchFn: deps.fetchFn } : {}),
         config,

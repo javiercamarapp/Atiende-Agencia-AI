@@ -8,12 +8,15 @@ import { SttFalso, TtsFalso, compuerta, manejadoresFalsos, turnoMicrotareas } fr
 
 const D = VOZ_PLATAFORMA.cascadaV2.llm.dosNiveles;
 
-function llm(acuse: string, opts: { preciso: Promise<void> }) {
+function llm(acuse: string, opts: { preciso: Promise<void>; acuseTarde?: boolean }) {
   const peticiones: PeticionLlmVoz[] = [];
   const puerto: PuertoLlmVoz = {
     completar: async (p): Promise<RespuestaLlmVoz> => {
       peticiones.push({ ...p, mensajes: [...p.mensajes] });
-      if (p.modeloPreferido === D.modeloRapido && p.herramientas.length === 0 && p.system.includes("ACUSE")) return { texto: acuse, toolCalls: [], costoMicroUsd: 1 };
+      if (p.modeloPreferido === D.modeloRapido && p.herramientas.length === 0 && p.system.includes("ACUSE")) {
+        if (opts.acuseTarde) await new Promise((r) => setTimeout(r, 20));
+        return { texto: acuse, toolCalls: [], costoMicroUsd: 1 };
+      }
       await opts.preciso;
       p.onTextDelta?.("Son ciento setenta y nueve pesos.");
       return { texto: "Son ciento setenta y nueve pesos.", toolCalls: [], costoMicroUsd: 1 };
@@ -25,7 +28,7 @@ function llm(acuse: string, opts: { preciso: Promise<void> }) {
 async function turno(acuse: string, precisoPrimero = false) {
   const c = compuerta();
   if (precisoPrimero) c.abrir();
-  const { puerto, peticiones } = llm(acuse, { preciso: c.promesa });
+  const { puerto, peticiones } = llm(acuse, { preciso: c.promesa, acuseTarde: precisoPrimero });
   const stt = new SttFalso();
   const tts = new TtsFalso();
   const prov = crearProveedorCascadaV2({ deepgramApiKey: null, llm: puerto, stt, tts, modeloLlm: D.modelo, modeloRapido: D.modeloRapido, acuseRapido: true });

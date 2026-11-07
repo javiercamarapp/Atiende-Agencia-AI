@@ -51,6 +51,9 @@ export interface CascadaV2Opciones {
    * interrumpe ni abre otro turno: se ignora. Va con el plazo del LLM: tras la frase de espera la gente contesta «si» y, sin esto, cortaba la respuesta real
    * cada vez (medicion E2E del 6-nov-2026). Apagado por omision. */
   readonly ignorarAsentimientosOcupado?: boolean;
+  /** Acuse rapido: en un turno que va al modelo PRECISO, el modelo RAPIDO escribe en paralelo un acuse corto que suena mientras el preciso piensa (y llama herramientas).
+   * Sin cifras, registro ni preguntas; si el preciso habla antes, se descarta; nunca entra al historial. Requiere `modeloRapido`. Apagado por omision. */
+  readonly acuseRapido?: boolean;
   /** Temporizador del plazo del LLM (pruebas). */
   readonly temporizador?: { readonly poner: (fn: () => void, ms: number) => unknown; readonly quitar: (id: unknown) => void };
   /** Puerto del LLM en streaming (en produccion `crearPuertoLlmVozV2` del worker, sobre OpenRouter). */
@@ -163,7 +166,7 @@ class SesionCascadaV2 implements VozSesionLlamada {
   constructor(
     private readonly apertura: AperturaLlamada,
     private readonly h: ManejadoresSesion,
-    private readonly o: Required<Pick<CascadaV2Opciones, "llm" | "config" | "vueltasToolMax">> & Pick<CascadaV2Opciones, "herramientasEnParalelo" | "confirmacionAntesDeCrear" | "modeloLlm" | "elegirModelo" | "log" | "ahora" | "plazoLlm" | "temporizador" | "modeloRapido" | "ignorarAsentimientosOcupado">,
+    private readonly o: Required<Pick<CascadaV2Opciones, "llm" | "config" | "vueltasToolMax">> & Pick<CascadaV2Opciones, "herramientasEnParalelo" | "confirmacionAntesDeCrear" | "modeloLlm" | "elegirModelo" | "log" | "ahora" | "plazoLlm" | "temporizador" | "modeloRapido" | "ignorarAsentimientosOcupado" | "acuseRapido">,
     readonly vozTts: string,
   ) {
     this.ahora = o.ahora ?? Date.now;
@@ -485,6 +488,21 @@ class SesionCascadaV2 implements VozSesionLlamada {
             cola.push({ frase: cfg.llm.frasesEspera[this.turnosCliente % cfg.llm.frasesEspera.length]!, vuelta: this.vueltaActual, espera: true });
           }, cfg.llm.esperaMinMs)
         : null;
+    // Acuse rapido (ver `acuseRapido`): solo en turnos del cliente que van al preciso, en paralelo y sin bloquear el turno.
+    if (this.o.acuseRapido && this.o.modeloRapido && !/^[([]/.test(texto) && !esAsentimiento(texto) && !esAfirmacion(texto) && this.modeloDelTurno(0, texto) !== this.o.modeloRapido) {
+      const t0 = this.ahora();
+      const ultimos = this.mensajes.filter((m) => m.role !== "tool" && typeof m.content === "string" && m.content.trim() !== "").slice(-4).map((m) => ({ role: m.role, content: m.content }) as MensajeLlmVoz);
+      void this.o.llm
+        .completar({ system: SISTEMA_ACUSE, mensajes: ultimos, herramientas: [], modeloPreferido: this.o.modeloRapido, senal })
+        .then((r) => {
+          this.registrarLlm(r, this.o.modeloRapido!, null, this.ahora() - t0);
+          const a = r.texto.replace(/\s+/g, " ").trim();
+          if (!acuseValido(a) || !vigente() || habladoTurno.trim() !== "" || (this.audio?.t0 ?? null) !== null) return;
+          this.log("v2_acuse", { ms: this.ahora() - t0 });
+          cola.push({ frase: a, vuelta: 0, espera: true });
+        })
+        .catch(() => undefined);
+    }
     let errorLlm: unknown = null;
     try {
       let vuelta = 0;
@@ -783,7 +801,7 @@ export function crearProveedorCascadaV2(opts: CascadaV2Opciones): ProveedorCasca
     const sesion = new SesionCascadaV2(
       apertura,
       manejadores,
-      { llm: opts.llm, config, vueltasToolMax: opts.vueltasToolMax ?? 4, ...(opts.plazoLlm !== undefined ? { plazoLlm: opts.plazoLlm } : {}), ...(opts.modeloRapido ? { modeloRapido: opts.modeloRapido } : {}), ...(opts.ignorarAsentimientosOcupado ? { ignorarAsentimientosOcupado: true } : {}), ...(opts.temporizador ? { temporizador: opts.temporizador } : {}), ...(opts.herramientasEnParalelo ? { herramientasEnParalelo: opts.herramientasEnParalelo } : {}), ...(opts.confirmacionAntesDeCrear ? { confirmacionAntesDeCrear: opts.confirmacionAntesDeCrear } : {}), ...(opts.modeloLlm ? { modeloLlm: opts.modeloLlm } : {}), ...(opts.elegirModelo ? { elegirModelo: opts.elegirModelo } : {}), ...(opts.log ? { log: opts.log } : {}), ...(opts.ahora ? { ahora: opts.ahora } : {}) },
+      { llm: opts.llm, config, vueltasToolMax: opts.vueltasToolMax ?? 4, ...(opts.plazoLlm !== undefined ? { plazoLlm: opts.plazoLlm } : {}), ...(opts.modeloRapido ? { modeloRapido: opts.modeloRapido } : {}), ...(opts.ignorarAsentimientosOcupado ? { ignorarAsentimientosOcupado: true } : {}), ...(opts.acuseRapido ? { acuseRapido: true } : {}), ...(opts.temporizador ? { temporizador: opts.temporizador } : {}), ...(opts.herramientasEnParalelo ? { herramientasEnParalelo: opts.herramientasEnParalelo } : {}), ...(opts.confirmacionAntesDeCrear ? { confirmacionAntesDeCrear: opts.confirmacionAntesDeCrear } : {}), ...(opts.modeloLlm ? { modeloLlm: opts.modeloLlm } : {}), ...(opts.elegirModelo ? { elegirModelo: opts.elegirModelo } : {}), ...(opts.log ? { log: opts.log } : {}), ...(opts.ahora ? { ahora: opts.ahora } : {}) },
       voz,
     );
     await sesion.iniciar(stt, tts);
@@ -834,6 +852,19 @@ function armarPilaStt(opts: CascadaV2Opciones, config: ConfigPlataformaVoz, aper
     tts: opts.tts ?? (ttsDg ? ttsConRespaldo(ttsEl, ttsDg, vozAura, avisar) : ttsEl),
     voz: vozEl,
   };
+}
+
+/** Instruccion del acuse rapido (modelo rapido, sin herramientas). */
+export const SISTEMA_ACUSE =
+  "ACUSE. Eres la voz de una taqueria al telefono (trato de usted, español de Mexico). Escribe SOLO un acuse muy corto (2 a 7 palabras) que muestre que escuchaste lo ultimo " +
+  "que dijo el cliente, por ejemplo «Claro, tres de pastor.» o «Con gusto, déjeme ver.». Prohibido: cifras, precios, totales, horas, decir que algo quedo registrado o confirmado, " +
+  "preguntas y saludos. Si no hay nada que acusar, responde vacio.";
+
+/** Un acuse se dice solo si es corto y no promete nada: sin cifras, sin pregunta, sin registro/confirmacion/precio. */
+export function acuseValido(a: string): boolean {
+  const t = normalizarCortesia(a);
+  const n = t.split(" ").filter((w) => w !== "").length;
+  return n >= 1 && n <= 8 && !/[0-9?¿$]/.test(a) && !/\b(registr|confirm|pesos|total|queda|quedo|listo|precio|cuesta|minutos|hora)/.test(t);
 }
 
 /** Palabras de asentimiento / espera (sin contenido de pedido). */
