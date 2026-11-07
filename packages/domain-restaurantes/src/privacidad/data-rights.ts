@@ -115,6 +115,20 @@ export type ConfirmDataRightsOutcome =
       readonly executionDueAt: string | null;
     };
 
+/** Solicitud ABIERTA más reciente de un teléfono (cualquier derecho), para contestar un seguimiento. Una
+ * `pendiente_confirmacion` de más de 24 h ya no cuenta (caducó). */
+export type OpenDataRightsLookup =
+  | { readonly available: false }
+  | { readonly available: true; readonly found: false }
+  | {
+      readonly available: true;
+      readonly found: true;
+      readonly id: string;
+      readonly rightType: DataRightType;
+      readonly status: DataRightStatus;
+      readonly responseDueAt: string | null;
+    };
+
 export type UpdateDataRightsStatusResult =
   | { readonly outcome: "updated"; readonly id: string; readonly status: DataRightStatus }
   | { readonly outcome: "not_found" }
