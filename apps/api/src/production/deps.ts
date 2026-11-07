@@ -136,6 +136,7 @@ import { StripeHotelesPaymentsPort } from "./hoteles-payments-port.ts";
 import { StripeSaasBillingCheckoutPort, StripeSaasBillingCustomerLookup } from "./saas-billing-stripe-port.ts";
 import { createPlatformSwitchGuard } from "../platform-switches.ts";
 import { crearDespachadorAlertas, configAlertasDesdeEnv } from "../alertas/index.ts";
+import { crearReportadorErrores } from "../observabilidad/errores-sentry.ts";
 import { notProductionReady } from "./not-ready.ts";
 import { conAjustesDeVoz, resolverAjustesVozPostgres } from "./voz-con-ajustes.ts";
 import { conBitacoraDeTurno } from "../agentes/corridas.ts";
@@ -643,6 +644,8 @@ export function buildProductionDeps(): AppDeps {
     platformSwitchGuard,
     // Alertas salientes (PL-04): solo envia por los canales cuyas variables esten configuradas.
     alertas: crearDespachadorAlertas(configAlertasDesdeEnv(process.env, env.resend)),
+    // Errores no controlados (500) a Sentry, redactados; solo con SENTRY_DSN (mismo DSN que el canal de alertas).
+    reportadorErrores: crearReportadorErrores(process.env.SENTRY_DSN, { entorno: process.env.VERCEL_ENV?.trim() || null, release: process.env.VERCEL_GIT_COMMIT_SHA?.trim() || null }),
     llmGateway,
     // Control de gasto de API de LLM (back office de plataforma) — sesión de
     // sistema igual que `coreRepo`, ver ./llm-usage-repository.ts.

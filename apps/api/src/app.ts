@@ -96,7 +96,7 @@ export function buildApp(deps: AppDeps): Hono {
     app.use(prefijo, sinCacheEnSesion());
   }
 
-  app.onError((err, c) => {
+  app.onError(async (err, c) => {
     if (err instanceof ApiError) {
       return c.json({ code: err.code, message: err.message }, err.status as 400 | 401 | 403 | 404 | 409 | 413 | 429 | 503, err.headers);
     }
@@ -107,6 +107,10 @@ export function buildApp(deps: AppDeps): Hono {
       return c.json({ code: "service_busy", message: "Servicio ocupado. Intenta de nuevo en unos segundos." }, 503, { "Retry-After": "2" });
     }
     logEvent(c, "error", "apps_api_error_interno", { message: err instanceof Error ? err.message : String(err) });
+    // Sentry (solo con SENTRY_DSN): evento redactado, sin cuerpo/cabeceras/query/usuario; nunca lanza y tiene timeout corto.
+    if (deps.reportadorErrores) {
+      await deps.reportadorErrores.reportar(err, { requestId: (c.get("requestId") as string | undefined) ?? null, method: c.req.method, path: c.req.path });
+    }
     return c.json({ code: "internal_error", message: "Error interno" }, 500);
   });
 
