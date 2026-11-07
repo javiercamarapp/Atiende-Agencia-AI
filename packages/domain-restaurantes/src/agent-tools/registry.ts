@@ -15,6 +15,7 @@
 import { descripcionSeguraDeError } from "../log-seguro.ts";
 import { createHash } from "node:crypto";
 import { registerCallbackRequest } from "../callback-requests.ts";
+import { MARCA_AVISO_URGENTE } from "../whatsapp/cerebro-v2/salud.ts";
 import { MOTIVOS_AVISO_CON_PEDIDO, armarBloquePedidoParaAviso, componerMensajeAviso, corregirAvisoCotizado } from "../aviso-pedido-gerente.ts";
 import { cargarMemoria, evaluarReincidencia } from "../cliente-360/memoria.ts";
 import { elegirPedido, repetirPedido } from "../cliente-360/repetir.ts";
@@ -169,6 +170,8 @@ export interface AgentToolContext {
   readonly organizationId: string;
   /** Cerebro v2 (bandera por organizacion, migracion 190): buscar_producto usa la busqueda medida del suelto antes que la de siempre. */
   readonly cerebroV2?: boolean;
+  /** Cerebro v2: el aviso que deja ESTA llamada (escalar_a_humano del servidor) es URGENTE. Lo pone el turno con la decision determinista; el modelo no lo controla. */
+  readonly avisoUrgente?: boolean;
   readonly channel: AgentChannel;
   /** Telefono del cliente tomado del CONTEXTO (remitente de WhatsApp / token de llamada).
    * `null` = el canal no lo conoce (voz sin token de llamada, camino legado). */
@@ -2468,8 +2471,9 @@ async function dispatchTool(
         customerPhone: ctx.phone,
         reason,
         sourceEventId: ctx.sourceEventId ? `${ctx.sourceEventId}:${reason ?? ""}`.slice(0, 255) : null,
-        message: componerMensajeAviso(bloquePedido, detalleModelo, motivoEscalada ?? ""),
+        message: ctx.avisoUrgente ? conMarcaUrgente(componerMensajeAviso(bloquePedido, detalleModelo, motivoEscalada ?? "")) : componerMensajeAviso(bloquePedido, detalleModelo, motivoEscalada ?? ""),
         source: ctx.channel === "voz" ? "voice" : "whatsapp",
+        ...(ctx.avisoUrgente ? { urgente: true } : {}),
       });
       // QA-PM-R5-voz-05: por voz el agente escalaba y colgaba SIN decirle nada al cliente. El resultado trae la frase que debe decir (en WhatsApp el agente ya la escribe en el mismo turno).
       // Cancelar NO es agregar: la frase de agregados («alcanza a salir») no aplica. Cancelacion = el `resumen` del modelo habla de cancelar/anular (la herramienta no tiene otro campo).
@@ -2843,6 +2847,12 @@ async function retenerPedidoGrande(repo: RestaurantesRepository, ctx: AgentToolC
  * call y errores de negocio convertidos en una respuesta `{error}` normal, nunca en una
  * transaccion abortada ni en una excepcion que tumbe el resto del turno.
  */
+/** Cerebro v2: la marca URGENTE del suelto (MARCA_AVISO_URGENTE) va al INICIO del aviso, aunque el servidor anteponga el bloque del pedido. Pura. */
+function conMarcaUrgente(mensaje: string | undefined): string {
+  const sin = String(mensaje ?? "").split(MARCA_AVISO_URGENTE).join("").replace(/^\s+/, "");
+  return sin ? `${MARCA_AVISO_URGENTE}\n${sin}` : MARCA_AVISO_URGENTE;
+}
+
 export async function executeAgentToolSafely(repo: RestaurantesRepository, ctx: AgentToolContext, name: string, input: Record<string, unknown>): Promise<AgentToolOutcome> {
   try {
     return await repo.runWithRowSavepoint(() => invokeAgentTool(repo, ctx, name, input, { rechazoComoResultado: true }));

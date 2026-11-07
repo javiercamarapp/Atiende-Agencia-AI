@@ -1106,7 +1106,8 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
       if (agente) {
         // Notificacion in-app (`restaurantes.callback.pendiente`) solo cuando el aviso es NUEVO: un reenvio o una nota agregada no vuelven a avisar.
         if (agente.registro === "nuevo") {
-          await emitirNotificacion(this.db, { evento: eventoDeCallback(input.reason), organizationId: input.organizationId, propertyId: input.propertyId ?? null, clave: agente.id, entidadTipo: "callback_request", entidadId: agente.id });
+          // Cerebro v2: un aviso URGENTE (alergia, emergencia) sube la severidad del catalogo a `critica` para ESTA emision.
+          await emitirNotificacion(this.db, { evento: eventoDeCallback(input.reason), organizationId: input.organizationId, propertyId: input.propertyId ?? null, clave: agente.id, entidadTipo: "callback_request", entidadId: agente.id, ...(input.urgente ? { severidad: "critica" as const } : {}) });
         }
         return agente;
       }

@@ -8,7 +8,7 @@ import { decidirSalud } from "./salud.ts";
 import { TRANSFERENCIA_REALIZADA_REPLY, esTransferenciaRealizada } from "./pago.ts";
 import { RAZON_CANCELACION, decidirCancelacion, respuestaConPreguntaAlFinal } from "./cancelacion.ts";
 import type { DecisionCancelacion } from "./cancelacion.ts";
-import { declaraAlergia } from "./salud.ts";
+import { declaraAlergia, MARCA_AVISO_URGENTE } from "./salud.ts";
 import type { MensajeHilo } from "./texto-plano.ts";
 
 export interface AvisoAntesDelModelo {
@@ -76,7 +76,12 @@ export function decidirAntesDelModelo(pendientes: readonly string[], ctx: Contex
   const textos = pendientes.map((t) => String(t ?? "")).filter((t) => t.trim() !== "");
   const avisos: AvisoAntesDelModelo[] = [];
   const salud = decidirSalud(textos, { pedidoEnCurso: ctx.pedidoEnCurso, ...(ctx.clienteEnIngles !== undefined ? { clienteEnIngles: ctx.clienteEnIngles } : {}) });
-  for (const a of salud.avisos) avisos.push({ motivo: "alergia_salud", resumen: a.mensaje.slice(0, TOPE_RESUMEN), urgente: a.urgente });
+  // Decision del dueño (7-nov): toda ALERGIA declarada escala como URGENTE (marca al inicio y notificacion critica); la salud conserva la urgencia del suelto.
+  for (const a of salud.avisos) {
+    const urgente = a.urgente || a.intent === "alergia";
+    const mensaje = urgente && !a.mensaje.startsWith(MARCA_AVISO_URGENTE) ? `${MARCA_AVISO_URGENTE}\n${a.mensaje}` : a.mensaje;
+    avisos.push({ motivo: "alergia_salud", resumen: mensaje.slice(0, TOPE_RESUMEN), urgente });
+  }
 
   // Transferencia YA realizada (R75-5 / R76-7 / R77-3): hay dinero movido que una persona revisa; la peticion en futuro la contesta el modelo.
   const transferencia = textos.filter((t) => esTransferenciaRealizada(t));

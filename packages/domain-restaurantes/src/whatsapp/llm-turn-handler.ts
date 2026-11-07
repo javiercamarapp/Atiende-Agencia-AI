@@ -969,7 +969,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         for (const avisoV2 of decisionV2.avisos) {
           const r = await executeAgentToolSafely(
             repo,
-            { organizationId, channel: "whatsapp", phone, lockedPropertyId: activeEntryBranch?.propertyId ?? null, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...modoCtx },
+            { organizationId, channel: "whatsapp", phone, lockedPropertyId: activeEntryBranch?.propertyId ?? null, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...(avisoV2.urgente ? { avisoUrgente: true } : {}), ...modoCtx },
             "escalar_a_humano",
             { customer_name: nombreV2, motivo: avisoV2.motivo, resumen: avisoV2.resumen },
           );

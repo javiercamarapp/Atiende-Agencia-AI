@@ -688,6 +688,9 @@ export interface CallbackRequestInput {
   /** Id opaco del evento que origino el aviso (id del mensaje de Meta o de la llamada, mas el motivo): el mismo evento nunca crea dos
    * avisos (migracion 047). Solo lo usan los avisos del agente (`voice`/`whatsapp`). */
   readonly sourceEventId?: string | null;
+  /** Cerebro v2: el aviso es URGENTE (alergia, emergencia de salud, el cliente pide atencion inmediata). Lo decide el SERVIDOR, nunca el modelo.
+   * No es columna: la marca va al inicio del mensaje y la notificacion in-app sale con severidad `critica`. */
+  readonly urgente?: boolean;
 }
 
 /** Que paso con un aviso del agente: `nuevo` = se creo; `evento_repetido` = el mismo evento ya estaba registrado (no se hizo nada);
