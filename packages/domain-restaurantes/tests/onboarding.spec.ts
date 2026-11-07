@@ -195,3 +195,19 @@ describe("cargarOnboarding sobre el seed de PM (datos reales del repositorio)", 
     expect(item(listo, "aviso_privacidad").estado).toBe("hecho");
   });
 });
+
+describe("onboarding P0: «Probar el agente» (hito core.onboarding_evento)", () => {
+  const item = (pruebaAgente: boolean | null | undefined) => {
+    const snapshot = pruebaAgente === undefined ? COMPLETO : { ...COMPLETO, pruebaAgente };
+    return buildOnboardingChecklist(snapshot).items.find((i) => i.id === "prueba_agente");
+  };
+  it("hecho / pendiente / externo (sin la 0073) y nunca obligatorio", () => {
+    expect(item(true)).toMatchObject({ estado: "hecho", obligatorio: false, responsable: "dueno" });
+    expect(item(false)).toMatchObject({ estado: "pendiente", obligatorio: false });
+    expect(item(null)).toMatchObject({ estado: "externo", obligatorio: false, responsable: "plataforma" });
+  });
+  it("sin medicion (llamador que no la inyecta) el punto no aparece y no cambia el gate", () => {
+    expect(item(undefined)).toBeUndefined();
+    expect(buildOnboardingChecklist({ ...COMPLETO, pruebaAgente: false }).listoParaOperar).toBe(buildOnboardingChecklist(COMPLETO).listoParaOperar);
+  });
+});
