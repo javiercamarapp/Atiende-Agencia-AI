@@ -1,7 +1,7 @@
 import { useState } from "react";
 
 import { useT } from "../i18n/proveedor";
-import { carga } from "../i18n/mensajes/carga";
+import { carga } from "../i18n/mensajes/carga.ts";
 import { limpiarCacheYRecargar, type EntornoRecuperacion } from "../lib/recuperar-carga";
 import { EstadoError } from "./EstadoError";
 
