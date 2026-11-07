@@ -17,6 +17,8 @@ import { requestActor } from "../http-security.ts";
 import { armarCockpit, COCKPIT_NO_DISPONIBLE, leerCockpit, mesActualUtc, sumarMeses } from "../cfo/cockpit.ts";
 import type { Cockpit } from "../cfo/cockpit.ts";
 import { economiaACsv } from "../cfo/cockpit-csv.ts";
+import { informeInversionistas, libroCockpit, PDF_CONTENT_TYPE } from "../cfo/cockpit-exportar.ts";
+import { XLSX_CONTENT_TYPE } from "@atiende/domain-despachos";
 import { generarRecomendaciones } from "../cfo/recomendaciones.ts";
 import { traducirErrorSeguridad } from "./superadmin-mfa.ts";
 import type { AppDeps } from "../deps.ts";
@@ -101,6 +103,30 @@ export function superadminCfoCockpitRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
     }
     return c.json({ disponible: true, mes, ...r });
   });
+
+  // Excel (economia, comparativos, serie de MRR, cohortes y supuestos) y PDF mensual de inversionistas (sin nombres de clientes).
+  // Step-up (SENSITIVE_ROUTES) y bitacora `exportacion` de la zona CFO antes de llegar aqui.
+  for (const [ruta, tipo] of [["/superadmin/cfo/cockpit/export.xlsx", "xlsx"], ["/superadmin/cfo/cockpit/informe.pdf", "pdf"]] as const) {
+    app.get(ruta, async (c) => {
+      const mes = parseMesCockpit(c.req.query("mes"));
+      const callerId = c.get("userId");
+      const allowed = await rateLimit(`admin:cfo-cockpit-export:${requestActor(c.req.raw, callerId)}`, EXPORT_RATE_LIMIT.max, EXPORT_RATE_LIMIT.windowMs, { category: "admin" });
+      if (!allowed) throw Errors.tooManyRequests("Demasiadas exportaciones en poco tiempo.");
+      const r = await cockpitDelMes(deps, callerId, mes);
+      if (r === null) throw Errors.serviceUnavailable(COCKPIT_NO_DISPONIBLE);
+      const ahora = new Date();
+      const cuerpo = tipo === "xlsx" ? libroCockpit(r, ahora) : await informeInversionistas(r, ahora);
+      return new Response(Buffer.from(cuerpo), {
+        status: 200,
+        headers: {
+          "content-type": tipo === "xlsx" ? XLSX_CONTENT_TYPE : PDF_CONTENT_TYPE,
+          "content-disposition": `attachment; filename="${tipo === "xlsx" ? `cfo-plataforma-${mes}.xlsx` : `resumen-inversionistas-${mes}.pdf`}"`,
+          "cache-control": "no-store",
+          "x-content-type-options": "nosniff",
+        },
+      });
+    });
+  }
 
   app.get("/superadmin/cfo/supuestos", async (c) => {
     if (!deps.cfoCockpitRepo) return c.json({ disponible: false, mensaje: SUPUESTOS_NO_DISPONIBLE, supuestos: [] });

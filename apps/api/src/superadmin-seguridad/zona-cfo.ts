@@ -47,6 +47,8 @@ export const RUTAS_FINANCIERAS: readonly RutaFinanciera[] = [
   { pattern: /^\/superadmin\/pyl\/export\.csv$/, recurso: "pyl/export.csv", finanzas: true, exportacion: true },
   { pattern: /^\/superadmin\/cfo\/cockpit$/, recurso: "cfo/cockpit", finanzas: true },
   { pattern: /^\/superadmin\/cfo\/cockpit\/export\.csv$/, recurso: "cfo/cockpit/export.csv", finanzas: true, exportacion: true },
+  { pattern: /^\/superadmin\/cfo\/cockpit\/export\.xlsx$/, recurso: "cfo/cockpit/export.xlsx", finanzas: true, exportacion: true },
+  { pattern: /^\/superadmin\/cfo\/cockpit\/informe\.pdf$/, recurso: "cfo/cockpit/informe.pdf", finanzas: true, exportacion: true },
   { pattern: /^\/superadmin\/cfo\/supuestos$/, recurso: "cfo/supuestos", finanzas: true },
   { pattern: /^\/superadmin\/cfo\/capturas$/, recurso: "cfo/capturas", finanzas: true },
   { pattern: /^\/superadmin\/costos\/resumen$/, recurso: "costos/resumen", finanzas: true },
