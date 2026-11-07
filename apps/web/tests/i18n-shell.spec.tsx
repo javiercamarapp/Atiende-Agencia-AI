@@ -7,13 +7,13 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { act } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { LayoutDashboard, Wrench } from "lucide-react";
-import { BottomNav, IdiomaProvider, Sidebar, cargarIdioma, crearTraductor, traducir, type SidebarSection } from "@atiende/ui";
+import { BottomNav, IdiomaProvider, Sidebar, cargarIdioma, crearTraductor, registrarModuloEs, traducir, type SidebarSection } from "@atiende/ui";
 import { guardarIdioma } from "../../../packages/ui/src/lib/idioma.ts";
 import { CLAVES_ROL, etiquetaRol } from "../src/lib/roles.ts";
 import { COPILOTO, MOVIL_SUPERADMIN, PIE_SUPERADMIN, RESUMEN, SECCIONES } from "../src/superadmin/rutas.ts";
 import { CLAVE_SECCION_SUPERADMIN, claveRutaSuperadmin } from "../src/superadmin/rutas-i18n.ts";
-import "@atiende/ui/i18n/nav";
-import "@atiende/ui/i18n/rol";
+import { nav } from "@atiende/ui/i18n/nav";
+import { rol } from "@atiende/ui/i18n/rol";
 import { renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 import { installMatchMediaStub, installMemoryLocalStorage } from "./test-utils/memory-storage.ts";
 
@@ -25,7 +25,12 @@ const SECCIONES_DEMO: SidebarSection[] = [
 let rendered: RenderedComponent | undefined;
 
 // El ingles es un chunk perezoso: se precarga para que el cambio sea sincrono en la prueba.
-beforeAll(() => cargarIdioma("en"));
+beforeAll(() => {
+  // Los modulos de area se registran en el render del shell; aqui se prueban sin montarlo.
+  registrarModuloEs(nav);
+  registrarModuloEs(rol);
+  return cargarIdioma("en");
+});
 
 beforeEach(() => {
   installMatchMediaStub();
