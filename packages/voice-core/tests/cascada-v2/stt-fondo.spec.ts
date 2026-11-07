@@ -2,11 +2,12 @@
 // ElevenLabs con `include_timestamps`: un segmento confirmado cuya voz suena MUCHO mas baja que la del cliente (>= dbBajoVoz por debajo de la mediana de sus segmentos
 // aceptados) Y con confianza baja (logprob medio < logprobMax) se descarta: no abre turno ni corta al agente. Hace falta haber aceptado antes 2 segmentos del cliente.
 import { describe, expect, it } from "vitest";
-import { VOZ_PLATAFORMA, crearSttElevenLabs, urlSttElevenLabs } from "../../src/index.ts";
+import { COMPUERTA_FONDO_ELEVENLABS, VOZ_PLATAFORMA, crearSttElevenLabs, urlSttElevenLabs } from "../../src/index.ts";
 import type { EventosStt } from "../../src/index.ts";
 import { fabricaSockets, turnoMicrotareas } from "./dobles.ts";
 
-const C = VOZ_PLATAFORMA.cascadaV2.elevenlabs;
+// La compuerta va APAGADA por omision (revision #752 P1-4: sin E2E que la respalde); estas pruebas la encienden explicitamente.
+const C = { ...VOZ_PLATAFORMA.cascadaV2.elevenlabs, stt: { ...VOZ_PLATAFORMA.cascadaV2.elevenlabs.stt, compuertaFondo: COMPUERTA_FONDO_ELEVENLABS } };
 const HZ = 16_000;
 
 function reloj() {
@@ -37,7 +38,7 @@ function tono(segundos: number, amp: number): Uint8Array {
 const palabras = (texto: string, desde: number, logprob: number) =>
   texto.split(" ").map((t, i) => ({ text: t, start: desde + i * 0.3, end: desde + i * 0.3 + 0.25, type: "word", logprob }));
 
-async function abrir() {
+async function abrir(soloConTiempos = false, conTiemposPrimero = false) {
   const f = fabricaSockets();
   const r = reloj();
   const vistos: string[] = [];
@@ -50,8 +51,10 @@ async function abrir() {
   const sock = f.sockets[0]!;
   /** El cliente (o el fondo) dice `texto` en [desde, desde+dur] con amplitud `amp` y confianza `lp`. */
   const segmento = (texto: string, desde: number, amp: number, lp: number) => {
-    sock.texto({ message_type: "committed_transcript", text: texto });
-    sock.texto({ message_type: "committed_transcript_with_timestamps", text: texto, words: palabras(texto, desde, lp) });
+    const conTiempos = { message_type: "committed_transcript_with_timestamps", text: texto, words: palabras(texto, desde, lp) };
+    if (conTiemposPrimero) sock.texto(conTiempos);
+    if (!soloConTiempos) sock.texto({ message_type: "committed_transcript", text: texto });
+    if (!conTiemposPrimero) sock.texto(conTiempos);
     r.vencer(C.stt.finTurnoMinMs);
     void amp;
   };
@@ -93,5 +96,29 @@ describe("compuerta de voz de fondo (STT ElevenLabs)", () => {
     s.enviarAudio(tono(2, 800));
     segmento("bueno buenas tardes", 0.2, 800, -1.9);
     expect(vistos.filter((v) => v.startsWith("final:"))).toEqual(["final:bueno buenas tardes"]);
+  });
+
+  it("revision #752 P1-4: si el servidor SOLO manda `committed_transcript_with_timestamps`, el turno igual se cierra (la llamada nunca queda sorda)", async () => {
+    const { s, vistos, segmento } = await abrir(true);
+    s.enviarAudio(tono(2, 8000));
+    segmento("Quiero dos de pastor", 0.2, 8000, -0.8);
+    s.enviarAudio(tono(2, 8000));
+    segmento("para recoger por favor", 2.2, 8000, -0.9);
+    expect(vistos.filter((v) => v.startsWith("final:"))).toEqual(["final:Quiero dos de pastor", "final:para recoger por favor"]);
+  });
+
+  it("revision #752 P1-4: si la copia con tiempos llega ANTES que la normal, el texto no se duplica", async () => {
+    const { s, vistos, segmento } = await abrir(false, true);
+    s.enviarAudio(tono(2, 8000));
+    segmento("Quiero dos de pastor", 0.2, 8000, -0.8);
+    expect(vistos.filter((v) => v.startsWith("final:"))).toEqual(["final:Quiero dos de pastor"]);
+  });
+});
+
+describe("revision #752 P1-4: valores por omision medidos-seguros", () => {
+  it("por omision NO se pide `include_timestamps` y la compuerta de fondo esta apagada (no hay E2E que la respalde)", () => {
+    expect(VOZ_PLATAFORMA.cascadaV2.elevenlabs.stt.compuertaFondo).toBeNull();
+    const u = new URL(urlSttElevenLabs(VOZ_PLATAFORMA.cascadaV2.elevenlabs.stt, { hzEntrada: HZ }));
+    expect(u.searchParams.get("include_timestamps")).toBeNull();
   });
 });

@@ -57,7 +57,7 @@ describe("ElevenLabs Scribe v2 Realtime (STT)", () => {
   it("URL: modelo, PCM a la tasa de la sala, espanol, VAD con 0.55 s y cada termino del menu como `keyterms` repetido; la llave NUNCA va en la URL", async () => {
     const url = new URL(urlSttElevenLabs(C.stt, { hzEntrada: 16_000, vocabulario: ["cochinita pibil", "panuchos", "cochinita pibil"] }));
     expect(url.origin + url.pathname).toBe("wss://api.elevenlabs.io/v1/speech-to-text/realtime");
-    expect(Object.fromEntries([...url.searchParams].filter(([k]) => k !== "keyterms"))).toEqual({ model_id: "scribe_v2_realtime", audio_format: "pcm_16000", language_code: "es", commit_strategy: "vad", vad_silence_threshold_secs: "0.55", include_timestamps: "true" });
+    expect(Object.fromEntries([...url.searchParams].filter(([k]) => k !== "keyterms"))).toEqual({ model_id: "scribe_v2_realtime", audio_format: "pcm_16000", language_code: "es", commit_strategy: "vad", vad_silence_threshold_secs: "0.55" });
     expect(url.searchParams.getAll("keyterms")).toEqual(["cochinita pibil", "panuchos"]);
     const { socket } = await abrirStt();
     expect(socket.url).not.toContain(LLAVE);
