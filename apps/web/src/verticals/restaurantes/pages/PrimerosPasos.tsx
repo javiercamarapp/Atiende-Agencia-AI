@@ -61,6 +61,19 @@ export function RestaurantesPrimerosPasosPage({ apiBaseUrl, token, propertyId, o
             {checklist.resumen.hechos} de {checklist.resumen.total} puntos listos
             {checklist.resumen.obligatoriosPendientes > 0 ? ` · ${checklist.resumen.obligatoriosPendientes} obligatorio(s) pendiente(s).` : "."} El estado se calcula con los datos reales de su negocio.{checklist.gate.operaConPedidos && checklist.resumen.obligatoriosPendientes > 0 ? " Su negocio ya opera con pedidos: esto no bloquea el panel." : ""}
           </Callout>
+          {!checklist.listoParaOperar && (
+            <Callout
+              tone="info"
+              titulo="Ruta corta: tu primer pedido en unos 30 minutos"
+              accion={
+                <Link className="text-xs underline underline-offset-2" to={`/restaurantes/${orgSlug}/primer-valor`}>
+                  Empezar
+                </Link>
+              }
+            >
+              Solo lo indispensable de esta sucursal: menú, horario, zonas, cómo cobras, probar el agente y activarla.
+            </Callout>
+          )}
           <ul className="flex flex-col gap-2">
             {checklist.items.map((item) => (
               <li key={item.id}>
