@@ -3,7 +3,9 @@ import { ArrowLeft, ChevronRight, Info } from "lucide-react";
 import { Link } from "react-router-dom";
 
 import { cn } from "../lib/utils";
+import { useT } from "../i18n/proveedor";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import { comun } from "../i18n/mensajes/comun.ts";
 
 /**
  * Grupo del menu de la pantalla activa (lo provee `VerticalShell`). Con la bandera ds3 el PageHeader lo muestra como antetitulo cuando la
@@ -50,10 +52,11 @@ export interface PageHeaderProps {
  */
 export function PageHeader({ titulo, descripcion, acciones, migas, atras, meta, eyebrow, guia, className }: PageHeaderProps) {
   const grupoNav = React.useContext(GrupoNavContext);
+  const t = useT(comun);
   return (
     <header className={cn("ds3-encabezado grid gap-2.5", className)}>
       {migas && migas.length > 0 && (
-        <nav aria-label="Migas de pan">
+        <nav aria-label={t("comun.migas")}>
           <ol className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
             {migas.map((m, i) => {
               const ultima = i === migas.length - 1;
@@ -82,7 +85,7 @@ export function PageHeader({ titulo, descripcion, acciones, migas, atras, meta, 
           className="inline-flex w-fit items-center gap-1.5 rounded-sm text-sm text-muted-foreground transition-colors duration-fast ease-brand hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <ArrowLeft aria-hidden="true" className="size-4" />
-          {atras.etiqueta ?? "Volver"}
+          {atras.etiqueta ?? t("comun.volver")}
         </Link>
       )}
 
@@ -99,7 +102,7 @@ export function PageHeader({ titulo, descripcion, acciones, migas, atras, meta, 
             <Popover>
               <PopoverTrigger className="ds3-encabezado-guia mt-1 inline-flex items-center gap-1 rounded-sm text-xs font-medium text-muted-foreground transition-colors duration-fast ease-brand hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                 <Info aria-hidden="true" className="size-3.5" strokeWidth={1.75} />
-                ¿Cómo leer esto?
+                {t("comun.comoLeerEsto")}
               </PopoverTrigger>
               <PopoverContent align="start" className="ds3-popover-guia w-[340px]">
                 <ul className="grid list-disc gap-1.5 pl-4 text-ui">
