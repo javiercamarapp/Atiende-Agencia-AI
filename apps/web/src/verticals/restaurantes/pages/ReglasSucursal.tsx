@@ -2,10 +2,13 @@
 // cierre pasada la medianoche), pedido mínimo por canal, propina, zonas de reparto y número de
 // WhatsApp propio. Solo owner/admin (el servidor, admin-modelo-pm.ts + RLS, es el enforcement
 // real). Se monta bajo demanda desde Sucursales.tsx: no carga nada hasta que se abre.
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { Button, Checkbox, EstadoCargando, EstadoError, Input, Label, Selector, useConfirm } from "@atiende/ui";
 import { fetchKnownZones } from "../lib/config-client.ts";
 import { ColoniasAmbiguas } from "./ColoniasAmbiguas.tsx";
+import { cargaPerezosa } from "../../../lib/carga-perezosa.tsx";
+import { aHorarioSimple } from "../lib/horario-simple.ts";
+import type { ModoHorario } from "../components/HorarioSimple.tsx";
 import type { KnownZone } from "../lib/config-client.ts";
 import {
   NOMBRES_DIAS,
@@ -26,6 +29,8 @@ import type { PropinaPolitica, Puente, TurnoHorario, TurnoPuente } from "../lib/
 import { fetchInterruptorAgenteWhatsapp, updateInterruptorAgenteWhatsapp } from "../lib/conocimiento-client.ts";
 import type { InterruptorAgenteWhatsapp } from "../lib/conocimiento-client.ts";
 
+// Modo simple del horario (una fila por dia): chunk aparte, solo se baja al abrir las reglas de una sucursal.
+const HorarioSimple = cargaPerezosa(() => import("../components/HorarioSimple.tsx"), "HorarioSimple");
 
 interface Props {
   readonly apiBaseUrl: string;
@@ -52,6 +57,8 @@ export function ReglasSucursal({ apiBaseUrl, token, propertyId, branchId }: Prop
   const { confirmar, dialogo } = useConfirm();
 
   const [turnos, setTurnos] = useState<TurnoHorario[]>([]);
+  const [modoHorario, setModoHorario] = useState<ModoHorario>("avanzado");
+  const horarioEnSimple = modoHorario === "simple" && aHorarioSimple(turnos).ok;
   const [minDomicilio, setMinDomicilio] = useState("");
   const [minRecoger, setMinRecoger] = useState("");
   const [propina, setPropina] = useState<PropinaPolitica | "">("");
@@ -296,7 +303,10 @@ export function ReglasSucursal({ apiBaseUrl, token, propertyId, branchId }: Prop
         <p className="m-0 text-xs text-muted-foreground">
           Sin turnos = sin límite de horario. Si la hora de cierre es menor que la de apertura, el turno termina pasada la medianoche (ej. 12:00 a 01:00). Para doble turno agregue dos. «Último pedido» es opcional: sin hora rige 30 minutos antes del cierre; una hora menor que la apertura es de la madrugada del día siguiente (ej. 00:30).
         </p>
-        {turnos.map((turno, index) => (
+        <Suspense fallback={null}>
+          <HorarioSimple modo={modoHorario} onModo={setModoHorario} turnos={turnos} onTurnos={setTurnos} idBase={`horario-${branchId}`} />
+        </Suspense>
+        {!horarioEnSimple && turnos.map((turno, index) => (
           <div key={index} className="flex flex-col gap-2 rounded-md border border-border p-2">
             <div className="flex flex-wrap gap-2" role="group" aria-label={`Días del turno ${index + 1}`}>
               {NOMBRES_DIAS.map((nombre, dia) => (
@@ -335,7 +345,7 @@ export function ReglasSucursal({ apiBaseUrl, token, propertyId, branchId }: Prop
             <p className="m-0 text-xs text-muted-foreground">{turno.dias.length > 0 && turno.abre && turno.cierra ? describirTurno(turno) : "Turno incompleto"}</p>
           </div>
         ))}
-        <div>
+        <div hidden={horarioEnSimple}>
           <Button type="button" variant="outline" size="sm" onClick={() => setTurnos((prev) => [...prev, { dias: [0, 1, 2, 3, 4, 5, 6], abre: "12:00", cierra: "01:00" }])}>
             Agregar turno
           </Button>
