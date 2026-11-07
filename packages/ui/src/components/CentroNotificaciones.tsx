@@ -8,6 +8,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { Skeleton } from "./ui/skeleton";
 import { useT } from "../i18n/proveedor";
 import { RegionCargando } from "./CargandoDelegado";
+import "../i18n/mensajes/shell.ts";
 
 export type CentroSeveridad = "info" | "atencion" | "critica";
 

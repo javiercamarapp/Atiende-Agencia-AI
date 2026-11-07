@@ -3,26 +3,35 @@
  * y otra en `en/index.ts` (`MODULOS_EN`, su traduccion): asi varios carriles (shell, recorrido guiado, chat de datos...) agregan
  * textos sin pisarse. `Clave` es la union de todas las claves: `t("nav.resumne")` no compila.
  *
- * Carga: el espanol (idioma por omision) va en el bundle de arranque; el ingles es un chunk aparte que se pide la primera vez
- * que se elige EN (`cargarIdioma`). Mientras llega, todo sigue en espanol (nunca una clave cruda).
+ * Carga: el espanol de `MODULOS` va en el bundle de arranque y el de cada area (`ModulosDeArea`) con el chunk de quien lo
+ * importa; el ingles completo es un chunk aparte que se pide la primera vez que se elige EN (`cargarIdioma`). Mientras llega,
+ * todo sigue en espanol (nunca una clave cruda).
  *
  * Que NO va en el catalogo: datos del cliente (nombres, productos del menu, direcciones), texto que genera la IA y todo lo que
  * el agente le dice al consumidor final por WhatsApp o voz (eso sigue en espanol, lo decide el negocio, no la consola).
  */
 import type { Idioma, Mensaje, Traduccion } from "../tipos.ts";
 import { comun } from "./comun.ts";
-import { nav } from "./nav.ts";
-import { rol } from "./rol.ts";
-import { shell } from "./shell.ts";
+import type { nav } from "./nav.ts";
+import type { rol } from "./rol.ts";
+import type { shell } from "./shell.ts";
 
+/** Modulos que van en el bundle de arranque (los usan componentes de cualquier pantalla). */
 export const MODULOS = {
   comun,
-  nav,
-  shell,
-  rol,
 } as const;
 
-type Modulos = typeof MODULOS;
+/**
+ * Modulos de un area: el espanol se registra solo cuando se importa el archivo (`import "@atiende/ui/i18n/nav"` en quien lo
+ * usa), asi viaja en el chunk perezoso de esa area y no en el de arranque. Aqui solo se declaran sus TIPOS.
+ */
+interface ModulosDeArea {
+  readonly nav: typeof nav;
+  readonly shell: typeof shell;
+  readonly rol: typeof rol;
+}
+
+type Modulos = typeof MODULOS & ModulosDeArea;
 type UnionAInterseccion<U> = (U extends unknown ? (x: U) => void : never) extends (x: infer I) => void ? I : never;
 type CatalogoEs = UnionAInterseccion<Modulos[keyof Modulos]>;
 
@@ -34,6 +43,11 @@ export type ModulosTraducidos = { readonly [K in keyof Modulos]: Traduccion<Modu
 const juntar = (modulos: Readonly<Record<string, Readonly<Record<string, Mensaje>>>>): Catalogo => Object.assign({}, ...Object.values(modulos)) as Catalogo;
 
 export const CATALOGO_ES: Catalogo = juntar(MODULOS);
+
+/** Lo llama cada modulo de area al importarse: suma su espanol al catalogo (idempotente). */
+export function registrarModuloEs(modulo: Readonly<Record<string, Mensaje>>): void {
+  Object.assign(CATALOGO_ES, modulo);
+}
 let catalogoEn: Catalogo | null = null;
 let cargaEn: Promise<void> | null = null;
 

@@ -5,6 +5,7 @@ import { cn } from "../lib/utils";
 import { useT } from "../i18n/proveedor";
 import type { SidebarPiePildora, SidebarSection } from "./Sidebar";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "./ui/sheet";
+import "../i18n/mensajes/shell.ts";
 
 type IconType = ComponentType<{ className?: string; strokeWidth?: number | string }>;
 

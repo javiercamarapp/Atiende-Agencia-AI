@@ -8,6 +8,9 @@
     "./logo-marca": "./src/components/LogoMarca.tsx",
     "./logos-marca": "./src/lib/logos-marca.generated.ts",
     "./styles.css": "./src/index.css",
+    "./i18n/nav": "./src/i18n/mensajes/nav.ts",
+    "./i18n/shell": "./src/i18n/mensajes/shell.ts",
+    "./i18n/rol": "./src/i18n/mensajes/rol.ts",
     "./tailwind-preset": "./src/tailwind-preset.ts",
     "./tailwind-ambito": "./src/tailwind-ambito.ts"
   },

@@ -27,6 +27,8 @@ import { clearLicitacionesSession, logout, readPersistedLicitacionesSession } fr
 import { fetchBranches } from "./lib/admin-client.ts";
 import type { BranchOption } from "./lib/admin-client.ts";
 import { STAFF_NAV_ROLES, puedeVerPrivacidad } from "./roles-nav.ts";
+import "@atiende/ui/i18n/nav";
+import "@atiende/ui/i18n/shell";
 
 /** Adaptador de sesión de licitaciones. DEBE ser una constante de módulo (el hook lo usa como dependencia de sus efectos). */
 const LICITACIONES_SESSION: VerticalSessionAdapter<BranchOption> = {

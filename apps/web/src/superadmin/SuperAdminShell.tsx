@@ -24,7 +24,10 @@ import { ImpersonacionBanner } from "./components/ImpersonacionBanner.tsx";
 import { StepUpDialog } from "./components/StepUpDialog.tsx";
 import { RUTA_COPILOTO } from "./lib/copiloto-cliente.ts";
 import { COPILOTO, MOVIL_SUPERADMIN, PIE_SUPERADMIN, RESUMEN, SECCIONES } from "./rutas.ts";
+import { CLAVE_SECCION_SUPERADMIN, claveRutaSuperadmin } from "./rutas-i18n.ts";
 import { limpiarStepUp } from "./lib/stepup.ts";
+import "@atiende/ui/i18n/nav";
+import "@atiende/ui/i18n/shell";
 
 export interface SuperAdminShellProps {
   readonly apiBaseUrl: string;
@@ -33,18 +36,26 @@ export interface SuperAdminShellProps {
 }
 
 // Resumen arriba (raiz, sin cabecera) + las secciones de Likida con paginas reales (rutas.ts, fuente unica).
-// i18n ES/EN: rutas.ts guarda el nombre canonico (`label`) y su `clave`; aqui se pinta `t(clave)` en el idioma de la consola.
+// i18n ES/EN: rutas.ts guarda el nombre canonico en espanol; rutas-i18n.ts le asocia su clave y aqui se pinta `t(clave)`.
+const etiqueta = (t: Traductor, r: { readonly to: string; readonly label: string }) => {
+  const clave = claveRutaSuperadmin(r.to, r.label);
+  return clave ? t(clave) : r.label;
+};
+
 function construirSecciones(t: Traductor): SidebarSection[] {
   return [
-    { title: t("nav.resumen"), siempreAbierto: true, items: [{ ...RESUMEN, label: t(RESUMEN.clave) }, { ...COPILOTO, label: t(COPILOTO.clave) }] },
-    ...SECCIONES.map((s) => ({ title: t(s.clave), items: s.items.map((i) => ({ ...i, label: t(i.clave) })) })),
+    { title: t("nav.resumen"), siempreAbierto: true, items: [{ ...RESUMEN, label: etiqueta(t, RESUMEN) }, { ...COPILOTO, label: etiqueta(t, COPILOTO) }] },
+    ...SECCIONES.map((s) => {
+      const clave = CLAVE_SECCION_SUPERADMIN[s.title];
+      return { title: clave ? t(clave) : s.title, items: s.items.map((i) => ({ ...i, label: etiqueta(t, i) })) };
+    }),
   ];
 }
 
-const construirPie = (t: Traductor): SidebarPiePildora[] => PIE_SUPERADMIN.map((p) => ({ ...p, label: t(p.clave) }));
+const construirPie = (t: Traductor): SidebarPiePildora[] => PIE_SUPERADMIN.map((p) => ({ ...p, label: etiqueta(t, p) }));
 
 /** Barra inferior móvil: los 4 destinos de uso diario; el 5.º lugar es "Más" (lo agrega `VerticalShell`) y lista TODAS las secciones. */
-const construirMovil = (t: Traductor): BottomNavItem[] => MOVIL_SUPERADMIN.map((i) => ({ ...i, label: t(i.clave) }));
+const construirMovil = (t: Traductor): BottomNavItem[] => MOVIL_SUPERADMIN.map((i) => ({ ...i, label: etiqueta(t, i) }));
 
 export function SuperAdminShell({ apiBaseUrl, onRequireLogin, children }: SuperAdminShellProps) {
   const [session, setSession] = useState<LoginSession | null>(null);

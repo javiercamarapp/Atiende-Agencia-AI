@@ -24,6 +24,7 @@ import { MobileAccountMenu } from "./MobileAccountMenu";
 import { Sidebar, type SidebarItem, type SidebarPiePildora, type SidebarSection, type SidebarUser } from "./Sidebar";
 import { Button } from "./ui/button";
 import { I18nContexto, useT, type ContextoI18n } from "../i18n/proveedor";
+import "../i18n/mensajes/shell.ts";
 
 export const VERTICAL_SHELL_MAIN_ID = "contenido-principal";
 

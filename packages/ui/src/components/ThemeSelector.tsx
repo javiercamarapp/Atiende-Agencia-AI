@@ -3,6 +3,7 @@ import { Sun, Monitor, Moon } from "lucide-react";
 import type { Clave } from "../i18n/mensajes/index.ts";
 import { useT } from "../i18n/proveedor";
 import { CLAVE_TEMA, aplicarTema, leerTema, suscribirTemaSistema, type Tema } from "../lib/tema.js";
+import "../i18n/mensajes/shell.ts";
 
 // El tema (leer/aplicar/suscribir) vive en lib/tema.ts, compartido con ThemeBoot y /theme-boot.js.
 // Portado 1:1 desde atiende-restaurantes (src/components/ThemeSelector.tsx):
