@@ -1,5 +1,6 @@
 import { cn } from "../lib/utils";
 import { CargandoLogo } from "./CargandoLogo";
+import { CifraTexto } from "./Cifra";
 import { Card } from "./ui/card";
 
 type IconType = React.ComponentType<{ className?: string; strokeWidth?: number | string }>;
@@ -63,7 +64,7 @@ export function StatCard({ icon: Icon, label, value, nota, delta, deltaNota = "v
           title={mostrarSinDato || cargando ? undefined : value}
           aria-label={mostrarSinDato ? `${label}: sin dato` : undefined}
         >
-          {cargando ? <CargandoLogo tamano="linea" etiqueta={`Cargando ${label}`} /> : mostrarSinDato ? "—" : value}
+          {cargando ? <CargandoLogo tamano="linea" etiqueta={`Cargando ${label}`} /> : mostrarSinDato ? "—" : <CifraTexto texto={value} />}
         </Valor>
       </div>
       {/* El espaciador alinea los pies en una fila de tarjetas parejas aunque una etiqueta envuelva a dos lineas. */}
@@ -91,7 +92,7 @@ function pieDe({
     const cero = delta.pct === 0;
     return (
       <p className="flex min-w-0 items-baseline gap-1.5">
-        <span className={cn("shrink-0 font-medium tabular-nums", cero ? "text-faint" : delta.bueno ? "text-success" : "text-destructive")}>
+        <span data-tono={cero ? "neutro" : delta.bueno ? "bueno" : "malo"} className={cn("ds3-delta shrink-0 font-medium tabular-nums", cero ? "text-faint" : delta.bueno ? "text-success" : "text-destructive")}>
           {cero ? "" : delta.pct > 0 ? "↑ " : "↓ "}
           {Math.abs(delta.pct)}%
         </span>
