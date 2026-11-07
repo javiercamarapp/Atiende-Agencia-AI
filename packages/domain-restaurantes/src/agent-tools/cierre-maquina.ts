@@ -688,13 +688,45 @@ export function componerRespuestaConResumen(respuesta: string, canonico: string,
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
+// C3 PED-16 (cerebro v2): pago pedido por el resumen + visto bueno a lo demas
+// ---------------------------------------------------------------------------------------------------------------------
+
+// El resumen completo (con el total vigente) terminaba preguntando la forma de pago; el cliente contesta el pago y en el mismo mensaje afirma que lo demas esta bien. El cierre de siempre
+// lo trata como «dato» (no es el si) y obliga a repetir el resumen con «¿Es correcto?»: el cliente ya lo vio completo y ya dijo que si. Solo con cerebro v2.
+const ULTIMA_PREGUNTA_PIDE_PAGO = /efectivo|tarjeta|con\s+cu[aá]nto\s+(?:paga|pagar)|forma\s+de\s+pago|m[eé]todo\s+de\s+pago|c[oó]mo\s+(?:desea|va\s+a|quiere|prefiere)\s+pagar/i;
+const VISTO_BUENO_A_LO_DEMAS = /\b(?:si|todo\s+(?:lo\s+demas\s+)?(?:esta\s+)?(?:bien|correcto)|lo\s+demas\s+(?:esta\s+)?(?:bien|correcto)|asi\s+esta\s+bien|esta\s+bien|es\s+correcto|correcto|de\s+acuerdo|perfecto)\b/;
+
+/**
+ * Datos de cierre que el cliente fija con «Tarjeta… Sí, todo lo demás está bien» en respuesta a un resumen VIGENTE (trae el total cotizado) cuya ultima pregunta pide la forma de pago;
+ * `null` si no aplica. El mensaje debe traer la forma de pago y un visto bueno explicito, sin preguntas, titubeos, negaciones, cambios, direcciones ni cantidades. Efectivo a domicilio
+ * exige el billete («con cuanto paga»). Pura.
+ */
+export function pagoConVistoBuenoAlResumen(
+  mensajeAsistente: string | undefined,
+  mensajeCliente: string | undefined,
+  e: { readonly total: number | undefined; readonly canal?: string; readonly datosCotizados: DatosDeCierre },
+): DatosDeCierre | null {
+  if (!mensajeAsistente || !mensajeCliente || typeof e.total !== "number") return null;
+  if (resumenMostradoEnHistorial(e.total, [{ role: "assistant", content: mensajeAsistente }]) !== true) return null;
+  if (!ULTIMA_PREGUNTA_PIDE_PAGO.test(ultimaPregunta(mensajeAsistente))) return null;
+  const t = normalizar(mensajeCliente);
+  if (!t || t.includes("?") || TITUBEO.test(t) || /\bno\b/.test(t) || rechazaElResumen(mensajeCliente)) return null;
+  if (MARCADORES_DE_CAMBIO.test(t) || DIRECCION.test(t) || CANTIDAD.test(t)) return null;
+  if (!VISTO_BUENO_A_LO_DEMAS.test(t)) return null;
+  const d = datosDelMensaje(mensajeCliente, e.total);
+  if (d.pago === undefined) return null;
+  if (d.pago === "efectivo" && e.canal !== "recoger" && d.efectivoCon === undefined) return null;
+  return aplicarDatosDelMensaje(e.datosCotizados, d);
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
 // Decision de confirmar
 // ---------------------------------------------------------------------------------------------------------------------
 
 export type CodigoCierre = "cierre_resumen_no_mostrado" | "cierre_sin_si_explicito" | "cierre_datos_cambiaron";
 
 export type DecisionConfirmacion =
-  | { readonly ok: true }
+  | { readonly ok: true; /** C3 PED-16 (cerebro v2): pago que el cliente dio junto con su visto bueno; el llamador lo guarda antes de confirmar. */ readonly datosAdoptados?: DatosDeCierre }
   | {
       readonly ok: false;
       readonly code: CodigoCierre;
@@ -712,6 +744,8 @@ export interface EntradaDecision {
   readonly historial: readonly MensajeHistorial[];
   readonly turn: string | null;
   readonly canonico?: string;
+  /** C3 PED-16 (cerebro v2): «Tarjeta… sí, todo lo demás está bien» a un resumen que pedía el pago confirma (ver `pagoConVistoBuenoAlResumen`). */
+  readonly pagoConVistoBueno?: boolean;
 }
 
 const COMO_MOSTRAR = (canonico: string | undefined): string =>
@@ -723,6 +757,10 @@ const COMO_MOSTRAR = (canonico: string | undefined): string =>
 export function decidirConfirmacion(e: EntradaDecision): DecisionConfirmacion {
   const ultimoAsistente = ultimoDe(e.historial, "assistant");
   const ultimoCliente = ultimoDe(e.historial, "user");
+  if (e.pagoConVistoBueno) {
+    const adoptados = pagoConVistoBuenoAlResumen(ultimoAsistente, ultimoCliente, { total: e.ctx.quotedTotal, canal: e.ctx.quotedCanal, datosCotizados: datosDeCierreDeContexto(e.ctx) });
+    if (adoptados) return { ok: true, datosAdoptados: adoptados };
+  }
   const salidaNoVisto = e.ctx.cierreNoVistoTurn !== undefined && e.turn !== null && e.ctx.cierreNoVistoTurn !== e.turn;
   // SALIDA SEGURA contra la heuristica de texto (falso negativo: el resumen salio con el total en letras, otra pregunta final o fuera de la ventana de historial): si ya se rechazo UNA vez por
   // «resumen no mostrado» y en un turno POSTERIOR el cliente contesta un «si» claro, se acepta. El cierre se retrasa a lo mucho un turno y nunca se queda trabado.

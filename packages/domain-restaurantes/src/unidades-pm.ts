@@ -187,12 +187,18 @@ export interface CantidadNoMultiplo {
   readonly opciones: readonly number[];
 }
 
+/** C3 PED-13 (cerebro v2): con `gringasYMestizasPorOrden` cada gringa o mestiza que nombra el cliente es UNA orden (platillo), no una pieza: no entra a la regla de piezas. */
+export interface OpcionesCantidadNoMultiplo {
+  readonly gringasYMestizasPorOrden?: boolean;
+}
+
 /** Pura: renglones de un mensaje del cliente cuya cantidad en PIEZAS no es un numero exacto de ordenes (4 tacos de bistec, 3 gringas). Lo que no esta en la tabla o es multiplo, no aparece. */
-export function cantidadesNoMultiplo(texto: string): CantidadNoMultiplo[] {
+export function cantidadesNoMultiplo(texto: string, opciones: OpcionesCantidadNoMultiplo = {}): CantidadNoMultiplo[] {
   const t = sinAcentos(texto).toLowerCase();
   const out: CantidadNoMultiplo[] = [];
   const agrega = (cantidad: string, unidad: string, producto: string | undefined, indice: number) => {
     if (CONTEXTO_QUE_NO_PIDE.test(prefijoDeLaClausula(t, indice))) return;
+    if (opciones.gringasYMestizasPorOrden && /^(?:gringas?|mestizas?)$/.test(unidad)) return;
     const piezas = /^\d+$/.test(cantidad) ? parseInt(cantidad, 10) : NUMEROS[cantidad];
     if (!piezas) return;
     const resto = (producto ?? "").split(/\s+/).filter((w) => w && !CONECTORES.has(w)).slice(0, 2);
@@ -206,11 +212,11 @@ export function cantidadesNoMultiplo(texto: string): CantidadNoMultiplo[] {
 }
 
 /** Bloque de sistema para el turno: que explicar y preguntar. Vacio si ningun renglon es no multiplo. */
-export function bloqueCantidadNoMultiplo(mensajes: readonly string[]): string {
+export function bloqueCantidadNoMultiplo(mensajes: readonly string[], opciones: OpcionesCantidadNoMultiplo = {}): string {
   const vistos = new Set<string>();
   const lineas: string[] = [];
   for (const texto of mensajes) {
-    for (const c of cantidadesNoMultiplo(texto)) {
+    for (const c of cantidadesNoMultiplo(texto, opciones)) {
       const clave = `${c.producto}:${c.piezas}`;
       if (vistos.has(clave)) continue;
       vistos.add(clave);
@@ -225,6 +231,65 @@ export function bloqueCantidadNoMultiplo(mensajes: readonly string[]): string {
     ...lineas,
     "Aplica SOLO si el cliente esta haciendo ese pedido ahora; si reclama, corrige o cancela un pedido ya hecho, ignore esta regla y siga las demas. Si buscar_producto trae otro pack_size para ese producto, manda la herramienta (nunca cambie la cantidad que pidio el cliente). En ESTE mensaje: (1) dígale con calidez QUE se vende en ordenes de N piezas y por que esa cantidad no se puede; (2) ofrezca las opciones validas con el PRECIO de cada una tomado de buscar_producto (nunca de memoria ni calculado de cabeza: orden y dos ordenes); (3) no cotice, no cree pedido y no cambie la cantidad por su cuenta: espere a que el cliente elija. No repita esta regla ni mencione al servidor.",
   ].join("\n");
+}
+
+// ── C3 PED-13 (cerebro v2): «dos gringas de costilla y una mestiza de pastor» ─────────────────────────────────────────────────────────────────────
+// El menu real trae cada gringa y cada mestiza como «Orden de 2 tacos» (pack_size 2, requested_quantity en PIEZAS) y el cliente las pide por platillo: «una mestiza» es UNA orden ($168),
+// no una pieza que «no se vende suelta». El agente preguntaba piezas u ordenes hasta 4 veces y el cliente quitaba la mestiza. Con cerebro v2 se toma como ordenes, salvo que el cliente
+// hable de piezas o tacos (o diga «orden(es)», que ya es explicito).
+
+const PIEZAS_POR_ORDEN_GRINGA_MESTIZA = 2;
+const GRINGA_O_MESTIZA_PEDIDA = new RegExp(`\\b(${NUM})\\s+(gringas?|mestizas?)\\b(?:\\s+(?:de|al)\\s+([a-z]+(?:[ -]chuc)?))?`, "g");
+/** El cliente habla de piezas o tacos sueltos de gringa/mestiza, o ya dijo «orden(es)»: no se supone nada. */
+const UNIDAD_EXPLICITA_GRINGA_MESTIZA = /\b(?:piezas?|tacos?|pzas?)\s+(?:de\s+)?(?:gringas?|mestizas?)\b|\b(?:gringas?|mestizas?)\b[^.,;]*\b(?:piezas?|pzas?|tacos?\s+suelt)|\bordenes?\s+de\s+(?:gringas?|mestizas?)\b/;
+
+export interface GringaOMestizaPedida {
+  readonly cantidad: number;
+  /** «gringas de costilla», «mestiza de pastor» (sin acentos). */
+  readonly producto: string;
+}
+
+/** Pura: gringas y mestizas que el cliente pide contando platillos («dos gringas de costilla», «una mestiza de pastor»). Vacio si habla de piezas/tacos o dice «ordenes». */
+export function gringasYMestizasPedidas(texto: string): GringaOMestizaPedida[] {
+  const t = sinAcentos(texto).toLowerCase();
+  if (UNIDAD_EXPLICITA_GRINGA_MESTIZA.test(t)) return [];
+  const out: GringaOMestizaPedida[] = [];
+  for (const m of t.matchAll(GRINGA_O_MESTIZA_PEDIDA)) {
+    if (CONTEXTO_QUE_NO_PIDE.test(prefijoDeLaClausula(t, m.index ?? 0))) continue;
+    const cantidad = /^\d+$/.test(m[1]!) ? parseInt(m[1]!, 10) : NUMEROS[m[1]!];
+    if (!cantidad) continue;
+    const producto = `${m[2]}${m[3] ? ` de ${m[3]}` : ""}`;
+    if (!out.some((o) => o.producto === producto && o.cantidad === cantidad)) out.push({ cantidad, producto });
+  }
+  return out;
+}
+
+/** Bloque de sistema del turno (solo cerebro v2): cada gringa/mestiza contada es una orden; dice el requested_quantity. Vacio si el cliente no las conto. */
+export function bloqueGringasYMestizasComoOrdenes(mensajes: readonly string[]): string {
+  const pedidas = mensajes.flatMap((m) => gringasYMestizasPedidas(m));
+  if (pedidas.length === 0) return "";
+  const lineas = pedidas.map((p) => `- ${p.cantidad} ${p.producto} = ${p.cantidad} ${p.cantidad === 1 ? "orden" : "órdenes"} (platillos de ${PIEZAS_POR_ORDEN_GRINGA_MESTIZA} tacos): requested_quantity ${p.cantidad * PIEZAS_POR_ORDEN_GRINGA_MESTIZA}.`);
+  return [
+    "REGLA DEL SERVIDOR PARA ESTE TURNO (gringas y mestizas):",
+    ...lineas,
+    `Cada gringa o mestiza que nombra el cliente es UNA orden (platillo de ${PIEZAS_POR_ORDEN_GRINGA_MESTIZA} tacos) al precio de la orden. NO pregunte si son piezas u órdenes ni diga que no se venden sueltas: cotícelas así y dígalas como órdenes. Solo si el cliente habla explícitamente de tacos o piezas sueltas, aclare.`,
+  ].join("\n");
+}
+
+/**
+ * Pura (cerebro v2): si el ULTIMO mensaje del cliente cuenta `nombreProducto` (gringa o mestiza) por platillo, el requested_quantity correcto (N ordenes x 2 piezas); `null` si no aplica
+ * (otro producto, piezas/tacos explicitos, o el cliente no lo conto en ese mensaje).
+ */
+export function piezasEsperadasDeGringaOMestiza(ultimoMensaje: string, nombreProducto: string): number | null {
+  const nombre = sinAcentos(nombreProducto).toLowerCase();
+  const familia = /^gringa/.test(nombre) ? "gringa" : /^mestiza/.test(nombre) ? "mestiza" : null;
+  if (!familia) return null;
+  const relleno = nombre.replace(/^(?:gringa|mestiza)s?\s+(?:de\s+)?/, "").split(/[\s-]+/)[0] ?? "";
+  const pedidas = gringasYMestizasPedidas(ultimoMensaje).filter((p) => p.producto.startsWith(familia));
+  // Con varias de la misma familia se exige que el relleno coincida («2 gringas de costilla y 1 de pastor»); con una sola, basta la familia.
+  const casa = pedidas.filter((p) => relleno !== "" && p.producto.includes(relleno));
+  const elegida = casa.length === 1 ? casa[0] : pedidas.length === 1 ? pedidas[0] : undefined;
+  return elegida ? elegida.cantidad * PIEZAS_POR_ORDEN_GRINGA_MESTIZA : null;
 }
 
 // ── R22 (T7-074): «2 mestizas» (sin decir «ordenes» ni «piezas») no puede cotizarse como 2 ORDENES (4 piezas) ──────────────────────────────────────────────────────

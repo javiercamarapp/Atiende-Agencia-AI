@@ -30,7 +30,7 @@ import { mismosRenglones, VENTANA_PEDIDO_IGUAL_MIN } from "../pedido-igual-recie
 import { PROPINA_PORCENTAJE_MAX } from "../whatsapp/guards.ts";
 import { composicionParaProducto, pesoPedidoEnConsulta } from "../peso-composicion.ts";
 import { pesoDeProductoEnGramos, unidadDeVenta } from "../product-search.ts";
-import { avisoUnidadPorTabla, ordenesInterpretadasSinPreguntar, piezasPorOrdenDe } from "../unidades-pm.ts";
+import { avisoUnidadPorTabla, ordenesInterpretadasSinPreguntar, piezasEsperadasDeGringaOMestiza, piezasPorOrdenDe } from "../unidades-pm.ts";
 import { canonicalRequestedComplement, complementosExcluidosEnNotas, COMPLEMENTOS_PEDIBLES, DEFAULT_COMPLEMENTS, etiquetaComplementoResumen, isTortillaChoice, normalizarTortilla, PM_BASIC_COMPLEMENTS } from "../order-quote.ts";
 import { componentesLocales, estaAbiertoAhora, aperturaConExcepciones, evaluarUltimoPedido, fechaLocal, fraseUltimoPedido, horaHablada, horaLegible, tieneUltimoPedidoPorTipo } from "../horarios.ts";
 import { evaluarDomicilioSucursal } from "../domicilio-sucursal.ts";
@@ -82,6 +82,7 @@ import {
   clasificarRespuestaCierre,
   datosDeCierreDeContexto,
   datosDeCierreDeEntrada,
+  datosDelMensaje,
   billeteExplicitoDelMensaje,
   HABLA_DE_PAGO,
   normalizar,
@@ -790,6 +791,21 @@ async function sucursalDeOtroChat(repo: RestaurantesRepository, ctx: AgentToolCo
   if (!asignada || asignada.propertyId === ctx.entryPropertyId) return null;
   const delChat = await repo.findBranchById(organizationId, ctx.entryPropertyId);
   const tel = asignada.phone ? ` (${asignada.phone})` : "";
+  // C3 PED-15 (cerebro v2, decision del dueño): el pedido NO se rechaza ni se manda a llamar a la otra sucursal (el cliente se iba sin pedir): se toma aqui mismo y se
+  // asigna a la sucursal que cubre el domicilio, diciendole al cliente cual lo entrega y en cuanto tiempo (el tiempo de ESA sucursal, no el de este chat).
+  if (ctx.cerebroV2 && confirmada) {
+    const tiempo = (await repo.findWhatsAppAgentConfig(organizationId, asignada.propertyId).catch(() => null))?.deliveryTimeText?.trim() || null;
+    return {
+      branch_slug: asignada.slug,
+      branch_name: asignada.name,
+      tomar_pedido: true,
+      ...(tiempo ? { tiempo_entrega: tiempo } : {}),
+      ...(delChat ? { chat_de: delChat.name } : {}),
+      aviso:
+        `Ese domicilio lo entrega ${asignada.name}. Tome el pedido con branch_slug ${asignada.slug} desde este mismo chat (cotizar_pedido y crear_pedido con esa sucursal) y dígale al cliente que su pedido lo entrega ${asignada.name}` +
+        `${tiempo ? ` y llega en ${tiempo}` : " (el tiempo estimado lo da consultar_sucursal de esa sucursal)"}. No lo mande a llamar a otro número ni le diga que este chat no toma pedidos para esa sucursal.`,
+    };
+  }
   if (!confirmada) {
     return {
       branch_slug: asignada.slug,
@@ -826,7 +842,8 @@ async function assertBranchAllowed(repo: RestaurantesRepository, ctx: AgentToolC
  * limita aqui: la sucursal la decide la zona (`buscar_sucursal_cercana`). Sin sucursal de entrada (numero unico, vista previa del dueno) no hay nada que comparar.
  */
 async function assertRecogerEnSucursalDeEntrada(repo: RestaurantesRepository, ctx: AgentToolContext, branchSlug: string, canal: unknown): Promise<void> {
-  if (ctx.channel !== "whatsapp" || ctx.modo === "preview" || !ctx.entryPropertyId || canal !== "recoger") return;
+  // C3 PED-15 (cerebro v2): el pedido para recoger se toma para la sucursal que el cliente elija (el modelo le dice donde recoge); H17 ya no rechaza.
+  if (ctx.cerebroV2 || ctx.channel !== "whatsapp" || ctx.modo === "preview" || !ctx.entryPropertyId || canal !== "recoger") return;
   const branch = await repo.findBranch(ctx.organizationId, { slug: branchSlug });
   if (!branch || branch.propertyId === ctx.entryPropertyId) return;
   // H17 es una regla del perfil `taqueria_pm`: otro perfil conserva el comportamiento de siempre (T-ZS06/P29: entrar por el numero de la sucursal A y pedir en la B).
@@ -1081,12 +1098,29 @@ export async function invokeAgentTool(repo: RestaurantesRepository, ctx: AgentTo
   const input = await conHoraDeRecogidaRelativa(repo, ctx, name, entrada);
   await exigirMinimoDeRecogida(repo, ctx, name, input);
   await exigirAclararOrdenesOPiezas(repo, ctx, name, input);
+  exigirPagoDichoPorElCliente(ctx, name, input);
   if (!ctx.flow || (name !== "cotizar_pedido" && name !== "confirmar_resumen" && name !== "crear_pedido" && name !== "repetir_pedido")) {
     return dispatchTool(repo, ctx, name, input);
   }
   return runWithOrderFlow(repo, ctx, ctx.flow, name, input, opts);
 }
 
+
+/** C3 PED-22 (a): mensaje cuando el modelo registra una forma de pago que el cliente no dijo. */
+export const PAGO_NO_DICHO_POR_EL_CLIENTE =
+  "NO se creó el pedido: el cliente todavía no ha dicho cómo va a pagar (o dijo otra forma de pago) y no se puede suponer. Pregúntele «¿Pagará en efectivo o con tarjeta?» y espere su respuesta; si es efectivo a domicilio, pregunte también con cuánto paga. Después vuelva a crear el pedido con la forma de pago que él dijo.";
+
+/**
+ * C3 PED-22 (a), solo cerebro v2: el pedido se creaba con «tarjeta» aunque el cliente nunca dijo la forma de pago (el modelo la inventaba y el resumen ni la mostraba). `crear_pedido`
+ * de WhatsApp exige que ALGUN mensaje del cliente de la conversacion reciente diga ESA forma de pago (tarjeta/terminal o efectivo/billete). Sin historial no se juzga.
+ */
+function exigirPagoDichoPorElCliente(ctx: AgentToolContext, name: string, input: Record<string, unknown>): void {
+  if (name !== "crear_pedido" || !ctx.cerebroV2 || ctx.channel !== "whatsapp" || ctx.modo === "preview" || !ctx.conversacionReciente) return;
+  const pago = input.payment_method;
+  if (pago !== "efectivo" && pago !== "tarjeta") return; // sin forma de pago la validacion del pedido ya la pide
+  const dicha = ctx.conversacionReciente.some((m) => m.role === "user" && datosDelMensaje(m.content).pago === pago);
+  if (!dicha) throw new OrderValidationError(PAGO_NO_DICHO_POR_EL_CLIENTE);
+}
 
 /** Zona horaria de la sucursal por su slug (la de plataforma si no hay dato o la base no tiene la migracion de zona). `null` = la sucursal no existe: otra regla se encarga del error. */
 async function zonaDeSucursal(repo: RestaurantesRepository, ctx: AgentToolContext, slug: unknown): Promise<string | null> {
@@ -1278,6 +1312,18 @@ async function exigirAclararOrdenesOPiezas(repo: RestaurantesRepository, ctx: Ag
       const p = products.find((x) => x.id === r.productId);
       if (!p) continue;
       const porOrden = piezasPorOrdenDe(p.name, p.packSize);
+      // C3 PED-13 (cerebro v2): «dos gringas de costilla» / «una mestiza de pastor» son ordenes (platillos), no piezas: sin pregunta; si el modelo cotizo las piezas tal cual, se corrige.
+      const esperado = ctx.cerebroV2 && porOrden !== null ? piezasEsperadasDeGringaOMestiza(ultimo, p.name) : null;
+      if (esperado !== null) {
+        const pedido = items[idx]!.requested_quantity as number;
+        if (pedido !== esperado) {
+          const ordenes = esperado / porOrden!;
+          throw new OrderValidationError(
+            `El cliente pidió ${ordenes} ${ordenes === 1 ? "orden" : "órdenes"} de ${p.name} (cada gringa o mestiza que nombra es un platillo de ${porOrden} tacos): cotice ${p.name} con requested_quantity ${esperado} y dígalo como ${ordenes} ${ordenes === 1 ? "orden" : "órdenes"}. NO pregunte si son piezas u órdenes ni diga que no se vende suelta.`,
+          );
+        }
+        continue;
+      }
       const n = ordenesInterpretadasSinPreguntar(ultimo, p.name, porOrden, items[idx]!.requested_quantity as number);
       if (n !== null && porOrden !== null) {
         throw new OrderValidationError(
@@ -1286,7 +1332,7 @@ async function exigirAclararOrdenesOPiezas(repo: RestaurantesRepository, ctx: Ag
       }
     }
   } catch (e) {
-    if (e instanceof OrderValidationError && e.message.startsWith("El cliente dijo «")) throw e;
+    if (e instanceof OrderValidationError && (e.message.startsWith("El cliente dijo «") || e.message.startsWith("El cliente pidió "))) throw e;
   }
 }
 
@@ -1595,8 +1641,21 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
       // R11: cierre como maquina de estados. Con historial de WhatsApp el servidor exige que el ULTIMO mensaje del asistente sea el resumen vigente y que el ultimo del cliente sea un «si»
       // explicito. La negativa se devuelve como RESULTADO (no como excepcion): el SAVEPOINT revertiria la marca de «ambiguo» que habilita la salida segura del turno siguiente.
       const cierreOn = cierreMaquinaActiva() && ctx.channel === "whatsapp" && ctx.conversacionReciente !== undefined;
+      let confirmable: OrderFlowContext = current;
       if (cierreOn) {
-        const decision = decidirConfirmacion({ ctx: current, historial: ctx.conversacionReciente!, turn: flow.turn, canonico: current.resumenCanonico });
+        const decision = decidirConfirmacion({ ctx: current, historial: ctx.conversacionReciente!, turn: flow.turn, canonico: current.resumenCanonico, ...(ctx.cerebroV2 ? { pagoConVistoBueno: true } : {}) });
+        // C3 PED-16 (cerebro v2): el pago que el cliente dio junto con su visto bueno se guarda en la cotizacion antes de confirmar (la firma confirmada ya lo lleva).
+        if (decision.ok && decision.datosAdoptados) {
+          const d = decision.datosAdoptados;
+          confirmable = {
+            ...current,
+            ...(d.pago ? { quotedPago: d.pago } : {}),
+            quotedEfectivoCon: d.efectivoCon,
+            quotedPropinaMxn: d.propinaMxn,
+            quotedPropinaPct: d.propinaPct,
+            ...(current.resumenBase ? { resumenCanonico: resumenCanonico({ ...current.resumenBase, datos: d }) } : {}),
+          };
+        }
         if (!decision.ok) {
           // Respuesta de pago / propina: el servidor ADOPTA el dato (avanza), vuelve a `cotizado` y rearma el resumen; el modelo solo lo muestra. Nunca confirma.
           if (decision.datosNuevos && current.resumenBase) {
@@ -1627,9 +1686,9 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
         }
       }
       const res = await writeFlow(repo, ctx, flow, snap.version, "confirmado", {
-        ...current,
+        ...confirmable,
         confirmedAtMs: flowNow(flow),
-        ...(cierreOn ? { confirmedFirma: firmaDeCierre(datosDeCierreDeContexto(current)), ...(flow.turn !== null ? { confirmedTurn: flow.turn } : {}) } : {}),
+        ...(cierreOn ? { confirmedFirma: firmaDeCierre(datosDeCierreDeContexto(confirmable)), ...(flow.turn !== null ? { confirmedTurn: flow.turn } : {}) } : {}),
       });
       if (res === "written") return { result: { confirmado: true, quote_hash: current.quoteHash, instruccion: INSTRUCCION_TRAS_CONFIRMAR_RESUMEN }, orderId: null, propertyId: null, quoteHash: current.quoteHash };
       if (res === "unavailable") return { result: { confirmado: true }, orderId: null, propertyId: null };

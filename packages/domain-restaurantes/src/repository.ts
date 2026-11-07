@@ -500,6 +500,10 @@ export interface RestaurantesRepository {
   /** `incidentNote` (opcional): nota libre de la incidencia; solo se guarda cuando `toStatus === "problema"`
    * (columna `incident_note`, migracion 008: no requiere SQL nuevo). */
   updateOrderStatus(organizationId: string, orderId: string, fromStatus: OrderStatus, toStatus: OrderStatus, incidentNote?: string | null): Promise<Order | null>;
+  /** C3 PED-22 (cerebro v2): el cliente cambia SOLO la forma de pago de un pedido aun no despachado (`pending`, `programado` o `por_aprobar`). Actualiza `payment_method` y AGREGA
+   * `notaPago` a las notas del pedido (rastro visible para la sucursal en el panel y la comanda; no se borra nada). Sin SQL nuevo (columnas de siempre). `null` si el pedido no existe,
+   * no es de la organizacion o ya no esta en esos estados. Opcional: un repositorio que no lo implemente deja el cambio al camino de siempre (aviso a la sucursal). */
+  actualizarFormaDePagoPedido?(organizationId: string, orderId: string, paymentMethod: "efectivo" | "tarjeta", notaPago: string): Promise<Order | null>;
 
   findCustomerById(organizationId: string, customerId: string): Promise<Customer | null>;
   listCustomers(organizationId: string, filter: CustomerListFilter): Promise<CustomerListPage>;

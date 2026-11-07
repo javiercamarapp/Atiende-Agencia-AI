@@ -36,12 +36,12 @@ import { intentarCancelacionConAutopiloto, registrarQuejaConAutopiloto } from ".
 import type { AutopilotoTurnoHooks } from "./autopiloto-turno.ts";
 import type { AgregadosHook } from "../agregados/tipos.ts";
 import { asistentePidioConfirmarResumen, bloqueCotizacionVigente, QUOTE_TTL_MS, resumenMostradoEnHistorial } from "../agent-tools/order-flow.ts";
-import { cierreMaquinaActiva, clasificarRespuestaCierre, componerRespuestaConResumen, corregirHoraDeRecogidaEnRespuesta, estadoDeCierre } from "../agent-tools/cierre-maquina.ts";
+import { cierreMaquinaActiva, clasificarRespuestaCierre, componerRespuestaConResumen, corregirHoraDeRecogidaEnRespuesta, datosDeCierreDeContexto, estadoDeCierre, pagoConVistoBuenoAlResumen, type DatosDeCierre } from "../agent-tools/cierre-maquina.ts";
 import { MENSAJE_PEDIDO_GRANDE_PENDIENTE, executeAgentToolSafely, toolDefinitionsForChannel } from "../agent-tools/registry.ts";
 import type { AgentToolOutcome } from "../agent-tools/registry.ts";
 import { planCierreDeterminista } from "../agent-tools/cierre-determinista.ts";
 import { loteAdmiteResumenSinVuelta, type LlamadaDelLote } from "./cerebro-v2/resumen-sin-vuelta.ts";
-import { bloqueCantidadNoMultiplo, bloqueProductoNoManejado } from "../unidades-pm.ts";
+import { bloqueCantidadNoMultiplo, bloqueGringasYMestizasComoOrdenes, bloqueProductoNoManejado } from "../unidades-pm.ts";
 import { bloquePedidoPendienteTrasFalla } from "./falla-pendiente.ts";
 import { CONTADOR_AGENTE_UMBRAL, COPY_ESCALACION_CONTADOR, contarAgente, pideRepetir } from "./contadores-agente.ts";
 import { bloqueDatosYaConsultados } from "./datos-ya-consultados.ts";
@@ -62,7 +62,9 @@ import { afirmaCambioRegistrado, afirmaPedidoProgramado, afirmaPedidoRegistrado,
 import { COPY_LLAMADA_NO_RECIBIDA, COPY_LLAMADA_REPETIDA, COPY_SI_REPETIDO_SIN_REGISTRAR, MARCA_SI_SIN_REGISTRAR, esAvisoDeLlamada } from "./prompt-pm-paquete-c.ts";
 import { decidirAntesDelModelo, respuestaFinalV2 } from "./cerebro-v2/antes-del-modelo.ts";
 import { enforcePromoPolicy, stripUnpromptedTip } from "./cerebro-v2/politicas-pm.ts";
-import { PM_POLICY_RULES_V2 } from "./cerebro-v2/prompt-v2.ts";
+import { PM_POLICY_RULES_V2, adaptarPromptPmV2 } from "./cerebro-v2/prompt-v2.ts";
+import { cambioSoloDeFormaDePago } from "./cerebro-v2/pago.ts";
+import { normalizePhone } from "../phone.ts";
 import { consultasDeMenuParaPromesa, corregirPromesaSinBuscar, promesaDeProductoSinBuscar } from "./cerebro-v2/texto-final.ts";
 import { buscarEnCatalogo } from "./cerebro-v2/busqueda.ts";
 import { PM_AGENT_NAME_POR_OMISION, PM_COPY, buildPmSystemPrompt, saludoPorHora } from "./perfil-pm.ts";
@@ -638,6 +640,9 @@ export function prefijoEstableActivo(env: Readonly<Record<string, string | undef
   return v === "1" || v === "true" || v === "on" || v === "si";
 }
 
+/** C3 PED-22: el cambio de forma de pago solo toca un pedido creado en las ultimas 3 horas (el mismo pedido de la conversacion, no uno de otro dia). */
+const VENTANA_CAMBIO_DE_PAGO_MS = 3 * 60 * 60 * 1000;
+
 /** R21: interruptor de entorno del cierre del «si» en una sola vuelta del modelo. Encendido salvo `0`, `false`, `off` o `no`. */
 export function cierreUnaVueltaActivo(env: Readonly<Record<string, string | undefined>> = process.env): boolean {
   const v = (env.WHATSAPP_CIERRE_UNA_VUELTA ?? "").trim().toLowerCase();
@@ -886,6 +891,34 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       const respondidos = messages.slice(0, messages.length - mensajesSinResponder(messages).length).filter((m) => m.role === "user").slice(-12);
       const motivosYaAtendidos = new Set(respondidos.map((m) => classifyHighRiskIntent(m.content, ctxRiesgo)?.intent).filter((i): i is NonNullable<typeof i> => i !== undefined));
       const paraRiesgo = pendientes.filter((m, i) => i === pendientes.length - 1 || !motivosYaAtendidos.has(classifyHighRiskIntent(m.content, ctxRiesgo)?.intent as never));
+      // C3 PED-22 (b), solo cerebro v2: «Perdón, yo pago en efectivo, no con tarjeta» sobre un pedido ya creado y aun no despachado se escalaba como cancelacion_modificacion. Cambiar
+      // solo COMO se cobra no toca lo que prepara cocina: el servidor actualiza la forma de pago del pedido (con una linea en sus notas para la sucursal) y se lo confirma al cliente,
+      // sin modelo y sin escalar. Con un carrito en curso, sin pedido reciente modificable o sin la funcion en el repositorio, sigue el camino de siempre.
+      if (cerebroV2 && perfil === "taqueria_pm" && !preview && !carritoEnCurso && pendientes.length > 0 && repo.actualizarFormaDePagoPedido) {
+        const cambios = pendientes.map((m) => cambioSoloDeFormaDePago(m.content));
+        const cambio = cambios.every((c) => c !== null) ? cambios.at(-1)! : null;
+        const efectivoCon = cambio?.pago === "efectivo" ? (cambios.findLast((c) => c?.efectivoCon !== undefined)?.efectivoCon ?? null) : null;
+        const reciente = cambio ? await repo.findLatestOrderByPhone(organizationId, normalizePhone(phone), new Date(now().getTime() - VENTANA_CAMBIO_DE_PAGO_MS).toISOString()).catch(() => null) : null;
+        if (cambio && reciente && (reciente.status === "pending" || reciente.status === "programado" || reciente.status === "por_aprobar")) {
+          const domicilio = !/Canal: recoger en sucursal\./.test(reciente.notes ?? "");
+          const conBillete = efectivoCon !== null && efectivoCon >= reciente.total ? efectivoCon : null;
+          const nota = `Cambio de forma de pago pedido por el cliente por WhatsApp: ahora ${cambio.pago}${cambio.pago === "efectivo" ? (domicilio ? "; ya NO lleva terminal" : "") : domicilio ? "; llevar terminal" : ""}${conBillete !== null ? `; paga con $${conBillete.toFixed(2)} (cambio: $${(Math.round((conBillete - reciente.total) * 100) / 100).toFixed(2)})` : ""}.`;
+          const actualizado = reciente.paymentMethod === cambio.pago && conBillete === null ? reciente : await repo.actualizarFormaDePagoPedido(organizationId, reciente.id, cambio.pago, nota);
+          if (actualizado) {
+            if (actualizado !== reciente) mutoEnTurno = true;
+            tele.resultado = "ok";
+            const reply =
+              cambio.pago === "tarjeta"
+                ? `Listo, su pedido queda para pagar con tarjeta${domicilio ? "; el repartidor lleva terminal" : " en la sucursal"}.`
+                : conBillete !== null
+                  ? `Listo, su pedido queda para pagar en efectivo con $${conBillete}; ${domicilio ? "el repartidor lleva" : "le tenemos"} su cambio de $${Math.round((conBillete - reciente.total) * 100) / 100}.`
+                  : domicilio
+                    ? "Listo, su pedido queda para pagar en efectivo. ¿Con cuánto paga, para que el repartidor lleve su cambio?"
+                    : "Listo, su pedido queda para pagar en efectivo en la sucursal.";
+            return done({ reply, orderId: null, propertyId: actualizado.propertyId ?? propertyId });
+          }
+        }
+      }
       // Cerebro v2: decision determinista del suelto (salud/alergia con aviso URGENTE, transferencia realizada) ANTES del clasificador de siempre; los intents que v2
       // decide se quitan del clasificador de guards.ts para no avisar ni contestar dos veces.
       const pedidoEnCursoV2 = !customer.isNew && customer.pedidoReciente != null && ["registrado", "preparando", "salio", "listo_para_recoger", "programado", "por_confirmar"].includes(customer.pedidoReciente.estado);
@@ -995,7 +1028,10 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       // R10 P1: lo que el servidor ya consulto y daria el mismo resultado que la herramienta se le dice al modelo (una vuelta menos). Vacio = prompt identico al de antes.
       const datosYaConsultadosBloque = bloqueDatosYaConsultados(customer, { perfil, preview });
       // R19 (G4 / T7-012): «4 tacos de bistec» / «3 gringas» no son ordenes exactas; el servidor le fija al modelo que explique y ofrezca las opciones con precio. Solo los mensajes sin responder.
-      const cantidadNoMultiploBloque = perfil === "taqueria_pm" && !preview ? bloqueCantidadNoMultiplo(mensajesSinResponder(messages).map((m) => m.content)) : "";
+      // C3 PED-13: con cerebro v2 cada gringa/mestiza contada es una ORDEN (no una pieza que «no se vende suelta»): sale de esta regla y la dice su propio bloque.
+      const cantidadNoMultiploBloque = perfil === "taqueria_pm" && !preview
+        ? [bloqueCantidadNoMultiplo(mensajesSinResponder(messages).map((m) => m.content), cerebroV2 ? { gringasYMestizasPorOrden: true } : {}), cerebroV2 ? bloqueGringasYMestizasComoOrdenes(mensajesSinResponder(messages).map((m) => m.content)) : ""].filter((b) => b !== "").join("\n\n")
+        : "";
       // R11 A (bandera apagada por omision): contexto precargado + llamadas en lote. Solo PM, nunca en preview.
       // Cerebro v2 (decision B): encendida siempre, con la sucursal de la colonia nombrada y el memo de lecturas (ver contexto-precargado.ts: por que la R11 A no quito vueltas en C3).
       const precargaV2 = cerebroV2 && perfil === "taqueria_pm" && !preview;
@@ -1004,7 +1040,8 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       const productoNoManejadoBloque = perfil === "taqueria_pm" && !preview ? bloqueProductoNoManejado(mensajesSinResponder(messages).map((m) => m.content)) : "";
       // R21 (arreglo 2 R20): tras un aviso de falla del sistema el mensaje previo del cliente sigue pendiente (un solo bloque de falla; vive en falla-pendiente.ts).
       const fallaPrevia = perfil === "taqueria_pm" && !preview ? bloquePedidoPendienteTrasFalla(messages) : "";
-      const systemFinal = [systemPrompt, cerebroV2 && perfil === "taqueria_pm" ? PM_POLICY_RULES_V2 : "", bloquePromptV2, datosYaConsultadosBloque, cotizacionVigenteBloque, cantidadNoMultiploBloque, productoNoManejadoBloque, fallaPrevia, precargaActiva ? (precargaV2 ? BLOQUE_CONTEXTO_PRECARGADO_V2 : BLOQUE_CONTEXTO_PRECARGADO) : ""].filter((b) => b !== "").join("\n\n");
+      // C3 PED-15: con cerebro v2 el prompt de PM cambia H17 / paso 4 / B4 (tomar el pedido de la zona de otra sucursal); sin la bandera el prompt es el mismo texto de siempre.
+      const systemFinal = [cerebroV2 && perfil === "taqueria_pm" ? adaptarPromptPmV2(systemPrompt) : systemPrompt, cerebroV2 && perfil === "taqueria_pm" ? PM_POLICY_RULES_V2 : "", bloquePromptV2, datosYaConsultadosBloque, cotizacionVigenteBloque, cantidadNoMultiploBloque, productoNoManejadoBloque, fallaPrevia, precargaActiva ? (precargaV2 ? BLOQUE_CONTEXTO_PRECARGADO_V2 : BLOQUE_CONTEXTO_PRECARGADO) : ""].filter((b) => b !== "").join("\n\n");
 
       // B03: toque a «Confirmar pedido». Es un «si» explicito, pero SOLO a la cotizacion vigente: el boton de un resumen viejo (el pedido cambio, vencio, ya se
       // creo o se esta creando) se responde aqui con texto fijo, sin modelo y sin crear nada. Si es vigente, el pedido se crea por el camino de siempre
@@ -1053,10 +1090,19 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       };
 
       /** Total del resumen vigente si el ultimo mensaje del cliente es un «si» claro a ese resumen y aun no hay pedido; si no, null. */
+      const pagoAdoptadoV2 = (): DatosDeCierre | null => {
+        if (!cerebroV2 || perfil !== "taqueria_pm" || !cotizacionVigente || !flowSnapshot?.context || flowSnapshot.state !== "cotizado") return null;
+        const sinResponder = mensajesSinResponder(messages);
+        if (sinResponder.length !== 1) return null;
+        const c = flowSnapshot.context;
+        return pagoConVistoBuenoAlResumen([...messages].reverse().find((m) => m.role === "assistant")?.content, sinResponder[0]!.content, { total: c.quotedTotal, canal: c.quotedCanal, datosCotizados: datosDeCierreDeContexto(c) });
+      };
       const siPendienteSinPedido = (): number | null => {
         const total = flowSnapshot?.context?.quotedTotal;
         if (typeof total !== "number" || !Number.isFinite(total) || !cotizacionVigente) return null;
         const estado = estadoDeCierre(flowSnapshot, messages);
+        // C3 PED-16 (cerebro v2): «Tarjeta… sí, todo lo demás está bien» a un resumen vigente que pedía el pago tambien es el sí (el pago se adopta al confirmar).
+        if (pagoAdoptadoV2() !== null) return total;
         if (estado !== "esperando_confirmacion" && estado !== "confirmado") return null;
         // TODOS los mensajes sin responder deben ser un «si» claro: en una rafaga («mejor 3 cocas» + «si») el «si» responde al cambio, no al resumen que el servidor guardo.
         const sinResponder = mensajesSinResponder(messages);
@@ -1081,7 +1127,9 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         if (lecturaFallida) return null;
         cierreDeterministaIntentado = true;
         if (!fresco?.context || fresco.context.quotedTotal !== totalConfirmado || fresco.context.quoteHash !== flowSnapshot?.context?.quoteHash) return null;
-        const plan = planCierreDeterminista(fresco, { ahoraMs: now().getTime(), nombreDeLaFicha: customer.isNew ? null : customer.name, hayUbicacionCompartida: sharedLocation !== null && sharedLocation !== undefined });
+        // C3 PED-16: el plan lleva el pago que el cliente acaba de dar (confirmar_resumen lo adopta en la cotizacion con la misma regla).
+        const adoptado = porToque ? null : pagoAdoptadoV2();
+        const plan = planCierreDeterminista(adoptado ? { ...fresco, context: { ...fresco.context, ...(adoptado.pago ? { quotedPago: adoptado.pago } : {}), quotedEfectivoCon: adoptado.efectivoCon, quotedPropinaMxn: adoptado.propinaMxn, quotedPropinaPct: adoptado.propinaPct } } : fresco, { ahoraMs: now().getTime(), nombreDeLaFicha: customer.isNew ? null : customer.name, hayUbicacionCompartida: sharedLocation !== null && sharedLocation !== undefined });
         if (!plan.ok) return null;
         return [
           { id: "cierre-determinista-1", name: "confirmar_resumen", argumentsJson: "{}" },

@@ -334,3 +334,31 @@ export function cobroDuplicadoAbiertoCubre(razonAbierta: string, razonNueva: str
   if (!nueva || previa !== "alto_riesgo:cobro_duplicado" || nueva.startsWith("alto_riesgo:")) return false;
   return esElMismoCobroDuplicado(nueva, normAviso(mensaje));
 }
+
+// ---------------------------------------------------------------- C3 PED-22 (b): cambio SOLO de forma de pago
+// «Perdón, yo pago en efectivo, no con tarjeta» sobre un pedido ya creado se escalaba como cancelacion_modificacion (handoff): no cambia nada de lo que cocina prepara, solo como
+// se cobra. LISTA BLANCA (como el cobro duplicado): el mensaje debe decir UNA forma de pago (la otra solo negada) y, fuera de eso, solo palabras de pago, cortesia o relleno; cualquier
+// otra cosa (producto, cancelar, direccion, pregunta) deja el mensaje al camino de siempre.
+const PALABRAS_DEL_CAMBIO_DE_PAGO = new Set([
+  "pago", "pagare", "pagaria", "pagar", "pagamos", "voy", "vamos", "a", "en", "con", "de", "el", "la", "un", "una", "billete", "billetes", "efectivo", "cash", "tarjeta", "terminal",
+  "debito", "credito", "no", "ya", "mejor", "siempre", "si", "ok", "okay", "va", "vale", "gracias", "por", "favor", "porfa", "que", "me", "lo", "les", "le", "pregunten", "preguntan",
+  "pregunta", "cambio", "cambie", "cambien", "cambiar", "cambiarlo", "forma", "metodo", "mi", "pedido", "al", "repartidor", "para", "traigo", "tengo", "llevo", "pesos", "es", "sera",
+  "seria", "quiero", "quisiera", "prefiero", "y", "o", "perdon", "disculpe", "disculpa", "oiga", "oye", "yo", "mas", "bien", "solo", "nada", "eso", "esta", "aviso", "avisarles",
+  "mismo", "momento", "cuando", "llegue", "llega", "entregar", "entreguen", "hola", "buenas", "sino", "nomas", "sale", "mejor", "lleven", "llevar", "lleve", "cobren", "cobrar",
+]);
+const NEGADA = /\b(?:no|ya\s+no|sino|en\s+vez\s+de|en\s+lugar\s+de)\s+(?:(?:con|en|por|de|pago|pagare|voy\s+a\s+pagar)\s+)*(?:la\s+|el\s+)?(tarjeta|terminal|efectivo|cash)\b/g;
+
+/** El mensaje solo cambia la forma de pago: la nueva y, si la dice, el billete. `null` si dice otra cosa o no dice una forma de pago clara. Pura. */
+export function cambioSoloDeFormaDePago(texto: string): { pago: "efectivo" | "tarjeta"; efectivoCon?: number } | null {
+  const t = String(texto ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  if (t.includes("?") || t.includes("¿")) return null;
+  const sinNegadas = t.replace(NEGADA, " ");
+  const efectivo = /\b(?:efectivo|cash)\b/.test(sinNegadas);
+  const tarjeta = /\b(?:tarjeta|terminal|debito|credito)\b/.test(sinNegadas);
+  if (efectivo === tarjeta) return null;
+  const palabras = t.replace(/[^a-z0-9ñ$]+/g, " ").trim().split(/\s+/).filter(Boolean);
+  if (palabras.some((w) => !PALABRAS_DEL_CAMBIO_DE_PAGO.has(w) && !/^\$?\d{2,5}$/.test(w))) return null;
+  if (!efectivo) return { pago: "tarjeta" };
+  const monto = montoDichoPorElCliente([texto]);
+  return monto !== null ? { pago: "efectivo", efectivoCon: monto } : { pago: "efectivo" };
+}
