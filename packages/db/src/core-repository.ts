@@ -255,6 +255,12 @@ export interface OrganizationBillingRow {
   readonly currentPeriodEnd: string | null;
 }
 
+/** Resultado de `CoreRepository.activateOrganizationOnPayment` (migracion 0072, `core.organization_activate_on_payment`):
+ *  `activada` = estaba en prueba y paso a 'active' (sin fecha de fin de prueba); `ya_activa` = no cambio nada; `suspendida` = un pago
+ *  NUNCA reactiva una organizacion suspendida (decision humana con doble control, 0038); `no_existe` = id desconocido;
+ *  `no_disponible` = base sin la 0072 (42883): no se activa nada y el webhook sigue igual que antes. */
+export type ActivacionPorPago = "activada" | "ya_activa" | "suspendida" | "no_existe" | "no_disponible";
+
 /** Input de `CoreRepository.upsertOrganizationBilling` -- llamado SOLO desde
  *  `POST /billing/webhook` DESPUÉS de que `@atiende/billing::aplicarConLedger`
  *  ya resolvió que el evento es nuevo y está en orden (nunca antes -- ver el
@@ -487,6 +493,10 @@ export interface CoreRepository {
    *  `UpsertOrganizationBillingInput` para por qué esto SIEMPRE reemplaza la fila
    *  completa. */
   upsertOrganizationBilling(input: UpsertOrganizationBillingInput): Promise<OrganizationBillingRow>;
+  /** Onboarding P0: el pago activa la prueba. Llamado SOLO desde `POST /billing/webhook` (firma HMAC ya verificada, sesion de
+   *  sistema) cuando Stripe confirma un pago o una suscripcion activa: 'trial' -> 'active' y trial_ends_at := null. Ver
+   *  `ActivacionPorPago`. */
+  activateOrganizationOnPayment(organizationId: string): Promise<ActivacionPorPago>;
   /** Adaptador `LedgerStore.marcarVisto` (`@atiende/billing::ledger.ts`) — dedupe
    *  ATÓMICO por id de evento (`insert ... on conflict do nothing`, ver la
    *  migración). */

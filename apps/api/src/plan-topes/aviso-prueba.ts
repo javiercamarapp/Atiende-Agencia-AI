@@ -1,7 +1,11 @@
-// Avisos de fin de prueba a 7 / 3 / 1 dias (PL-16). Cada aviso se RECLAMA en la base (`core.trial_notice_claim`, clave primaria
-// organizacion + dias + fecha de fin): sale exactamente una vez aunque el cron corra varias veces el mismo dia o dos corridas se
-// crucen. El dia se cuenta en la zona horaria del negocio. Dos canales: notificacion in-app a owner/admin (catalogo compartido) y
-// correo a owner/admin. Un correo fallido se reintenta hasta 3 veces (el reclamo devuelve los pendientes pasada media hora).
+// Avisos de fin de prueba a 7 / 3 / 1 dias (PL-16) y, desde la migracion 0072, el aviso "la prueba termino" (dias 0). Cada aviso se
+// RECLAMA en la base (`core.trial_notice_claim`, clave primaria organizacion + dias + fecha de fin): sale exactamente una vez aunque el
+// cron corra varias veces el mismo dia o dos corridas se crucen. El dia se cuenta en la zona horaria del negocio. Dos canales:
+// notificacion in-app a owner/admin (catalogo compartido) y correo a owner/admin; el aviso de prueba terminada avisa ademas a
+// superadmin. Un correo fallido se reintenta hasta 3 veces (el reclamo devuelve los pendientes pasada media hora).
+//
+// Texto neutro e igual en las 6 verticales: al terminar la prueba NADA se apaga (la organizacion sigue operando; el pago la activa y
+// suspender es decision humana), asi que ningun aviso promete ni amenaza un corte. Las organizaciones demo no se reclaman (0072).
 //
 // Cada aviso corre en SU PROPIA transaccion de sistema: un fallo en una organizacion no revierte las demas ni deja la sesion
 // abortada. Base sin migrar: `disponible: false`, sin tocar nada y sin error.
@@ -23,6 +27,25 @@ const EVENTO_PRUEBA: Readonly<Record<string, string>> = {
   despachos: "despachos.plan.prueba_por_vencer",
 };
 
+/** Aviso "su prueba termino, elija un plan" (dias 0). */
+const EVENTO_PRUEBA_TERMINADA: Readonly<Record<string, string>> = {
+  hoteles: "hoteles.plan.prueba_terminada",
+  restaurantes: "restaurantes.plan.prueba_terminada",
+  rentas: "rentas.plan.prueba_terminada",
+  licitaciones: "licitaciones.plan.prueba_terminada",
+  citas: "citas.plan.prueba_terminada",
+  despachos: "despachos.plan.prueba_terminada",
+};
+
+/** Alerta de plataforma: la prueba de una organizacion termino (sigue operando; superadmin decide el seguimiento). */
+const EVENTO_PRUEBA_TERMINADA_SUPERADMIN = "superadmin.plan.prueba_terminada";
+
+/** Codigo corto sin PII para el texto de la alerta de superadmin (mismo criterio que medidor.ts). */
+function slugCorto(slug: string): string {
+  const limpio = slug.replace(/[^A-Za-z0-9_.:-]/g, "-").slice(0, 40);
+  return limpio.length > 0 ? limpio : "organizacion";
+}
+
 export interface ResumenAvisosPrueba {
   readonly disponible: boolean;
   readonly reclamados: number;
@@ -37,19 +60,24 @@ function textoDias(dias: number): string {
 
 function correoPrueba(deps: AppDeps, aviso: AvisoPrueba): { subject: string; html: string; text: string } {
   const enlace = `${deps.env.appBaseUrl}/${aviso.vertical}/${aviso.slug}/plan`;
-  const subject = `Su prueba de atiende termina en ${textoDias(aviso.diasAntes)}`;
+  const terminada = aviso.diasAntes === 0;
+  const subject = terminada ? "Su prueba de atiende terminó: elija un plan" : `Su prueba de atiende termina en ${textoDias(aviso.diasAntes)}`;
   const html = renderCorreo({
     titulo: subject,
-    preheader: "Revise el estado de su cuenta para no perder el acceso.",
+    preheader: "Revise Plan y uso para elegir el plan de su cuenta.",
     etiqueta: { texto: "Fin de prueba", color: "#B45309" },
     parrafosHtml: [
-      `La prueba de <strong>${escapeHtml(aviso.organizationName)}</strong> termina en ${escapeHtml(textoDias(aviso.diasAntes))}.`,
-      "Revise Plan y uso para ver el estado de su cuenta.",
+      terminada
+        ? `La prueba de <strong>${escapeHtml(aviso.organizationName)}</strong> terminó.`
+        : `La prueba de <strong>${escapeHtml(aviso.organizationName)}</strong> termina en ${escapeHtml(textoDias(aviso.diasAntes))}.`,
+      "Revise Plan y uso para elegir el plan de su cuenta.",
       `<a href="${escapeHtml(enlace)}">${escapeHtml(enlace)}</a>`,
     ],
     piePorQueLlego: "Recibe este correo porque es administrador de la cuenta.",
   });
-  const text = `La prueba de ${aviso.organizationName} termina en ${textoDias(aviso.diasAntes)}. Revise Plan y uso: ${enlace}`;
+  const text = terminada
+    ? `La prueba de ${aviso.organizationName} terminó. Revise Plan y uso para elegir el plan de su cuenta: ${enlace}`
+    : `La prueba de ${aviso.organizationName} termina en ${textoDias(aviso.diasAntes)}. Revise Plan y uso para elegir el plan de su cuenta: ${enlace}`;
   return { subject, html, text };
 }
 
@@ -89,16 +117,29 @@ export async function ejecutarAvisosPrueba(deps: AppDeps, now: Date = new Date()
   for (const aviso of reclamo.avisos) {
     try {
       const estado = await deps.engine.withAppSession({ userId: null }, async (db) => {
-        const evento = EVENTO_PRUEBA[aviso.vertical];
+        const terminada = aviso.diasAntes === 0;
+        const clave = `${aviso.organizationId}:${aviso.diasAntes}:${aviso.trialEndsAt.slice(0, 10)}`;
+        const evento = (terminada ? EVENTO_PRUEBA_TERMINADA : EVENTO_PRUEBA)[aviso.vertical];
         if (evento) {
           const r = await emitirNotificacion(db, {
             evento,
             organizationId: aviso.organizationId,
-            clave: `${aviso.organizationId}:${aviso.diasAntes}:${aviso.trialEndsAt.slice(0, 10)}`,
-            parametros: { dias: aviso.diasAntes },
+            clave,
+            parametros: terminada ? {} : { dias: aviso.diasAntes },
             entidadTipo: "prueba",
           });
           if (r.estado === "emitida") notificados += 1;
+        }
+        // Un reintento de correo no repite la alerta de superadmin (el dedupe la descartaria igual).
+        if (terminada && !aviso.esReintento) {
+          await emitirNotificacion(db, {
+            evento: EVENTO_PRUEBA_TERMINADA_SUPERADMIN,
+            organizationId: null,
+            clave,
+            parametros: { organizacion: slugCorto(aviso.slug) },
+            entidadTipo: "organizacion",
+            entidadId: aviso.organizationId,
+          });
         }
         const destinatarios = await destinatariosAvisoPrueba(db, aviso.organizationId);
         const resultado = await enviarCorreo(deps, aviso, destinatarios);

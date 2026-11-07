@@ -1,9 +1,11 @@
-import { useState, type ComponentType, type ReactNode } from "react";
+import { useEffect, useState, type ComponentType, type ReactNode } from "react";
 import { NavLink, useLocation } from "react-router-dom";
-import { Ellipsis } from "lucide-react";
+import { Bell, Ellipsis, LogOut, MessageCircle } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useT } from "../i18n/proveedor";
-import type { SidebarPiePildora, SidebarSection } from "./Sidebar";
+import type { SidebarPiePildora, SidebarSection, SidebarUser } from "./Sidebar";
+import { SelectorIdioma } from "./SelectorIdioma";
+import { ThemeSelector } from "./ThemeSelector";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "./ui/sheet";
 import { shell } from "../i18n/mensajes/shell.ts";
 
@@ -34,9 +36,50 @@ export interface BottomNavProps {
    * `onClick` una pildora no se pinta (no hay controles maqueta).
    */
   pie?: SidebarPiePildora[];
+  /**
+   * ds3: la hoja «Más» es el sidebar completo, asi que suma al final tema (con etiquetas), idioma y la tarjeta de cuenta con «Salir».
+   * Sin la bandera ese bloque existe oculto (la cuenta sigue en el menu de cuenta de la cabecera).
+   */
+  cuenta?: { user: SidebarUser | null; onLogout: () => void; loggingOut?: boolean };
+  /**
+   * ds3 (decision de Omar 7-nov-2026): «Preguntar» (Pregúntale a tus datos) es un destino fijo de la barra, entre los destinos curados
+   * y «Más». Solo se pasa a roles que pueden usar el chat de datos; sin la bandera el destino existe oculto (la barra sigue en 4 + «Más»).
+   */
+  preguntar?: { to: string };
 }
 
-/** Maximo de destinos curados de la barra; el 5.o lugar es "Mas" (spec UNI-1 §5.2). */
+/**
+ * Teclado en pantalla abierto (movil): el visualViewport se encoge bastante respecto de la ventana con un campo enfocado. Lo publica en
+ * `html[data-teclado="abierto"]` para que la hoja ds3 oculte la barra inferior y el campo quede justo sobre el teclado.
+ */
+export function useTecladoAbierto(): void {
+  useEffect(() => {
+    const vv = typeof window === "undefined" ? undefined : window.visualViewport;
+    if (!vv) return undefined;
+    const raiz = document.documentElement;
+    const medir = () => {
+      const activo = document.activeElement;
+      const escribe = activo instanceof HTMLElement && (activo.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(activo.tagName));
+      const abierto = escribe && window.innerHeight - vv.height > 150;
+      if (abierto) raiz.dataset.teclado = "abierto";
+      else delete raiz.dataset.teclado;
+    };
+    vv.addEventListener("resize", medir);
+    document.addEventListener("focusin", medir);
+    document.addEventListener("focusout", medir);
+    return () => {
+      vv.removeEventListener("resize", medir);
+      document.removeEventListener("focusin", medir);
+      document.removeEventListener("focusout", medir);
+      delete raiz.dataset.teclado;
+    };
+  }, []);
+}
+
+/** Evento que abre la hoja «Más» desde fuera de la barra (boton «Más» de la cabecera movil ds3). */
+export const MAS_ABRIR_EVENTO = "atiende:mas:abrir";
+
+/** Maximo de destinos curados de la barra; despues van «Preguntar» (solo ds3, si el rol tiene chat de datos) y "Mas" (spec UNI-1 §5.2). */
 export const BOTTOM_NAV_MAX_DESTINOS = 4;
 
 function rutaCoincide(pathname: string, to: string, end?: boolean): boolean {
@@ -55,9 +98,15 @@ const claseTituloGrupo = "mb-1.5 px-2.5 py-1 font-mono text-2xs uppercase tracki
  * (el mismo arbol del Sidebar de escritorio, sin curar destinos a ojo). El estado activo es color +
  * negrita + `aria-current="page"`, nunca color solo. z-40: queda bajo los overlays (z-50) y el skip link (z-60).
  */
-export function BottomNav({ items, moreSections, pie }: BottomNavProps) {
+export function BottomNav({ items, moreSections, pie, cuenta, preguntar }: BottomNavProps) {
   const [masAbierto, setMasAbierto] = useState(false);
   const t = useT(shell);
+  useTecladoAbierto();
+  useEffect(() => {
+    const abrir = () => setMasAbierto(true);
+    window.addEventListener(MAS_ABRIR_EVENTO, abrir);
+    return () => window.removeEventListener(MAS_ABRIR_EVENTO, abrir);
+  }, []);
   const { pathname } = useLocation();
   const destinos = items.slice(0, BOTTOM_NAV_MAX_DESTINOS);
   const hayMas = Boolean(moreSections && moreSections.length > 0);
@@ -71,12 +120,12 @@ export function BottomNav({ items, moreSections, pie }: BottomNavProps) {
   return (
     <nav
       aria-label={t("shell.navMovil")}
-      className="md:hidden fixed inset-x-0 bottom-0 z-40 border-t border-border bg-card safe-area-bottom pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]"
+      className="ds3-barra-inferior md:hidden fixed inset-x-0 bottom-0 z-40 border-t border-border bg-card safe-area-bottom pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]"
     >
       <ul className="flex">
         {destinos.map((item) => (
           <li key={item.to} className="min-w-0 flex-1">
-            <NavLink to={item.to} end={item.end} className={({ isActive }) => cn(claseDestino, isActive ? "text-primary" : "text-muted-foreground")}>
+            <NavLink to={item.to} end={item.end} className={({ isActive }) => cn("ds3-barra-destino", claseDestino, isActive ? "text-primary" : "text-muted-foreground")}>
               {({ isActive }) => (
                 <>
                   <item.icon aria-hidden="true" className="size-[22px]" strokeWidth={isActive ? 2.25 : 1.75} />
@@ -91,6 +140,18 @@ export function BottomNav({ items, moreSections, pie }: BottomNavProps) {
             </NavLink>
           </li>
         ))}
+        {preguntar && (
+          <li hidden className="ds3-solo ds3-barra-preguntar min-w-0 flex-1">
+            <NavLink to={preguntar.to} data-testid="barra-preguntar" className={({ isActive }) => cn("ds3-barra-destino", claseDestino, isActive ? "text-primary" : "text-muted-foreground")}>
+              {({ isActive }) => (
+                <>
+                  <MessageCircle aria-hidden="true" className="size-[22px]" strokeWidth={isActive ? 2.25 : 1.75} />
+                  <span className={cn("max-w-full truncate px-1 text-xs", isActive ? "font-semibold" : "font-medium")}>Preguntar</span>
+                </>
+              )}
+            </NavLink>
+          </li>
+        )}
         {hayMas && (
           <li className="min-w-0 flex-1">
             <button
@@ -99,7 +160,8 @@ export function BottomNav({ items, moreSections, pie }: BottomNavProps) {
               aria-haspopup="dialog"
               aria-expanded={masAbierto}
               aria-label={masConAvisos ? t("shell.masConAvisos") : undefined}
-              className={cn("w-full", claseDestino, masActivo ? "text-primary" : "text-muted-foreground")}
+              data-activo={masActivo ? "" : undefined}
+              className={cn("ds3-barra-destino ds3-barra-mas w-full", claseDestino, masActivo ? "text-primary" : "text-muted-foreground")}
             >
               <Ellipsis aria-hidden="true" className="size-[22px]" strokeWidth={masActivo ? 2.25 : 1.75} />
               <span className={cn("max-w-full truncate px-1 text-xs", masActivo ? "font-semibold" : "font-medium")}>{t("shell.mas")}</span>
@@ -112,7 +174,7 @@ export function BottomNav({ items, moreSections, pie }: BottomNavProps) {
         <Sheet open={masAbierto} onOpenChange={setMasAbierto}>
           <SheetContent
             side="bottom"
-            className="max-h-[80dvh] overflow-y-auto rounded-t-2xl bg-card px-4 pt-6 pb-[calc(2rem+var(--safe-area-bottom))]"
+            className="ds3-hoja-mas max-h-[80dvh] overflow-y-auto rounded-t-2xl bg-card px-4 pt-6 pb-[calc(2rem+var(--safe-area-bottom))]"
           >
             <SheetHeader className="mb-2 pr-11">
               <SheetTitle>{t("shell.masSecciones")}</SheetTitle>
@@ -150,10 +212,44 @@ export function BottomNav({ items, moreSections, pie }: BottomNavProps) {
                 </div>
               </div>
             )}
+            {cuenta ? <BloqueCuentaMas cuenta={cuenta} /> : null}
           </SheetContent>
         </Sheet>
       )}
     </nav>
+  );
+}
+
+/** ds3: pie de la hoja «Más» = el pie del sidebar (tema e idioma a ancho completo, tarjeta de cuenta y «Salir» visible). Oculto sin la bandera. */
+function BloqueCuentaMas({ cuenta }: { cuenta: NonNullable<BottomNavProps["cuenta"]> }) {
+  const { user, onLogout, loggingOut = false } = cuenta;
+  const nombre = user?.nombre?.trim() || user?.email || "";
+  const rol = user?.rolEtiqueta ?? user?.rol;
+  return (
+    <div hidden data-testid="mas-cuenta" className="ds3-solo ds3-hoja-mas-cuenta mt-3 border-t border-border pt-3">
+      <div className="ds3-hoja-mas-ajustes flex flex-col gap-2">
+        <ThemeSelector />
+        <SelectorIdioma />
+      </div>
+      <div className="ds3-cuenta mt-3 flex items-center gap-2 rounded-xl border border-border bg-card p-2">
+        <span aria-hidden="true" className="ds3-monograma flex size-7 shrink-0 items-center justify-center rounded-full bg-primary text-eyebrow font-semibold text-primary-foreground">
+          {(nombre.charAt(0) || "A").toUpperCase()}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-ui font-medium">{nombre || "Sin sesión"}</span>
+          {rol ? <span className="block truncate text-2xs uppercase text-faint">{rol}</span> : null}
+        </span>
+        <button
+          type="button"
+          onClick={onLogout}
+          disabled={loggingOut}
+          className="ds3-hoja-mas-salir inline-flex h-11 shrink-0 items-center gap-1.5 rounded-lg border border-border px-3 text-ui font-medium text-foreground-2"
+        >
+          <LogOut aria-hidden="true" className="size-4" strokeWidth={1.75} />
+          {loggingOut ? "Saliendo…" : "Salir"}
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -197,6 +293,42 @@ function PildoraCuenta({ pildora, onNavegar }: { pildora: SidebarPiePildora; onN
   );
 }
 
+export interface CampanaMovilProps {
+  /** Pagina de notificaciones de la consola. */
+  readonly to: string;
+  /** Conteo real de sin leer; nunca inventar un numero (omitir si no hay dato). */
+  readonly contador?: number;
+  /** Hay avisos sin leer pero no se conoce el numero: punto sin cifra. */
+  readonly hayNoLeidas?: boolean;
+}
+
+/**
+ * ds3 (decision de Omar 7-nov-2026, reemplaza «encabezado movil sin campana»): campana de 44 x 44 en la cabecera movil, entre el
+ * selector y el menu de cuenta, con contador de sin leer. Enlace a la pagina de notificaciones. Sin la bandera existe oculta.
+ */
+export function CampanaMovil({ to, contador, hayNoLeidas = false }: CampanaMovilProps) {
+  const n = typeof contador === "number" && contador > 0 ? contador : 0;
+  const etiqueta = n > 0 ? `Notificaciones: ${n} sin leer` : hayNoLeidas ? "Notificaciones: hay avisos sin leer" : "Notificaciones";
+  return (
+    <NavLink
+      hidden
+      to={to}
+      aria-label={etiqueta}
+      data-testid="movil-campana"
+      className="ds3-solo ds3-movil-campana relative h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border bg-card text-foreground"
+    >
+      <Bell aria-hidden="true" className="size-5" strokeWidth={1.75} />
+      {n > 0 ? (
+        <span aria-hidden="true" data-testid="movil-campana-contador" className="ds3-movil-campana-contador">
+          {n > 99 ? "99+" : n}
+        </span>
+      ) : hayNoLeidas ? (
+        <span aria-hidden="true" data-testid="movil-campana-punto" className="ds3-movil-campana-punto" />
+      ) : null}
+    </NavLink>
+  );
+}
+
 export interface MobileHeaderTitulo {
   /** Icono de 15 px ya armado. */
   readonly icon: ReactNode;
@@ -224,14 +356,14 @@ export function MobileHeader({
   return (
     <div
       data-testid="mobile-header"
-      className="md:hidden fixed inset-x-0 top-0 z-40 bg-card safe-area-top pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]"
+      className="ds3-movil-cabecera md:hidden fixed inset-x-0 top-0 z-40 bg-card safe-area-top pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]"
     >
-      <header className="md:hidden flex min-h-12 items-center justify-between border-b border-border px-4">
+      <header className="ds3-movil-cabecera-fila md:hidden flex min-h-12 items-center justify-between border-b border-border px-4">
         {title}
         {action}
       </header>
       {pagina && (
-        <div className="flex h-8 items-center gap-2 border-b border-border px-4 text-ui font-medium text-foreground">
+        <div className="ds3-movil-titulo flex h-8 items-center gap-2 border-b border-border px-4 text-ui font-medium text-foreground">
           {pagina.icon}
           <p
             data-testid="mobile-pagina-titulo"

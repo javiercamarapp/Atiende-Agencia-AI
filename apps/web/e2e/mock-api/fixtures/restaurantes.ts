@@ -92,7 +92,9 @@ const BLOQUE_VENTAS = {
 };
 const TEXTO_VENTAS = "En los últimos 7 días vendiste $18,450 MXN en 96 pedidos.";
 const FUENTE_VENTAS = { tool: "ventas_por_dia", source: "Pedidos completados", periodLabel: "últimos 7 días", scopeLabel: "todas tus sucursales" };
-const conversacionesMock = (p: { estado: { obtener<T>(k: string, s: () => T): T } }) => p.estado.obtener<ConversacionMock[]>("rest.copiloto.conversaciones", () => []);
+// Como la API real (RLS de 0041 + filtro por usuario y organizacion): cada persona ve SOLO sus conversaciones.
+const conversacionesMock = (p: { estado: { obtener<T>(k: string, s: () => T): T }; persona: { id: string } | null }) =>
+  p.estado.obtener<ConversacionMock[]>(`rest.copiloto.conversaciones:${p.persona?.id ?? "anonimo"}`, () => []);
 
 
 // ---- Comandas al POS (captura asistida) y cartera de clientes: estado mutable por escenario --------------------------------------------------

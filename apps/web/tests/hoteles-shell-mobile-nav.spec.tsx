@@ -15,6 +15,7 @@ import { HotelesShell } from "../src/verticals/hoteles/HotelesShell.tsx";
 import type { PropertyOption } from "../src/verticals/hoteles/lib/discovery-client.ts";
 import { click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 import { installMatchMediaStub, installMemoryLocalStorage } from "./test-utils/memory-storage.ts";
+import { afirmarCampanaMovil } from "./test-utils/menu-cuenta-movil.ts";
 import { abrirCategoria, categoriasAbiertas, categoriasSidebar, linksSidebar, tarjetaUsuario } from "./test-utils/sidebar-estructura.ts";
 import { elegirValor, etiquetasDe, prepararJsdomParaRadix, valorDe } from "./test-utils/seleccionar.tsx";
 
@@ -172,10 +173,11 @@ describe("HotelesShell — nav móvil", () => {
     expect([...root.querySelectorAll("a")].some((a) => a.textContent?.includes("Pregúntale a tus datos"))).toBe(false);
   });
 
-  it("el encabezado móvil va sin campana ni chat; el menú de cuenta conserva cerrar sesión (campana y chat viven en Más > Cuenta)", async () => {
+  it("el encabezado móvil lleva la campana (decisión de Omar 7-nov-2026) y no el chat; el menú de cuenta conserva cerrar sesión", async () => {
     rendered = await renderShell();
     const mobileHeader = [...rendered.container.querySelectorAll("header")].find((h) => h.className.includes("md:hidden"))!;
-    expect(mobileHeader.querySelector('[aria-label^="Notificaciones"]'), "sin campana en el encabezado movil").toBeNull();
+    afirmarCampanaMovil(mobileHeader);
+    expect(mobileHeader.textContent).not.toContain("Pregúntale a tus datos");
     click(mobileHeader.querySelector('button[aria-label="Abrir menú de cuenta"]')!);
     const hoja = document.body.querySelector('[role="dialog"]')!;
     expect(hoja.textContent).not.toContain("Pregúntale a tus datos");

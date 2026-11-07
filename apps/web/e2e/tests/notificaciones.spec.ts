@@ -35,8 +35,10 @@ for (const { objetivo, destino } of CONSOLAS) {
     test("el punto rojo se enciende con avisos, se apaga al leerlos y vuelve al llegar uno nuevo", async ({ page, iniciarSesion, mock, vigilante }) => {
       await iniciarSesion(objetivo, objetivo === "superadmin" ? undefined : "owner");
       await afirmarPantallaSana(page, `${objetivo}: aterrizaje`);
-      // Ni el encabezado de escritorio ni el movil traen campana, chat ni fecha.
-      await expect(page.getByTestId("barra-pagina").or(page.getByTestId("mobile-header")).locator('[aria-label^="Notificaciones"]')).toHaveCount(0);
+      // El encabezado de escritorio no trae campana, chat ni fecha. Decision de Omar 7-nov-2026: la cabecera movil SI lleva la campana, pero
+      // es solo-ds3 (sin la bandera existe oculta); estas pruebas corren con el diseno actual.
+      await expect(page.getByTestId("barra-pagina").locator('[aria-label^="Notificaciones"]')).toHaveCount(0);
+      await expect(page.getByTestId("mobile-header").locator('[aria-label^="Notificaciones"]:visible')).toHaveCount(0);
       const pildora = sidebar(page).getByRole("link", { name: "Notificaciones" });
       const punto = pildora.locator('[data-testid="pildora-indicador"]');
 
