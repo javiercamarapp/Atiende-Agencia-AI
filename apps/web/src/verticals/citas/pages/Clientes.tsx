@@ -35,29 +35,49 @@ import { formatDateTime } from "../lib/format.ts";
 import type { CitasShellContext } from "../CitasShell.tsx";
 
 const PAGE_SIZE = 20;
+/** Espera tras la ultima tecla antes de pedir la busqueda: cada tecla disparaba una peticion (y las respuestas podian llegar desordenadas). */
+export const BUSQUEDA_DEBOUNCE_MS = 300;
 
 export function ClientesListPage({ apiBaseUrl, token, propertyId, orgSlug }: CitasShellContext) {
   const [search, setSearch] = useState("");
+  // Lo que se esta buscando DE VERDAD (`search` con debounce).
+  const [query, setQuery] = useState("");
   const [offset, setOffset] = useState(0);
   const [customers, setCustomers] = useState<readonly CustomerSummary[] | null>(null);
   const [total, setTotal] = useState(0);
   const [nextOffset, setNextOffset] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [intento, setIntento] = useState(0);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setQuery(search);
+      setOffset(0);
+    }, BUSQUEDA_DEBOUNCE_MS);
+    return () => clearTimeout(t);
+  }, [search]);
 
   useEffect(() => {
     let cancelado = false;
-    fetchCustomers(fetch, apiBaseUrl, token, propertyId, { limit: PAGE_SIZE, offset, search: search || undefined })
+    // Un aviso de una carga anterior no se queda pegado cuando la siguiente responde bien (ni mientras se reintenta).
+    setError(null);
+    fetchCustomers(fetch, apiBaseUrl, token, propertyId, { limit: PAGE_SIZE, offset, search: query || undefined })
       .then((page) => {
         if (cancelado) return;
         setCustomers(page.items);
         setTotal(page.total);
         setNextOffset(page.nextOffset);
       })
-      .catch((err: unknown) => !cancelado && setError(err instanceof Error ? err.message : "No se pudieron cargar los clientes."));
+      .catch((err: unknown) => {
+        if (cancelado) return;
+        // Sin la lista de otra busqueda bajo el error: se muestra solo, con su Reintentar.
+        setCustomers(null);
+        setError(err instanceof Error ? err.message : "No se pudieron cargar los clientes.");
+      });
     return () => {
       cancelado = true;
     };
-  }, [apiBaseUrl, token, propertyId, offset, search]);
+  }, [apiBaseUrl, token, propertyId, offset, query, intento]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -68,23 +88,14 @@ export function ClientesListPage({ apiBaseUrl, token, propertyId, orgSlug }: Cit
             Buscar cliente
           </Label>
           <Search aria-hidden className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            id="citas-clientes-buscar"
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setOffset(0);
-            }}
-            placeholder="Buscar por nombre o teléfono…"
-            className="pl-9"
-          />
+          <Input id="citas-clientes-buscar" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por nombre o teléfono…" className="pl-9" />
         </div>
       </header>
 
-      {error && <EstadoError mensaje={error} />}
+      {error && <EstadoError mensaje={error} onReintentar={() => setIntento((n) => n + 1)} />}
       {!customers && !error && <EstadoCargando etiqueta="Cargando clientes…" />}
       {customers && customers.length === 0 && (
-        <EstadoVacio icon={Users} mensaje={search ? "Ningún cliente coincide con esa búsqueda." : "Este negocio todavía no tiene clientes."} />
+        <EstadoVacio icon={Users} mensaje={query ? "Ningún cliente coincide con esa búsqueda." : "Este negocio todavía no tiene clientes."} />
       )}
 
       {customers && customers.length > 0 && (

@@ -29,7 +29,9 @@ import {
   AppointmentForbiddenError,
   AppointmentNotFoundError,
   AppointmentValidationError,
+  canonicalizarTelefonoCitas,
   computeCitasResumen,
+  enrollInWaitlist,
   createAppointmentFromPanel,
   DEFAULT_LISTA_ESPERA_LIMIT,
   MAX_LISTA_ESPERA_LIMIT,
@@ -1031,6 +1033,7 @@ export function citasAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     readonly customer_email?: unknown;
     readonly starts_at?: unknown;
     readonly notes?: unknown;
+    readonly idempotency_key?: unknown;
   }
 
   // ---- Fase 12 — hallazgo de auditoría (ALTO, "Staff no puede crear citas
@@ -1055,10 +1058,15 @@ export function citasAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const startsAt = requireNonEmptyString(raw.starts_at, "starts_at", 40);
     if (Number.isNaN(Date.parse(startsAt))) throw Errors.validation('starts_at: se esperaba una fecha ISO 8601 válida.');
     const notes = optionalNonEmptyString(raw.notes, "notes", 2000);
+    // Llave de idempotencia del formulario: un reintento tras perder la respuesta devuelve la misma cita en vez de un 409 contra la propia cita.
+    const idempotencyKey = optionalNonEmptyString(raw.idempotency_key, "idempotency_key", 100);
 
     try {
       const appointment = await createAppointmentFromPanel(citasRepo, {
         organizationId,
+        // La sucursal de la RUTA: el proveedor debe ser de ella (o no tener sucursal asignada).
+        propertyId: c.req.param("propertyId"),
+        ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
         providerId,
         serviceId,
         customerName,
@@ -1092,9 +1100,15 @@ export function citasAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const providerId = c.req.query("provider_id") || undefined;
     const limit = parsePositiveInt(c.req.query("limit"), DEFAULT_APPOINTMENTS_LIMIT, DEFAULT_APPOINTMENTS_LIMIT);
 
-    const appointments = await citasRepo.listAppointmentsInRange(organizationId, from, to, providerId, limit);
+    // Solo la sucursal de la ruta (mas las de proveedores sin sucursal asignada). Se pide UNA fila de mas para saber si el tope recorto el rango: el cliente
+    // recibe `truncated` + `next_from` (primer horario omitido) en vez de perder en silencio las citas de los ultimos dias del mes.
+    const filas = await citasRepo.listAppointmentsInRange(organizationId, from, to, providerId, limit + 1, c.req.param("propertyId"));
+    const truncated = filas.length > limit;
+    const appointments = truncated ? filas.slice(0, limit) : filas;
     const enriched = await enrichAppointments(citasRepo, organizationId, appointments);
-    return c.json({ appointments: enriched });
+    // Zona horaria del NEGOCIO (la de esta sucursal): el panel pinta las horas y arma el alta manual con ella, no con la del navegador de quien mira.
+    const timezone = resolverZonaHorariaNegocio(await citasRepo.findPropertyTimezone(c.req.param("propertyId"), organizationId));
+    return c.json({ appointments: enriched, truncated, next_from: truncated ? filas[limit]!.startsAt : null, timezone });
   });
 
   // ---- C-05 -- Resumen: citas de hoy/semana, pendientes por confirmar, no-shows y clientes
@@ -1105,7 +1119,7 @@ export function citasAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const organizationId = c.get("organizationId");
     const citasRepo = deps.citasRepo(c.get("db"));
     const timeZone = resolverZonaHorariaNegocio(await citasRepo.findPropertyTimezone(c.req.param("propertyId"), organizationId));
-    const r = await computeCitasResumen(citasRepo, organizationId, timeZone);
+    const r = await computeCitasResumen(citasRepo, organizationId, timeZone, new Date(), c.req.param("propertyId"));
     return c.json({
       timezone: r.timezone,
       generated_at: r.generatedAt,
@@ -1196,6 +1210,68 @@ export function citasAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
         .filter((row) => !serviceId || row.serviceId === null || row.serviceId === serviceId),
     );
     return c.json({ waitlist: filtered.map((row, i) => serializeWaitlistCandidate(row, i + 1)) });
+  });
+
+  interface WaitlistEnrollBody {
+    readonly customer_name?: unknown;
+    readonly customer_phone?: unknown;
+    readonly provider_id?: unknown;
+    readonly service_id?: unknown;
+    readonly preferred_date_from?: unknown;
+    readonly preferred_date_to?: unknown;
+    readonly preferred_time_window?: unknown;
+  }
+
+  // ---- QA R1 features-12 -- INSCRIBIR a un cliente en la lista de espera desde el panel (antes solo existia la lectura y el broadcast: nadie podia anotarse,
+  // asi que el aviso al liberar un horario nunca tenia candidatos). Misma regla que el agente de WhatsApp/voz (`enrollInWaitlist`): idempotente (una anotacion
+  // activa identica se devuelve tal cual, 200) y con tope de anotaciones activas por telefono (409). Mismo guard que el resto del archivo
+  // (requirePropertyMembership, cualquier miembro); la politica de RLS de staff de `citas.appointment_waitlist` (003) es la que autoriza el INSERT. ----
+  app.post("/v1/citas/properties/:propertyId/waitlist", async (c) => {
+    const organizationId = c.get("organizationId");
+    const citasRepo = deps.citasRepo(c.get("db"));
+    const raw = await readJsonCapped<WaitlistEnrollBody>(c.req.raw, 4 * 1024);
+    const customerPhoneCrudo = requireNonEmptyString(raw.customer_phone, "customer_phone", 32);
+    // Misma llave que el agente, la voz y las citas del panel (ultimos 10 digitos): el aviso al liberar un horario sale a ESE telefono y queda en la conversacion real del cliente.
+    const customerPhone = canonicalizarTelefonoCitas(customerPhoneCrudo);
+    if (!customerPhone) throw Errors.validation("customer_phone: no es un número de teléfono válido.");
+    const customerName = optionalNonEmptyString(raw.customer_name, "customer_name", 160);
+    const providerId = optionalNonEmptyString(raw.provider_id, "provider_id", 100);
+    const serviceId = optionalNonEmptyString(raw.service_id, "service_id", 100);
+    const preferredDateFrom = optionalNonEmptyString(raw.preferred_date_from, "preferred_date_from", 10);
+    const preferredDateTo = optionalNonEmptyString(raw.preferred_date_to, "preferred_date_to", 10);
+    const preferredTimeWindow = optionalNonEmptyString(raw.preferred_time_window, "preferred_time_window", 20);
+    try {
+      const { created, entry } = await enrollInWaitlist(citasRepo, {
+        organizationId,
+        customerPhone,
+        propertyId: c.req.param("propertyId"),
+        customerName: customerName ?? null,
+        providerId: providerId ?? null,
+        serviceId: serviceId ?? null,
+        preferredDateFrom: preferredDateFrom ?? null,
+        preferredDateTo: preferredDateTo ?? null,
+        preferredTimeWindow: preferredTimeWindow ?? null,
+      });
+      if (created) {
+        await citasRepo.registrarAuditoria({
+          organizationId,
+          actorUserId: c.get("userId"),
+          action: "lista_espera.inscrita",
+          entityType: "lista_espera",
+          entityId: entry.id,
+          campo: `providerId=${providerId ?? "cualquiera"} serviceId=${serviceId ?? "cualquiera"}`,
+          antes: null,
+          despues: `franja=${entry.preferredTimeWindow}`,
+        });
+      }
+      const fila = sortWaitlistByPosition(await citasRepo.loadLiveWaitlistCandidates(organizationId)).findIndex((r) => r.id === entry.id);
+      return c.json({ waitlist_entry: serializeWaitlistCandidate(entry, fila + 1), created }, created ? 201 : 200);
+    } catch (err) {
+      if (err instanceof AppointmentConflictError) throw Errors.conflict(err.message);
+      if (err instanceof AppointmentNotFoundError) throw Errors.validation(err.message);
+      if (err instanceof AppointmentValidationError) throw Errors.validation(err.message);
+      throw err;
+    }
   });
 
   interface WaitlistBroadcastBody {

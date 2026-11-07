@@ -3,7 +3,7 @@
 // se queda sin aviso y ninguna recibe dos. El "reloj" es el argumento `now` de `runConfirmacionCitaCore` (el unico
 // caller real lo llama con `new Date()`), nunca el reloj del host.
 import { randomUUID } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { cancelAppointment, createAppointment } from "../src/appointments.ts";
 import { zonedTimeToUtc } from "../src/availability.ts";
 import { InMemoryCitasRepository } from "../src/in-memory-repository.ts";
@@ -11,6 +11,15 @@ import type { ReminderCandidateRow } from "../src/repository.ts";
 import { runConfirmacionCitaCore } from "../src/reminders.ts";
 import { MENSAJES_CONFIG_POR_OMISION, horaLocal } from "../src/whatsapp/message-config.ts";
 import { buildCitasFixture } from "./fixtures.ts";
+
+// El guard "ese horario ya paso" usa el reloj real: las fechas fijas de este archivo (septiembre de 2026 / 2027) se evaluan con un reloj fijo anterior a ellas.
+beforeAll(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-09-01T00:00:00.000Z"));
+});
+afterAll(() => {
+  vi.useRealTimers();
+});
 
 const MIN = 60_000;
 const HORA = 60 * MIN;

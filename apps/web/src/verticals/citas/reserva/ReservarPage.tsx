@@ -89,8 +89,11 @@ function Flujo({ cliente, catalogo, onNoListo }: { cliente: ReturnType<typeof cr
   const [creada, setCreada] = useState<{ cita: CitaCreada; servicio: string; profesional: string; zona: string } | null>(null);
   const [recarga, setRecarga] = useState(0);
   const claveIdempotencia = useRef<string | null>(null);
-
   const servicio = catalogo.servicios.find((s) => s.id === servicioId) ?? null;
+  // Cambiar servicio, horario o datos es OTRA reserva: llave nueva (la misma llave con datos distintos el servidor la rechaza).
+  useEffect(() => {
+    claveIdempotencia.current = null;
+  }, [servicio?.id, horario?.providerId, horario?.startsAt, form.nombre, form.telefono, form.correo]);
   const profesionales = useMemo(() => catalogo.profesionales.filter((p) => servicioId !== null && p.servicioIds.includes(servicioId)), [catalogo, servicioId]);
 
   // Horarios del dia elegido (reales: el servidor descuenta citas y bloqueos). Se recarga tras un 409.
@@ -146,7 +149,10 @@ function Flujo({ cliente, catalogo, onNoListo }: { cliente: ReturnType<typeof cr
       const cita = await cliente.reservar({ serviceId: servicio.id, providerId: horario.providerId, startsAt: horario.startsAt, nombre: form.nombre, telefono: form.telefono, correo: form.correo, idempotencyKey: claveIdempotencia.current });
       setCreada({ cita, servicio: servicio.nombre, profesional: nombreProfesional(horario.providerId), zona });
     } catch (err) {
-      claveIdempotencia.current = null;
+      // La llave solo se descarta cuando el servidor DECIDIO (4xx: el intento quedo resuelto, p. ej. 409 horario ocupado). Con la red cortada o un 5xx el
+      // servidor pudo haber guardado la cita y perdido la respuesta: el reintento manda la MISMA llave y recibe la misma cita, no un 409 contra la propia
+      // cita ni una segunda reserva.
+      if (err instanceof ReservaError && err.status >= 400 && err.status < 500) claveIdempotencia.current = null;
       if (err instanceof ReservaError && err.status === 409) {
         // Horario tomado (o negocio que dejo de estar listo): se recargan los horarios reales y se explica.
         setAviso({ tono: "warning", texto: "Ese horario acaba de ocuparse. Elige otro de la lista actualizada." });

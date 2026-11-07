@@ -1,5 +1,5 @@
 // C-04 -- el recordatorio y los avisos de confirmacion/cancelacion/reagendado usan la configuracion editable.
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createAppointment } from "../src/appointments.ts";
 import { zonedTimeToUtc } from "../src/availability.ts";
 import { runConfirmacionCitaCore } from "../src/reminders.ts";
@@ -7,6 +7,15 @@ import { MENSAJES_CONFIG_POR_OMISION } from "../src/whatsapp/message-config.ts";
 import type { WhatsappMessageConfig } from "../src/whatsapp/message-config.ts";
 import { enqueueAppointmentWhatsappCore, tryEnqueueAppointmentWhatsapp } from "../src/whatsapp/message-send.ts";
 import { buildCitasFixture } from "./fixtures.ts";
+
+// El guard "ese horario ya paso" usa el reloj real: las fechas fijas de este archivo (septiembre de 2026 / 2027) se evaluan con un reloj fijo anterior a ellas.
+beforeAll(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-09-01T00:00:00.000Z"));
+});
+afterAll(() => {
+  vi.useRealTimers();
+});
 
 const NOW = new Date("2026-09-13T16:00:00.000Z"); // domingo 10:00 hora de Merida
 

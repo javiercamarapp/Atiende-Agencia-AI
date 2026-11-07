@@ -7,12 +7,21 @@
 // vez de Postgres real (mismo criterio que
 // domain-restaurantes/tests/integration/pedido-cliente-flow.spec.ts).
 import { randomUUID } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { cancelAppointmentFromPanel, createAppointment, rescheduleAppointment } from "../../src/appointments.ts";
 import { zonedTimeToUtc } from "../../src/availability.ts";
 import { AppointmentConflictError, AppointmentNotFoundError } from "../../src/errors.ts";
 import { notifyWaitlistAfterReschedule, runConfirmacionCitaCore } from "../../src/reminders.ts";
 import { buildCitasFixture } from "../fixtures.ts";
+
+// El guard "ese horario ya paso" usa el reloj real: las fechas fijas de este archivo (septiembre de 2026 / 2027) se evaluan con un reloj fijo anterior a ellas.
+beforeAll(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-09-01T00:00:00.000Z"));
+});
+afterAll(() => {
+  vi.useRealTimers();
+});
 
 describe("Flujo real: reservar -> reagendar (libera el hueco viejo) -> lista de espera avisada -> cancelar desde panel", () => {
   it("ejercita las 3 capas de anti-doble-reserva + el aviso best-effort de lista de espera + el cierre del ciclo de vida, todo con el mismo repositorio", async () => {

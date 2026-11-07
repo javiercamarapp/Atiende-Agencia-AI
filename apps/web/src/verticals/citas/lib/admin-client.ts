@@ -19,12 +19,12 @@
 // POST /auth/refresh con el refreshToken persistido bajo "atiende.citas.session" y
 // reintenta la request original una sola vez con el token nuevo. Firma SIN
 // CAMBIOS: cada caller de este vertical sigue llamándolos exactamente igual.
-import { apiBaseUrlFromRequestUrl, defaultBrowserStorage, withAuthRefresh, SessionExpiredError, readErrorMessage, readWriteErrorMessage } from "../../../lib/authed-fetch.ts";
+import { apiBaseUrlFromRequestUrl, defaultBrowserStorage, fetchWithTimeout, withAuthRefresh, RequestTimeoutError, SessionExpiredError, readErrorMessage, readWriteErrorMessage } from "../../../lib/authed-fetch.ts";
 import type { AuthedFetchContext } from "../../../lib/authed-fetch.ts";
 import { clearCitasSession, persistCitasSession, readPersistedCitasSession } from "./auth-client.ts";
 import type { LoginSession } from "./auth-client.ts";
 
-export { SessionExpiredError };
+export { RequestTimeoutError, SessionExpiredError };
 
 export class CitasAdminError extends Error {}
 
@@ -45,7 +45,7 @@ export function defaultAuthCtx(): AuthedFetchContext<LoginSession> {
 }
 
 export async function fetchJson<T>(fetchImpl: typeof fetch, url: string, token: string, authCtx: AuthedFetchContext<LoginSession> = defaultAuthCtx()): Promise<T> {
-  const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(url), authCtx, token, (t) => fetchImpl(url, { headers: { authorization: `Bearer ${t}` } }));
+  const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(url), authCtx, token, (t) => fetchWithTimeout(fetchImpl, url, { headers: { authorization: `Bearer ${t}` } }));
   if (!res.ok) {
     throw new CitasAdminError(await readErrorMessage(res, `No se pudo cargar ${url} (${res.status}).`));
   }
@@ -70,7 +70,7 @@ export async function sendJson<T>(
   authCtx: AuthedFetchContext<LoginSession> = defaultAuthCtx(),
 ): Promise<T> {
   const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(url), authCtx, token, (t) =>
-    fetchImpl(url, {
+    fetchWithTimeout(fetchImpl, url, {
       method,
       headers: { authorization: `Bearer ${t}`, "content-type": "application/json" },
       body: JSON.stringify(payload),
@@ -92,7 +92,7 @@ export async function deleteJson<T>(
   authCtx: AuthedFetchContext<LoginSession> = defaultAuthCtx(),
 ): Promise<T> {
   const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(url), authCtx, token, (t) =>
-    fetchImpl(url, { method: "DELETE", headers: { authorization: `Bearer ${t}` } }),
+    fetchWithTimeout(fetchImpl, url, { method: "DELETE", headers: { authorization: `Bearer ${t}` } }),
   );
   if (!res.ok) {
     throw new CitasAdminError(await readWriteErrorMessage(res, `No se pudo completar la solicitud a ${url} (${res.status}).`));

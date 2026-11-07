@@ -142,6 +142,31 @@ function notifySessionExpired(vertical: string): void {
   target.dispatchEvent(new CustomEvent<SessionExpiredEventDetail>(SESSION_EXPIRED_EVENT, { detail: { vertical } }));
 }
 
+/** Tope de espera de una peticion del panel: con la API colgada el panel se quedaba en "Cargando..." sin salida. */
+export const REQUEST_TIMEOUT_MS = 20_000;
+
+/** La peticion no respondio dentro de `REQUEST_TIMEOUT_MS`. */
+export class RequestTimeoutError extends Error {
+  constructor(message = "El servidor tardó demasiado en responder. Revisa tu conexión e inténtalo de nuevo.") {
+    super(message);
+    this.name = "RequestTimeoutError";
+  }
+}
+
+/** `fetchImpl(url, init)` con un AbortController: al vencer `timeoutMs` aborta y lanza `RequestTimeoutError` (cualquier otro fallo de red sigue igual). */
+export async function fetchWithTimeout(fetchImpl: typeof fetch, url: string, init: RequestInit = {}, timeoutMs: number = REQUEST_TIMEOUT_MS): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetchImpl(url, { ...init, signal: controller.signal });
+  } catch (err) {
+    if (controller.signal.aborted) throw new RequestTimeoutError();
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function looksLikeFreshSession(value: unknown): value is AuthedSession {
   if (!value || typeof value !== "object") return false;
   const candidate = value as Record<string, unknown>;
@@ -154,7 +179,7 @@ function looksLikeFreshSession(value: unknown): value is AuthedSession {
  * falló. Nunca lanza: el llamador (`withAuthRefresh`) decide qué hacer con `null`. */
 async function tryRefresh<S extends AuthedSession>(fetchImpl: typeof fetch, apiBaseUrl: string, refreshToken: string, refreshPath: string): Promise<S | null> {
   try {
-    const res = await fetchImpl(`${apiBaseUrl}${refreshPath}`, {
+    const res = await fetchWithTimeout(fetchImpl, `${apiBaseUrl}${refreshPath}`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ refreshToken }),
@@ -192,6 +217,64 @@ async function tryRefresh<S extends AuthedSession>(fetchImpl: typeof fetch, apiB
  *    `SessionExpiredError` — nunca deja una Response 401 "colgada" sin que algo se
  *    haya hecho con la sesión rota.
  */
+/** Nombre del evento que dispara este modulo en `globalThis` (window) cuando un refresh SALIO BIEN y la sesion persistida cambio de token: la UI que
+ * guardo el token en estado (useVerticalSession) lo relee para no seguir mandando el access token viejo ni revocar el refresh token viejo al cerrar sesion. */
+export const SESSION_REFRESHED_EVENT = "atiende:session-refreshed";
+
+export interface SessionRefreshedEventDetail {
+  readonly vertical: string;
+}
+
+function notifySessionRefreshed(vertical: string): void {
+  const target = globalThis as { dispatchEvent?: (event: Event) => boolean };
+  if (typeof target.dispatchEvent !== "function") return;
+  target.dispatchEvent(new CustomEvent<SessionRefreshedEventDetail>(SESSION_REFRESHED_EVENT, { detail: { vertical } }));
+}
+
+/**
+ * Refreshes EN VUELO, por (origen + ruta de refresh + refresh token): el servidor real rota el refresh token y lo revoca al primer uso, asi que N peticiones
+ * en paralelo con el access token vencido (la Agenda dispara 4 al montar) NO pueden refrescar cada una por su cuenta: una gana y las demas reciben 401,
+ * y ese 401 cerraba la sesion del staff a media tarea. Todas comparten UN refresh y reintentan con el token nuevo.
+ */
+const refreshesEnVuelo = new Map<string, Promise<unknown>>();
+
+async function refrescarCompartido<S extends AuthedSession>(fetchImpl: typeof fetch, apiBaseUrl: string, ctx: AuthedFetchContext<S>, previous: S): Promise<S | null> {
+  const refreshPath = ctx.refreshPath ?? "/auth/refresh";
+  const clave = `${apiBaseUrl}${refreshPath}\u0000${ctx.vertical}\u0000${previous.refreshToken}`;
+  const existente = refreshesEnVuelo.get(clave) as Promise<S | null> | undefined;
+  if (existente) return existente;
+  const nuevo = (async () => {
+    const refreshed = await tryRefresh<S>(fetchImpl, apiBaseUrl, previous.refreshToken, refreshPath);
+    if (refreshed) {
+      ctx.store.persist(refreshed);
+      notifySessionRefreshed(ctx.vertical);
+    }
+    return refreshed;
+  })().finally(() => {
+    refreshesEnVuelo.delete(clave);
+  });
+  refreshesEnVuelo.set(clave, nuevo);
+  return nuevo;
+}
+
+/**
+ * Ejecuta `makeRequest(currentToken)`. Si la respuesta NO es 401, la devuelve tal
+ * cual (caso normal — la inmensa mayoría de las llamadas). Si es 401:
+ *
+ * 1. Lee la sesión persistida de `ctx.store`. Si su access token YA es otro (otra
+ *    petición refrescó mientras esta volaba, o la pantalla guardó un token viejo),
+ *    reintenta UNA vez con ese token vigente, sin refrescar de nuevo. Si ese
+ *    reintento TAMBIÉN responde 401, sigue al paso 2 (refrescar o expirar).
+ * 2. Si no, refresca vía POST /auth/refresh COMPARTIENDO el refresh en vuelo con
+ *    cualquier otra petición que tenga el mismo refresh token (single-flight).
+ * 3. Si funciona: la sesión nueva completa ya quedó persistida (access token nuevo
+ *    Y refresh token nuevo) y se reintenta `makeRequest` una sola vez con el token
+ *    nuevo, sea cual sea su resultado (sin bucles: un segundo 401 se deja para el
+ *    manejo normal de "no-ok" del caller).
+ * 4. Si NO funciona (sin sesión que refrescar, refresh 401/400, o red caída):
+ *    limpia la sesión persistida, dispara `SESSION_EXPIRED_EVENT` y lanza
+ *    `SessionExpiredError`.
+ */
 export async function withAuthRefresh<S extends AuthedSession>(
   fetchImpl: typeof fetch,
   apiBaseUrl: string,
@@ -203,7 +286,13 @@ export async function withAuthRefresh<S extends AuthedSession>(
   if (first.status !== 401) return first;
 
   const previous = ctx.store.read();
-  const refreshed = previous ? await tryRefresh<S>(fetchImpl, apiBaseUrl, previous.refreshToken, ctx.refreshPath ?? "/auth/refresh") : null;
+  if (previous && previous.token !== currentToken) {
+    const retry = await makeRequest(previous.token);
+    // Si el token persistido tambien esta vencido (401), no se entrega ese 401 al caller: se refresca o se expira la sesion como en el caso normal.
+    if (retry.status !== 401) return retry;
+  }
+
+  const refreshed = previous ? await refrescarCompartido<S>(fetchImpl, apiBaseUrl, ctx, previous) : null;
 
   if (!refreshed) {
     ctx.store.clear();
@@ -211,7 +300,6 @@ export async function withAuthRefresh<S extends AuthedSession>(
     throw new SessionExpiredError();
   }
 
-  ctx.store.persist(refreshed);
   return makeRequest(refreshed.token);
 }
 

@@ -31,6 +31,7 @@ export const HERRAMIENTAS_MUNDO: readonly string[] = [
   "cancelar_cita",
   "reagendar_cita",
   "modificar_cita",
+  "anotar_lista_espera",
 ];
 
 export const CATALOGO: Readonly<Record<Negocio, { readonly nombre: string; readonly rubro: string; readonly servicios: readonly { id: string; name: string; duration_minutes: number; price_cents: number }[]; readonly proveedores: readonly { id: string; display_name: string; role_label: string }[] }>> = {
@@ -275,6 +276,12 @@ export class Mundo {
         c.service_id = nSvc;
         c.ends_at = new Date(new Date(c.starts_at).getTime() + duracionMs(this.caso.negocio, nSvc)).toISOString();
         return { appointment: aWire(c) };
+      }
+      case "anotar_lista_espera": {
+        const prov = typeof input.provider_id === "string" && input.provider_id.trim() ? input.provider_id : null;
+        const svc = typeof input.service_id === "string" && input.service_id.trim() ? input.service_id : null;
+        if ((prov && !cat.proveedores.some((p) => p.id === prov)) || (svc && !cat.servicios.some((s) => s.id === svc))) return { error: "Proveedor o servicio no encontrado." };
+        return { waitlist: { id: `wl-${this.nextId++}`, already_on_list: false } };
       }
       default:
         return { error: `Herramienta desconocida: ${nombre}` };

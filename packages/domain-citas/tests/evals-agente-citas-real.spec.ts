@@ -52,7 +52,7 @@ describe("conversacion y metricas con un llamador falso", () => {
     });
     expect(vistos[0]!.system).toContain("REGLAS DURAS");
     expect(vistos[0]!.system).toContain("Clinica Dental Sonrisa");
-    expect(vistos[0]!.tools).toHaveLength(8);
+    expect(vistos[0]!.tools).toHaveLength(9);
     expect(llamadas).toBe(7);
     expect(costoUsd).toBeCloseTo(0.07, 6);
     expect(evaluarCaso(traza).graders.find((g) => g.grader === "escribe_con_slot_real")?.ok).toBe(true);

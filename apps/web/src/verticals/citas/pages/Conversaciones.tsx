@@ -113,14 +113,16 @@ export function ConversacionesPage({ apiBaseUrl, token, propertyId }: CitasShell
 
       {error && <EstadoError titulo="Ocurrió un problema" mensaje={error} onReintentar={recargar} compacto />}
       {!error && data === null && <EstadoCargando variante="tarjeta" etiqueta="Cargando conversaciones…" />}
-      {!error && data && !data.disponible && (
+      {data && !data.disponible && (
         <EstadoVacio
           icon={MessageSquare}
           titulo="Conversaciones no disponibles aún"
           mensaje="La bandeja con atención humana se activa cuando se aplique la actualización pendiente de la base de datos. Mientras tanto el agente sigue respondiendo con normalidad."
         />
       )}
-      {!error && data?.disponible && (
+      {/* El grid y el hilo NO se desmontan cuando falla un refresco (boton Actualizar o el sondeo de 30 s): el error se muestra arriba y lo que el humano
+          escribia (nota o respuesta, justo en los handoffs de crisis) sigue ahi. */}
+      {data?.disponible && (
         <div className="grid gap-2.5 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
           <DataTable
             etiqueta="Conversaciones de WhatsApp"

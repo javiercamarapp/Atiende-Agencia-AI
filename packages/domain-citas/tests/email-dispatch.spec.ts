@@ -3,13 +3,22 @@
 // el comportamiento de lote de messaging-dispatcher/index.ts (la parte de
 // correo), sobre CitasRepository en vez de supabase-js. `sendEmailOutboxJob`
 // recibe `fetchImpl` inyectado (nunca toca la red real, nunca un mock global).
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createAppointment } from "../src/appointments.ts";
 import { tryEnqueueAppointmentEmail } from "../src/appointment-email-notifications.ts";
 import { zonedTimeToUtc } from "../src/availability.ts";
 import { dispatchPendingEmailJobs, MAX_EMAIL_DISPATCH_ATTEMPTS, sendEmailOutboxJob } from "../src/email-dispatch.ts";
 import type { EmailOutboxJobRow } from "../src/repository.ts";
 import { buildCitasFixture } from "./fixtures.ts";
+
+// El guard "ese horario ya paso" usa el reloj real: las fechas fijas de este archivo (septiembre de 2026 / 2027) se evaluan con un reloj fijo anterior a ellas.
+beforeAll(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-09-01T00:00:00.000Z"));
+});
+afterAll(() => {
+  vi.useRealTimers();
+});
 
 /** Lunes real dentro del horario 9-17h America/Merida que buildCitasFixture
  * siembra (ver fixtures.ts) — un slot real, nunca "ahora + 1h" (que puede caer
