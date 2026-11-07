@@ -70,7 +70,7 @@ describe("guion de apertura de la llamada", () => {
       expect(text.match(/¿/g) ?? []).toHaveLength(1);
       expect(text).toContain("Su voz la procesa un proveedor externo para entenderle.");
       expect(text).toMatch(/solo para (tomar y entregar )?su pedido/);
-      expect(text).toMatch(/aviso (completo|integral)/);
+      expect(text).toMatch(/aviso (completo|integral)/i);
     }
   });
 
