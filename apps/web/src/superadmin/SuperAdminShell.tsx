@@ -9,12 +9,12 @@
 // "Pregúntale a tus datos" del pie y el atajo; las notificaciones, con la pildora "Notificaciones" del pie). El shell es un LAYOUT (App.tsx lo monta una
 // sola vez para todas las rutas /superadmin/*), asi que el panel no se desmonta al navegar y conserva su
 // conversacion.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useLocation } from "react-router-dom";
 import { Bell, LayoutGrid, MessageCircle } from "lucide-react";
-import { VerticalShell, VerticalShellEstado } from "@atiende/ui";
-import type { BottomNavItem, SidebarPiePildora, SidebarSection } from "@atiende/ui";
+import { useT, VerticalShell, VerticalShellEstado } from "@atiende/ui";
+import type { BottomNavItem, SidebarPiePildora, SidebarSection, Traductor } from "@atiende/ui";
 import { logout } from "../lib/auth-client.ts";
 import { useNotifications } from "../lib/useNotifications.ts";
 import { clearSuperadminSession, readPersistedSuperadminSession } from "./lib/auth-client.ts";
@@ -33,15 +33,18 @@ export interface SuperAdminShellProps {
 }
 
 // Resumen arriba (raiz, sin cabecera) + las secciones de Likida con paginas reales (rutas.ts, fuente unica).
-const SECTIONS: SidebarSection[] = [
-  { title: "Resumen", siempreAbierto: true, items: [{ ...RESUMEN }, { ...COPILOTO }] },
-  ...SECCIONES.map((s) => ({ title: s.title, items: s.items.map((i) => ({ ...i })) })),
-];
+// i18n ES/EN: rutas.ts guarda el nombre canonico (`label`) y su `clave`; aqui se pinta `t(clave)` en el idioma de la consola.
+function construirSecciones(t: Traductor): SidebarSection[] {
+  return [
+    { title: t("nav.resumen"), siempreAbierto: true, items: [{ ...RESUMEN, label: t(RESUMEN.clave) }, { ...COPILOTO, label: t(COPILOTO.clave) }] },
+    ...SECCIONES.map((s) => ({ title: t(s.clave), items: s.items.map((i) => ({ ...i, label: t(i.clave) })) })),
+  ];
+}
 
-const PIE_BASE: SidebarPiePildora[] = PIE_SUPERADMIN.map((p) => ({ ...p }));
+const construirPie = (t: Traductor): SidebarPiePildora[] => PIE_SUPERADMIN.map((p) => ({ ...p, label: t(p.clave) }));
 
 /** Barra inferior móvil: los 4 destinos de uso diario; el 5.º lugar es "Más" (lo agrega `VerticalShell`) y lista TODAS las secciones. */
-const MOBILE_ITEMS: BottomNavItem[] = MOVIL_SUPERADMIN.map((i) => ({ ...i }));
+const construirMovil = (t: Traductor): BottomNavItem[] => MOVIL_SUPERADMIN.map((i) => ({ ...i, label: t(i.clave) }));
 
 export function SuperAdminShell({ apiBaseUrl, onRequireLogin, children }: SuperAdminShellProps) {
   const [session, setSession] = useState<LoginSession | null>(null);
@@ -49,6 +52,10 @@ export function SuperAdminShell({ apiBaseUrl, onRequireLogin, children }: SuperA
   const [resuelto, setResuelto] = useState(false);
   const [copilotoAbierto, setCopilotoAbierto] = useState(false);
   const { pathname } = useLocation();
+  const t = useT();
+  const SECTIONS = useMemo(() => construirSecciones(t), [t]);
+  const PIE_BASE = useMemo(() => construirPie(t), [t]);
+  const MOBILE_ITEMS = useMemo(() => construirMovil(t), [t]);
   // En la pagina completa del Copiloto el panel sobra (seria el mismo chat dos veces): ni boton, ni atajo, ni panel.
   const enPaginaCopiloto = pathname === RUTA_COPILOTO;
   const alternarCopiloto = useCallback(() => setCopilotoAbierto((v) => !v), []);
@@ -93,16 +100,17 @@ export function SuperAdminShell({ apiBaseUrl, onRequireLogin, children }: SuperA
   // existe; useNotifications ya tolera un token vacío (ver su cabecera).
   const notif = useNotifications(apiBaseUrl, session?.token ?? "");
 
-  if (!resuelto) return <VerticalShellEstado estado="cargando" mensaje="Cargando…" />;
+  if (!resuelto) return <VerticalShellEstado estado="cargando" mensaje={t("shell.cargando")} />;
   if (!session) return null; // onRequireLogin ya disparó la redirección
 
-  const user = { email: session.email, rol: loggingOut ? "Saliendo…" : "Superadmin", nombre: session.fullName, rolEtiqueta: loggingOut ? "Saliendo…" : "Superadmin" };
+  const rotuloRol = loggingOut ? t("shell.saliendo") : t("shell.superadmin");
+  const user = { email: session.email, rol: rotuloRol, nombre: session.fullName, rolEtiqueta: rotuloRol };
   // La campana del encabezado se quito: la pildora "Notificaciones" del pie (escritorio y "Mas" > "Cuenta" en movil) lleva el punto de sin leer.
   // El panel lateral del Copiloto (antes el boton "Pregúntale a tus datos" de la barra) se abre desde la pildora del pie (y con Cmd+J).
   const pie: SidebarPiePildora[] = [
     ...PIE_BASE,
-    { label: "Notificaciones", to: "/superadmin/notificaciones", icon: Bell, indicador: notif.hayNoLeidas },
-    ...(enPaginaCopiloto ? [] : [{ label: "Pregúntale a tus datos", onClick: alternarCopiloto, icon: MessageCircle, ariaControls: ID_PANEL_COPILOTO, ariaPressed: copilotoAbierto }]),
+    { label: t("nav.notificaciones"), to: "/superadmin/notificaciones", icon: Bell, indicador: notif.hayNoLeidas },
+    ...(enPaginaCopiloto ? [] : [{ label: t("nav.preguntaleATusDatos"), onClick: alternarCopiloto, icon: MessageCircle, ariaControls: ID_PANEL_COPILOTO, ariaPressed: copilotoAbierto }]),
   ];
 
   return (
@@ -114,7 +122,7 @@ export function SuperAdminShell({ apiBaseUrl, onRequireLogin, children }: SuperA
       user={user}
       onLogout={() => void handleLogout()}
       loggingOut={loggingOut}
-      header={{ icon: <LayoutGrid className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: "Consola de Atiende", resumenTo: "/superadmin" }}
+      header={{ icon: <LayoutGrid className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: t("shell.consolaAtiende"), resumenTo: "/superadmin" }}
       panelLateral={<CopilotoPanel abierto={copilotoAbierto && !enPaginaCopiloto} onCerrar={cerrarCopiloto} apiBaseUrl={apiBaseUrl} token={session.token} />}
     >
       <div className="grid min-w-0 gap-4">

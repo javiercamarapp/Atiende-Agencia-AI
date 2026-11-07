@@ -40,8 +40,8 @@ import {
   Wallet,
   Building2,
 } from "lucide-react";
-import { SelectorSucursal, VerticalShellEstado } from "@atiende/ui";
-import type { BottomNavItem, SidebarSection } from "@atiende/ui";
+import { SelectorSucursal, useT, VerticalShellEstado } from "@atiende/ui";
+import type { BottomNavItem, SidebarSection, Traductor } from "@atiende/ui";
 import { VerticalShellConectado } from "../../components/VerticalShellConectado.tsx";
 import { etiquetaRol } from "../../lib/roles.ts";
 import { useVerticalSession } from "../../lib/useVerticalSession.ts";
@@ -78,62 +78,62 @@ const COPILOTO_ROLES: ReadonlySet<string> = new Set(["admin_gestora", "contador"
  * como raíz sin título. Mismas rutas y etiquetas exactas que antes, solo reagrupadas (la agrupación original se inspiró en el
  * AdminSidebar de atiende-rentas-vacacionales standalone). "Plataforma" se omite: notificaciones, perfil y cierre de sesión ya
  * viven en el pie del Sidebar. Catálogo y Equipo se quedan en "Configuración": cada página gatea su contenido por rol. */
-function buildSections(orgSlug: string, canSeeCopiloto: boolean, canSeePrivacidad: boolean): SidebarSection[] {
+function buildSections(t: Traductor, orgSlug: string, canSeeCopiloto: boolean, canSeePrivacidad: boolean): SidebarSection[] {
   const ruta = (sufijo: string) => `/rentas/${orgSlug}${sufijo ? `/${sufijo}` : ""}`;
   return [
     {
-      title: "Resumen",
+      title: t("nav.resumen"),
       siempreAbierto: true,
       items: [
-        { to: ruta(""), label: "Resumen", icon: LayoutDashboard, end: true },
+        { to: ruta(""), label: t("nav.resumen"), icon: LayoutDashboard, end: true },
         // CHAT-10: el Copiloto ("Pregúntale a tus datos") va justo debajo de Resumen, como en las demás consolas.
-        ...(canSeeCopiloto ? [{ to: ruta("copiloto"), label: "Copiloto", icon: Sparkles }] : []),
-        { to: ruta("calendario"), label: "Calendario", icon: CalendarDays },
+        ...(canSeeCopiloto ? [{ to: ruta("copiloto"), label: t("nav.copiloto"), icon: Sparkles }] : []),
+        { to: ruta("calendario"), label: t("nav.calendario"), icon: CalendarDays },
       ],
     },
     {
-      title: "Operación",
+      title: t("nav.operacion"),
       items: [
-        { to: ruta("aprobaciones"), label: "Aprobaciones", icon: Inbox },
-        { to: ruta("mis-tareas"), label: "Mis tareas", icon: ClipboardList },
-        { to: ruta("plantillas"), label: "Plantillas", icon: MessageSquareText },
-        { to: ruta("acceso-huesped"), label: "Acceso al huésped", icon: KeyRound },
+        { to: ruta("aprobaciones"), label: t("nav.aprobaciones"), icon: Inbox },
+        { to: ruta("mis-tareas"), label: t("nav.misTareas"), icon: ClipboardList },
+        { to: ruta("plantillas"), label: t("nav.plantillas"), icon: MessageSquareText },
+        { to: ruta("acceso-huesped"), label: t("nav.accesoHuesped"), icon: KeyRound },
       ],
     },
     {
-      title: "Canales",
+      title: t("nav.canales"),
       items: [
-        { to: ruta("ical-sync"), label: "Sincronización iCal", icon: RefreshCcw },
-        { to: ruta("monitor-sync"), label: "Monitor de conflictos", icon: AlertTriangle },
+        { to: ruta("ical-sync"), label: t("nav.sincronizacionIcal"), icon: RefreshCcw },
+        { to: ruta("monitor-sync"), label: t("nav.monitorConflictos"), icon: AlertTriangle },
       ],
     },
     {
-      title: "Finanzas",
+      title: t("nav.finanzas"),
       items: [
-        { to: ruta("precios"), label: "Precios", icon: Tag },
-        { to: ruta("finanzas"), label: "Finanzas", icon: Wallet },
-        { to: ruta("reportes"), label: "Reportes", icon: BarChart3 },
+        { to: ruta("precios"), label: t("nav.precios"), icon: Tag },
+        { to: ruta("finanzas"), label: t("nav.finanzas"), icon: Wallet },
+        { to: ruta("reportes"), label: t("nav.reportes"), icon: BarChart3 },
       ],
     },
     {
-      title: "Configuración",
+      title: t("nav.configuracion"),
       items: [
         // Rn-19: alta y edición de propiedades, unidades y propietarios; Rn-20: invitar, rol y baja del equipo.
-        { to: ruta("catalogo"), label: "Catálogo", icon: Building2 },
-        { to: ruta("equipo"), label: "Equipo", icon: Users },
+        { to: ruta("catalogo"), label: t("nav.catalogo"), icon: Building2 },
+        { to: ruta("equipo"), label: t("nav.equipo"), icon: Users },
       ],
     },
     {
-      title: "Control",
+      title: t("nav.control"),
       items: [
         // Bitácora de auditoría del staff; AuditoriaPage gatea su propio contenido por admin_gestora.
-        { to: ruta("auditoria"), label: "Auditoría", icon: ClipboardCheck },
+        { to: ruta("auditoria"), label: t("nav.auditoria"), icon: ClipboardCheck },
         // Rn-07: solicitudes ARCO de rentas (admin_gestora) y privacidad de TODA la organización (ARCO de todos los verticales, retención, aviso versionado).
         // Solo admin_gestora: las dos páginas (y su RLS) bloquean a los demás roles, así que no se les ofrece la entrada.
         ...(canSeePrivacidad
           ? [
-              { to: ruta("privacidad"), label: "Privacidad", icon: Lock },
-              { to: ruta("privacidad-organizacion"), label: "Privacidad de la organización", icon: ShieldCheck },
+              { to: ruta("privacidad"), label: t("nav.privacidad"), icon: Lock },
+              { to: ruta("privacidad-organizacion"), label: t("nav.privacidadOrganizacion"), icon: ShieldCheck },
             ]
           : []),
       ],
@@ -144,13 +144,13 @@ function buildSections(orgSlug: string, canSeeCopiloto: boolean, canSeePrivacida
 /** Barra inferior móvil: los 4 destinos de uso diario en piso (incluido `Mis tareas`, único panel funcional del rol
  * `limpieza`); el 5.º lugar es "Más" (lo agrega `VerticalShell`) y lista TODAS las secciones de `buildSections` (hasta 16
  * destinos), de modo que Precios, Finanzas, iCal, Monitor, Acceso al huésped, Reportes y Auditoría siguen alcanzables. */
-function buildMobileItems(orgSlug: string): BottomNavItem[] {
+function buildMobileItems(t: Traductor, orgSlug: string): BottomNavItem[] {
   const base = `/rentas/${orgSlug}`;
   return [
-    { to: base, label: "Resumen", icon: LayoutDashboard, end: true },
-    { to: `${base}/calendario`, label: "Calendario", icon: CalendarDays },
-    { to: `${base}/mis-tareas`, label: "Mis tareas", icon: ClipboardList },
-    { to: `${base}/finanzas`, label: "Finanzas", icon: Wallet },
+    { to: base, label: t("nav.resumen"), icon: LayoutDashboard, end: true },
+    { to: `${base}/calendario`, label: t("nav.calendario"), icon: CalendarDays },
+    { to: `${base}/mis-tareas`, label: t("nav.misTareas"), icon: ClipboardList },
+    { to: `${base}/finanzas`, label: t("nav.finanzas"), icon: Wallet },
   ];
 }
 
@@ -178,14 +178,15 @@ export interface RentasShellProps {
 
 export function RentasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: RentasShellProps) {
   // Título de pestaña por vertical/organización. El hook va ANTES de los returns condicionales.
-  useDocumentTitle("Rentas", orgSlug);
+  const t = useT();
+  useDocumentTitle(t("shell.vertical.rentas"), orgSlug);
   const s = useVerticalSession({ adapter: RENTAS_SESSION, apiBaseUrl, orgSlug, onRequireLogin });
 
-  if (s.fase === "resolviendo") return <VerticalShellEstado estado="cargando" mensaje="Cargando…" />;
+  if (s.fase === "resolviendo") return <VerticalShellEstado estado="cargando" mensaje={t("shell.cargando")} />;
   if (s.fase === "sin-sesion") return null; // onRequireLogin ya disparó la redirección
   if (s.fase === "error") return <VerticalShellEstado estado="error" mensaje={s.error ?? undefined} onReintentar={s.reintentar} />;
-  if (s.fase === "cargando") return <VerticalShellEstado estado="cargando" mensaje="Cargando propiedades…" />;
-  if (s.fase === "vacio") return <VerticalShellEstado estado="vacio" mensaje="Esta organización todavía no tiene ninguna propiedad configurada." />;
+  if (s.fase === "cargando") return <VerticalShellEstado estado="cargando" mensaje={t("shell.cargandoPropiedades")} />;
+  if (s.fase === "vacio") return <VerticalShellEstado estado="vacio" mensaje={t("shell.vacio.sinPropiedad")} />;
 
   const { session, branches, activeBranch, propertyId } = s;
   const org = session.organizations.find((o) => o.slug === orgSlug);
@@ -199,7 +200,7 @@ export function RentasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: R
   // Selector real de propiedad: lista solo con 2+ (el caso base de este vertical); con una sola se muestra su nombre. Va
   // en el bloque de cuenta del Sidebar (escritorio) y en el MobileHeader, para no perder la función en viewport angosto.
   const propiedadSelector = (idSelect: string) =>
-    <SelectorSucursal id={idSelect} etiqueta="Propiedad" valor={propertyId} onCambia={s.selectBranch} opciones={branches.map((b) => ({ valor: b.propertyId, etiqueta: b.nombre }))} />;
+    <SelectorSucursal id={idSelect} etiqueta={t("shell.selector.propiedad")} valor={propertyId} onCambia={s.selectBranch} opciones={branches.map((b) => ({ valor: b.propertyId, etiqueta: b.nombre }))} />;
 
   return (
     <VerticalShellConectado
@@ -210,9 +211,9 @@ export function RentasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: R
       vertical="rentas"
       copilotoHref={`/rentas/${orgSlug}/copiloto`}
       ocultarChat={!puedeCopiloto}
-      sections={buildSections(orgSlug, puedeCopiloto, puedePrivacidad)}
-      mobileItems={buildMobileItems(orgSlug)}
-      user={{ email: session.email, rol: org?.rol, nombre: session.fullName, rolEtiqueta: etiquetaRol(org?.rol) }}
+      sections={buildSections(t, orgSlug, puedeCopiloto, puedePrivacidad)}
+      mobileItems={buildMobileItems(t, orgSlug)}
+      user={{ email: session.email, rol: org?.rol, nombre: session.fullName, rolEtiqueta: etiquetaRol(org?.rol, t) }}
       onLogout={() => void s.logout()}
       loggingOut={s.loggingOut}
       header={{ icon: <Home className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: `${org?.nombre ?? orgSlug} · ${activeBranch.nombre}`, resumenTo: `/rentas/${orgSlug}` }}

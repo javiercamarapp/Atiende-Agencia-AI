@@ -40,10 +40,13 @@ import {
   Tags,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import type { Clave } from "@atiende/ui";
 
 export interface RutaSuperadmin {
   readonly to: string;
   readonly label: string;
+  /** Clave i18n de la etiqueta (el shell pinta `t(clave)`; `label` queda como el nombre canonico en espanol). */
+  readonly clave: Clave;
   readonly icon: LucideIcon;
   /** Activa solo con coincidencia exacta (la raiz no debe quedar activa en todas las hijas). */
   readonly end?: boolean;
@@ -51,66 +54,67 @@ export interface RutaSuperadmin {
 
 export interface SeccionSuperadmin {
   readonly title: string;
+  readonly clave: Clave;
   readonly items: readonly RutaSuperadmin[];
 }
 
 /** "Resumen": arriba y fuera de las secciones (en Likida, `Inicio`). La pagina es el Resumen de la consola (UNI-RES-superadmin). */
-export const RESUMEN: RutaSuperadmin = { to: "/superadmin", label: "Resumen", icon: LayoutGrid, end: true };
+export const RESUMEN: RutaSuperadmin = { to: "/superadmin", label: "Resumen", clave: "nav.resumen", icon: LayoutGrid, end: true };
 
 /** "Copiloto" (CHAT-17): el chat con los datos de la plataforma para el superadmin CFO. Va JUSTO DEBAJO de Resumen, en la misma primera seccion (orden de Javier, 4-oct). */
-export const COPILOTO: RutaSuperadmin = { to: "/superadmin/copiloto", label: "Copiloto", icon: Sparkles };
+export const COPILOTO: RutaSuperadmin = { to: "/superadmin/copiloto", label: "Copiloto", clave: "nav.copiloto", icon: Sparkles };
 
 /**
  * Agentes: el Panel de agentes (SA-L-08), las tres fichas de agente (SA-L-09)
  * y Model Ops (SA-L-10). Los demas (Evals, Playground, QA) estan en `PENDIENTES`. Las palancas por agente viven en el Panel y tambien en Interruptores (Sistema).
  */
 export const AGENTES: readonly RutaSuperadmin[] = [
-  { to: "/superadmin/agentes", label: "Panel de agentes", icon: Bot },
-  { to: "/superadmin/agente-extractor", label: "Agente extractor", icon: FileSearch },
-  { to: "/superadmin/agente-conciliacion", label: "Agente de conciliación", icon: Scale },
-  { to: "/superadmin/agente-whatsapp", label: "Agente de WhatsApp y voz", icon: MessageCircle },
-  { to: "/superadmin/model-ops", label: "Model Ops", icon: Cpu },
+  { to: "/superadmin/agentes", label: "Panel de agentes", clave: "nav.panelAgentes", icon: Bot },
+  { to: "/superadmin/agente-extractor", label: "Agente extractor", clave: "nav.agenteExtractor", icon: FileSearch },
+  { to: "/superadmin/agente-conciliacion", label: "Agente de conciliación", clave: "nav.agenteConciliacion", icon: Scale },
+  { to: "/superadmin/agente-whatsapp", label: "Agente de WhatsApp y voz", clave: "nav.agenteWhatsappVoz", icon: MessageCircle },
+  { to: "/superadmin/model-ops", label: "Model Ops", clave: "nav.modelOps", icon: Cpu },
 ];
 
 export const NEGOCIO: readonly RutaSuperadmin[] = [
-  { to: "/superadmin/acciones", label: "Acciones", icon: ListChecks },
-  { to: "/superadmin/cerebro", label: "Cerebro de ventas", icon: Brain },
+  { to: "/superadmin/acciones", label: "Acciones", clave: "nav.acciones", icon: ListChecks },
+  { to: "/superadmin/cerebro", label: "Cerebro de ventas", clave: "nav.cerebroVentas", icon: Brain },
   // SA-L-42/43: el mundo virtual del Cerebro (mapa) y la ficha del prospecto, con el mismo nombre de ruta que Likida.
-  { to: "/superadmin/mapa-prospectos", label: "Mapa de prospectos", icon: MapPinned },
-  { to: "/superadmin/organizaciones", label: "Organizaciones", icon: Building2 },
+  { to: "/superadmin/mapa-prospectos", label: "Mapa de prospectos", clave: "nav.mapaProspectos", icon: MapPinned },
+  { to: "/superadmin/organizaciones", label: "Organizaciones", clave: "nav.organizaciones", icon: Building2 },
   // SA-L-21/22/24: en Likida Costos & Facturacion, Consumo de IA y Ejecutivo / Board son UNA entrada cada uno. Las rutas viejas
   // (facturacion, costos-margen, pyl, contratos, gasto-api, cfo) siguen vivas como redireccion (REDIRECCIONES_SUPERADMIN).
-  { to: "/superadmin/costos-facturacion", label: "Costos y facturación", icon: Coins },
-  { to: "/superadmin/consumo-ia", label: "Consumo de IA", icon: DollarSign },
-  { to: "/superadmin/ejecutivo", label: "Ejecutivo / Board", icon: LineChart },
+  { to: "/superadmin/costos-facturacion", label: "Costos y facturación", clave: "nav.costosFacturacion", icon: Coins },
+  { to: "/superadmin/consumo-ia", label: "Consumo de IA", clave: "nav.consumoIa", icon: DollarSign },
+  { to: "/superadmin/ejecutivo", label: "Ejecutivo / Board", clave: "nav.ejecutivo", icon: LineChart },
 ];
 
-export const PLATAFORMA: readonly RutaSuperadmin[] = [{ to: "/superadmin/integraciones", label: "Integraciones", icon: Plug }];
+export const PLATAFORMA: readonly RutaSuperadmin[] = [{ to: "/superadmin/integraciones", label: "Integraciones", clave: "nav.integraciones", icon: Plug }];
 
 export const CONTROL: readonly RutaSuperadmin[] = [
-  { to: "/superadmin/seguridad", label: "Seguridad (MFA)", icon: KeyRound },
-  { to: "/superadmin/impersonacion", label: "Impersonación", icon: ShieldAlert },
-  { to: "/superadmin/break-glass", label: "Romper cristal", icon: AlertOctagon },
-  { to: "/superadmin/auditoria-denegaciones", label: "Auditoría de denegaciones", icon: ShieldOff },
-  { to: "/superadmin/privacidad", label: "Privacidad", icon: Lock },
-  { to: "/superadmin/supresion", label: "Supresión de contactos", icon: BellOff },
-  { to: "/superadmin/zona-cfo", label: "Zona CFO segura", icon: ShieldCheck },
-  { to: "/superadmin/planes", label: "Planes y precios", icon: Tags },
+  { to: "/superadmin/seguridad", label: "Seguridad (MFA)", clave: "nav.seguridadMfa", icon: KeyRound },
+  { to: "/superadmin/impersonacion", label: "Impersonación", clave: "nav.impersonacion", icon: ShieldAlert },
+  { to: "/superadmin/break-glass", label: "Romper cristal", clave: "nav.romperCristal", icon: AlertOctagon },
+  { to: "/superadmin/auditoria-denegaciones", label: "Auditoría de denegaciones", clave: "nav.auditoriaDenegaciones", icon: ShieldOff },
+  { to: "/superadmin/privacidad", label: "Privacidad", clave: "nav.privacidad", icon: Lock },
+  { to: "/superadmin/supresion", label: "Supresión de contactos", clave: "nav.supresion", icon: BellOff },
+  { to: "/superadmin/zona-cfo", label: "Zona CFO segura", clave: "nav.zonaCfo", icon: ShieldCheck },
+  { to: "/superadmin/planes", label: "Planes y precios", clave: "nav.planes", icon: Tags },
 ];
 
 export const SISTEMA: readonly RutaSuperadmin[] = [
-  { to: "/superadmin/interruptores", label: "Interruptores", icon: Power },
-  { to: "/superadmin/salud", label: "Salud operativa", icon: Activity },
+  { to: "/superadmin/interruptores", label: "Interruptores", clave: "nav.interruptores", icon: Power },
+  { to: "/superadmin/salud", label: "Salud operativa", clave: "nav.saludOperativa", icon: Activity },
 ];
 
 /** Las cinco secciones con el rotulo y el orden de Likida. Una seccion sin paginas reales no se pinta. */
-export const SECCIONES: readonly SeccionSuperadmin[] = [
-  { title: "Agentes", items: AGENTES },
-  { title: "Negocio", items: NEGOCIO },
-  { title: "Plataforma", items: PLATAFORMA },
-  { title: "Control", items: CONTROL },
-  { title: "Sistema", items: SISTEMA },
-].filter((s) => s.items.length > 0);
+export const SECCIONES: readonly SeccionSuperadmin[] = ([
+  { title: "Agentes", clave: "nav.agentes", items: AGENTES },
+  { title: "Negocio", clave: "nav.negocio", items: NEGOCIO },
+  { title: "Plataforma", clave: "nav.plataforma", items: PLATAFORMA },
+  { title: "Control", clave: "nav.control", items: CONTROL },
+  { title: "Sistema", clave: "nav.sistema", items: SISTEMA },
+] satisfies SeccionSuperadmin[]).filter((s) => s.items.length > 0);
 
 /** Lista plana con Resumen y Copiloto primero (la usaran la paleta, el rail y la rejilla del Resumen). */
 export const TODAS_LAS_RUTAS: readonly RutaSuperadmin[] = [RESUMEN, COPILOTO, ...SECCIONES.flatMap((s) => s.items)];
@@ -120,16 +124,16 @@ export const TODAS_LAS_RUTAS: readonly RutaSuperadmin[] = [RESUMEN, COPILOTO, ..
  * (gasto historico de IA y costo por operacion) y "Ver los otros paneles" el selector de paneles (`Paneles.tsx`).
  */
 export const PIE_SUPERADMIN = [
-  { label: "Costos de IA", to: "/superadmin/costos-facturacion" },
-  { label: "Ver los otros paneles", to: "/superadmin/paneles", icon: ArrowLeftRight },
+  { label: "Costos de IA", clave: "nav.costosIa", to: "/superadmin/costos-facturacion" },
+  { label: "Ver los otros paneles", clave: "nav.otrosPaneles", to: "/superadmin/paneles", icon: ArrowLeftRight },
 ] as const;
 
 /** Barra inferior movil: destinos de uso diario; el 5.o lugar es "Mas" (lo agrega el shell). */
 export const MOVIL_SUPERADMIN: readonly RutaSuperadmin[] = [
-  { to: "/superadmin", label: "Resumen", icon: Newspaper, end: true },
-  { to: "/superadmin/organizaciones", label: "Orgs", icon: Building2 },
-  { to: "/superadmin/salud", label: "Salud", icon: Activity },
-  { to: "/superadmin/acciones", label: "Acciones", icon: ListChecks },
+  { to: "/superadmin", label: "Resumen", clave: "nav.resumen", icon: Newspaper, end: true },
+  { to: "/superadmin/organizaciones", label: "Orgs", clave: "nav.orgs", icon: Building2 },
+  { to: "/superadmin/salud", label: "Salud", clave: "nav.salud", icon: Activity },
+  { to: "/superadmin/acciones", label: "Acciones", clave: "nav.acciones", icon: ListChecks },
 ];
 
 /** El parte diario (antes en la raiz) vive aqui, sin item de menu: se llega por "Ver parte diario" del Resumen. */

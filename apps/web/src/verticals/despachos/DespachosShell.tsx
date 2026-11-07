@@ -43,8 +43,8 @@ import {
   UsersRound,
   Wallet,
 } from "lucide-react";
-import { SelectorSucursal, VerticalShellEstado } from "@atiende/ui";
-import type { BottomNavItem, SidebarSection } from "@atiende/ui";
+import { SelectorSucursal, useT, VerticalShellEstado } from "@atiende/ui";
+import type { BottomNavItem, Clave, SidebarSection, Traductor } from "@atiende/ui";
 import { VerticalShellConectado } from "../../components/VerticalShellConectado.tsx";
 import { etiquetaRol } from "../../lib/roles.ts";
 import { useVerticalSession } from "../../lib/useVerticalSession.ts";
@@ -99,48 +99,48 @@ export interface DespachosShellProps {
 // UNI-6: categorías en el orden de Likida (Facturación, Fiscal, Contabilidad, Clientes y equipo) con "Resumen" y "Cierre
 // mensual" como raíz sin título (el cierre mensual es la vista de entrada natural de un despacho); el resto sigue el mismo
 // acordeón "uno abierto a la vez" que trae `Sidebar`.
-const NAV_ITEMS: ReadonlyArray<{ to: string; label: string }> = [
-  { to: "dashboard", label: "Resumen" },
-  { to: "cierre-mensual", label: "Cierre mensual" },
-  { to: "cartera", label: "Cartera de clientes" },
-  { to: "cfdi", label: "CFDI" },
-  { to: "cobranza", label: "Cobranza" },
-  { to: "cola-cobranza", label: "Cola de cobranza" },
-  { to: "vencimientos", label: "Vencimientos" },
-  { to: "declaraciones", label: "Declaraciones" },
-  { to: "nomina", label: "Nómina" },
-  { to: "conciliacion", label: "Conciliación bancaria" },
-  { to: "migracion-catalogo", label: "Migración de catálogo" },
-  { to: "devolucion-iva", label: "Devolución de IVA" },
-  { to: "bookkeeping", label: "Bookkeeping" },
-  { to: "reportes", label: "Reportes de cliente" },
-  { to: "libro-contable", label: "Libro contable" },
-  { to: "pagos-provisionales", label: "Pagos provisionales" },
-  { to: "contabilidad-electronica", label: "Contabilidad electrónica" },
-  { to: "portal-cliente", label: "Portal del cliente" },
-  { to: "staff", label: "Staff" },
-  { to: "configuracion", label: "Configuración" },
+const NAV_ITEMS: ReadonlyArray<{ to: string; clave: Clave }> = [
+  { to: "dashboard", clave: "nav.resumen" },
+  { to: "cierre-mensual", clave: "nav.cierreMensual" },
+  { to: "cartera", clave: "nav.carteraClientes" },
+  { to: "cfdi", clave: "nav.cfdi" },
+  { to: "cobranza", clave: "nav.cobranza" },
+  { to: "cola-cobranza", clave: "nav.colaCobranza" },
+  { to: "vencimientos", clave: "nav.vencimientos" },
+  { to: "declaraciones", clave: "nav.declaraciones" },
+  { to: "nomina", clave: "nav.nomina" },
+  { to: "conciliacion", clave: "nav.conciliacionBancaria" },
+  { to: "migracion-catalogo", clave: "nav.migracionCatalogo" },
+  { to: "devolucion-iva", clave: "nav.devolucionIva" },
+  { to: "bookkeeping", clave: "nav.bookkeeping" },
+  { to: "reportes", clave: "nav.reportesCliente" },
+  { to: "libro-contable", clave: "nav.libroContable" },
+  { to: "pagos-provisionales", clave: "nav.pagosProvisionales" },
+  { to: "contabilidad-electronica", clave: "nav.contabilidadElectronica" },
+  { to: "portal-cliente", clave: "nav.portalCliente" },
+  { to: "staff", clave: "nav.staff" },
+  { to: "configuracion", clave: "nav.configuracion" },
 ];
 
-function buildSidebarSections(orgSlug: string, conCopiloto: boolean): SidebarSection[] {
+function buildSidebarSections(t: Traductor, orgSlug: string, conCopiloto: boolean): SidebarSection[] {
   const to = (path: string) => `/despachos/${orgSlug}/${path}`;
   const item = (path: string) => {
     const found = NAV_ITEMS.find((i) => i.to === path)!;
-    return { to: to(found.to), label: found.label };
+    return { to: to(found.to), label: t(found.clave) };
   };
   return [
     {
-      title: "Resumen",
+      title: t("nav.resumen"),
       siempreAbierto: true,
       items: [
         { ...item("dashboard"), icon: LayoutDashboard },
         // CHAT-11: el Copiloto ("Pregúntale a tus datos") va justo debajo de Resumen, solo para los roles que el servidor deja usar chat-datos.
-        ...(conCopiloto ? [{ to: to("copiloto"), label: "Copiloto", icon: Sparkles }] : []),
+        ...(conCopiloto ? [{ to: to("copiloto"), label: t("nav.copiloto"), icon: Sparkles }] : []),
         { ...item("cierre-mensual"), icon: CalendarCheck },
       ],
     },
     {
-      title: "Facturación",
+      title: t("nav.facturacion"),
       items: [
         { ...item("cfdi"), icon: FileText },
         { ...item("cobranza"), icon: HandCoins },
@@ -149,7 +149,7 @@ function buildSidebarSections(orgSlug: string, conCopiloto: boolean): SidebarSec
       ],
     },
     {
-      title: "Fiscal",
+      title: t("nav.fiscal"),
       items: [
         { ...item("declaraciones"), icon: FileSpreadsheet },
         { ...item("pagos-provisionales"), icon: Calculator },
@@ -159,7 +159,7 @@ function buildSidebarSections(orgSlug: string, conCopiloto: boolean): SidebarSec
       ],
     },
     {
-      title: "Contabilidad",
+      title: t("nav.contabilidad"),
       items: [
         { ...item("conciliacion"), icon: Landmark },
         { ...item("libro-contable"), icon: BookMarked },
@@ -169,7 +169,7 @@ function buildSidebarSections(orgSlug: string, conCopiloto: boolean): SidebarSec
       ],
     },
     {
-      title: "Clientes y equipo",
+      title: t("nav.clientesYEquipo"),
       items: [
         { ...item("cartera"), icon: Contact },
         { ...item("portal-cliente"), icon: Link2 },
@@ -182,32 +182,33 @@ function buildSidebarSections(orgSlug: string, conCopiloto: boolean): SidebarSec
 
 /** Barra inferior móvil: los 4 destinos de uso diario (etiquetas completas); el 5.º lugar es "Más" (lo agrega `VerticalShell`) y lista
  * TODAS las secciones fiscales/contables (los 20 destinos de `buildSidebarSections`, sin curarlos a ojo). */
-function buildMobileItems(orgSlug: string): BottomNavItem[] {
+function buildMobileItems(t: Traductor, orgSlug: string): BottomNavItem[] {
   const base = `/despachos/${orgSlug}`;
   return [
-    { to: `${base}/dashboard`, label: "Resumen", icon: LayoutDashboard },
-    { to: `${base}/cierre-mensual`, label: "Cierre", icon: CalendarCheck },
-    { to: `${base}/cfdi`, label: "CFDI", icon: FileText },
-    { to: `${base}/cobranza`, label: "Cobranza", icon: HandCoins },
+    { to: `${base}/dashboard`, label: t("nav.resumen"), icon: LayoutDashboard },
+    { to: `${base}/cierre-mensual`, label: t("nav.cierre"), icon: CalendarCheck },
+    { to: `${base}/cfdi`, label: t("nav.cfdi"), icon: FileText },
+    { to: `${base}/cobranza`, label: t("nav.cobranza"), icon: HandCoins },
   ];
 }
 
 export function DespachosShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: DespachosShellProps) {
   // Título de pestaña por vertical/organización (ver use-document-title.ts). El hook va ANTES de los returns condicionales.
-  useDocumentTitle("Despachos", orgSlug);
+  const t = useT();
+  useDocumentTitle(t("shell.vertical.despachos"), orgSlug);
   const s = useVerticalSession({ adapter: DESPACHOS_SESSION, apiBaseUrl, orgSlug, onRequireLogin, defaultRole: "readonly" });
 
-  if (s.fase === "resolviendo") return <VerticalShellEstado estado="cargando" mensaje="Cargando…" />;
+  if (s.fase === "resolviendo") return <VerticalShellEstado estado="cargando" mensaje={t("shell.cargando")} />;
   if (s.fase === "sin-sesion") return null; // onRequireLogin ya disparó la redirección
   if (s.fase === "error") return <VerticalShellEstado estado="error" mensaje={s.error ?? undefined} onReintentar={s.reintentar} />;
-  if (s.fase === "cargando") return <VerticalShellEstado estado="cargando" mensaje="Cargando contribuyentes…" />;
+  if (s.fase === "cargando") return <VerticalShellEstado estado="cargando" mensaje={t("shell.cargandoContribuyentes")} />;
   if (s.fase === "vacio") {
     // Un despacho sin ningun cliente no tiene contribuyente activo: quien puede dar de alta (admin/contador) captura el primero aqui.
     const rolVacio = s.session?.organizations.find((o) => o.slug === orgSlug)?.rol;
     if (s.session && (rolVacio === "admin" || rolVacio === "contador")) {
       return <AltaPrimerCliente apiBaseUrl={apiBaseUrl} token={s.session.token} orgSlug={orgSlug} onCreado={s.reintentar} />;
     }
-    return <VerticalShellEstado estado="vacio" mensaje="Este despacho todavía no tiene ningún contribuyente configurado. Pide a un administrador que lo dé de alta." />;
+    return <VerticalShellEstado estado="vacio" mensaje={t("shell.vacio.sinContribuyente")} />;
   }
 
   const { session, branches, activeBranch, propertyId, role } = s;
@@ -221,7 +222,7 @@ export function DespachosShell({ apiBaseUrl, orgSlug, onRequireLogin, children }
   // Selector real de CONTRIBUYENTE, visible solo cuando hay más de uno (con uno solo se muestra su nombre). Se ofrece
   // en el bloque de cuenta del Sidebar (escritorio) y en el MobileHeader, para no perder la función en viewport angosto.
   const contribuyenteSelector = (idSelect: string) =>
-    <SelectorSucursal id={idSelect} etiqueta="Contribuyente" valor={propertyId} onCambia={s.selectBranch} opciones={branches.map((b) => ({ valor: b.propertyId, etiqueta: b.name }))} />;
+    <SelectorSucursal id={idSelect} etiqueta={t("shell.selector.contribuyente")} valor={propertyId} onCambia={s.selectBranch} opciones={branches.map((b) => ({ valor: b.propertyId, etiqueta: b.name }))} />;
 
   return (
     <VerticalShellConectado
@@ -232,12 +233,12 @@ export function DespachosShell({ apiBaseUrl, orgSlug, onRequireLogin, children }
       copilotoHref={`/despachos/${orgSlug}/copiloto`}
       ocultarChat={!conCopiloto}
       vertical="despachos"
-      sections={buildSidebarSections(orgSlug, conCopiloto)}
-      mobileItems={buildMobileItems(orgSlug)}
-      user={{ email: session.email, rol: role, nombre: session.fullName, rolEtiqueta: etiquetaRol(role) }}
+      sections={buildSidebarSections(t, orgSlug, conCopiloto)}
+      mobileItems={buildMobileItems(t, orgSlug)}
+      user={{ email: session.email, rol: role, nombre: session.fullName, rolEtiqueta: etiquetaRol(role, t) }}
       onLogout={() => void s.logout()}
       loggingOut={s.loggingOut}
-      header={{ icon: <Briefcase className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: `Despachos · ${activeBranch.name}`, resumenTo: `/despachos/${orgSlug}/dashboard` }}
+      header={{ icon: <Briefcase className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: t("shell.titulo", { vertical: t("shell.vertical.despachos"), nombre: activeBranch.name }), resumenTo: `/despachos/${orgSlug}/dashboard` }}
       branchSelector={contribuyenteSelector("despachos-contribuyente-activo")}
       mobileSelector={contribuyenteSelector("despachos-contribuyente-activo-movil")}
       contentKey={propertyId}

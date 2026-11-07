@@ -42,8 +42,8 @@ import {
   Users,
   UtensilsCrossed,
 } from "lucide-react";
-import { SelectorSucursal, useAmbitoVertical, VarianteEstadoVacioProvider, VerticalShellEstado } from "@atiende/ui";
-import type { BottomNavItem, SidebarSection } from "@atiende/ui";
+import { SelectorSucursal, useAmbitoVertical, useT, VarianteEstadoVacioProvider, VerticalShellEstado } from "@atiende/ui";
+import type { BottomNavItem, SidebarSection, Traductor } from "@atiende/ui";
 import { VerticalShellConectado } from "../../components/VerticalShellConectado.tsx";
 import type { ChatDatosConexion } from "../../components/PanelChateaConTusDatos.tsx";
 import { clearSession, logout, readPersistedSession } from "../../lib/auth-client.ts";
@@ -115,62 +115,62 @@ const COPILOTO_ROLES: ReadonlySet<string> = new Set(["owner", "admin", "staff"])
 // UNI-6: categorías en el orden de Likida (Operación, Catálogo, Clientes y, solo owner/admin, Agente y Configuración) con
 // "Resumen" como raíz sin título. Mismos destinos y roles que antes: ningún link se agrega ni se quita, solo se reagrupan
 // (Agente de voz y los de gestión siguen detrás de STAFF_NAV_ROLES).
-function buildSections(orgSlug: string, canSeeStaff: boolean, canSeeCopiloto: boolean, canSeePromociones = true, canSeeCfo = false, canSeeOperacion = false, canSeeAgregados = false): SidebarSection[] {
+function buildSections(t: Traductor, orgSlug: string, canSeeStaff: boolean, canSeeCopiloto: boolean, canSeePromociones = true, canSeeCfo = false, canSeeOperacion = false, canSeeAgregados = false): SidebarSection[] {
   const base = `/restaurantes/${orgSlug}`;
   const sections: SidebarSection[] = [
     {
-      title: "Resumen",
+      title: t("nav.resumen"),
       siempreAbierto: true,
       // CHAT-08: el Copiloto ("Pregúntale a tus datos") va justo debajo de Resumen, como en las demás consolas (spec de diseño §203).
       items: [
-        { to: base, label: "Resumen", icon: LayoutDashboard, end: true },
-        ...(canSeeCopiloto ? [{ to: `${base}/copiloto`, label: "Copiloto", icon: Sparkles }] : []),
+        { to: base, label: t("nav.resumen"), icon: LayoutDashboard, end: true },
+        ...(canSeeCopiloto ? [{ to: `${base}/copiloto`, label: t("nav.copiloto"), icon: Sparkles }] : []),
         // CFO-07: tablero financiero (solo owner/admin, `cfo.ver`; staff y repartidor no lo ven y el API les responde 403).
-        ...(canSeeCfo ? [{ to: `${base}/cfo`, label: "CFO", icon: LineChart }] : []),
+        ...(canSeeCfo ? [{ to: `${base}/cfo`, label: t("nav.cfo"), icon: LineChart }] : []),
       ],
     },
     {
-      title: "Operación",
+      title: t("nav.operacion"),
       items: [
         // Agregados por validar (099): lo que un cliente pide agregar a un pedido ya enviado. Visible para quien tiene `pedidos.agregados` (owner/admin/staff), con o sin el panel movil.
-        ...(canSeeAgregados ? [{ to: `${base}/operacion/agregados`, label: "Agregados", icon: ListPlus }] : []),
+        ...(canSeeAgregados ? [{ to: `${base}/operacion/agregados`, label: t("nav.agregados"), icon: ListPlus }] : []),
         // Panel movil del operador (cola, captura, viajes, turno): solo con el interruptor encendido y para quien el servidor deja pasar (`pedidos.capturar`).
         ...(canSeeOperacion
           ? [
-              { to: `${base}/operacion`, label: "Cola", icon: Inbox, end: true },
-              { to: `${base}/operacion/nuevo`, label: "Nuevo pedido", icon: PlusCircle },
-              { to: `${base}/operacion/viajes`, label: "Viajes", icon: Truck },
-              { to: `${base}/operacion/turno`, label: "Turno", icon: Gauge },
+              { to: `${base}/operacion`, label: t("nav.cola"), icon: Inbox, end: true },
+              { to: `${base}/operacion/nuevo`, label: t("nav.nuevoPedido"), icon: PlusCircle },
+              { to: `${base}/operacion/viajes`, label: t("nav.viajes"), icon: Truck },
+              { to: `${base}/operacion/turno`, label: t("nav.turno"), icon: Gauge },
             ]
           : []),
-        { to: `${base}/pedidos`, label: "Pedidos", icon: ClipboardList },
+        { to: `${base}/pedidos`, label: t("nav.pedidos"), icon: ClipboardList },
         // Captura asistida de SoftRestaurant: la cola de comandas que alguien teclea en el POS (MANAGER_ROLES, igual que el servidor).
-        { to: `${base}/comandas-pos`, label: "Comandas al POS", icon: ClipboardPaste },
+        { to: `${base}/comandas-pos`, label: t("nav.comandasPos"), icon: ClipboardPaste },
         // R-21: bandeja de conversaciones (WhatsApp y llamadas) con toma por una persona, y turnos de personal.
-        { to: `${base}/conversaciones`, label: "Conversaciones", icon: MessageSquare },
-        { to: `${base}/turnos`, label: "Turnos", icon: Clock },
-        { to: `${base}/historial`, label: "Historial", icon: History },
+        { to: `${base}/conversaciones`, label: t("nav.conversaciones"), icon: MessageSquare },
+        { to: `${base}/turnos`, label: t("nav.turnos"), icon: Clock },
+        { to: `${base}/historial`, label: t("nav.historial"), icon: History },
         // R-16: "Mis avisos" para quien no ve la categoria Configuración (el staff de piso); owner/admin lo tienen allí.
-        ...(canSeeStaff ? [] : [{ to: `${base}/avisos`, label: "Avisos", icon: BellRing }]),
+        ...(canSeeStaff ? [] : [{ to: `${base}/avisos`, label: t("nav.avisos"), icon: BellRing }]),
         // R-42: cierre del día y resumen semanal (solo owner/admin: el servidor exige el mismo umbral).
-        ...(canSeeStaff ? [{ to: `${base}/cierres`, label: "Cierre del día", icon: CalendarCheck }] : []),
+        ...(canSeeStaff ? [{ to: `${base}/cierres`, label: t("nav.cierreDelDia"), icon: CalendarCheck }] : []),
       ],
     },
     {
-      title: "Catálogo",
+      title: t("nav.catalogo"),
       items: [
-        { to: `${base}/productos`, label: "Productos", icon: UtensilsCrossed },
+        { to: `${base}/productos`, label: t("nav.productos"), icon: UtensilsCrossed },
         // PL-23: las promociones son de owner/admin (el servidor las rechaza con 403 para staff): no se muestra el enlace.
-        ...(canSeePromociones ? [{ to: `${base}/promociones`, label: "Promociones", icon: Tag }] : []),
+        ...(canSeePromociones ? [{ to: `${base}/promociones`, label: t("nav.promociones"), icon: Tag }] : []),
       ],
     },
     {
-      title: "Clientes",
+      title: t("nav.clientes"),
       items: [
-        { to: `${base}/clientes`, label: "Clientes", icon: Users },
+        { to: `${base}/clientes`, label: t("nav.clientes"), icon: Users },
         // Autopiloto 2: campañas de reactivación de clientes inactivos (solo owner/admin: el servidor exige el mismo umbral).
-        ...(canSeeStaff ? [{ to: `${base}/campanas`, label: "Campañas", icon: Megaphone }] : []),
-        { to: `${base}/sucursales`, label: "Sucursales", icon: Store },
+        ...(canSeeStaff ? [{ to: `${base}/campanas`, label: t("nav.campanas"), icon: Megaphone }] : []),
+        { to: `${base}/sucursales`, label: t("nav.sucursales"), icon: Store },
       ],
     },
   ];
@@ -178,33 +178,33 @@ function buildSections(orgSlug: string, canSeeStaff: boolean, canSeeCopiloto: bo
     // Agente de voz (config, vista previa, conversaciones) -- mismo umbral owner/admin: la configuración del agente es
     // de gestión, no de operación.
     sections.push({
-      title: "Agente",
+      title: t("nav.agente"),
       items: [
-        { to: `${base}/agente-voz`, label: "Agente de voz", icon: Mic },
+        { to: `${base}/agente-voz`, label: t("nav.agenteVoz"), icon: Mic },
         // R-31: indicadores del agente de WhatsApp (conversaciones, conversión, handoff y costo LLM por día).
-        { to: `${base}/agente-whatsapp`, label: "Agente de WhatsApp", icon: MessageCircle },
+        { to: `${base}/agente-whatsapp`, label: t("nav.agenteWhatsapp"), icon: MessageCircle },
         // Modelo, temperatura, voz, sonido de fondo y conocimiento automatico del agente (owner/admin).
-        { to: `${base}/agente-ajustes`, label: "Ajustes del agente", icon: SlidersHorizontal },
+        { to: `${base}/agente-ajustes`, label: t("nav.ajustesAgente"), icon: SlidersHorizontal },
       ],
     });
     // FASE 3 (producto) — la bitácora de auditoría es de lectura SOLO owner/admin (mismo mandato que el servidor exige,
     // ver apps/api/src/routes/verticals/restaurantes/auditoria.ts) -- reusa el mismo `canSeeStaff`
     // (STAFF_NAV_ROLES = {"owner","admin"}) en vez de una lista nueva: todos estos links comparten el mismo umbral de rol.
     sections.push({
-      title: "Configuración",
+      title: t("nav.configuracion"),
       items: [
         // R-33: checklist de onboarding calculado con datos reales (mismo umbral owner/admin).
-        { to: `${base}/primeros-pasos`, label: "Primeros pasos", icon: ListChecks },
+        { to: `${base}/primeros-pasos`, label: t("nav.primerosPasos"), icon: ListChecks },
         // FASE 3 (producto) — configuración de WhatsApp/zonas conocidas.
-        { to: `${base}/configuracion`, label: "Configuración", icon: Settings },
-        { to: `${base}/staff`, label: "Staff", icon: UserCog },
+        { to: `${base}/configuracion`, label: t("nav.configuracion"), icon: Settings },
+        { to: `${base}/staff`, label: t("nav.staff"), icon: UserCog },
         // R-16: avisos por persona (matriz del equipo) y tiempo de gracia de la entrega tardía por sucursal.
-        { to: `${base}/avisos`, label: "Avisos", icon: BellRing },
-        { to: `${base}/auditoria`, label: "Auditoría", icon: ClipboardCheck },
+        { to: `${base}/avisos`, label: t("nav.avisos"), icon: BellRing },
+        { to: `${base}/auditoria`, label: t("nav.auditoria"), icon: ClipboardCheck },
         // PM PR-9 -- solicitudes ARCO y configuración de privacidad (owner/admin).
-        { to: `${base}/privacidad`, label: "Privacidad", icon: Lock },
+        { to: `${base}/privacidad`, label: t("nav.privacidad"), icon: Lock },
         // PL-13 -- privacidad de TODA la organizacion (ARCO de todos los verticales, retención, purgas, aviso versionado).
-        { to: `${base}/privacidad-organizacion`, label: "Privacidad de la organización", icon: ShieldCheck },
+        { to: `${base}/privacidad-organizacion`, label: t("nav.privacidadOrganizacion"), icon: ShieldCheck },
       ],
     });
   }
@@ -214,28 +214,29 @@ function buildSections(orgSlug: string, canSeeStaff: boolean, canSeeCopiloto: bo
 /** Barra inferior móvil: los 4 destinos operativos de cada día; el 5.º lugar es "Más" (lo agrega `VerticalShell`) y lista TODAS
  * las secciones, así Clientes, Conversaciones, Turnos, Promociones, Sucursales y las de gestión también se alcanzan en móvil
  * (antes eran 5 destinos fijos y el resto no tenía acceso móvil). Ningún ítem nuevo: los 4 ya existen en `buildSections`. */
-function buildMobileItems(orgSlug: string): BottomNavItem[] {
+function buildMobileItems(t: Traductor, orgSlug: string): BottomNavItem[] {
   const base = `/restaurantes/${orgSlug}`;
   return [
-    { to: base, label: "Resumen", icon: LayoutDashboard, end: true },
-    { to: `${base}/pedidos`, label: "Pedidos", icon: ClipboardList },
-    { to: `${base}/historial`, label: "Historial", icon: History },
-    { to: `${base}/productos`, label: "Productos", icon: UtensilsCrossed },
+    { to: base, label: t("nav.resumen"), icon: LayoutDashboard, end: true },
+    { to: `${base}/pedidos`, label: t("nav.pedidos"), icon: ClipboardList },
+    { to: `${base}/historial`, label: t("nav.historial"), icon: History },
+    { to: `${base}/productos`, label: t("nav.productos"), icon: UtensilsCrossed },
   ];
 }
 
 export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: RestaurantesShellProps) {
   // Título de pestaña por vertical/organización (ver use-document-title.ts). El hook va ANTES de los returns condicionales.
-  useDocumentTitle("Restaurantes", orgSlug);
+  const t = useT();
+  useDocumentTitle(t("shell.vertical.restaurantes"), orgSlug);
   // Ambito visual del repo suelto (UNI-R0b): tokens, botones en pildora y overlays; el sidebar conserva su paleta.
   useAmbitoVertical("restaurantes");
   const s = useVerticalSession({ adapter: RESTAURANTES_SESSION, apiBaseUrl, orgSlug, onRequireLogin });
 
-  if (s.fase === "resolviendo") return <VerticalShellEstado estado="cargando" mensaje="Cargando…" />;
+  if (s.fase === "resolviendo") return <VerticalShellEstado estado="cargando" mensaje={t("shell.cargando")} />;
   if (s.fase === "sin-sesion") return null; // onRequireLogin ya disparó la redirección
   if (s.fase === "error") return <VerticalShellEstado estado="error" mensaje={s.error ?? undefined} onReintentar={s.reintentar} />;
-  if (s.fase === "cargando") return <VerticalShellEstado estado="cargando" mensaje="Cargando sucursales…" />;
-  if (s.fase === "vacio") return <VerticalShellEstado estado="vacio" mensaje="Este negocio todavía no tiene ninguna sucursal configurada." />;
+  if (s.fase === "cargando") return <VerticalShellEstado estado="cargando" mensaje={t("shell.cargandoSucursales")} />;
+  if (s.fase === "vacio") return <VerticalShellEstado estado="vacio" mensaje={t("shell.vacio.sinSucursal")} />;
 
   const { session, branches, activeBranch, propertyId, role } = s;
 
@@ -265,7 +266,7 @@ export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
   // propio id y su propio <label for>, para que no haya ids duplicados y el select visible tenga nombre accesible
   // (QA-restaurantes-R1-botones-03).
   const sucursalSelector = (idSelect: string) => (
-    <SelectorSucursal id={idSelect} etiqueta="Sucursal activa" valor={propertyId} onCambia={s.selectBranch} opciones={branches.map((b) => ({ valor: b.propertyId, etiqueta: b.name }))} />
+    <SelectorSucursal id={idSelect} etiqueta={t("shell.selector.sucursal")} valor={propertyId} onCambia={s.selectBranch} opciones={branches.map((b) => ({ valor: b.propertyId, etiqueta: b.name }))} />
   );
 
   return (
@@ -277,12 +278,12 @@ export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
       vertical="restaurantes"
       copilotoHref={`/restaurantes/${orgSlug}/copiloto`}
       ocultarChat={!COPILOTO_ROLES.has(role)}
-      sections={buildSections(orgSlug, STAFF_NAV_ROLES.has(role), COPILOTO_ROLES.has(role), puedeEn(role, "promociones.ver"), puedeEn(role, "cfo.ver"), OPERACION_PANEL_ACTIVO && puedeEn(role, "pedidos.capturar"), puedeEn(role, "pedidos.agregados"))}
-      mobileItems={buildMobileItems(orgSlug)}
-      user={{ email: session.email, rol: role, nombre: session.fullName, rolEtiqueta: etiquetaRol(role) }}
+      sections={buildSections(t, orgSlug, STAFF_NAV_ROLES.has(role), COPILOTO_ROLES.has(role), puedeEn(role, "promociones.ver"), puedeEn(role, "cfo.ver"), OPERACION_PANEL_ACTIVO && puedeEn(role, "pedidos.capturar"), puedeEn(role, "pedidos.agregados"))}
+      mobileItems={buildMobileItems(t, orgSlug)}
+      user={{ email: session.email, rol: role, nombre: session.fullName, rolEtiqueta: etiquetaRol(role, t) }}
       onLogout={() => void s.logout()}
       loggingOut={s.loggingOut}
-      header={{ icon: <UtensilsCrossed className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: `Restaurantes · ${orgSlug}`, resumenTo: `/restaurantes/${orgSlug}` }}
+      header={{ icon: <UtensilsCrossed className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: t("shell.titulo", { vertical: t("shell.vertical.restaurantes"), nombre: orgSlug }), resumenTo: `/restaurantes/${orgSlug}` }}
       branchSelector={sucursalSelector("restaurantes-sucursal-activa")}
       mobileSelector={branches.length > 1 ? sucursalSelector("restaurantes-sucursal-activa-movil") : null}
       contentKey={propertyId}
