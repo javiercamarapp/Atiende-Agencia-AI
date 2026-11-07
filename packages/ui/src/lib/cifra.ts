@@ -2,6 +2,8 @@
 // decimales mas chicos y tenues (como Rovaq), con separador de miles es-MX y forma compacta ($1.2 M) cuyo valor completo va en el
 // titulo. NUNCA calcula ni redondea dinero: solo da forma a la cifra que el backend ya calculo. `null`/no finito = «—», jamas 0.
 
+import { numeroEsMx } from "./formato-preset";
+
 export type CifraVariante = "dinero" | "conteo" | "porcentaje" | "compacto";
 export type CifraLocale = "es-MX" | "en-US";
 
@@ -41,8 +43,10 @@ function simboloDe(moneda: "MXN" | "USD" | undefined): string {
   return moneda === "USD" ? "US$" : "$";
 }
 
-function numero(abs: number, decimales: number, locale: CifraLocale): string {
-  return abs.toLocaleString(locale, { minimumFractionDigits: decimales, maximumFractionDigits: decimales });
+// es-MX y en-US comparten separadores («,» de miles y «.» decimal): el numero sale SIEMPRE del formateador canonico
+// (formato-preset.ts, guard PL-19) y el locale solo decide los sufijos de escala del compacto.
+function numero(abs: number, decimales: number, _locale: CifraLocale): string {
+  return numeroEsMx(abs, decimales);
 }
 
 // es-MX y en-US comparten separadores: «,» de miles y «.» decimal.
@@ -95,7 +99,8 @@ export function partesCifra(valor: number | null | undefined, opciones: Opciones
           const dec = opciones.decimales ?? 1;
           const factor = 10 ** dec;
           // Trunca (no redondea hacia arriba): 999 999 nunca se lee «1.0 M» de mas. Quita el «.0» sobrante.
-          const escalado = Math.floor((abs / base) * factor) / factor;
+          // El redondeo a 1e-6 antes del floor evita el error de flotante (4.35 * 100 = 434.999...).
+          const escalado = Math.floor(Math.round((abs / base) * factor * 1e6) / 1e6) / factor;
           let cuerpo = numero(escalado, dec, locale);
           if (dec > 0 && /\.0+$/.test(cuerpo)) cuerpo = cuerpo.replace(/\.0+$/, "");
           return armar(valor, signo, simbolo, cuerpo, suf, locale, completo);
@@ -133,6 +138,9 @@ export function partirTextoCifra(texto: string): PartesTexto | null {
   const m = PATRON_TEXTO.exec(texto.trim());
   if (!m) return null;
   const [, s = "", simbolo = "", entero = "", decimales = "", sufijo = ""] = m;
+  // Mas de 3 digitos SIN separador de miles («2026», «12345») no es un monto de la casa: puede ser un año o un folio. Se pinta
+  // tal cual, sin conteo (el conteo lo reescribiria con comas).
+  if (!entero.includes(",") && entero.length > 3) return null;
   const signo = s === "−" ? "−" : s;
   const n = Number(`${entero.replace(/,/g, "")}${decimales}`);
   if (!Number.isFinite(n)) return null;
