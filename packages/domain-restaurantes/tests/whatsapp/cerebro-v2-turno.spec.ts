@@ -81,3 +81,20 @@ describe("cerebro v2 en el turno de WhatsApp", () => {
     expect((r as { escalacion?: { motivo: string } }).escalacion?.motivo).toBe("alergia_salud");
   });
 });
+
+describe("cerebro v2: promesa de un producto que no esta en el menu", () => {
+  it("«le preparo sus tacos de camarón» sin que ninguna herramienta lo devuelva y sin estar en el menu -> «Por el momento no tenemos ... en el menú.»", async () => {
+    const repo = new InMemoryRestaurantesRepository();
+    const organizationId = randomUUID();
+    repo.seedOrganization({ id: organizationId, slug: "org-pm", name: "PM" });
+    await repo.upsertWhatsAppAgentConfig(organizationId, null, { perfil: "taqueria_pm", agentName: null, businessName: null, toneStyle: null, deliveryTimeText: null, escalationReasonsOff: [] });
+    const gateway = new LlmGateway({ breaker: new CircuitBreaker(new InMemoryCircuitBreakerStore()), budgetStore: new InMemoryBudgetLedgerStore(), budgetLimits: { maxRunUsd: 10, maxTenantDailyUsd: 100 } });
+    const fake = new FakeLlmProvider({ id: "luna-zdr", model: "openai/gpt-6-luna", script: () => ({ text: "Con gusto le preparo sus tacos de camarón. ¿Me indica su nombre, por favor?", model: "openai/gpt-6-luna", tokensIn: 1, tokensOut: 1, costUsd: 0 }) });
+    gateway.registerLadder("default", [fake]);
+    gateway.registerLadder("escalated", [fake]);
+    gateway.registerZdrLadder("default", [fake]);
+    const h = createLlmWhatsAppTurnHandler(repo, gateway, { defaultRole: "default", escalatedRole: "escalated", leerCerebroV2: async () => true });
+    const r = await turno(h, organizationId, "Hola, quiero unos tacos de camarón");
+    expect(r.reply).toMatch(/Por el momento no tenemos tacos de camar[oó]n en el men[uú]/i);
+  });
+});

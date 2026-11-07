@@ -60,6 +60,8 @@ import { COPY_LLAMADA_NO_RECIBIDA, COPY_LLAMADA_REPETIDA, COPY_SI_REPETIDO_SIN_R
 import { decidirAntesDelModelo, respuestaFinalV2 } from "./cerebro-v2/antes-del-modelo.ts";
 import { enforcePromoPolicy, stripUnpromptedTip } from "./cerebro-v2/politicas-pm.ts";
 import { PM_POLICY_RULES_V2 } from "./cerebro-v2/prompt-v2.ts";
+import { consultasDeMenuParaPromesa, corregirPromesaSinBuscar, promesaDeProductoSinBuscar } from "./cerebro-v2/texto-final.ts";
+import { buscarEnCatalogo } from "./cerebro-v2/busqueda.ts";
 import { PM_AGENT_NAME_POR_OMISION, PM_COPY, buildPmSystemPrompt, saludoPorHora } from "./perfil-pm.ts";
 import { bloqueConocimientoPrompt, listarConocimientoVigente } from "../conocimiento/dominio.ts";
 import type { WhatsAppTurnHandler } from "./turn-handler.ts";
@@ -1428,6 +1430,24 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
               const guardada = raw?.programadoPara ?? raw?.programado_para ? undefined : (raw?.horaRecogida ?? raw?.hora_recogida);
               const instanteMs = typeof guardada === "string" ? Date.parse(guardada) : NaN;
               if (!Number.isNaN(instanteMs)) respuesta = corregirHoraDeRecogidaEnRespuesta(respuesta, { instanteMs, zonaHoraria: p.timezone, ahoraMs: now().getTime() });
+            }
+          }
+          // Cerebro v2 (fc5797c + e69279e del suelto): no se promete un producto que el cliente nombro y ninguna herramienta devolvio; si no esta en el menu de
+          // ninguna sucursal activa, la oracion pasa a «Por el momento no tenemos X en el menú.». Lo que si esta (o si el menu no se pudo leer) no se toca.
+          if (cerebroV2 && perfil === "taqueria_pm" && !orderId) {
+            const hiloV2 = working.map((m) => ({ role: m.role, content: typeof m.content === "string" ? m.content : "" }));
+            const promesa = promesaDeProductoSinBuscar(respuesta, hiloV2);
+            if (promesa) {
+              let enElMenu: boolean | null = false;
+              try {
+                for (const b of branches) {
+                  const catalogo = (await repo.listAvailableProductsForBranch(b.propertyId)).map((p) => ({ id: p.id, name: p.name, category: p.categoryName ?? null, description: p.description ?? null, price: Number(p.price), searchKeywords: p.searchKeywords ?? null }));
+                  if (consultasDeMenuParaPromesa(promesa.producto).some((q) => buscarEnCatalogo(q, catalogo, { conExtras: false }).length > 0)) { enElMenu = true; break; }
+                }
+              } catch {
+                enElMenu = null;
+              }
+              respuesta = corregirPromesaSinBuscar(respuesta, hiloV2, enElMenu) ?? respuesta;
             }
           }
           const replyFinal = safeReply(respuesta);
