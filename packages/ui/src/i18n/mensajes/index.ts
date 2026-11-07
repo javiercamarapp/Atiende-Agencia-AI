@@ -11,6 +11,7 @@
  * el agente le dice al consumidor final por WhatsApp o voz (eso sigue en espanol, lo decide el negocio, no la consola).
  */
 import type { Idioma, Mensaje, Traduccion } from "../tipos.ts";
+import type { carga } from "./carga.ts";
 import type { comun } from "./comun.ts";
 
 /**
@@ -27,6 +28,7 @@ export const MODULOS = {} as const;
  */
 interface ModulosDeArea {
   readonly comun: typeof comun;
+  readonly carga: typeof carga;
 }
 
 type Modulos = typeof MODULOS & ModulosDeArea;

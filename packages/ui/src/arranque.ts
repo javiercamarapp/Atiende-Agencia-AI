@@ -7,6 +7,9 @@
 export { CapaArranque } from "./components/CapaArranque.js";
 export { ThemeBoot } from "./components/ThemeBoot.js";
 export { EstadoError } from "./components/EstadoError.js";
+// Recuperacion de una pantalla que no cargo (chunk roto): «Reintentar» + «Limpiar caché y recargar».
+export { RecuperarCarga } from "./components/RecuperarCarga.js";
+export { esErrorDeCarga } from "./lib/recuperar-carga.js";
 export { EstadoCargando } from "./components/EstadoCargando.js";
 export { VerticalNoEncontrado } from "./components/VerticalNoEncontrado.js";
 export { Toaster } from "./components/ui/sonner.js";
