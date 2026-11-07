@@ -57,7 +57,9 @@ import { confirmacionDePedido } from "./confirmacion-pedido.ts";
 import { normalizarFormatoWhatsApp } from "./formato-whatsapp.ts";
 import { afirmaCambioRegistrado, afirmaPedidoProgramado, afirmaPedidoRegistrado, normalizarParaClasificar, CAMBIO_AVISADO_SIN_REGISTRAR, CAMBIO_SIN_REGISTRAR_OFRECE_AVISO, corregirPromesaDeHorarioNocturno, porcentajePropinaDichoPorElCliente, afirmaHaberAvisado, afirmaSoloRegistroDePedido, branchAlreadyKnown, classifyHighRiskIntent, classifyHighRiskIntentInMessages, contextoDeCliente, esperaDetalleDeQueja, noEsDetalleDeQueja, QUEJA_DETALLE_RECIBIDO, QUEJA_PREGUNTA_DETALLE, quejaTraeDetalle, respuestaDeQuejaConDetalle, enforcePendingQuestion, enforceQuotedTotal, knownAmountsOfQuote, quitarAfirmacionDeAviso, quitarAfirmacionDePedidoRegistrado, quitarCortesiaNoRespaldada, quitarPromesaDeDinero, reemplazarFugaDePrompt, contieneFugaDePrompt, RESPUESTA_SIN_FUGA } from "./guards.ts";
 import { COPY_LLAMADA_NO_RECIBIDA, COPY_LLAMADA_REPETIDA, COPY_SI_REPETIDO_SIN_REGISTRAR, MARCA_SI_SIN_REGISTRAR, esAvisoDeLlamada } from "./prompt-pm-paquete-c.ts";
-import { decidirAntesDelModelo } from "./cerebro-v2/antes-del-modelo.ts";
+import { decidirAntesDelModelo, respuestaFinalV2 } from "./cerebro-v2/antes-del-modelo.ts";
+import { enforcePromoPolicy, stripUnpromptedTip } from "./cerebro-v2/politicas-pm.ts";
+import { PM_POLICY_RULES_V2 } from "./cerebro-v2/prompt-v2.ts";
 import { PM_AGENT_NAME_POR_OMISION, PM_COPY, buildPmSystemPrompt, saludoPorHora } from "./perfil-pm.ts";
 import { bloqueConocimientoPrompt, listarConocimientoVigente } from "../conocimiento/dominio.ts";
 import type { WhatsAppTurnHandler } from "./turn-handler.ts";
@@ -765,7 +767,9 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         // R11-03: ninguna promesa de devolver dinero ni de descuento fuera de la cotizacion llega al cliente.
         reply = quitarPromesaDeDinero(reply, { respaldaDescuento: lastQuoteRespaldaCortesia === true });
         const base = enforceQuotedTotal(enforceBistecPackNotice(lastQuoteRespaldaCortesia === false ? quitarCortesiaNoRespaldada(reply) : reply, working), lastQuoteTotal, lastQuoteAmounts);
-        return perfil === "taqueria_pm" ? corregirPromesaDeHorarioNocturno(base, horaLocalDelTurno) : base;
+        const conHorario = perfil === "taqueria_pm" ? corregirPromesaDeHorarioNocturno(base, horaLocalDelTurno) : base;
+        // Cerebro v2 (politicas del 31-oct del suelto): sin propina no preguntada y sin promociones ofrecidas a domicilio o sin que el cliente pregunte.
+        return cerebroV2 && perfil === "taqueria_pm" ? enforcePromoPolicy(stripUnpromptedTip(conHorario, messages), messages) : conHorario;
       };
       /** Zona horaria de la SUCURSAL del pedido (la misma que usa el servidor para validar la hora de recogida); si no se puede leer, la del agente. */
       const zonaDeLaSucursal = async (propertyIdDelPedido: string | null | undefined, branchSlug: unknown): Promise<string> => {
@@ -876,7 +880,19 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       // Cerebro v2: decision determinista del suelto (salud/alergia con aviso URGENTE, transferencia realizada) ANTES del clasificador de siempre; los intents que v2
       // decide se quitan del clasificador de guards.ts para no avisar ni contestar dos veces.
       const pedidoEnCursoV2 = !customer.isNew && customer.pedidoReciente != null && ["registrado", "preparando", "salio", "listo_para_recoger", "programado", "por_confirmar"].includes(customer.pedidoReciente.estado);
-      const decisionV2 = cerebroV2 && perfil === "taqueria_pm" ? decidirAntesDelModelo(pendientes.map((m) => m.content), { pedidoEnCurso: pedidoEnCursoV2 }) : null;
+      const hiloPrevioV2 = messages.slice(0, messages.length - mensajesSinResponder(messages).length).map((m) => ({ role: m.role, content: m.content }));
+      const decisionV2 = cerebroV2 && perfil === "taqueria_pm"
+        ? decidirAntesDelModelo(pendientes.map((m) => m.content), {
+            pedidoEnCurso: pedidoEnCursoV2,
+            mensajes: hiloPrevioV2,
+            ahoraMs: now().getTime(),
+            carritoEnCurso,
+            otroRiesgo: (t) => {
+              const i = classifyHighRiskIntent(t, ctxRiesgo)?.intent ?? null;
+              return i === "cancelacion_modificacion" || i === "alergia_salud" || i === "transferencia" ? null : i;
+            },
+          })
+        : null;
       const riesgoClasificadoBase = classifyHighRiskIntentInMessages(paraRiesgo.map((m) => m.content), ctxRiesgo);
       const riesgoClasificado = riesgoClasificadoBase && decisionV2?.sustituye.has(riesgoClasificadoBase.intent) ? null : riesgoClasificadoBase;
       // Queja en dos tiempos: tras la pregunta «¿qué faltó o qué llegó mal?» el mensaje del cliente ES el detalle. Un riesgo de mayor prioridad (salud, cobro, una persona...) manda sobre el detalle.
@@ -894,7 +910,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           : riesgoClasificado;
       let prefijoRespuestaV2: string | null = null;
       let bloquePromptV2 = "";
-      if (decisionV2 && decisionV2.avisos.length > 0) {
+      if (decisionV2 && (decisionV2.avisos.length > 0 || decisionV2.respuestaFija || decisionV2.prefijoRespuesta || decisionV2.bloquePrompt || decisionV2.cancelacion)) {
         const nombreV2 = !customer.isNew && customer.name ? customer.name : "Cliente";
         for (const avisoV2 of decisionV2.avisos) {
           const r = await executeAgentToolSafely(
@@ -913,7 +929,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         }
         if (decisionV2.respuestaFija) {
           escalarMotivo = decisionV2.motivoToma;
-          tele.resultado = "escalado_alto_riesgo";
+          tele.resultado = decisionV2.avisos.length > 0 ? "escalado_alto_riesgo" : "ok";
           tele.motivoEscalacion = decisionV2.motivoToma;
           return done({ reply: decisionV2.respuestaFija, orderId: null, propertyId });
         }
@@ -977,7 +993,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       const productoNoManejadoBloque = perfil === "taqueria_pm" && !preview ? bloqueProductoNoManejado(mensajesSinResponder(messages).map((m) => m.content)) : "";
       // R21 (arreglo 2 R20): tras un aviso de falla del sistema el mensaje previo del cliente sigue pendiente (un solo bloque de falla; vive en falla-pendiente.ts).
       const fallaPrevia = perfil === "taqueria_pm" && !preview ? bloquePedidoPendienteTrasFalla(messages) : "";
-      const systemFinal = [systemPrompt, bloquePromptV2, datosYaConsultadosBloque, cotizacionVigenteBloque, cantidadNoMultiploBloque, productoNoManejadoBloque, fallaPrevia, precargaActiva ? BLOQUE_CONTEXTO_PRECARGADO : ""].filter((b) => b !== "").join("\n\n");
+      const systemFinal = [systemPrompt, cerebroV2 && perfil === "taqueria_pm" ? PM_POLICY_RULES_V2 : "", bloquePromptV2, datosYaConsultadosBloque, cotizacionVigenteBloque, cantidadNoMultiploBloque, productoNoManejadoBloque, fallaPrevia, precargaActiva ? BLOQUE_CONTEXTO_PRECARGADO : ""].filter((b) => b !== "").join("\n\n");
 
       // B03: toque a «Confirmar pedido». Es un «si» explicito, pero SOLO a la cotizacion vigente: el boton de un resumen viejo (el pedido cambio, vencio, ya se
       // creo o se esta creando) se responde aqui con texto fijo, sin modelo y sin crear nada. Si es vigente, el pedido se crea por el camino de siempre
@@ -1421,7 +1437,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             const vigente = await repo.readOrderFlow(organizationId, `wa:${phone}`);
             if (vigente?.state === "cotizado" && vigente.context?.quoteHash === cotizacionDelTurno) pedirConfirmacionEnTurno = { quoteHash: vigente.context.quoteHash, quotedAtMs: vigente.context.quotedAtMs };
           }
-          return done({ reply: prefijoRespuestaV2 && !replyFinal.includes(prefijoRespuestaV2) ? `${prefijoRespuestaV2}\n\n${replyFinal}` : replyFinal, orderId, propertyId });
+          return done({ reply: decisionV2 ? respuestaFinalV2(replyFinal, { prefijoRespuesta: prefijoRespuestaV2, cancelacion: decisionV2.cancelacion }) : replyFinal, orderId, propertyId });
         }
 
         working.push({ role: "assistant", content: completion.text ?? "", toolCalls });

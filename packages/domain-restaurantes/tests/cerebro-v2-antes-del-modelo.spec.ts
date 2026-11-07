@@ -45,3 +45,24 @@ describe("decidirAntesDelModelo", () => {
     expect(d).toMatchObject({ respuestaFija: null, prefijoRespuesta: null, bloquePrompt: null, avisos: [] });
   });
 });
+
+describe("decidirAntesDelModelo: cancelacion del suelto (con el hilo)", () => {
+  const base = { pedidoEnCurso: true, mensajes: [{ role: "user", content: "quiero 2 tacos de pastor" }, { role: "assistant", content: "Listo, su pedido quedó registrado." }], ahoraMs: Date.parse("2026-11-04T20:00:00Z") };
+
+  it("«cancela mi pedido» con pedido vivo: aviso de cancelacion y v2 sustituye el intent de guards.ts", () => {
+    const d = decidirAntesDelModelo(["cancela mi pedido por favor"], base);
+    expect(d.sustituye.has("cancelacion_modificacion")).toBe(true);
+    expect(d.avisos.some((a) => a.motivo === "cancelacion_modificacion")).toBe(true);
+    expect(d.respuestaFija ?? d.prefijoRespuesta).toBeTruthy();
+  });
+
+  it("la duda («¿puedo cancelar mi pedido?») no cede la conversacion: pregunta y el agente sigue", () => {
+    const d = decidirAntesDelModelo(["¿puedo cancelar mi pedido?"], base);
+    expect(d.motivoToma).toBeNull();
+    expect(d.cancelacion?.accion ?? "nada").not.toBe("avisar_cancelacion");
+  });
+
+  it("sin pedido vivo y sin hilo no hay aviso de cancelacion", () => {
+    expect(decidirAntesDelModelo(["cancela mi pedido"], { pedidoEnCurso: false }).avisos).toHaveLength(0);
+  });
+});
