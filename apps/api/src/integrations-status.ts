@@ -360,6 +360,8 @@ export const OPERATIONAL_ENV_VARS: readonly string[] = [
   "CEREBRO_V2_LUNA_ESFUERZO",
   // Hedging de la llamada al modelo del agente de WhatsApp de restaurantes (ms; documentado en docs/CREDENCIALES.md). No es credencial.
   "WHATSAPP_LLM_HEDGE_MS",
+  // Turno asincrono del webhook de WhatsApp de restaurantes para TODAS las organizaciones (1/true/on/si); sin ella solo las de cerebro_v2. No es credencial.
+  "WHATSAPP_TURNO_ASINCRONO",
 ];
 
 /** Unión de toda variable "conocida" por este inventario (integraciones +

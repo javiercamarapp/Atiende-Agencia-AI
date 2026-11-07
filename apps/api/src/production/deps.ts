@@ -201,6 +201,12 @@ export function buildRestaurantesTurnHandlerForSession(
   });
 }
 
+/** `WHATSAPP_TURNO_ASINCRONO` (1/true/on/si): turno asincrono del webhook de WhatsApp de restaurantes para TODAS las organizaciones. Apagada por omision. */
+export function turnoAsincronoDeEntorno(env: NodeJS.ProcessEnv = process.env): boolean {
+  const v = (env.WHATSAPP_TURNO_ASINCRONO ?? "").trim().toLowerCase();
+  return v === "1" || v === "true" || v === "on" || v === "si";
+}
+
 /** Enlace de facturación en línea del negocio (variable `PM_URL_FACTURACION`, solo https). Sin ella el agente no inventa uno. */
 export function urlFacturacionDeEntorno(env: NodeJS.ProcessEnv = process.env): string | null {
   const valor = env.PM_URL_FACTURACION?.trim();
@@ -375,7 +381,8 @@ export function buildProductionDeps(): AppDeps {
   // arriba: la ruta que lo consume (routes/internal/whatsapp-dispatch.ts) responde
   // 503 explícito en vez de fingir un envío. Ningún token real de Meta se usa en
   // tests/CI — este constructor solo corre en producción real.
-  const whatsAppDispatcher = env.whatsappAccessToken ? new WhatsAppOutboundDispatcher({ graphClient: new MetaGraphWhatsAppClient({ accessToken: env.whatsappAccessToken, approvedTemplates: env.whatsappApprovedTemplates, ...(env.whatsappGraphApiVersion ? { apiVersion: env.whatsappGraphApiVersion } : {}) }) }) : undefined;
+  const whatsAppGraphClient = env.whatsappAccessToken ? new MetaGraphWhatsAppClient({ accessToken: env.whatsappAccessToken, approvedTemplates: env.whatsappApprovedTemplates, ...(env.whatsappGraphApiVersion ? { apiVersion: env.whatsappGraphApiVersion } : {}) }) : undefined;
+  const whatsAppDispatcher = whatsAppGraphClient ? new WhatsAppOutboundDispatcher({ graphClient: whatsAppGraphClient }) : undefined;
 
   // Vigilancia de salud de Meta (token por vencer, timeouts del agente): el lector del token existe solo con WHATSAPP_ACCESS_TOKEN; sin el no se llama a Meta.
   const saludMeta: SaludMetaDeps = {
@@ -670,6 +677,11 @@ export function buildProductionDeps(): AppDeps {
     resumenDiarioLlmGateway,
     superadminCopiloto: buildProductionSuperadminCopiloto(superadminCopilotoLlmGateway),
     whatsAppDispatcher,
+    // Turno asincrono del webhook de WhatsApp de restaurantes: organizaciones con cerebro v2 (lectura con SAVEPOINT; sin la 190 = apagada) o todas con
+    // `WHATSAPP_TURNO_ASINCRONO`. El webhook acusa a Meta tras la fase A y corre el turno con `waitUntil` (60 s de vida; ver vercel.json).
+    turnoAsincrono: async (db, organizationId) => turnoAsincronoDeEntorno() || (await leerCerebroV2(db, organizationId)),
+    // «Escribiendo» + leido al tomar un turno asincrono; sin token de Meta no hay (el webhook lo omite).
+    ...(whatsAppGraphClient ? { escribiendoWhatsApp: (a: { readonly phoneNumberId: string; readonly messageId: string }) => whatsAppGraphClient.marcarLeidoYEscribiendo(a) } : {}),
     saludMeta,
     notasDeVoz,
     // Suscripción SaaS propia de Atiende (auditoría de 22 rubros, hallazgo P1

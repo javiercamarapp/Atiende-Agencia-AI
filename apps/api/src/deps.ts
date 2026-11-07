@@ -164,6 +164,14 @@ export interface AppDeps {
   readonly esperarRafaga?: (ms: number) => Promise<void>;
   /** PM-C5: reloj en ms del webhook de WhatsApp para recortar la espera de rafagas segun lo que ya llevo la funcion. OPCIONAL (por omision `Date.now`); los tests lo inyectan. */
   readonly relojMs?: () => number;
+  /** Turno ASINCRONO de WhatsApp de restaurantes: ¿esta organizacion acusa a Meta al terminar la fase A y corre la fase B despues con 60 s de vida? En
+   * produccion = cerebro v2 de la organizacion o `WHATSAPP_TURNO_ASINCRONO`. OPCIONAL: sin ella (tests viejos) nadie es asincrono y el webhook es el de siempre. */
+  readonly turnoAsincrono?: (db: TenantDbSession, organizationId: string) => Promise<boolean>;
+  /** Entrega una promesa para que siga corriendo DESPUES de responder. OPCIONAL: por omision se usa `waitUntil` del contexto de peticion de Vercel
+   * (ver en-segundo-plano.ts); sin contexto el webhook espera la fase B antes de responder. Los tests inyectan uno que guarda la promesa. */
+  readonly enSegundoPlano?: (p: Promise<unknown>) => void;
+  /** Indicador de «escribiendo» + leido de la Cloud API al tomar un turno asincrono. Best-effort: un fallo nunca toca el turno. OPCIONAL (sin token de Meta no hay). */
+  readonly escribiendoWhatsApp?: (a: { readonly phoneNumberId: string; readonly messageId: string }) => Promise<void>;
   /** "Chatea con tus datos" (restaurantes piloto). OPCIONAL: si falta, la ruta responde honesta
    * "no disponible" en vez de fingir. En produccion lo arma `buildProductionDataChat` (lector Postgres
    * sobre la sesion RLS del usuario, bitacora en `core.data_chat_query_log`, gateway LLM compartido con
