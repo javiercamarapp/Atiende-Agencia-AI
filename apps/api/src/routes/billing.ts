@@ -252,6 +252,32 @@ function derivarEstadoDeCheckoutCompleted(record: Record<string, unknown>, exist
   };
 }
 
+/** Onboarding P0: ¿este evento CONFIRMA un pago real? Solo entonces la organizacion pasa de prueba a activa.
+ *  - `checkout.session.completed` con `payment_status: "paid"` (un checkout con prueba de Stripe o sin cobro trae
+ *    "no_payment_required" y NO activa: aun no hay pago).
+ *  - `customer.subscription.created|updated` con `status: "active"` (Stripe la marca activa tras cobrar; "trialing",
+ *    "past_due", "incomplete", etc. NO activan).
+ *  `customer.subscription.deleted` nunca activa (y tampoco desactiva: suspender sigue siendo decision humana). */
+export function eventoConfirmaPago(tipo: string, datos: Record<string, unknown>): boolean {
+  if (tipo === "checkout.session.completed") return datos.payment_status === "paid";
+  if (tipo === "customer.subscription.created" || tipo === "customer.subscription.updated") return datos.status === "active";
+  return false;
+}
+
+/** Activa la organizacion en prueba que acaba de pagar (`core.organization_activate_on_payment`, 0072). Best-effort: el estado de
+ *  billing ya quedo guardado y el ledger ya sello el evento, asi que un fallo aqui NO debe convertir el webhook en 500 (Stripe
+ *  reintentaria un evento que el ledger ya marco como visto). La prueba sigue operando igual (no hay apagado automatico) y el
+ *  superadmin puede activarla a mano con la accion `cambiar_plan`. */
+async function activarOrganizacionPagada(deps: AppDeps, organizationId: string): Promise<void> {
+  try {
+    const resultado = await deps.coreRepo.activateOrganizationOnPayment(organizationId);
+    if (resultado === "no_disponible") console.warn("POST /billing/webhook: falta la migracion 0072; la organizacion no se activo sola (activarla con cambiar_plan).");
+    if (resultado === "suspendida") console.warn("POST /billing/webhook: pago de una organizacion suspendida; no se reactiva sola (decision del superadmin).");
+  } catch (err) {
+    console.error("POST /billing/webhook: no se pudo activar la organizacion tras el pago (best-effort):", (err as { code?: unknown })?.code ?? null, err instanceof Error ? err.name : typeof err);
+  }
+}
+
 /**
  * Núcleo real de `POST /billing/checkout` — extraído sin cambiar su
  * comportamiento (ver `apps/api/tests/billing.spec.ts`, que sigue verde sin
@@ -532,7 +558,10 @@ export function billingRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
             evento.tipo === "checkout.session.completed"
               ? derivarEstadoDeCheckoutCompleted(evento.datos, await deps.coreRepo.getOrganizationBillingForWebhook(tenantId))
               : derivarEstadoDeSubscription(evento.datos);
-          return deps.coreRepo.upsertOrganizationBilling({ organizationId: tenantId, ...estado });
+          const fila = await deps.coreRepo.upsertOrganizationBilling({ organizationId: tenantId, ...estado });
+          // Onboarding P0: un pago confirmado pasa la prueba a activa (solo desde 'trial'; nunca reactiva una suspendida).
+          if (eventoConfirmaPago(evento.tipo, evento.datos)) await activarOrganizacionPagada(deps, tenantId);
+          return fila;
         },
       });
     } catch (err) {

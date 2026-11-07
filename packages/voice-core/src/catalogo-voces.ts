@@ -57,3 +57,22 @@ export const VOZ_POR_DEFECTO = "Kore";
 export function esVozDeGemini(voiceId: unknown): voiceId is string {
   return typeof voiceId === "string" && CATALOGO_VOCES_GEMINI.some((v) => v.id === voiceId);
 }
+
+/** Voces TELEFONICAS (TTS de la cascada v2, ElevenLabs eleven_v4_turbo) que ofrece el panel. Ids de la biblioteca de ElevenLabs etiquetados «mexican»,
+ * escuchados y medidos el 6-nov-2026 (PRUEBAS-STT-TTS-NOV.md, «Catalogo de voces mexicanas»): Regina es la de la plataforma; Daniela es la voz que el dueno
+ * de Los Taquitos de PM tiene en su biblioteca. Para agregar otra voz se agrega aqui (el panel solo ofrece este catalogo). */
+export interface VozTelefonoItem {
+  readonly id: string;
+  readonly nombre: string;
+  readonly estilo: string;
+}
+
+export const CATALOGO_VOCES_TELEFONO: readonly VozTelefonoItem[] = Object.freeze([
+  Object.freeze({ id: "9Godp7dNohUvXk6qp0gS", nombre: "Regina", estilo: "Femenina mexicana, de centro de atención (la de la plataforma)" }),
+  Object.freeze({ id: "sDh3eviBhiuHKi0MjTNq", nombre: "Alejandro", estilo: "Masculina mexicana, corporativa" }),
+  Object.freeze({ id: "NUEuVCKSYxEA5YrK3kmx", nombre: "Daniela", estilo: "Femenina mexicana (biblioteca de Los Taquitos de PM)" }),
+]);
+
+export function esVozTelefono(voz: unknown): voz is string {
+  return typeof voz === "string" && CATALOGO_VOCES_TELEFONO.some((v) => v.id === voz);
+}

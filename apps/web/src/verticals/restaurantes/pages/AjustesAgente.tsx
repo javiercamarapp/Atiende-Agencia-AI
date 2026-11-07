@@ -296,7 +296,8 @@ export function AjustesAgentePage({ apiBaseUrl, token, propertyId, crearAudio }:
                 </label>
                 <Selector id="ajustes-modelo-cascada" value={borrador.vozModeloCascada ?? ""} disabled={!servicioListo} onChange={(e) => cambiar({ vozModeloCascada: e.target.value === "" ? null : e.target.value })}>
                   <option value="">Predeterminado de la plataforma{modeloPlataforma ? ` (${modeloPlataforma.etiqueta})` : ""}</option>
-                  {vista.modelos.map((m) => (
+                  {/* Solo modelos con endpoint de retencion cero: la voz se enruta con ZDR y sin el cada turno fallaria (la API tambien lo valida). */}
+                  {vista.modelos.filter((m) => m.vozZdr !== false).map((m) => (
                     <option key={m.id} value={m.id}>
                       {etiquetaOpcionModelo(m, "voz")}
                     </option>

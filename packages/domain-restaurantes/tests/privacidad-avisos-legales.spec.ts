@@ -77,13 +77,29 @@ describe("aviso integral publicado (docs/legal/publicable + página estática)",
     }
   });
   it("el HTML estático conserva las frases clave del md y ninguna promesa sin respaldo", () => {
-    for (const frase of ["Versión:</strong> 1.0", "Conforme a la ley aplicable", "medidas previstas y documentadas", "la versión vigente y su fecha aparecen al inicio"]) {
+    for (const frase of ["Versión:</strong> 1.1", "Conforme a la ley aplicable", "medidas previstas y documentadas", "la versión vigente y su fecha aparecen al inicio"]) {
       expect(html).toContain(frase);
     }
     for (const texto of [md, html]) {
       expect(texto).not.toMatch(/72 meses/);
       expect(texto).not.toMatch(/exige a sus proveedores/);
       expect(texto).not.toMatch(/historial de versiones/);
+    }
+  });
+  it("v1.1: divulga ElevenLabs para los pedidos por teléfono, que puede conservar audio y texto, y la transferencia a Estados Unidos", () => {
+    for (const texto of [md, html]) {
+      expect(texto).toContain("6 de noviembre de 2026");
+      expect(texto).toMatch(/ElevenLabs \(Eleven Labs Inc\., Estados Unidos\)/);
+      expect(texto).toMatch(/audio de su voz y su transcripción, con los datos que diga en la llamada \(nombre, dirección, teléfono y pedido\)/);
+      expect(texto).toMatch(/ElevenLabs puede conservar ese audio y ese texto conforme a su propia política de privacidad/);
+      expect(texto).toContain("https://elevenlabs.io/privacy-policy");
+      expect(texto).toMatch(/aunque usted no autorice la grabación/);
+      expect(texto).toContain("Fly.io");
+      expect(texto).toMatch(/retención cero de datos cuando el modelo lo ofrece/);
+      // sin plazos de ElevenLabs inventados ni certificaciones
+      expect(texto).not.toMatch(/ElevenLabs[^.\n]{0,80}\d+ (días|meses)/);
+      expect(texto).not.toMatch(/certificad/i);
+      expect(texto).not.toMatch(/Solo tratan los datos para ese fin y no para los suyos propios/);
     }
   });
   it("modelo de roles A: el restaurante es responsable de sus clientes finales; Atiende es encargada y responsable de sus propios usuarios", () => {
