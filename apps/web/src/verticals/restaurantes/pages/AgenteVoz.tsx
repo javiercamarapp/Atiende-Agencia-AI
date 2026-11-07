@@ -9,7 +9,7 @@
 // responden 404/503 la pantalla lo dice, nunca inventa datos. La vista previa es una
 // llamada REAL de prueba con Gemini Live por token efímero (voz/adaptador-gemini-live.ts);
 // sin credencial en el servidor dice "no disponible: falta GEMINI_API_KEY" en vez de simular.
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import type { KeyboardEvent } from "react";
 import { BookOpen, CheckCircle2, Circle, PlayCircle, Wrench } from "lucide-react";
 import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, EstadoVacio, PageContainer, Selector, Textarea, VistaPreviaLlamada, StatusBadge, useAccionesBarra, useMarcoShell } from "@atiende/ui";
@@ -35,6 +35,10 @@ import { ConocimientoNegocio } from "../components/ConocimientoNegocio.tsx";
 import type { MuestraAudio } from "../voz/SelectorVoz.tsx";
 import { useSesionVoz } from "../../../lib/voz/useSesionVoz.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
+import { cargaPerezosa } from "../../../lib/carga-perezosa.tsx";
+
+// Idiomas del agente de voz: chunk aparte (solo se baja al abrir la pestana Voz como owner/admin).
+const IdiomasAgenteVoz = cargaPerezosa(() => import("../voz/IdiomasAgenteVoz.tsx"), "IdiomasAgenteVoz");
 
 type PestanaId = "resumen" | "voz" | "conocimiento" | "comportamiento" | "mensaje" | "herramientas" | "conversaciones" | "indicadores";
 
@@ -251,6 +255,11 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, role, nombreSucur
                   </p>
                 )}
               </div>
+              {role === "owner" || role === "admin" ? (
+                <Suspense fallback={<EstadoCargando />}>
+                  <IdiomasAgenteVoz apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} />
+                </Suspense>
+              ) : null}
             </div>
           ) : null}
 
