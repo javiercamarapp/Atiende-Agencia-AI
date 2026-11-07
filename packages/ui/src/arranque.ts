@@ -10,3 +10,8 @@ export { EstadoError } from "./components/EstadoError.js";
 export { EstadoCargando } from "./components/EstadoCargando.js";
 export { VerticalNoEncontrado } from "./components/VerticalNoEncontrado.js";
 export { Toaster } from "./components/ui/sonner.js";
+// i18n ES/EN: el proveedor envuelve la app desde la entrada y main.tsx precarga el catalogo EN si ya se eligio (solo con ds3).
+export { IdiomaProvider } from "./i18n/proveedor.js";
+export { cargarIdioma } from "./i18n/mensajes/index.js";
+export { leerIdioma } from "./lib/idioma.js";
+export { leerDisenoDs3 } from "./lib/diseno.js";
