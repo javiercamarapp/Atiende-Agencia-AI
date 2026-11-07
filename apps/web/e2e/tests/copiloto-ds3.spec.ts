@@ -2,7 +2,8 @@
 // desde un tema, respuesta con «Cómo se calculó» en el Drawer (fuente, periodo y alcance que mando el servidor), e historial con la
 // anatomia del Drawer sm (420 px a 8 px del borde en escritorio; hoja inferior en movil) con «Chat nuevo», grupos y filas de 40 px.
 // Sin la bandera, la pantalla es la de siempre (copiloto-restaurantes.spec.ts sigue pasando sin cambios).
-// Capturas opcionales: COPILOTO_CAPTURAS=<carpeta> guarda PNG de portada, respuesta, «Cómo se calculó» e historial.
+// Capturas opcionales: COPILOTO_CAPTURAS=<carpeta> guarda PNG de portada, respuesta, «Cómo se calculó» e historial («antes» = la
+// misma ruta sin la bandera, que no cambia; la genera copiloto-restaurantes.spec.ts o el job capturas-ds3 con etapa «antes»).
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
@@ -18,13 +19,12 @@ const CAPTURAS = process.env["COPILOTO_CAPTURAS"];
 async function capturar(page: Page, nombre: string, proyecto: string): Promise<void> {
   if (!CAPTURAS) return;
   mkdirSync(CAPTURAS, { recursive: true });
-  await page.screenshot({ path: join(CAPTURAS, `${proyecto}-${process.env["E2E_DISENO"] === "off" ? "antes" : "despues"}-${nombre}.png`) });
+  await page.screenshot({ path: join(CAPTURAS, `${proyecto}-despues-${nombre}.png`) });
 }
 
 test.describe("copiloto ds3 de restaurantes @copiloto @ds3", () => {
   test.beforeEach(async ({ page }) => {
-    // Bandera del diseno nuevo (la lee /theme-boot.js antes de pintar). E2E_DISENO=off corre la misma ruta SIN bandera (captura «antes»).
-    if (process.env["E2E_DISENO"] === "off") return;
+    // Bandera del diseno nuevo (la lee /theme-boot.js antes de pintar).
     await page.addInitScript(() => {
       try {
         window.localStorage.setItem("atiende-diseno", "ds3");
@@ -35,7 +35,6 @@ test.describe("copiloto ds3 de restaurantes @copiloto @ds3", () => {
   });
 
   test("portada con temas, respuesta con «Cómo se calculó» en el Drawer e historial en Drawer sm", async ({ page, iniciarSesion, mock, vigilante }, info) => {
-    test.skip(process.env["E2E_DISENO"] === "off", "solo captura «antes»");
     await iniciarSesion("restaurantes", "owner");
     await page.goto(RUTA);
     await afirmarPantallaSana(page, "copiloto");
@@ -118,7 +117,6 @@ test.describe("copiloto ds3 de restaurantes @copiloto @ds3", () => {
   });
 
   test("Esc y el velo cierran el historial y el foco vuelve al boton", async ({ page, iniciarSesion }) => {
-    test.skip(process.env["E2E_DISENO"] === "off", "solo con la bandera");
     await iniciarSesion("restaurantes", "staff");
     await page.goto(RUTA);
     await afirmarPantallaSana(page, "copiloto");
@@ -132,19 +130,5 @@ test.describe("copiloto ds3 de restaurantes @copiloto @ds3", () => {
     await expect(page.getByRole("dialog", { name: "Historial de chats" })).toBeVisible();
     await page.mouse.click(10, 10);
     await expect(page.getByRole("dialog", { name: "Historial de chats" })).toHaveCount(0);
-  });
-
-  test("captura «antes» (sin bandera) de la misma pantalla", async ({ page, iniciarSesion }, info) => {
-    test.skip(process.env["E2E_DISENO"] !== "off" || !CAPTURAS, "solo para generar la evidencia «antes»");
-    await iniciarSesion("restaurantes", "owner");
-    await page.goto(RUTA);
-    await afirmarPantallaSana(page, "copiloto");
-    await capturar(page, "portada", info.project.name);
-    await page.getByRole("button", { name: "¿Cuánto vendí esta semana?" }).click();
-    await expect(page.getByText(TEXTO_RESPUESTA)).toBeVisible();
-    await capturar(page, "respuesta", info.project.name);
-    await page.getByRole("button", { name: "Historial de chats" }).click();
-    await expect(page.getByRole("dialog", { name: "Historial de chats" })).toBeVisible();
-    await capturar(page, "historial", info.project.name);
   });
 });
