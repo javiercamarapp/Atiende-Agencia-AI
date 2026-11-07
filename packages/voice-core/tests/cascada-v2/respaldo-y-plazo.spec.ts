@@ -1,6 +1,6 @@
 // Respaldo por etapa (ElevenLabs -> Deepgram), plazo al primer token del LLM con peticion de respaldo, nivel del modelo por turno y seleccion de la pila por llaves.
 import { describe, expect, it } from "vitest";
-import { VOZ_PLATAFORMA, VozNoConfiguradaError, completarConPlazo, crearProveedorCascadaV2, elegirNivelModelo, sttConRespaldo, ttsConRespaldo } from "../../src/index.ts";
+import { VOZ_PLATAFORMA, VozNoConfiguradaError, completarConPlazo, crearProveedorCascadaV2, elegirNivelModelo, esAsentimiento, sttConRespaldo, ttsConRespaldo } from "../../src/index.ts";
 import type { EventosStt, PeticionLlmVoz, PuertoLlmVoz, RespuestaLlmVoz } from "../../src/index.ts";
 import { SttFalso, TtsFalso, audioDe, compuerta, escribe, fabricaSockets, llmFalso, manejadoresFalsos, turnoMicrotareas } from "./dobles.ts";
 
@@ -346,5 +346,46 @@ describe("pila por llaves", () => {
     dg!.abrir();
     await abriendo;
     expect(lineas.find((l) => l.evento === "v2_respaldo")?.campos).toMatchObject({ proveedor: "stt", motivo: "apertura" });
+  });
+});
+
+describe("asentimientos mientras el agente piensa (tras la frase de espera)", () => {
+  it.each([["si"], ["Sí."], ["ajá"], ["Está bien, gracias."], ["aquí espero"], ["ok"]])("%j es asentimiento", (t) => expect(esAsentimiento(t)).toBe(true));
+  it.each([["no"], ["sí, pero sin cebolla"], ["tres tacos"], ["de"], [""], ["sí, es correcto, y agregue una coca"]])("%j NO es asentimiento", (t) => expect(esAsentimiento(t)).toBe(false));
+
+  it("con la opcion encendida, un «si» del cliente mientras el LLM sigue pensando no corta el turno ni abre otro; algo con contenido si corta", async () => {
+    const lento = compuerta();
+    const llm = llmFalso([async (p) => (await lento.promesa, p.onTextDelta?.("Son 179 pesos."), { texto: "Son 179 pesos." }), escribe(["Claro, sin cebolla."])]);
+    const stt = new SttFalso();
+    const tts = new TtsFalso();
+    const m = manejadoresFalsos();
+    const lineas: string[] = [];
+    const prov = crearProveedorCascadaV2({ deepgramApiKey: null, llm, stt, tts, ignorarAsentimientosOcupado: true, log: (l) => void lineas.push(l.evento) });
+    await prov.abrirSesion({ instruccion: "i", voiceId: "Kore", herramientas: [] }, m.h);
+    stt.eventos!.turnoFinal("cuanto es de tres tacos");
+    await turnoMicrotareas(20);
+    stt.eventos!.parcial("sí");
+    stt.eventos!.turnoFinal("Sí.");
+    await turnoMicrotareas(20);
+    expect(llm.senales[0]!.aborted).toBe(false);
+    expect(lineas).toContain("v2_asentimiento_ignorado");
+    lento.abrir();
+    await prov.inactivo();
+    expect(tts.frases).toEqual(["Son 179 pesos."]);
+    expect(llm.peticiones).toHaveLength(1);
+  });
+
+  it("apagada (por omision) un «si» mientras piensa corta el turno como siempre", async () => {
+    const lento = compuerta();
+    const llm = llmFalso([async (p) => (await lento.promesa, { texto: "" }), escribe(["Bien."])]);
+    const stt = new SttFalso();
+    const prov = crearProveedorCascadaV2({ deepgramApiKey: null, llm, stt, tts: new TtsFalso() });
+    await prov.abrirSesion({ instruccion: "i", voiceId: "Kore", herramientas: [] }, manejadoresFalsos().h);
+    stt.eventos!.turnoFinal("cuanto es de tres tacos");
+    await turnoMicrotareas(20);
+    stt.eventos!.parcial("sí");
+    expect(llm.senales[0]!.aborted).toBe(true);
+    lento.abrir();
+    await prov.inactivo();
   });
 });
