@@ -49,6 +49,7 @@ import { superadminCerebroRoutes } from "./routes/superadmin-cerebro.ts";
 import { superadminCopilotoRoutes } from "./routes/superadmin-copiloto.ts";
 import { privacidadOrgRoutes } from "./routes/privacidad-org.ts";
 import { notificationsRoutes } from "./routes/notifications.ts";
+import { onboardingProgresoRoutes } from "./routes/onboarding-progreso.ts";
 import { billingRoutes } from "./routes/billing.ts";
 import { restaurantesPublicRoutes } from "./routes/verticals/restaurantes/public.ts";
 import { restaurantesDemoWidgetRoutes } from "./routes/verticals/restaurantes/demo-widget.ts";
@@ -152,6 +153,8 @@ export function buildApp(deps: AppDeps): Hono {
   app.route("/", superadminCopilotoRoutes(deps));
   app.route("/", privacidadOrgRoutes(deps));
   app.route("/", notificationsRoutes(deps));
+  // ds3 «Guía»: progreso del recorrido guiado por persona (comun a las verticales y a la consola de plataforma).
+  app.route("/", onboardingProgresoRoutes(deps));
   app.route("/", billingRoutes(deps));
   app.route("/", restaurantesPublicRoutes(deps));
   // R-19: widget de chat WhatsApp para demos (sin Meta), solo organizaciones marcadas como demo.
