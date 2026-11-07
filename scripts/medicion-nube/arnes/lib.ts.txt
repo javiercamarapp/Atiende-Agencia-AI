@@ -1,0 +1,161 @@
+import { chat } from "./llm.ts";
+import type { Stack } from "./stack.ts";
+import { PNID, setClock, T } from "./stack.ts";
+
+export type Branch = "T1" | "T3" | "T7";
+export interface Turn { who: "cliente" | "agente"; text: string; ms?: number; status?: number; at?: number; tr?: number; proveedor?: string; ubicOriginal?: string } // R12b: at = reloj del arnes (ms) al enviar/recibir; tr = reloj real (ms) del fin del turno; proveedor = causa de telemetria (error_proveedor/presupuesto_agotado)
+export interface Convo {
+  id: string; fuente: string; branch: Branch; phone: string; clock: string; turns: Turn[];
+  orders: any[]; handoffs: any[]; callbacks: any[]; comandas: number; notifs: number; errors: string[]; ms: number[];
+}
+
+/** R12b: reloj REAL (no el parchado de Date) para casar los turnos con la telemetria. */
+export const relojReal = () => performance.timeOrigin + performance.now();
+export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+let phoneCtr = 0;
+export const newPhone = () => `521999${String(Math.floor(Math.random() * 9000000) + 1000000)}`; // 521 + 10 digitos, ficticio, aleatorio
+
+/** Carga el estado de DB de un telefono despues de la conversacion. */
+export async function snapshot(s: Stack, phone: string) {
+  const p10 = phone.replace(/\D/g, "").slice(-10);
+  const orders = (await s.pool.query(`select o.id, o.order_number, o.property_id, o.total::float total, o.status, o.canal, o.source, o.items, o.payment_method, o.customer_name, o.customer_address, o.hora_recogida, o.programado_para, o.propina::float propina, o.notes, o.created_at from restaurantes.orders o where o.customer_phone like $1 order by o.created_at`, [`%${p10}`])).rows;
+  const handoffs = (await s.pool.query(`select h.* from restaurantes.conversation_handoff h join restaurantes.whatsapp_conversations c on c.id = h.conversation_id where c.phone like $1`, [`%${p10}`])).rows;
+  let callbacks = (await s.pool.query(`select * from restaurantes.callback_requests where customer_phone like $1`, [`%${p10}`])).rows;
+  // Medicion alineada (opt-in, EVIDENCIA_AGREGADOS=1): las solicitudes de agregado (order_amendments) son el aviso real a la sucursal de solicitar_agregado_pedido; el juez original solo veia callback_requests. Por defecto NO cambia nada.
+  if (process.env.EVIDENCIA_AGREGADOS === "1") {
+    const ag = (await s.pool.query(`select a.status, a.customer_note, a.items_added from restaurantes.order_amendments a join restaurantes.orders o on o.id = a.order_id where o.customer_phone like $1`, [`%${p10}`]).catch(() => ({ rows: [] as any[] }))).rows;
+    callbacks = [...callbacks, ...ag.map((a: any) => ({ reason: `agregado_pedido:${a.status}`, message: `Solicitud de agregado: ${(a.items_added as any[]).map((i) => `${i.quantity}x ${i.name}`).join(", ")}${a.customer_note ? ` (${a.customer_note})` : ""}` }))];
+  }
+  const comandas = orders.length ? Number((await s.pool.query(`select count(*) c from restaurantes.pos_comanda_outbox where order_id = any($1)`, [orders.map((o) => o.id)]).catch(() => ({ rows: [{ c: 0 }] }))).rows[0].c) : 0;
+  const notifs = orders.length ? Number((await s.pool.query(`select count(*) c from restaurantes.staff_order_notification where order_id = any($1)`, [orders.map((o) => o.id)]).catch(() => ({ rows: [{ c: 0 }] }))).rows[0].c) : 0;
+  return { orders, handoffs, callbacks, comandas, notifs };
+}
+
+/** `guionPosterior`: mensajes que el escenario real manda MUCHO DESPUES de cerrar el pedido ("(25 min despues) ya estoy afuera"). Se envian textuales
+ *  al terminar la conversacion normal, porque el cliente simulado da `fin=true` en cuanto el pedido queda registrado y nunca los escribia (R9: T7-006/035/041). */
+export interface Persona { goal: string; loc?: string; hints: string[]; datos: string; confirma?: boolean; maxTurns?: number; guionPosterior?: string[]; /** corpus-sim: no corta por `fin` del simulador mientras queden pistas del guion sin decir; si el simulador da fin con pistas pendientes se manda la siguiente pista TEXTUAL (hallazgo 3 de R21). */ agotarGuion?: boolean }
+
+const SIM_SYS = `Eres un CLIENTE real de una taqueria en Merida, Yucatan, escribiendole por WhatsApp. Escribes corto, informal, con jerga yucateca o errores de dedo cuando cuadre. NUNCA reveles que eres una simulacion.
+Recibiras tu OBJETIVO, los mensajes que escribiste en una conversacion real (como guia de estilo e intencion, en orden) y los DATOS que puedes dar cuando te los pidan. Cada vez que el restaurante te conteste, escribe SOLO tu siguiente mensaje (1-2 lineas):
+- Responde lo que te preguntan con los DATOS dados (nombre, direccion, forma de pago...). Si no tienes un dato, inventa uno coherente.
+- Avanza con las intenciones de tu guia en orden; no las sueltes todas de golpe.
+- Si el restaurante te repite el pedido con total y pregunta si es correcto, confirma con "si" salvo que tu objetivo diga otra cosa.
+- Cuando el pedido ya quedo registrado/confirmado, o te dijeron que lo atendera una persona, o ya no hay nada mas que hacer segun tu objetivo, responde fin=true.
+Responde SOLO JSON: {"msg":"texto","fin":false}`;
+
+const SIM_SYS_VOZ = SIM_SYS.replace("escribiendole por WhatsApp. Escribes corto, informal, con jerga yucateca o errores de dedo cuando cuadre.", "LLAMANDO POR TELEFONO. Lo que dices es la transcripcion de tu voz: natural, corto, sin emojis, numeros y direcciones dichos en palabras, con muletillas o jerga yucateca cuando cuadre.").replace("escribe SOLO tu siguiente mensaje (1-2 lineas)", "di SOLO lo siguiente que dices (1-2 frases)");
+export async function nextClientMsg(p: Persona, turns: Turn[], first: boolean, canal: "whatsapp" | "voz" = "whatsapp"): Promise<{ msg: string; fin: boolean }> {
+  const hist = turns.map((t) => `${t.who === "cliente" ? "TU" : "RESTAURANTE"}: ${t.text}`).join("\n");
+  const user = `OBJETIVO: ${p.goal}\nTU GUIA (mensajes originales en orden): ${JSON.stringify(p.hints)}\nDATOS: ${p.datos}\n${p.confirma === false ? "NO confirmes el pedido final: pide cambios o cancela segun el objetivo.\n" : ""}\nCONVERSACION HASTA AHORA:\n${hist || "(vacia)"}\n\n${first ? "Escribe tu primer mensaje (usa el primero de tu guia, casi tal cual)." : "Escribe tu siguiente mensaje."}`;
+  for (let i = 0; i < 3; i++) {
+    const out = await chat([{ role: "system", content: canal === "voz" ? SIM_SYS_VOZ : SIM_SYS }, { role: "user", content: user }], { max: 600, json: true });
+    try { const j = JSON.parse(out.replace(/^```json|```$/g, "")); if (typeof j.msg === "string") return { msg: j.msg.slice(0, 600), fin: !!j.fin }; } catch { /* reintenta */ }
+  }
+  return { msg: "ok", fin: true };
+}
+
+/** R15 / V3 (hallazgo de arnes): el cliente simulado (LLM) CORROMPIA la longitud al copiar la ubicacion (35 de 108 pines en R15: `lng=-602662`, `-602.662`, `-59.602662`...), lo que cambiaba
+ *  la sucursal/distancia y causaba falsos fallos (G1, T7-026, T7-043). Ahora el arnes INYECTA la ubicacion exacta: despues de la respuesta del simulador, todo pin / link de Maps / coordenada
+ *  que escriba se SUSTITUYE por el texto exacto del guion (hints, o datos si el guion no trae pin). El LLM sigue decidiendo CUANDO mandarla; ya no decide QUE digitos lleva. Funciones puras. */
+const RE_PIN_NATIVO = /\[\s*Ubicaci[oó]n[^\]]*\]\s*lat\s*[=:]\s*-?\d+(?:[.,]\d+)*\s*[,;]?\s*(?:lng|lon|long)\s*[=:]\s*-?\d+(?:[.,]\d+)*/i;
+const RE_LINK_MAPS = /https?:\/\/\S*(?:maps|goo\.gl)\S*[^\s.,;:!?)]/i;
+/** Ubicaciones exactas del guion: `nativa` (mensaje de ubicacion de WhatsApp tal como lo representa el arnes) y `mapa` (link de Maps). Prefiere los hints (lo que dice el guion) sobre los datos. */
+export function ubicacionesExactas(p: Pick<Persona, "hints" | "datos" | "loc">): { nativa?: string; mapa?: string } {
+  const fuentes = [...(p.loc ? [p.loc] : []), ...p.hints, p.datos];
+  const buscar = (re: RegExp) => { for (const f of fuentes) { const m = re.exec(f); if (m) return m[0]; } return undefined; };
+  return { nativa: buscar(RE_PIN_NATIVO), mapa: buscar(RE_LINK_MAPS) };
+}
+const RE_UBIC = new RegExp([
+  "\\[\\s*Ubicaci[oó]n[^\\]]*\\](?:\\s*lat\\s*[=:]\\s*-?\\d+(?:[.,]\\d+)*\\s*[,;]?\\s*(?:lng|lon|long)\\s*[=:]\\s*-?\\d+(?:[.,]\\d+)*)?", // A: marcador (con o sin coordenadas)
+  "\\blat\\s*[=:]\\s*-?\\d+(?:[.,]\\d+)*\\s*[,;]?\\s*(?:lng|lon|long)\\s*[=:]\\s*-?\\d+(?:[.,]\\d+)*", // B: lat=.. lng=.. suelto
+  "https?:\\/\\/\\S*(?:maps|goo\\.gl)\\S*[^\\s.,;:!?)]", // C: link de Maps
+  "\\[\\s*LINK DE MAPS\\s*\\]", // D: marcador sin sustituir
+  "-?2[01]\\.\\d{3,}\\s*,\\s*-?\\d+(?:[.,]\\d+)*", // E: par lat,lng desnudo (Yucatan)
+].join("|"), "gi");
+/** Sustituye cada ubicacion que escribio el simulador por la exacta del guion. Devuelve el mensaje y cuantas sustituciones cambiaron algo (>0 = el simulador la habia alterado o reescrito). */
+export function inyectarUbicacion(msg: string, p: Pick<Persona, "hints" | "datos" | "loc">): { msg: string; sustituidas: number; alteradas: number } {
+  const ub = ubicacionesExactas(p); let sustituidas = 0, alteradas = 0;
+  if (!ub.nativa && !ub.mapa) return { msg, sustituidas, alteradas };
+  const par = ub.nativa ? /lat\s*[=:]\s*(-?\d+(?:[.,]\d+)*)\s*[,;]?\s*(?:lng|lon|long)\s*[=:]\s*(-?\d+(?:[.,]\d+)*)/i.exec(ub.nativa) : null;
+  const out = msg.replace(RE_UBIC, (m) => {
+    const esMapa = /^https?:|^\[\s*LINK/i.test(m); const esPar = /^-?2[01]\./.test(m);
+    const exacto = esMapa ? (ub.mapa ?? ub.nativa) : esPar ? (par ? `${par[1]},${par[2]}` : undefined) : (ub.nativa ?? ub.mapa);
+    if (!exacto) return m;
+    sustituidas++; if (exacto !== m) alteradas++;
+    return exacto;
+  });
+  return { msg: out, sustituidas, alteradas };
+}
+
+export async function runPersona(s: Stack, o: { id: string; fuente: string; branch: Branch; clock?: string; persona: Persona; phone?: string; simulador?: typeof nextClientMsg }): Promise<Convo> { // `simulador`: solo para pruebas deterministas (sustituye al LLM del cliente simulado)
+  const phone = o.phone ?? newPhone();
+  const clock = o.clock ?? T.MARTES_13;
+  const c: Convo = { id: o.id, fuente: o.fuente, branch: o.branch, phone, clock, turns: [], orders: [], handoffs: [], callbacks: [], comandas: 0, notifs: 0, errors: [], ms: [] };
+  const max = o.persona.maxTurns ?? 9; let cerrado = 0; const base0 = await snapshot(s, phone);
+  for (let i = 0; i < max; i++) {
+    let sim = await (o.simulador ?? nextClientMsg)(o.persona, c.turns, i === 0); let fin = sim.fin;
+    if (o.persona.agotarGuion && fin) { const dichas = c.turns.filter((t) => t.who === "cliente").length; if ((o.persona.hints?.length ?? 0) > dichas) { sim = { msg: o.persona.hints[dichas]!, fin: false }; fin = false; } }
+    const inj = inyectarUbicacion(sim.msg, o.persona); const msg = inj.msg; // R15/V3: la ubicacion la pone el arnes, no el LLM
+    const lastA = [...c.turns].reverse().find((t) => t.who === "agente")?.text ?? "";
+    if (fin && i >= 2 && !/\?/.test(lastA)) break;
+    c.turns.push({ who: "cliente", text: msg, at: Date.now(), ...(inj.alteradas ? { ubicOriginal: sim.msg } : {}) });
+    const r = await s.say(phone, msg, { pnid: PNID[o.branch] });
+    c.ms.push(r.ms);
+    if (r.status !== 200) c.errors.push(`webhook ${r.status} ${r.raw.slice(0, 120)}`);
+    for (const rep of r.replies) c.turns.push({ who: "agente", text: rep, ms: r.ms, status: r.status, at: Date.now(), tr: relojReal() });
+    if (!r.replies.length) c.turns.push({ who: "agente", text: "(sin respuesta)", ms: r.ms, status: r.status, at: Date.now(), tr: relojReal() });
+    const st = await snapshot(s, phone);
+    // R21 (hallazgo 3): solo corta cuando el escenario REALMENTE termino: un pedido creado o una toma de handoff abierta (el agente ya calla). Un callback suelto (falla_sistema, otro...) no cierra nada:
+    // el agente sigue atendiendo y se perdian los mensajes finales del guion (T7-008, T7-038, T7-026). Ademas no corta mientras queden pistas del guion por decir (el simulador las dice una por mensaje).
+    const cierreReal = st.orders.length > base0.orders.length || st.handoffs.length > base0.handoffs.length;
+    const pistasPendientes = (o.persona.hints?.length ?? 0) > c.turns.filter((t) => t.who === "cliente").length;
+    if (cierreReal) { if (++cerrado >= 2 && !pistasPendientes) break; }
+  }
+  for (const msg of o.persona.guionPosterior ?? []) {
+    c.turns.push({ who: "cliente", text: msg, at: Date.now() });
+    const r = await s.say(phone, msg, { pnid: PNID[o.branch] });
+    c.ms.push(r.ms);
+    if (r.status !== 200) c.errors.push(`webhook ${r.status} ${r.raw.slice(0, 120)}`);
+    for (const rep of r.replies) c.turns.push({ who: "agente", text: rep, ms: r.ms, status: r.status, at: Date.now(), tr: relojReal() });
+    if (!r.replies.length) c.turns.push({ who: "agente", text: "(sin respuesta)", ms: r.ms, status: r.status, at: Date.now(), tr: relojReal() });
+  }
+  Object.assign(c, await snapshot(s, phone));
+  return c;
+}
+
+/** Guion fijo (sin simulador de cliente): para entradas adversariales exactas. */
+export async function runScript(s: Stack, o: { id: string; fuente: string; branch: Branch; clock?: string; msgs: (string | { text: string; id?: string; replayOf?: number; pnid?: string; wait?: number })[]; phone?: string; burst?: boolean; /** corpus-sim: rangos [desde, hasta] (indices inclusivos) de mensajes que llegan SIN esperar respuesta; el resto en orden. */ bursts?: [number, number][] }): Promise<Convo> {
+  const phone = o.phone ?? newPhone();
+  const c: Convo = { id: o.id, fuente: o.fuente, branch: o.branch, phone, clock: o.clock ?? T.MARTES_13, turns: [], orders: [], handoffs: [], callbacks: [], comandas: 0, notifs: 0, errors: [], ms: [] };
+  const sent: any[] = [];
+  const doOne = async (m: (typeof o.msgs)[number], idx: number) => {
+    const spec = typeof m === "string" ? { text: m } : m;
+    if ((spec as any).wait) await sleep((spec as any).wait);
+    c.turns.push({ who: "cliente", text: spec.text, at: Date.now() });
+    let r;
+    if (spec.replayOf !== undefined) {
+      const st = await s.replay(sent[spec.replayOf]); r = { status: st, ms: 0, replies: [] as string[], raw: "", id: "", rawBody: "", sig: "" };
+    } else r = await s.say(phone, spec.text, { pnid: spec.pnid ?? PNID[o.branch], ...(spec.id ? { id: spec.id } : {}) });
+    sent[idx] = r; c.ms.push(r.ms);
+    if (r.status !== 200) c.errors.push(`webhook ${r.status} ${r.raw.slice(0, 120)}`);
+    for (const rep of r.replies) c.turns.push({ who: "agente", text: rep, ms: r.ms, status: r.status, at: Date.now(), tr: relojReal() });
+    if (!r.replies.length) c.turns.push({ who: "agente", text: "(sin respuesta nueva)", ms: r.ms, status: r.status, at: Date.now(), tr: relojReal() });
+  };
+  if (o.bursts?.length) {
+    let i = 0; const rangos = [...o.bursts].sort((a, b) => a[0] - b[0]);
+    while (i < o.msgs.length) {
+      const r = rangos.find(([d, h]) => i >= d && i <= h);
+      if (r) { const hasta = Math.min(r[1], o.msgs.length - 1); const idx = Array.from({ length: hasta - i + 1 }, (_, k) => i + k); await Promise.all(idx.map((k) => doOne(o.msgs[k]!, k))); i = hasta + 1; }
+      else { await doOne(o.msgs[i]!, i); i++; }
+    }
+  } else if (o.burst) await Promise.all(o.msgs.map((m, i) => doOne(m, i)));
+  else for (let i = 0; i < o.msgs.length; i++) await doOne(o.msgs[i]!, i);
+  Object.assign(c, await snapshot(s, phone));
+  return c;
+}
+
+export const stats = (xs: number[]) => {
+  const a = [...xs].sort((x, y) => x - y); if (!a.length) return { n: 0, med: 0, p95: 0, max: 0 };
+  const q = (p: number) => a[Math.min(a.length - 1, Math.floor(p * a.length))]!;
+  return { n: a.length, med: q(0.5), p95: q(0.95), max: a[a.length - 1]! };
+};

@@ -22,6 +22,17 @@ import { bearer, seguridadSetup } from "./superadmin-seguridad-fixtures.ts";
 import { HERRAMIENTAS_FINANCIERAS, HERRAMIENTAS_OPERATIVAS } from "../src/superadmin-copiloto/catalogo.ts";
 import { AHORA, FILA_CFO, FILA_CFO_HOTEL, fuentesFalsas } from "./superadmin-copiloto-fixtures.ts";
 
+// Las fixtures (vigencias, periodos, cortes de cron y el mes "2026-10" de la herramienta mrr) estan fechadas alrededor de AHORA
+// (2026-10-02): con el reloj real "hoy" se aleja y las ventanas relativas quedan vacias, y desde el 1-nov "2026-10" deja de ser el
+// mes en curso (bomba de tiempo). Se fija `Date` para TODO el archivo; los timers siguen reales.
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(AHORA);
+});
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 interface Guardada {
   id: string;
   scope: ConversacionScope;
@@ -396,16 +407,6 @@ describe("turno con LLM guionado", () => {
 });
 
 describe("cada herramienta del catalogo, elegida por un LLM guionado", () => {
-  // Las fixtures (vigencias, periodos, cortes de cron) estan fechadas alrededor de AHORA (2026-10-02): con el reloj real "hoy" se aleja y las
-  // ventanas relativas (p. ej. contratos por vencer en 60 dias) quedan vacias (bomba de tiempo). Solo se simula `Date`; los timers siguen reales.
-  beforeEach(() => {
-    vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(AHORA);
-  });
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
   const ARGS: Record<string, Record<string, string>> = { costos_ia: { periodo: "este_mes" }, uso_por_vertical: { periodo: "ultimos_7_dias" }, uso_copiloto: { periodo: "este_mes" }, ranking_organizaciones: { periodo: "este_mes" }, ranking_actividad: { periodo: "este_mes" }, operaciones_organizacion: { periodo: "este_mes", organizacion: "Taquería Don Beto" }, agentes_organizacion: { periodo: "este_mes", organizacion: "Taquería Don Beto" } };
 
   it.each([...HERRAMIENTAS_OPERATIVAS, ...HERRAMIENTAS_FINANCIERAS])("%s: el modelo la pide, el motor la ejecuta con alcance de plataforma y la respuesta lleva su tabla y su fuente", async (nombre) => {

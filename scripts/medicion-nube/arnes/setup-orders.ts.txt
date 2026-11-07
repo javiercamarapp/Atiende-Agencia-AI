@@ -1,0 +1,23 @@
+// Crea un pedido previo (para escenarios con historial) por la ruta de servidor/herramientas del registro, no por el LLM.
+import type { Stack } from "./stack.ts";
+const H = { "content-type": "application/json", "x-atiende-tool-secret": "qa-voice-tool-secret-local" };
+const org = "los-taquitos-de-pm";
+const SL = { T1: "prol-montejo", T3: "pensiones", T7: "garcia-lavin" } as const;
+export async function createOrderViaTools(s: Stack, phone: string, branch: keyof typeof SL, opts: { canal?: "recoger" | "domicilio"; name?: string; status?: string; minAgo?: number; items?: { name: string; qty: number; tortilla?: string }[] } = {}) {
+  const prop = { T1: "998f5840-0e2e-4e22-9285-988637cb4d42", T3: "13e6655b-c04b-466d-bcf1-e9b1e1a66754", T7: "42996ff1-4285-4e53-9a11-71c7b1cc0392" }[branch];
+  const items = [];
+  for (const i of opts.items ?? [{ name: "Taco Al Pastor (individual)", qty: 6, tortilla: "maiz" }, { name: "Extra Guacamole", qty: 1 }]) {
+    const id = (await s.pool.query(`select p.id from restaurantes.branch_products bp join restaurantes.products p on p.id=bp.product_id where bp.property_id=$1 and p.name=$2`, [prop, i.name])).rows[0]?.id;
+    items.push({ product_id: id, product_name: i.name, requested_quantity: i.qty, ...(i.tortilla ? { tortilla: i.tortilla } : {}) });
+  }
+  const callId = `call-qa-setup-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+  const t = await (await fetch(`${s.api}/v1/restaurantes/${org}/voice/call-token`, { method: "POST", headers: H, body: JSON.stringify({ call_id: callId, caller_phone: phone, branch_slug: SL[branch] }) })).json();
+  const hdr = { ...H, "x-atiende-call-token": t.call_token };
+  const canal = opts.canal ?? "recoger";
+  const q = await fetch(`${s.api}/v1/restaurantes/${org}/orders/quote`, { method: "POST", headers: hdr, body: JSON.stringify({ branch_slug: SL[branch], canal, ...(canal === "domicilio" ? { colonia_entrega: "García Lavín (Victory Platz)" } : {}), items, payment_method: "efectivo" }) });
+  await fetch(`${s.api}/v1/restaurantes/${org}/orders/confirm`, { method: "POST", headers: hdr, body: "{}" });
+  const r = await fetch(`${s.api}/v1/restaurantes/${org}/orders`, { method: "POST", headers: hdr, body: JSON.stringify({ branch_slug: SL[branch], canal, customer_name: opts.name ?? "Ana Prueba", customer_address: canal === "domicilio" ? "Calle 32 #345 Xaman Tan" : undefined, ...(canal === "domicilio" ? { colonia_entrega: "García Lavín (Victory Platz)" } : {}), payment_method: "efectivo", items }) });
+  // el reloj de la API esta controlado (Date parcheado): se alinea created_at con ese reloj para que 'Pedido reciente (ultimas 12 h)' lo vea
+  await s.pool.query(`update restaurantes.orders set created_at = $2::timestamptz, ${opts.status ? "status = $3" : "status = status"} where customer_phone like $1`, [`%${phone.slice(-10)}`, new Date(Date.now() - (opts.minAgo ?? 15) * 60000).toISOString(), ...(opts.status ? [opts.status] : [])]);
+  return { quote: q.status, create: r.status };
+}

@@ -1,0 +1,61 @@
+// Invariantes de precio compartidas por run.ts (WhatsApp) y voz.ts (llamadas). Sin LLM, sin red.
+// Ronda 9 (falsos positivos del arnes): el 2x1 y las cortesias se guardan como renglones a $0 DENTRO de un pedido con
+// al menos un renglon pagado. El chequeo viejo marcaba "precio 0 != lista" salvo que el NOMBRE dijera 2x1/cortesia,
+// pero el renglon se llama igual que el producto ("Taco Al Pastor (individual)", "Horchata"), asi que A26, A33, A34,
+// G2, T7-042, VZ06, VZ23 y VZ24 salian como FALLA con el juez diciendo PASA.
+export interface LineaPedido { name: string; price: number; quantity?: number }
+
+const NOMBRE_PROMO = /2x1|cortes|promo|gratis/i;
+
+/** true si el renglon pagado alguna vez puede ser una linea de regalo: precio exactamente 0 y el pedido SI cobra algo. */
+export function esRenglonPromoACero(it: LineaPedido, items: LineaPedido[]): boolean {
+  if (NOMBRE_PROMO.test(it.name)) return true;
+  if (it.price !== 0) return false;
+  return items.some((x) => x.price > 0 && (x.quantity ?? 1) > 0);
+}
+
+/**
+ * Devuelve el motivo de falla de precio de UN renglon contra la lista de la sucursal, o null si esta bien.
+ * Un renglon a $0 solo se exenta cuando el pedido tiene otro renglon pagado (no existe un pedido gratis legitimo).
+ * Cualquier otro precio distinto de la lista sigue siendo falla.
+ */
+export function motivoPrecioInvalido(it: LineaPedido, listaSucursal: number, items: LineaPedido[]): string | null {
+  if (it.price === listaSucursal) return null;
+  if (it.price === 0 ? esRenglonPromoACero(it, items) : items.some((x) => NOMBRE_PROMO.test(x.name))) return null; // mismo criterio previo para precios distintos de 0
+  return `precio de "${it.name}" ${it.price} != lista ${listaSucursal}`;
+}
+
+/** Hora local de Merida (0-23) de un instante ISO/Date; Merida es UTC-6 todo el ano. */
+export function horaMerida(instante: string | Date): number {
+  const d = typeof instante === "string" ? new Date(instante) : instante;
+  return Number(new Intl.DateTimeFormat("es-MX", { timeZone: "America/Merida", hour: "2-digit", hourCycle: "h23" }).format(d));
+}
+
+/** A21: con la sucursal cerrada se PROGRAMA el pedido (decision de Javier); si existe, no puede quedar antes de la apertura. */
+export function motivosPedidoProgramadoAntesDeAbrir(orders: { hora_recogida?: string | Date | null; total?: number }[], apertura = 12): string[] {
+  const out: string[] = [];
+  for (const o of orders) {
+    if (!o.hora_recogida) continue;
+    const h = horaMerida(o.hora_recogida as any);
+    if (!Number.isNaN(h) && h < apertura) out.push(`pedido programado para las ${h}:xx, antes de la apertura (${apertura}:00)`);
+  }
+  return out;
+}
+
+/** R12c/V5 (A19): con la sucursal CERRADA la regla vigente H16 manda PROGRAMAR, asi que un pedido creado es legitimo SOLO si queda programado (programado_para u hora_recogida)
+ *  y dentro del horario (>= apertura). Un pedido sin hora ni programacion estando cerrada, o programado antes de abrir, sigue siendo falla (HARD). */
+export function motivosPedidoCerradoNoProgramado(orders: { hora_recogida?: string | Date | null; programado_para?: string | Date | null; total?: number }[], apertura = 12): string[] {
+  const out: string[] = [];
+  for (const o of orders) {
+    const t = o.programado_para ?? o.hora_recogida;
+    if (!t) { out.push(`pedido creado con la sucursal cerrada SIN programar (sin programado_para ni hora_recogida; total ${o.total})`); continue; }
+    const h = horaMerida(t as any);
+    if (Number.isNaN(h) || h < apertura) out.push(`pedido programado para las ${h}:xx, antes de la apertura (${apertura}:00)`);
+  }
+  return out;
+}
+
+/** G6: bajo el minimo ($200 a domicilio) no se crea pedido; si el cliente simulado agrega productos y sube del minimo, el pedido es legitimo. */
+export function motivosPedidoBajoMinimo(orders: { canal?: string; total: number }[], minimo = 200): string[] {
+  return orders.filter((o) => o.canal === "domicilio" && o.total < minimo).map((o) => `pedido a domicilio por $${o.total} bajo el minimo de $${minimo}`);
+}

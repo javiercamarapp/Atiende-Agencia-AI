@@ -1,0 +1,39 @@
+// PAQUETE A (PM, 21-oct-2026): escenarios SINTETICOS S01-S08, S20, S21 de SINTESIS.md (menu, unidades, variantes, recurrente).
+// Nombres/colonias inventados; ningun dato real de los chats. Suite "paqa" de run.ts. Sin precios fijos: el juez usa el menu vigente de la base.
+import { T } from "./stack.ts";
+import { runPersona } from "./lib.ts";
+import type { Persona } from "./lib.ts";
+import type { Job } from "./suites.ts";
+
+const DATOS = "Nombre: Carlos Prueba. Pago y hora de recogida: lo que digan tus mensajes (si no dicen, efectivo, paso en 40 minutos). Direccion si la piden: Calle Ficticia 100 x 10 y 12, Residencial Los Cedros, Merida. Si no tienes un dato, inventa uno coherente de Merida.";
+const job = (id: string, fuente: string, p: Persona, expected: string, mustNot: string, hard?: Job["hard"]): Job => ({
+  id, fuente: "PAQ-A " + fuente, branch: "T7", clock: T.MARTES_13, expected, mustNot, hard, maxOrders: 1,
+  run: (s) => runPersona(s, { id, fuente: "PAQ-A " + fuente, branch: "T7", clock: T.MARTES_13, persona: p }),
+});
+const P = (goal: string, hints: string[], maxTurns = 9): Persona => ({ goal, hints, datos: DATOS, maxTurns });
+const dice = (re: RegExp, motivo: string): Job["hard"] => (c) => (c.turns.some((t) => t.who === "agente" && re.test(t.text)) ? [] : [motivo]);
+
+export function suitePaqueteA(): Job[] {
+  return [
+    job("PA-S01", "S01 4 tacos de bistec + 3 de pastor + frijol", P("Pides para recoger 4 tacos de bistec, 3 tacos de pastor y un frijol. Si te explican las ordenes de 3 aceptas 1 orden de bistec (3 tacos). Frijol con tostada, tortilla de maiz.", ["Hola, quiero 4 tacos de bistec, 3 de pastor y un frijol, para recoger", "maiz; el frijol con tostada; sí, correcto"]),
+      "Explica que la orden de bistec trae 3 tacos y que el pastor es individual; propone 1 orden de bistec + 3 de pastor (o 2 ordenes); no redondea sin confirmar; pregunta frijol con tostada o charro si no lo dijo.", "Cotizar 4 tacos de bistec; cobrar piezas como ordenes.", dice(/3 tacos|orden(?:es)? de 3/i, "no explico que la orden de bistec trae 3 tacos")),
+    job("PA-S02", "S02 gringas y mestizas", P("Pides para recoger 2 gringas de pastor y 3 mestizas de pastor. Cuando te expliquen que la orden trae 2, pides 2 ordenes de mestizas.", ["2 gringas de pastor y 3 mestizas, para recoger", "dame 2 ordenes de mestizas; tortilla de harina; sí, correcto"]),
+      "Aclara que gringas y mestizas son ordenes de 2, no confunde piezas con ordenes y pregunta cuantas ordenes.", "Aceptar 3 mestizas como cantidad valida; confundir piezas y ordenes.", dice(/orden(?:es)? de 2|de 2 /i, "no explico la orden de 2")),
+    job("PA-S03", "S03 medio kilo de dos carnes mixta", P("Pides para recoger medio kilo de pastor y medio kilo de bistec, tortilla mixta, y todas las salsas; pagas en efectivo con billete de $1000.", ["Medio de pastor y medio de bistec, mixta, todas las salsas, pago en efectivo, cambio de 1000", "sí, correcto"]),
+      "Interpreta medio kilo de cada uno (no 1 kg), mixta = mitad y mitad, el kilo incluye tortillas; lista las salsas incluidas (roja, verde, cebolla y limones) y pregunta cuales de las opcionales; total de la herramienta.", "Cotizar 1 kg; inventar el total; mandar habanero, ajo o guacamolera sin que las pidan."),
+    job("PA-S04", "S04 flautas por orden", P("Pides para recoger 1 flauta de arrachera y 1 de pastor y preguntas cuantas flautas trae la orden.", ["1 flauta de arrachera y 1 de pastor, para recoger; ¿cuantas trae la orden?", "sí, correcto"]),
+      "Dice que la orden es UNA flauta grande y cotiza con la herramienta (sin inventar precio ni decir 3).", "Decir que la orden trae 3 flautas; inventar precios.", dice(/una flauta|1 flauta/i, "no dijo que la orden es una flauta")),
+    job("PA-S05", "S05 pizza Quesobich", P("Preguntas que lleva el quesobich y si trae tortilla; no ordenas aun.", ["¿Que lleva el quesobich? ¿Trae tortilla?"], 3),
+      "Es una pieza individual, sin tortilla ni totopos, solo lleva salsa y cebolla.", "Decir que trae tortilla o totopos; preguntar tortilla.", dice(/sin tortilla|no (?:incluye|trae|lleva) tortilla/i, "no aclaro que no lleva tortilla")),
+    job("PA-S06", "S06 alitas y crujientes", P("Preguntas cuantas alitas vienen en la orden y cuantos crujientes de pechuga; no ordenas aun.", ["Unas alitas y crujientes de pechuga, ¿cuantas vienen?"], 3),
+      "Alitas: 7 piezas por orden; crujientes: aproximadamente 12.", "Dar una cifra exacta para los crujientes; inventar otra cifra.", dice(/\b7\b/, "no dijo 7 para las alitas")),
+    job("PA-S07", "S07 frijol ambiguo y cebolla cambray", P("Pides una orden de frijol con tostadas, otra de frijoles charros normal y cebollitas cambray para recoger. Si preguntan, las cebollitas preparadas.", ["Una orden de frijol con tostadas y otra de frijoles charros, y cebollitas, para recoger", "preparadas; sí, correcto"]),
+      "Pregunta cambray preparada o natural y cobra todo con el menu vigente (el frijol con tostadas no es cortesia en domicilio).", "Regalar el frijol; no preguntar la variante de la cebolla.", dice(/preparad|natural/i, "no pregunto cambray preparada o natural")),
+    job("PA-S08", "S08 cliente con menu viejo", P("Preguntas por que el kilo de bistec cuesta mas que antes. Decides continuar con medio kilo para recoger, maiz.", ["Antes me salia mas barato el kilo de bistec, ¿por que ahora cuesta mas?", "mejor medio kilo de bistec, maiz, para recoger; sí, correcto"]),
+      "Confirma el precio vigente de la herramienta, explica una vez que hubo un ajuste en septiembre, ofrece continuar o la alternativa mas barata; sin inventar descuento.", "Igualar el precio viejo; inventar descuento; disculpas excesivas."),
+    job("PA-S20", "S20 lo de siempre sin datos en el arnes", P("Dices 'lo mismo de siempre, cambio de 500' desde un numero sin pedido previo en esta conversacion.", ["Lo mismo de siempre, cambio de 500"], 4),
+      "Con la base de clientes aun sin cargar no inventa historial: dice que no tiene un pedido anterior registrado y pide el pedido completo.", "Inventar un pedido anterior; cotizar algo sin que el cliente lo diga.", (c) => (c.orders.length ? [`creo pedido sin historial (${c.orders.length})`] : [])),
+    job("PA-S21", "S21 numero no registrado", P("Dices 'lo mismo' como primer mensaje; despues das tu pedido: 3 tacos de pastor, maiz, para recoger.", ["Lo mismo", "3 tacos de pastor, maiz, para recoger; sí, correcto"], 7),
+      "No inventa historial, pide el pedido completo y lo toma como cliente nuevo.", "Inventar un historial o una direccion guardada."),
+  ];
+}

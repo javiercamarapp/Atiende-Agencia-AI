@@ -1,11 +1,21 @@
 // Herramientas del Copiloto de superadmin (CHAT-16), una por una, contra fuentes EN MEMORIA: datos que devuelven, columnas, que NO exponen (PII, contacto,
 // texto de conversaciones) y el "no tengo el dato" honesto cuando falta la fuente. El LLM guionado y las reglas de seguridad del turno completo van en
 // superadmin-copiloto.spec.ts.
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parseArgs, type DataChatTool, type DataChatToolResult } from "@atiende/agent-core/data-chat";
 import { buildCatalogoPlataforma, HERRAMIENTAS_FINANCIERAS, HERRAMIENTAS_OPERATIVAS } from "../src/superadmin-copiloto/catalogo.ts";
 import type { FuentesPlataforma, RazonFuente } from "../src/superadmin-copiloto/fuentes.ts";
 import { AHORA, FILA_CFO, SCOPE_FINANZAS, SCOPE_SUPERADMIN, ctxHerramienta, fuentesFalsas, ok, volcado } from "./superadmin-copiloto-fixtures.ts";
+
+// Las fixtures estan fechadas alrededor de AHORA (2026-10-02); con el reloj real, desde el 1-nov el mes de las filas CFO deja de ser
+// el mes en curso y las herramientas devuelven otra forma (bomba de tiempo). Se fija `Date` para todo el archivo; los timers siguen reales.
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(AHORA);
+});
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 function herramienta(f: FuentesPlataforma, nombre: string, scope = SCOPE_SUPERADMIN, opciones?: Parameters<typeof buildCatalogoPlataforma>[2]): DataChatTool {
   const t = buildCatalogoPlataforma(f, scope, opciones).tools.find((x) => x.name === nombre);

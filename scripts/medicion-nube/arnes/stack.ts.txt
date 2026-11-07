@@ -1,0 +1,182 @@
+// Arnes de la ronda "cuenta real de PM": API REAL de produccion (buildProductionDeps) contra el Postgres EFIMERO con la config
+// copiada de la cuenta real, LLM real por OpenRouter, Meta SIMULADO (nunca sale a graph.facebook.com).
+import { createHmac, randomUUID } from "node:crypto";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
+import pg from "pg";
+
+export const ORG_ID = "f838fd2c-967e-46fd-af8d-e0229b15748d";
+export const PROP = { T1: "998f5840-0e2e-4e22-9285-988637cb4d42", T2: "c558908d-d48a-431a-bfc4-0dd422b6ad45", T3: "13e6655b-c04b-466d-bcf1-e9b1e1a66754", T7: "42996ff1-4285-4e53-9a11-71c7b1cc0392" } as const;
+export const SLUG = { T1: "prol-montejo", T2: "fco-montejo", T3: "pensiones", T7: "garcia-lavin" } as const;
+export const PNID = { T1: "5550001111", T3: "5550003333", T7: "5550007777" } as const; // numeros de WhatsApp DE PRUEBA (solo en la copia)
+export const APP_SECRET = "qa-whatsapp-app-secret-local";
+export const DB_URL = process.env.QA_DB_URL ?? "postgres://postgres@localhost:55491/pmreal"; // QA_DB_URL: instancia propia de un agente (R11 romper)
+
+/** Reloj controlable: now = base + tiempo real transcurrido desde setClock. TODOS los relojes del arnes (API, cliente simulado, juez, voz, L1) pasan
+ *  por setClock / relojArnes, asi que el desplazamiento se aplica en un solo lugar.
+ *  R11: la guarda SQL "programado_para debe ser una hora futura" usa el now() REAL de Postgres, que no se puede falsear. Para que toda hora que
+ *  produce el reloj falso quede en el futuro real, el reloj se DESPLAZA un multiplo de 7 dias (mismo dia de la semana, mismas horas locales).
+ *  QA_CLOCK_SHIFT_DAYS: numero = dias fijos (0 = sin desplazar, como en la R10); sin definir o "auto" = el minimo multiplo de 7 que deja el
+ *  instante mas temprano del arnes (LUNES_13) al menos 1 dia despues del now() real. */
+const RealDate = Date;
+const DIA_MS = 86400000;
+const REF_MAS_TEMPRANA = RealDate.parse("2026-10-05T19:00:00Z"); // LUNES_13: el instante mas temprano de T y de los escenarios
+export function desplazamientoDias(ahora: number = RealDate.now(), env: string | undefined = process.env.QA_CLOCK_SHIFT_DAYS): number {
+  if (env !== undefined && env.trim() !== "" && env.trim().toLowerCase() !== "auto") {
+    const n = Number(env);
+    if (!Number.isFinite(n)) throw new Error(`QA_CLOCK_SHIFT_DAYS invalido: "${env}" (numero de dias o "auto")`);
+    return n;
+  }
+  const faltan = ahora + DIA_MS - REF_MAS_TEMPRANA;
+  return faltan <= 0 ? 0 : Math.ceil(faltan / (7 * DIA_MS)) * 7;
+}
+export const SHIFT_DIAS = desplazamientoDias();
+/** Aplica el mismo desplazamiento a un instante ISO (para el juez, para horas absolutas de escenarios). Devuelve ISO en UTC. */
+export function relojArnes(iso: string): string { return new RealDate(RealDate.parse(iso) + SHIFT_DIAS * DIA_MS).toISOString(); }
+let base = 0, since = 0, active = false;
+export function setClock(iso: string | null) {
+  if (iso === null) { active = false; return; }
+  base = RealDate.parse(relojArnes(iso)); since = RealDate.now(); active = true;
+}
+/** R12b: copia (sin alterar la salida) de las lineas de telemetria `whatsapp_turno` que el producto escribe a stdout, para que el juez sepa que turnos fueron error_proveedor/presupuesto_agotado. */
+export const telemetriaTurnos: { ts: string; resultado: string; latenciaTotalMs: number; vueltas?: number }[] = [];
+{
+  const w = process.stdout.write.bind(process.stdout); let resto = "";
+  process.stdout.write = ((chunk: any, ...a: any[]) => {
+    try {
+      resto += typeof chunk === "string" ? chunk : Buffer.from(chunk).toString();
+      const ls = resto.split("\n"); resto = ls.pop() ?? "";
+      for (const l of ls) if (l.startsWith('{"ts"') && l.includes('"evento":"whatsapp_turno"')) { const j = JSON.parse(l); telemetriaTurnos.push({ ts: j.ts, resultado: j.resultado, latenciaTotalMs: j.latenciaTotalMs, vueltas: j.vueltas }); }
+    } catch { /* best-effort */ }
+    return (w as any)(chunk, ...a);
+  }) as any;
+}
+const nowMs = () => (active ? base + (RealDate.now() - since) : RealDate.now());
+// @ts-expect-error parche de Date para controlar la hora de Merida en las pruebas
+globalThis.Date = class extends RealDate {
+  constructor(...a: unknown[]) { if (a.length === 0) super(nowMs()); else super(...(a as [number])); }
+  static now() { return nowMs(); }
+};
+/** Instantes de Merida (UTC-6 todo el ano). Oct-2026: 5=lunes, 6=martes. */
+export const T = {
+  MARTES_13: "2026-10-06T19:00:00Z", LUNES_13: "2026-10-05T19:00:00Z", MARTES_08: "2026-10-06T14:00:00Z",
+  MARTES_0030: "2026-10-07T06:30:00Z", MARTES_0110: "2026-10-07T07:10:00Z", MARTES_2330: "2026-10-07T05:30:00Z",
+  DOMINGO_20: "2026-10-11T02:00:00Z",
+};
+
+export interface Sent { to: string; text: string | null; phoneNumberId: string; at: number }
+export interface Stack {
+  api: string; sent: Sent[]; pool: pg.Pool; hits: { path: string; status: number }[];
+  say(from: string, body: string, opts?: { pnid?: string; id?: string }): Promise<{ status: number; ms: number; replies: string[]; raw: string; id: string; rawBody: string; sig: string }>;
+  replay(d: { rawBody: string; sig: string }): Promise<number>;
+  raw(payload: unknown): Promise<{ status: number; raw: string; ms: number }>;
+  msgPayload(from: string, pnid: string, id: string, message: Record<string, unknown>): unknown;
+  stop(): Promise<void>;
+}
+
+export const trace: { t: number; tools: { name: string; args: string }[]; text: string; lastToolResult: string | null; model: string }[] = [];
+const realFetch = globalThis.fetch;
+function instalarTrazaLlm() {
+  globalThis.fetch = (async (input: any, init?: any) => {
+    const url = typeof input === "string" ? input : input?.url ?? String(input);
+    const res = await realFetch(input, init);
+    if (!url.includes("openrouter.ai") || !process.env.QA_TRACE) return res;
+    try {
+      const reqBody = JSON.parse(typeof init?.body === "string" ? init.body : "{}");
+      const msgs = reqBody.messages ?? [];
+      if (process.env.QA_TRACE_FULL) (globalThis as any).__lastReq = { model: reqBody.model, messages: msgs.map((m: any) => ({ role: m.role, content: typeof m.content === 'string' ? m.content.slice(0, 80000) : m.content, tool_calls: m.tool_calls })), tools: (reqBody.tools ?? []).map((t: any) => t.function?.name) };
+      const lastTool = [...msgs].reverse().find((m: any) => m.role === "tool");
+      const j = await res.clone().json();
+      const m = j.choices?.[0]?.message ?? {};
+      trace.push({ t: Date.now(), model: j.model ?? reqBody.model, tools: (m.tool_calls ?? []).map((c: any) => ({ name: c.function?.name, args: String(c.function?.arguments ?? "").slice(0, 600) })), text: String(m.content ?? "").slice(0, 400), lastToolResult: lastTool ? String(lastTool.content).slice(0, 700) : null });
+    } catch { /* traza best-effort */ }
+    return res;
+  }) as typeof fetch;
+}
+export async function startStack(): Promise<Stack> {
+  instalarTrazaLlm();
+  Object.assign(process.env, {
+    DATABASE_URL: DB_URL, JWT_SECRET: "qa-jwt-secret-local-0123456789abcdef", VOICE_TOOL_SECRET: "qa-voice-tool-secret-local", WHATSAPP_VERIFY_TOKEN: "qa-verify",
+    WHATSAPP_APP_SECRET: APP_SECRET, INTERNAL_SECRET: "qa-internal-secret-local", RENTAS_OWNER_JWT_SECRET: "qa-rentas-owner-secret-local-0123456789",
+    WHATSAPP_ACCESS_TOKEN: "qa-graph-token-local", NODE_ENV: "development", VOICE_PREVIEW_TOKEN_SECRET: "qa-voice-preview-secret-local",
+    ALLOWED_ORIGINS: "http://localhost:5173",
+  });
+  // R11: modelo del agente de WhatsApp por variable de entorno, SIN tocar el repo. QA_WA_MODEL=<id OpenRouter> [QA_WA_EFFORT=none|minimal|low|medium|high]
+  // [QA_WA_MAXTOK=n] arma LLM_MODELS_JSON (el mecanismo de produccion, validado por la politica de proveedores de EE.UU.) para los dos roles del agente
+  // (restaurantes:whatsapp_agent y ..._escalated) con UN solo escalon, asi una falla del modelo NO cae en silencio a Luna. Los demas roles (enrutador,
+  // compuerta de escalamiento, transcripcion, compactacion) siguen con sus defaults. QA_LLM_MODELS_JSON=<json> pasa un JSON completo tal cual. Sin variables: defaults de prod.
+  if (process.env.QA_LLM_MODELS_JSON) process.env.LLM_MODELS_JSON = process.env.QA_LLM_MODELS_JSON;
+  else if (process.env.QA_WA_MODEL) {
+    const m = process.env.QA_WA_MODEL;
+    const EFECTO: Record<string, string | undefined> = { "google/gemini-2.5-flash-lite": "minimal", "anthropic/claude-sonnet-5.5": "medium" };
+    const effort = process.env.QA_WA_EFFORT ?? EFECTO[m] ?? "low";
+    const rung: Record<string, unknown> = { model: m, temperature: "omit", minMaxTokens: Number(process.env.QA_WA_MAXTOK ?? 1500), supportsStructuredOutput: true };
+    if (effort !== "none") rung.reasoningEffort = effort;
+    const ruta = { models: [rung], routing: { allowFallbacks: true } };
+    process.env.LLM_MODELS_JSON = JSON.stringify({ roles: { "restaurantes:whatsapp_agent": ruta, "restaurantes:whatsapp_agent_escalated": ruta } });
+  } else delete process.env.LLM_MODELS_JSON;
+  console.error(`[modelo] agente WhatsApp = ${process.env.QA_WA_MODEL ?? (process.env.QA_LLM_MODELS_JSON ? "QA_LLM_MODELS_JSON" : "defaults de produccion (Luna -> DeepSeek V4.1 Flash -> ...)")}`);
+  if (!process.env.OPENROUTER_API_KEY) throw new Error("falta OPENROUTER_API_KEY en el entorno (subshell)");
+  // Meta SIMULADO (Graph): acepta cualquier phone_number_id y registra lo saliente.
+  const sent: Sent[] = [];
+  let ctr = 0;
+  const graph = createServer((req, res) => {
+    const chunks: Buffer[] = [];
+    req.on("data", (c) => chunks.push(c));
+    req.on("end", () => {
+      const m = /^\/(v\d+\.\d+)\/([^/]+)\/messages$/.exec(req.url ?? "");
+      if (!m || req.method !== "POST") { res.writeHead(404); res.end("{}"); return; }
+      const b = JSON.parse(Buffer.concat(chunks).toString() || "{}");
+      const text = b.type === "text" ? b.text?.body ?? null : b.type === "interactive" ? b.interactive?.body?.text ?? null : `[${b.type}]`;
+      sent.push({ to: String(b.to), text, phoneNumberId: m[2]!, at: Date.now() });
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ messaging_product: "whatsapp", contacts: [{ input: b.to, wa_id: b.to }], messages: [{ id: `wamid.QAOUT${++ctr}` }] }));
+    });
+  });
+  await new Promise<void>((r) => graph.listen(0, "127.0.0.1", r));
+  const graphUrl = `http://127.0.0.1:${(graph.address() as AddressInfo).port}`;
+
+  const { buildApp } = await import("../repo/apps/api/src/app.ts");
+  const { buildProductionDeps } = await import("../repo/apps/api/src/production/deps.ts");
+  const { MetaGraphWhatsAppClient, WhatsAppOutboundDispatcher } = await import("../repo/packages/whatsapp-gateway/src/index.ts");
+  const { serveFetchHandler } = await import("../repo/packages/whatsapp-gateway/src/testing/index.ts");
+  const prod = buildProductionDeps();
+  const deps = { ...prod, whatsAppDispatcher: new WhatsAppOutboundDispatcher({ graphClient: new MetaGraphWhatsAppClient({ accessToken: "qa-graph-token-local", baseUrl: graphUrl }) }) };
+  const app = buildApp(deps as never);
+  const hits: { path: string; status: number }[] = [];
+  const server = await serveFetchHandler(async (r) => { const res = await app.fetch(r); hits.push({ path: new URL(r.url).pathname, status: res.status }); return res; });
+  const pool = new pg.Pool({ connectionString: DB_URL, max: 4 });
+  // R11: el reloj falso mas temprano (ya desplazado) debe quedar DESPUES del now() real de Postgres; si no, toda hora programada se rechaza.
+  try {
+    const dbNow = Number((await pool.query("select (extract(epoch from now())*1000)::float8 ms")).rows[0].ms);
+    const minimo = RealDate.parse(relojArnes("2026-10-05T19:00:00Z"));
+    const holgura = (minimo - dbNow) / DIA_MS;
+    console.error(`[reloj] desplazamiento +${SHIFT_DIAS} dias; reloj mas temprano ${new RealDate(minimo).toISOString()} vs now() de Postgres ${new RealDate(dbNow).toISOString()} (holgura ${holgura.toFixed(1)} dias)`);
+    if (holgura <= 0) console.error("[reloj] ADVERTENCIA: el reloj del arnes NO queda en el futuro de Postgres: los pedidos con hora se rechazaran ('programado_para debe ser una hora futura'). Usa QA_CLOCK_SHIFT_DAYS=auto o un valor mayor.");
+  } catch (e) { console.error("[reloj] no pude comparar con now() de Postgres: " + (e as Error).message); }
+
+  const post = async (rawBody: string, sig: string) => {
+    const bytes = new TextEncoder().encode(rawBody);
+    const t0 = RealDate.now();
+    const r = await fetch(`${server.baseUrl}/v1/restaurantes/whatsapp/webhook`, { method: "POST", headers: { "content-type": "application/json", "content-length": String(bytes.byteLength), "x-hub-signature-256": sig }, body: bytes });
+    return { status: r.status, raw: await r.text(), ms: RealDate.now() - t0 };
+  };
+  const sign = (raw: string) => `sha256=${createHmac("sha256", APP_SECRET).update(raw).digest("hex")}`;
+  return {
+    api: server.baseUrl, sent, pool, hits,
+    async say(from, body, opts = {}) {
+      const id = opts.id ?? `wamid.QAIN${randomUUID().slice(0, 12)}`;
+      const wa = from.replace(/\D/g, "");
+      const payload = { object: "whatsapp_business_account", entry: [{ id: "QA-WABA", changes: [{ field: "messages", value: { messaging_product: "whatsapp", metadata: { display_phone_number: "5219990000000", phone_number_id: opts.pnid ?? PNID.T7 }, contacts: [{ profile: { name: "Cliente QA" }, wa_id: wa }], messages: [{ id, from: wa, timestamp: String(Math.floor(Date.now() / 1000)), type: "text", text: { body } }] } }] }] };
+      const rawBody = JSON.stringify(payload); const sig = sign(rawBody);
+      const before = sent.length;
+      const r = await post(rawBody, sig);
+      const replies = sent.slice(before).filter((s) => s.to.replace(/\D/g, "").endsWith(wa.slice(-10))).map((s) => s.text ?? "");
+      return { status: r.status, ms: r.ms, replies, raw: r.raw, id, rawBody, sig };
+    },
+    async raw(payload) { const rawBody = JSON.stringify(payload); const r = await post(rawBody, sign(rawBody)); return { status: r.status, raw: r.raw, ms: r.ms }; },
+    msgPayload(from, pnid, id, message) { const wa = from.replace(/\D/g, ""); return { object: "whatsapp_business_account", entry: [{ id: "QA-WABA", changes: [{ field: "messages", value: { messaging_product: "whatsapp", metadata: { display_phone_number: "5219990000000", phone_number_id: pnid }, contacts: [{ profile: { name: "Cliente QA" }, wa_id: wa }], messages: [{ id, from: wa, timestamp: String(Math.floor(Date.now() / 1000)), ...message }] } }] }] }; },
+    async replay(d) { return (await post(d.rawBody, d.sig)).status; },
+    async stop() { await server.close(); graph.close(); await pool.end(); (prod as { engine: { stop?: () => Promise<void> } }).engine.stop?.().catch(() => undefined); },
+  };
+}
