@@ -52,6 +52,7 @@ export const RUTAS_FINANCIERAS: readonly RutaFinanciera[] = [
   { pattern: /^\/superadmin\/organizaciones\/margen$/, recurso: "organizaciones/margen", finanzas: true },
   { pattern: /^\/superadmin\/planes$/, recurso: "planes", finanzas: true },
   { pattern: /^\/superadmin\/planes\/asignaciones$/, recurso: "planes/asignaciones", finanzas: true },
+  { pattern: /^\/superadmin\/planes\/tarifas$/, recurso: "planes/tarifas", finanzas: true },
   { pattern: /^\/superadmin\/contratos$/, recurso: "contratos", finanzas: true },
   { pattern: /^\/superadmin\/contratos\/estimacion$/, recurso: "contratos/estimacion", finanzas: true },
   { pattern: /^\/superadmin\/gasto-api\/(resumen|organizaciones|desglose)$/, recurso: "gasto-api", finanzas: true },
