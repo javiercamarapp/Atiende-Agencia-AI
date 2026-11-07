@@ -66,9 +66,10 @@ import { PM_POLICY_RULES_V2, adaptarPromptPmV2 } from "./cerebro-v2/prompt-v2.ts
 import { cambioSoloDeFormaDePago } from "./cerebro-v2/pago.ts";
 import { normalizePhone } from "../phone.ts";
 import { consultasDeMenuParaPromesa, corregirPromesaSinBuscar, crearFallidoTrasHerramienta, guardiaTextoFinal, MOTIVO_PEDIDO_NO_REGISTRADO, promesaDeProductoSinBuscar, quitarAlgoMasRepetido, siguienteCrearFallido, type CrearPedidoFallido } from "./cerebro-v2/texto-final.ts";
-import { esTextoEnIngles } from "./cerebro-v2/salud.ts";
+import { alergiasSemanticasDelTurno, esTextoEnIngles } from "./cerebro-v2/salud.ts";
+import { clasificadorAlergiaPorGateway, clasificadorApartePorGateway } from "./cerebro-v2/clasificadores-gateway.ts";
 import { herramientaParaElHilo, hiloDelSuelto } from "./cerebro-v2/hilo-herramientas.ts";
-import { cambioNoAplicadoEnTurno } from "./cerebro-v2/pedido-aparte.ts";
+import { cambioNoAplicadoEnTurno, plazoClasificadorPedidoAparte, type EntradaIntencionPedidoAparte, type IntencionPedidoAparte } from "./cerebro-v2/pedido-aparte.ts";
 import type { HerramientaDelHilo } from "../repository.ts";
 import { buscarEnCatalogo } from "./cerebro-v2/busqueda.ts";
 import { PM_AGENT_NAME_POR_OMISION, PM_COPY, buildPmSystemPrompt, saludoPorHora } from "./perfil-pm.ts";
@@ -522,6 +523,9 @@ export interface WhatsAppLlmAgentOptions {
   readonly leerAjustes?: (organizationId: string) => Promise<{ readonly modelo: string | null; readonly temperatura: number } | null>;
   /** Cerebro v2 (migracion 190): bandera por organizacion. Ausente o error de lectura = apagada (el agente de siempre). */
   readonly leerCerebroV2?: (organizationId: string) => Promise<boolean>;
+  /** Cerebro v2: rol del gateway (con escalera ZDR) de los clasificadores del suelto («¿aparte?» y alergia semantica); en produccion
+   *  `restaurantes:whatsapp_clasificador` (actividad `clasificacion_whatsapp`). Ausente = sin clasificadores (solo regex; pedido aparte en modo R24). */
+  readonly clasificadorRole?: string;
   /** Autopiloto: cancelaciones gestionadas por el agente (detras de la bandera por organizacion) y quejas ligadas al pedido. Ausente = comportamiento anterior. */
   readonly autopiloto?: AutopilotoTurnoHooks;
   /** Agregados por validar (migracion 099): habilita `solicitar_agregado_pedido` con solicitud real y la regla del prompt que lo manda usar. Ausente = el agente escala como siempre. */
@@ -728,6 +732,21 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       // Turno asincrono: Meta ya tiene su 200 y la funcion vive 60 s; el tope de 18 s cortaba 20-40 % de los turnos de Luna por Azure ZDR
       // (2-5 vueltas de 3-6 s). Ahi manda solo el fin de la fase que calcula el webhook (ya trae el margen de cierre).
       const deadline = turnoAsincrono && finTurnoMs !== undefined ? finTurnoMs : Math.min(Date.now() + turnBudgetMs, finTurnoMs ?? Number.POSITIVE_INFINITY);
+      // Cerebro v2 (suelto ~8022-8045): el clasificador «¿aparte?» con el plazo que le queda al turno (sin tiempo: no se llama, null). Memo por entrada en el turno.
+      const intencionesDelTurno = new Map<string, Promise<IntencionPedidoAparte | null>>();
+      const clasificadorAparteV2 = options.clasificadorRole
+        ? (entrada: EntradaIntencionPedidoAparte): Promise<IntencionPedidoAparte | null> => {
+            const clave = JSON.stringify(entrada);
+            let pendiente = intencionesDelTurno.get(clave);
+            if (!pendiente) {
+              const plazoMs = plazoClasificadorPedidoAparte(deadline - Date.now());
+              const clasificar = clasificadorApartePorGateway(gateway, { organizationId, role: options.clasificadorRole! });
+              pendiente = plazoMs > 0 ? clasificar(entrada, { llave: "gateway", plazoMs }).catch(() => null) : Promise.resolve(null);
+              intencionesDelTurno.set(clave, pendiente);
+            }
+            return pendiente;
+          }
+        : null;
       // `modo` y `configBorrador` solo los fija la ruta de preview del panel (servidor); el modelo nunca los ve.
       const preview = modo === "preview";
       const configBase = preview && configBorrador ? aplicarFilaAConfig(configBorrador, organizationId) : await resolveAgentConfig(repo, organizationId, entryPropertyId ?? null);
@@ -945,8 +964,14 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       // decide se quitan del clasificador de guards.ts para no avisar ni contestar dos veces.
       const pedidoEnCursoV2 = !customer.isNew && customer.pedidoReciente != null && ["registrado", "preparando", "salio", "listo_para_recoger", "programado", "por_confirmar"].includes(customer.pedidoReciente.estado);
       const hiloPrevioV2 = messages.slice(0, messages.length - mensajesSinResponder(messages).length).map((m) => ({ role: m.role, content: m.content }));
+      // Cerebro v2 (suelto ~6479): clasificador SEMANTICO de alergia sobre los textos del turno con pista de comida o reaccion que la regex no ve (regex O
+      // clasificador => alergia). En paralelo, con el plazo del suelto acotado por lo que le queda al turno; cualquier falla = solo la regex.
+      const alergiaSemanticaV2 = cerebroV2 && perfil === "taqueria_pm" && options.clasificadorRole
+        ? await alergiasSemanticasDelTurno(pendientes.map((m) => m.content), clasificadorAlergiaPorGateway(gateway, { organizationId, role: options.clasificadorRole }), async () => "gateway", () => deadline - Date.now())
+        : undefined;
       const decisionV2 = cerebroV2 && perfil === "taqueria_pm"
         ? decidirAntesDelModelo(pendientes.map((m) => m.content), {
+            ...(alergiaSemanticaV2 ? { alergiaSemantica: alergiaSemanticaV2 } : {}),
             pedidoEnCurso: pedidoEnCursoV2,
             mensajes: hiloPrevioV2,
             ahoraMs: now().getTime(),
@@ -1674,7 +1699,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           const firmaPrecargada = result === undefined && lecturasPrecargadas.size > 0 ? firmaDeLecturaPrecargable(call.name, input, zonaDeColonia) : null;
           const memo = firmaPrecargada !== null && lecturasPrecargadas.has(firmaPrecargada) ? { result: lecturasPrecargadas.get(firmaPrecargada) } : null;
           if (result === undefined) {
-            const executed: AgentToolOutcome = memo ? { result: memo.result, orderId: null, propertyId: null } : await executeAgentToolSafely(repo, { organizationId, channel: "whatsapp", phone, ...(cerebroV2 ? { cerebroV2: true } : {}), ...(cerebroV2 && call.name === "crear_pedido" ? { hiloV2: [...hiloDelSuelto(messages), ...hiloDelSuelto([{ role: "assistant", content: "", herramientas: herramientasV2 }]).slice(0, -1)] } : {}), conversacionReciente: messages.flatMap((m) => (m.role === "user" || m.role === "assistant") && typeof m.content === "string" ? [{ role: m.role, content: m.content, ...(m.at ? { at: m.at } : {}) }] : []).slice(-30), flow: { key: `wa:${phone}`, turn: userTurn }, sharedLocation, ubicacionEntrega, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...(options.autopiloto?.pedidoGrande ? { pedidoGrande: options.autopiloto.pedidoGrande } : {}), ...(options.agregados ? { agregados: options.agregados } : {}), ...(options.menuPdfBaseUrl ? { menuPdfBaseUrl: options.menuPdfBaseUrl } : {}), ...modoCtx }, call.name, input);
+            const executed: AgentToolOutcome = memo ? { result: memo.result, orderId: null, propertyId: null } : await executeAgentToolSafely(repo, { organizationId, channel: "whatsapp", phone, ...(cerebroV2 ? { cerebroV2: true } : {}), ...(cerebroV2 && call.name === "crear_pedido" ? { hiloV2: [...hiloDelSuelto(messages), ...hiloDelSuelto([{ role: "assistant", content: "", herramientas: herramientasV2 }]).slice(0, -1)] } : {}), ...(cerebroV2 && call.name === "crear_pedido" && clasificadorAparteV2 ? { clasificarAparte: clasificadorAparteV2 } : {}), conversacionReciente: messages.flatMap((m) => (m.role === "user" || m.role === "assistant") && typeof m.content === "string" ? [{ role: m.role, content: m.content, ...(m.at ? { at: m.at } : {}) }] : []).slice(-30), flow: { key: `wa:${phone}`, turn: userTurn }, sharedLocation, ubicacionEntrega, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...(options.autopiloto?.pedidoGrande ? { pedidoGrande: options.autopiloto.pedidoGrande } : {}), ...(options.agregados ? { agregados: options.agregados } : {}), ...(options.menuPdfBaseUrl ? { menuPdfBaseUrl: options.menuPdfBaseUrl } : {}), ...modoCtx }, call.name, input);
             result = executed.result;
             fallaSistema = executed.fallaSistema === true;
             codigoDeRechazo = executed.rechazoDelFlujo ?? null;

@@ -18,7 +18,7 @@ import { registerCallbackRequest } from "../callback-requests.ts";
 import { decidirBloqueoAlergia, evidenciaAlergiaEnSesion, MARCA_AVISO_URGENTE, notaAlergiaDelPedido, notaPreferenciaDelPedido, notasConAlergia, notasConPreferencia, rechazoAlergiaSinConfirmar, type EstadoAlergia, type MensajeSalud } from "../whatsapp/cerebro-v2/salud.ts";
 import type { AvisoDelTelefono } from "../repository.ts";
 import { avisoCreadoUrgente, planDeAviso } from "../whatsapp/cerebro-v2/avisos.ts";
-import { claseDelRechazoOtroPedido, idsPedidosCreadosEnSesion, motivoOtroPedidoEnSesion } from "../whatsapp/cerebro-v2/pedido-aparte.ts";
+import { claseDelRechazoOtroPedido, entradaClasificadorPedidoAparte, idsPedidosCreadosEnSesion, motivoOtroPedidoEnSesion, RECHAZO_COTIZA_OTRO_PEDIDO, RECHAZO_COTIZA_PEDIDO_APARTE, type EntradaIntencionPedidoAparte, type IntencionPedidoAparte } from "../whatsapp/cerebro-v2/pedido-aparte.ts";
 import type { MensajeHilo } from "../whatsapp/cerebro-v2/texto-plano.ts";
 import { MOTIVOS_AVISO_CON_PEDIDO, armarBloquePedidoParaAviso, componerMensajeAviso, corregirAvisoCotizado } from "../aviso-pedido-gerente.ts";
 import { cargarMemoria, evaluarReincidencia } from "../cliente-360/memoria.ts";
@@ -176,6 +176,8 @@ export interface AgentToolContext {
   readonly cerebroV2?: boolean;
   /** Cerebro v2 (bloque 4): el hilo en el formato del suelto (con tool_calls y resultados) para la guarda de otro pedido en la sesion de crear_pedido. */
   readonly hiloV2?: readonly MensajeHilo[];
+  /** Cerebro v2 (bloque 4, suelto ~8022-8045): el clasificador «¿aparte?» ya conectado (gateway, rol y plazo del turno). Ausente = sin clasificador (null, modo R24). */
+  readonly clasificarAparte?: (entrada: EntradaIntencionPedidoAparte) => Promise<IntencionPedidoAparte | null>;
   /** Cerebro v2: el aviso que deja ESTA llamada (escalar_a_humano del servidor) es URGENTE. Lo pone el turno con la decision determinista; el modelo no lo controla. */
   readonly avisoUrgente?: boolean;
   readonly channel: AgentChannel;
@@ -2418,7 +2420,7 @@ async function dispatchTool(
       // Cerebro v2 (bloque 4, suelto ~8022-8075): con un pedido creado en la sesion (90 min), otro crear_pedido es una modificacion (va a la sucursal) salvo el
       // si al pedido aparte con su cotizacion posterior. Sin clasificador «¿aparte?» (intencionAparte null: el modo degradado del suelto, R24).
       if (ctx.cerebroV2 && ctx.channel === "whatsapp" && ctx.hiloV2) {
-        const motivo = await motivoOtroPedidoV2(repo, ctx.organizationId, ctx.hiloV2, input);
+        const motivo = await motivoOtroPedidoV2(repo, ctx.organizationId, ctx.hiloV2, input, ctx.clasificarAparte);
         if (motivo) {
           const c = claseDelRechazoOtroPedido(motivo);
           throw new RechazoConClaseError(motivo, c.clase === "cotizar" || c.clase === "aparte" ? c.clase : "existente", c.pregunta ? { pregunta: c.pregunta } : {});
@@ -2966,9 +2968,24 @@ export function municipioFueraDeCoberturaPm(colonia: string): { readonly lat: nu
 }
 
 /** motivoOtroPedidoEnSesion del suelto con los cancelados/entregados que sabe la base (findOrderById de los pedidos de la sesion; un fallo de lectura = no se sabe). */
-async function motivoOtroPedidoV2(repo: RestaurantesRepository, organizationId: string, hilo: readonly MensajeHilo[], input: Record<string, unknown>): Promise<string | null> {
+async function motivoOtroPedidoV2(
+  repo: RestaurantesRepository,
+  organizationId: string,
+  hilo: readonly MensajeHilo[],
+  input: Record<string, unknown>,
+  clasificarAparte?: (entrada: EntradaIntencionPedidoAparte) => Promise<IntencionPedidoAparte | null>,
+): Promise<string | null> {
   const ids = idsPedidosCreadosEnSesion(hilo);
   if (ids.length === 0) return null;
+  // Suelto ~8022-8045: primero sin intencion; si rechaza (no por cotizar) y hay respuesta a «¿Quiere hacer un pedido aparte?», el clasificador lee lo que
+  // dijo el cliente y la guarda se recalcula con esa intencion (sin clasificador, falla o «indefinido»: null, conservador).
+  let intencionAparte: IntencionPedidoAparte | null | undefined;
+  const primero = motivoOtroPedidoEnSesion(hilo, input, { ahoraMs: Date.now() });
+  if (primero && primero !== RECHAZO_COTIZA_OTRO_PEDIDO && primero !== RECHAZO_COTIZA_PEDIDO_APARTE) {
+    const entrada = entradaClasificadorPedidoAparte(hilo);
+    if (entrada) intencionAparte = clasificarAparte ? await clasificarAparte(entrada).catch(() => null) : null;
+  }
+  if (primero === null) return null;
   const cancelados = new Set<string>();
   const entregados = new Set<string>();
   for (const id of ids) {
@@ -2976,7 +2993,7 @@ async function motivoOtroPedidoV2(repo: RestaurantesRepository, organizationId: 
     if (o?.status === "cancelado" || o?.status === "no_recogido") cancelados.add(id);
     if (o?.status === "entregado" || o?.status === "completado") entregados.add(id);
   }
-  return motivoOtroPedidoEnSesion(hilo, input, { ahoraMs: Date.now(), intencionAparte: null, cancelados, entregados });
+  return motivoOtroPedidoEnSesion(hilo, input, { ahoraMs: Date.now(), intencionAparte, cancelados, entregados });
 }
 
 /** Razones de callback que son aviso de alergia (monorrepo: escalar_a_humano con motivo alergia_salud; suelto: alto_riesgo:alergia). */

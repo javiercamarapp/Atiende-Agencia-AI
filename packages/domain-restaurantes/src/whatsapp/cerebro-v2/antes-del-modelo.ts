@@ -55,6 +55,8 @@ export interface ContextoAntesDelModelo {
   readonly carritoEnCurso?: boolean;
   /** Otro intent de alto riesgo del texto que no es la cancelacion (el clasificador de guards.ts), o null. */
   readonly otroRiesgo?: (texto: string) => string | null;
+  /** Textos del turno que el clasificador semantico leyo como alergia (alergiasSemanticasDelTurno; regex O clasificador => alergia). */
+  readonly alergiaSemantica?: ReadonlySet<string>;
 }
 
 const TOPE_RESUMEN = 500;
@@ -78,14 +80,15 @@ export function decidirAntesDelModelo(pendientes: readonly string[], ctx: Contex
   const avisos: AvisoAntesDelModelo[] = [];
   // R87-N (suelto): ¿la ráfaga trae algo más que atender aparte del riesgo de salud? Mismo cálculo que el núcleo (hayResidualConContenido): disparadores = los textos
   // con el riesgo; no cuentan la cortesía ni la cláusula que es el riesgo mismo (u otro riesgo de alto nivel que ya tiene su camino).
-  const disparadoresSalud = new Set(textos.filter((t) => riesgosDeSalud(t).length > 0));
+  const semantica = ctx.alergiaSemantica ?? new Set<string>();
+  const disparadoresSalud = new Set(textos.filter((t) => riesgosDeSalud(t, { alergiaSemantica: semantica }).length > 0));
   const residualConContenido = disparadoresSalud.size > 0 && hayResidualConContenido(
     textos,
     disparadoresSalud,
     (t) => esCortesiaSola(t),
     (c) => esCortesiaSola(c) || riesgosDeSalud(c).length > 0 || declaraAlergia(c) || (ctx.otroRiesgo ? ctx.otroRiesgo(c) !== null : false),
   );
-  const salud = decidirSalud(textos, { pedidoEnCurso: ctx.pedidoEnCurso, residualConContenido, ...(ctx.clienteEnIngles !== undefined ? { clienteEnIngles: ctx.clienteEnIngles } : {}) });
+  const salud = decidirSalud(textos, { pedidoEnCurso: ctx.pedidoEnCurso, residualConContenido, clasificadorDijoAlergia: semantica, ...(ctx.clienteEnIngles !== undefined ? { clienteEnIngles: ctx.clienteEnIngles } : {}) });
   // Decision del dueño (7-nov): toda ALERGIA declarada escala como URGENTE (marca al inicio y notificacion critica); la salud conserva la urgencia del suelto.
   for (const a of salud.avisos) {
     const urgente = a.urgente || a.intent === "alergia";
