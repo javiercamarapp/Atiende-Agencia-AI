@@ -30,6 +30,7 @@ import {
   STAFF_INVITE_ROLES,
   VOZ_POR_DEFECTO,
   ajustesDeLlamada,
+  esModeloVozZdr,
   armarInstruccionLlamada,
   canonicalizeMexicanPhone,
   diaLocalSucursal,
@@ -184,7 +185,8 @@ export function restaurantesVozLlamadaRoutes(deps: AppDeps): Hono<CoreAuthHonoEn
         horaLocal,
         vozTelefono,
         // Modelo de texto de la cascada elegido en los ajustes del agente (panel); null = el de la plataforma (GPT-6 Luna).
-        modeloVoz: ajustes.vozModeloCascada ?? null,
+        // Solo si tiene endpoint de retencion cero: un valor viejo de la base (guardado antes de la regla) no debe dar 404 en cada turno de la llamada.
+        modeloVoz: esModeloVozZdr(ajustes.vozModeloCascada) ? ajustes.vozModeloCascada : null,
       });
     });
   });

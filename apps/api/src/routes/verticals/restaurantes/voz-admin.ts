@@ -210,7 +210,7 @@ export function restaurantesVozAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
     if (vozTelefonoPedida !== undefined) {
       if (!repo.setVozTelefono) throw Errors.serviceUnavailable("La voz telefónica no está disponible aún: requiere la migración 103.");
       try {
-        await repo.setVozTelefono(organizationId, propertyId, vozTelefonoPedida);
+        if (!(await repo.setVozTelefono(organizationId, propertyId, vozTelefonoPedida))) throw Errors.notFound("La sucursal no tiene configuración de voz guardada.");
       } catch (err) {
         return asServiceUnavailable(err);
       }
