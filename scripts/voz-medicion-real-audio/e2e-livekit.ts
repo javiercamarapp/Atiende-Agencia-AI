@@ -87,7 +87,9 @@ const env: Record<string, string> = {
   LIVEKIT_URL: leer("LIVEKIT_URL"), LIVEKIT_API_KEY: leer("LIVEKIT_API_KEY"), LIVEKIT_API_SECRET: leer("LIVEKIT_API_SECRET"),
   ATIENDE_API_URL: s.api, INTERNAL_SECRET: "qa-internal-secret-local", OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY!,
   ELEVENLABS_API_KEY: leer("ELEVENLABS_API_KEY"), DEEPGRAM_API_KEY: llaveDg, VOZ_CASCADA_V2_HABILITADA: "1", VOZ_ESCALERA: "cascada-v2", VOZ_CEREBRO_DOS_NIVELES: "1",
-  VOZ_RUIDO: process.env.VOZ_RUIDO_KRISP ?? "krisp-telefonia", VOICE_ROOM_PREFIX: PREFIJO, VOICE_SECRET_QA: "qa-voice-tool-secret-local",
+  // Como produccion (`VOZ_RUIDO` por omision `ninguno`). r3 (8-nov-2026): con `krisp-telefonia` (BVC) y platica a 10 dB el worker dejaba de oir al cliente
+  // (0 de voz en su VAD, «silencio_reprompt» y cuelgue en 13 de 30 llamadas); sin Krisp, 0 cuelgues. Para medirlo: VOZ_RUIDO_KRISP=krisp-telefonia.
+  VOZ_RUIDO: process.env.VOZ_RUIDO_KRISP ?? "ninguno", VOICE_ROOM_PREFIX: PREFIJO, VOICE_SECRET_QA: "qa-voice-tool-secret-local",
   VOICE_DNIS_MAP: JSON.stringify(Object.fromEntries((["T1", "T3", "T7"] as const).map((t) => [DNIS[t], { orgSlug: "los-taquitos-de-pm", organizationId: ORG_ID, propertyId: PROP[t], branchSlug: SLUG[t], secretoEnv: "VOICE_SECRET_QA", modoEntrada: "total" }]))),
 };
 const config = cargarConfig(env, { pregrabadosFaltantes: [] });
