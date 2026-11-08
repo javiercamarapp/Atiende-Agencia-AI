@@ -223,6 +223,8 @@ class SesionElevenLabsStt implements SesionStt {
   /** Hubo un parcial de VOZ (no fondo) desde el ultimo segmento confirmado. */
   private vozEnSegmento = false;
   private fondoAvisadoEnSegmento = false;
+  /** Ultimo parcial tomado como fondo: sin referencia del cliente, el cierre forzado lo usa si el servidor no confirma (el turno nunca queda abierto). */
+  private parcialFondo = "";
   /** Pico (dB) de los ultimos segmentos aceptados del cliente: su mediana es la voz del cliente. */
   private readonly picosCliente: number[] = [];
   private descartesSeguidos = 0;
@@ -278,6 +280,7 @@ class SesionElevenLabsStt implements SesionStt {
     const voz = this.vozEnSegmento;
     this.picoSegmento = -Infinity;
     this.tramasEnSegmento = 0;
+    this.parcialFondo = "";
     this.vozEnSegmento = false;
     this.fondoAvisadoEnSegmento = false;
     if (!g || this.nivelApagada) return false;
@@ -294,7 +297,8 @@ class SesionElevenLabsStt implements SesionStt {
       return true;
     }
     this.descartesSeguidos = 0;
-    if (Number.isFinite(pico)) {
+    // Solo un segmento con voz del cliente (un parcial que paso la compuerta) es referencia: uno de puro fondo aceptado a ciegas (primer turno) la bajaria.
+    if (voz && Number.isFinite(pico)) {
       this.picosCliente.push(pico);
       if (this.picosCliente.length > 5) this.picosCliente.shift();
     }
@@ -376,9 +380,13 @@ class SesionElevenLabsStt implements SesionStt {
   private alParcial(texto: string): void {
     if (texto === "" || texto === this.parcial) return;
     if (!this.vozEnSegmento && this.esFondo(this.nivelReciente())) {
-      // Platica de fondo: no corta al agente ni reprograma el cierre del turno (el turno del cliente cierra con lo suyo).
+      // Platica de fondo: no corta al agente ni REPROGRAMA el cierre del turno. Pero si no hay cierre armado se arma UNA vez: con platica constante el VAD del
+      // servidor nunca confirma y, sin este tope, el turno no cerraba nunca (E2E r3 c4: la llamada colgaba por silencio). Si era el cliente, el commit forzado lo
+      // trae; si era fondo y ya hay referencia del cliente, `segmentoEsFondo` lo descarta.
       if (!this.fondoAvisadoEnSegmento) this.eventos.descartado?.("parcial_fondo");
       this.fondoAvisadoEnSegmento = true;
+      this.parcialFondo = texto;
+      if (this.tFinMax === null) this.reprogramarFinMax();
       return;
     }
     if (this.o.config.compuertaNivel && !this.nivelApagada && this.esFondo(this.nivelReciente())) return;
@@ -425,9 +433,12 @@ class SesionElevenLabsStt implements SesionStt {
       const parcialForzado = this.parcial;
       this.tFinMax = this.t.poner(() => {
         this.tFinMax = null;
-        if (this.parcial !== parcialForzado || this.parcial === "") return;
-        this.confirmado = this.unir(this.confirmado, this.parcial);
+        // Sin parcial de voz ni referencia del cliente (primer turno con platica constante) se cierra con lo ultimo transcrito: mejor un turno con ruido que una llamada sorda.
+        const sinVoz = this.parcial === "" && this.confirmado === "" && this.picosCliente.length === 0 && this.parcialFondo !== "";
+        if (!sinVoz && (this.parcial !== parcialForzado || this.parcial === "")) return;
+        this.confirmado = this.unir(this.confirmado, sinVoz ? this.parcialFondo : this.parcial);
         this.parcial = "";
+        this.parcialFondo = "";
         this.cerrarTurno();
       }, COMMIT_FORZADO_MS);
     }, this.o.config.finTurnoMaxMs);
