@@ -114,7 +114,10 @@ test.describe("UNI-MARCO restaurantes: una sola barra, un solo juego de controle
         await expect(page.getByTestId("mobile-pagina-titulo"), `${nombre}: titulo de la pagina en el encabezado movil`).toHaveText(/\S/);
         // Decision de Omar 7-nov-2026: la cabecera movil lleva la campana (una sola).
         await expect(cabecera.locator('[aria-label^="Notificaciones"]').filter({ visible: true }), `${nombre}: una campana en el encabezado movil`).toHaveCount(1);
-        expect((await cabecera.boundingBox())?.height ?? 99, `${nombre}: encabezado movil compacto`).toBeLessThanOrEqual(84);
+        // ds3: si la pagina no trae <h1>, el nombre de la cabecera hace de h1 y se ve como fila de 32 px bajo ella (si no, la pantalla
+        // quedaria sin su nombre a la vista); solo entonces la cabecera crece esos 32 px.
+        const tituloEsH1 = (await page.getByTestId("mobile-pagina-titulo").getAttribute("role")) === "heading";
+        expect((await cabecera.boundingBox())?.height ?? 99, `${nombre}: encabezado movil compacto`).toBeLessThanOrEqual(tituloEsH1 ? 84 + 33 : 84);
         const antes = await contarChat(page);
         expect(antes.total, `${nombre}: sin "Pregúntale a tus datos" en el encabezado ni en el cuerpo`).toBe(0);
         expect(antes.enMain, `${nombre}: ningun chat dentro del cuerpo`).toBe(0);
