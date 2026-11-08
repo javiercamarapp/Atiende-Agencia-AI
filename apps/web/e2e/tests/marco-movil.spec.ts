@@ -29,9 +29,11 @@ test.describe("marco y barra movil @movil", () => {
       const lugares = await barra.locator("li").filter({ visible: true }).count();
       expect(lugares, `${objetivo}: la barra tiene de 2 a 6 lugares`).toBeGreaterThanOrEqual(2);
       expect(lugares).toBeLessThanOrEqual(6);
-      // Etiqueta de 12 px e icono de 22 px (Likida), y exactamente un destino activo con aria-current.
+      // Etiqueta de 12 px e icono de 22 px (Likida), y exactamente un destino activo con aria-current. Con «Preguntar» son 6
+      // lugares y ds3 baja la etiqueta a 11 px a proposito (como Rovaq) para que ninguna se recorte a 360 px.
+      const conPreguntar = (await barra.getByTestId("barra-preguntar").filter({ visible: true }).count()) > 0;
       const etiqueta = barra.locator("a span").first();
-      expect(await etiqueta.evaluate((e) => getComputedStyle(e).fontSize)).toBe("12px");
+      expect(await etiqueta.evaluate((e) => getComputedStyle(e).fontSize)).toBe(conPreguntar ? "11px" : "12px");
       const icono = (await barra.locator("a svg").first().boundingBox())!;
       expect(Math.round(icono.width)).toBe(22);
       expect(await barra.locator('a[aria-current="page"]').count()).toBeLessThanOrEqual(1);
@@ -49,11 +51,15 @@ test.describe("marco y barra movil @movil", () => {
         vistas.add(seccion.href);
         await irASeccion(page, seccion);
         await afirmarPantallaSana(page, `${seccion.texto} (${seccion.href})`);
-        // Nombre de la pagina visible en la cabecera movil, y un solo <h1> en el arbol de accesibilidad.
+        // Nombre de la pagina en la cabecera movil y un solo <h1> en el arbol de accesibilidad. ds3 (como Rovaq) deja la cabecera
+        // en una sola fila y el nombre de la cabecera solo para lectores de pantalla: el nombre que se VE es el <h1> de la pagina.
         const nombre = page.getByTestId("mobile-pagina-titulo");
-        await expect(nombre, `${seccion.href}: nombre de la pagina visible en movil`).toBeVisible();
+        await expect(nombre, `${seccion.href}: la cabecera movil lleva el nombre de la pagina`).toBeAttached();
         expect(((await nombre.textContent()) ?? "").trim().length).toBeGreaterThan(0);
-        await expect(page.getByRole("heading", { level: 1 }), `${seccion.href}: un solo <h1> accesible en movil`).toHaveCount(1);
+        const h1 = page.getByRole("heading", { level: 1 });
+        await expect(h1, `${seccion.href}: un solo <h1> accesible en movil`).toHaveCount(1);
+        await expect(h1, `${seccion.href}: nombre de la pagina visible en movil`).toBeVisible();
+        expect(((await h1.textContent()) ?? "").trim().length).toBeGreaterThan(0);
         await afirmarSinScrollHorizontal(page);
         // El contenido no queda tapado por la barra fija: el <main> reserva al menos 63 px abajo.
         const relleno = await page.locator("main#contenido-principal").evaluate((m) => parseFloat(getComputedStyle(m).paddingBottom));
