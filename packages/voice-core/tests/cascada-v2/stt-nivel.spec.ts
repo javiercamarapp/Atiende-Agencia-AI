@@ -155,7 +155,6 @@ describe("compuerta por nivel del STT de ElevenLabs (platica de fondo)", () => {
     const t = await abrir();
     t.audio(4, 600);
     t.audio(1, 3000);
-    t.parcial("hola buenas tardes");
     t.commit("Hola, buenas tardes.");
     t.audio(4, 600);
     for (let i = 0; i < COMPUERTA_NIVEL_ELEVENLABS.descartesMax; i++) {
