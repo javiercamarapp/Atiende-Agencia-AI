@@ -5,6 +5,8 @@ import { ThemeSelector } from "./ThemeSelector";
 import { SelectorIdioma } from "./SelectorIdioma";
 import { AtiendeMark, AtiendeWordmark } from "./AtiendeLogo";
 import { cn } from "../lib/utils";
+import { useT } from "../i18n/proveedor";
+import { shell } from "../i18n/mensajes/shell.ts";
 
 type IconType = ComponentType<{ className?: string; strokeWidth?: number | string }>;
 
@@ -170,6 +172,7 @@ function FilaItem({ item, colapsado }: { item: SidebarItem; colapsado: boolean }
 }
 
 function PildoraPie({ pildora, colapsado }: { pildora: SidebarPiePildora; colapsado: boolean }) {
+  const t = useT(shell);
   const { label, to, href, onClick, icon: Icono, indicador, contador } = pildora;
   const { pathname } = useLocation();
   const activa = to !== undefined && rutaEnItem(pathname, to);
@@ -189,7 +192,7 @@ function PildoraPie({ pildora, colapsado }: { pildora: SidebarPiePildora; colaps
   );
   const comunes = {
     title: label,
-    "aria-label": indicador ? `${label}, con avisos sin leer` : label,
+    "aria-label": indicador ? t("shell.conAvisos", { etiqueta: label }) : label,
     className: cn(CLASE_PILDORA, colapsado ? "justify-center" : cn("justify-center", Icono ? "lg:justify-start" : "lg:justify-between")),
   };
   // La fila del pie que lleva a la pagina actual (Notificaciones, Seguridad...) se marca como el item activo del nav (aria-current;
@@ -213,6 +216,7 @@ function PildoraPie({ pildora, colapsado }: { pildora: SidebarPiePildora; colaps
  */
 export function Sidebar({ sections, user, onLogout, hotelSelector, storageScope, pie, organizacion }: SidebarProps) {
   const location = useLocation();
+  const t = useT(shell);
   const claves = clavesSidebar(storageScope);
   const [collapsed, setCollapsed] = useState<boolean>(() => leerAlmacen(claves.colapsado) === "1");
 
@@ -258,7 +262,7 @@ export function Sidebar({ sections, user, onLogout, hotelSelector, storageScope,
 
   return (
     <aside
-      aria-label="Navegación principal"
+      aria-label={t("shell.navPrincipal")}
       // Mantiene la paleta de Likida aunque la vertical tenga su propio ambito de tokens (index.css, [data-ambito-base]).
       data-ambito-base=""
       data-colapsado={collapsed ? "" : undefined}
@@ -282,8 +286,8 @@ export function Sidebar({ sections, user, onLogout, hotelSelector, storageScope,
         <button
           type="button"
           onClick={alternarColapso}
-          aria-label={collapsed ? "Expandir barra lateral" : "Colapsar barra lateral"}
-          title={collapsed ? "Expandir barra lateral" : "Colapsar barra lateral"}
+          aria-label={collapsed ? t("shell.expandirBarra") : t("shell.colapsarBarra")}
+          title={collapsed ? t("shell.expandirBarra") : t("shell.colapsarBarra")}
           className={cn(
             "ds3-icono-boton size-7 rounded-lg flex items-center justify-center shrink-0 text-muted-foreground transition-colors hover:bg-canvas",
             !collapsed && "lg:ml-auto",
@@ -365,7 +369,7 @@ export function Sidebar({ sections, user, onLogout, hotelSelector, storageScope,
           </div>
           <div className={cn("ds3-cuenta-texto min-w-0 flex-1", collapsed ? "hidden" : "hidden lg:block")}>
             <p className={cn("text-ui font-medium leading-tight truncate", organizacion && "ds3-no")} title={user?.email}>
-              {nombre || "Sin sesión"}
+              {nombre || t("shell.sinSesion")}
             </p>
             {organizacion ? (
               <p hidden className="ds3-solo ds3-cuenta-organizacion text-ui font-medium leading-tight truncate" title={user?.email}>
@@ -377,8 +381,8 @@ export function Sidebar({ sections, user, onLogout, hotelSelector, storageScope,
           <button
             type="button"
             onClick={onLogout}
-            aria-label="Cerrar sesión"
-            title="Cerrar sesión"
+            aria-label={t("shell.cerrarSesion")}
+            title={t("shell.cerrarSesion")}
             className="ds3-cuenta-salir size-7 rounded-lg flex items-center justify-center shrink-0 text-destructive transition-colors hover:bg-destructive-tint"
           >
             <LogOut className="size-3.5" strokeWidth={1.75} />

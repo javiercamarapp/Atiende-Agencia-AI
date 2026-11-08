@@ -202,7 +202,7 @@ describe("RentasShell — nav móvil (hallazgo ALTA)", () => {
     expect(desktopHeader!.parentElement!.className).toContain("md:block");
   });
 
-  it("el encabezado móvil va sin campana ni chat; el menú de cuenta conserva cerrar sesión (campana y chat viven en Más > Cuenta)", async () => {
+  it("el encabezado móvil lleva la campana (decisión de Omar 7-nov-2026) y no el chat; el menú de cuenta conserva cerrar sesión", async () => {
     rendered = await renderShell();
     await cerrarSesionDesdeMenuMovil(rendered.container);
     expect(window.localStorage.getItem("atiende.rentas.session")).toBeNull();

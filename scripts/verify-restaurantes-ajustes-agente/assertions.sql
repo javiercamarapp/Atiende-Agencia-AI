@@ -38,7 +38,7 @@ on conflict do nothing;
 
 -- Ajustes vigentes de la Org A (fixture directa, superusuario).
 insert into restaurantes.agent_runtime_settings (organization_id, whatsapp_model, whatsapp_temperature, voice_pace, voice_style, voice_background, voice_background_volume, updated_by)
-values ('00000000-0000-0000-0000-0000000d0a01', 'google/gemini-2.5-flash-lite', 0.30, 'pausado', 'calido', true, 10, '00000000-0000-0000-0000-0000000d0c01')
+values ('00000000-0000-0000-0000-0000000d0a01', 'deepseek/deepseek-v4.1-flash', 0.30, 'pausado', 'calido', true, 10, '00000000-0000-0000-0000-0000000d0c01')
 on conflict do nothing;
 
 \echo ''
@@ -103,7 +103,7 @@ set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000d0c01', true);
 with up as (
   insert into restaurantes.agent_runtime_settings (organization_id, whatsapp_model, whatsapp_temperature, voice_cascade_model, voice_temperature, voice_pace, voice_style, voice_background, voice_background_volume, updated_by, updated_at)
-  values ('00000000-0000-0000-0000-0000000d0a01', 'deepseek/deepseek-v4.1-flash', 0.50, 'google/gemini-3.8-flash', 0.40, 'agil', 'animado', false, 5, '00000000-0000-0000-0000-0000000d0c01', now())
+  values ('00000000-0000-0000-0000-0000000d0a01', 'deepseek/deepseek-v4.1-flash', 0.50, 'google/gemini-3.5-flash-lite', 0.40, 'agil', 'animado', false, 5, '00000000-0000-0000-0000-0000000d0c01', now())
   on conflict (organization_id) do update set
     whatsapp_model = excluded.whatsapp_model, whatsapp_temperature = excluded.whatsapp_temperature, voice_cascade_model = excluded.voice_cascade_model,
     voice_temperature = excluded.voice_temperature, voice_pace = excluded.voice_pace, voice_style = excluded.voice_style,
@@ -232,6 +232,30 @@ update restaurantes.agent_runtime_settings set voice_cascade_model = 'modelo-sue
 where organization_id = '00000000-0000-0000-0000-0000000d0a01' returning 1 as should_fail;
 rollback;
 
+\echo '--- 21b. (migracion 104) modelo con formato valido pero FUERA de la lista cerrada (Sonnet 5.5, premium) en WhatsApp: RECHAZADO ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000d0c01', true);
+update restaurantes.agent_runtime_settings set whatsapp_model = 'anthropic/claude-sonnet-5.5', updated_by = '00000000-0000-0000-0000-0000000d0c01'
+where organization_id = '00000000-0000-0000-0000-0000000d0a01' returning 1 as should_fail;
+rollback;
+
+\echo '--- 21c. (migracion 104) modelo sin endpoint ZDR (Gemini 2.5 Flash-Lite) en la cascada de voz: RECHAZADO ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000d0c01', true);
+update restaurantes.agent_runtime_settings set voice_cascade_model = 'google/gemini-2.5-flash-lite', updated_by = '00000000-0000-0000-0000-0000000d0c01'
+where organization_id = '00000000-0000-0000-0000-0000000d0a01' returning 1 as should_fail;
+rollback;
+
+\echo '--- 21d. (migracion 104) DeepSeek V4.1 Flash en la cascada de voz (ZDR fuera de Vertex/Bedrock/Azure, vozZdr=false): RECHAZADO ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000d0c01', true);
+update restaurantes.agent_runtime_settings set voice_cascade_model = 'deepseek/deepseek-v4.1-flash', updated_by = '00000000-0000-0000-0000-0000000d0c01'
+where organization_id = '00000000-0000-0000-0000-0000000d0a01' returning 1 as should_fail;
+rollback;
+
 \echo '--- 22. temperatura fuera de 0..1: RECHAZADO ---'
 begin;
 set local role authenticated;
@@ -316,4 +340,31 @@ begin;
 drop table restaurantes.agent_runtime_settings;
 select 1 from restaurantes.agent_runtime_settings;
 select 1 as should_fail;
+rollback;
+
+\echo ''
+\echo '=== E) (migracion 104) respaldo privado de los modelos reescritos ==='
+\echo ''
+
+\echo '--- 30. la tabla de respaldo tiene RLS habilitado (sin policies: nadie de la app la ve) ---'
+select (relrowsecurity)::int as rls_respaldo_deberia_ser_1 from pg_class where oid = 'restaurantes.respaldo_104_modelos_agente'::regclass;
+
+\echo '--- 31. owner de la Org A NO puede leer el respaldo (sin GRANT para authenticated): RECHAZADO ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000d0c01', true);
+select count(*) as should_fail from restaurantes.respaldo_104_modelos_agente;
+rollback;
+
+\echo '--- 32. owner de la Org A NO puede escribir en el respaldo: RECHAZADO ---'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000d0c01', true);
+insert into restaurantes.respaldo_104_modelos_agente (organization_id, whatsapp_model) values ('00000000-0000-0000-0000-0000000d0a01', 'anthropic/claude-sonnet-5.5') returning 1 as should_fail;
+rollback;
+
+\echo '--- 33. anon no tiene ni SELECT sobre el respaldo: RECHAZADO ---'
+begin;
+set local role anon;
+select count(*) as should_fail from restaurantes.respaldo_104_modelos_agente;
 rollback;

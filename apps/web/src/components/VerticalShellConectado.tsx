@@ -5,7 +5,7 @@
 // lugar de armar a mano el Sidebar, el MobileHeader y el BottomNav.
 import { useEffect, useMemo, useState } from "react";
 import { Bell, CircleHelp, MessageCircle, ShieldCheck } from "lucide-react";
-import { abrirMenuGuia, leerDisenoDs3, limpiarProgresoGuia, traductorGuia, useIdiomaGuia, vaciarGuardadoGuia, VerticalShell } from "@atiende/ui";
+import { abrirMenuGuia, leerDisenoDs3, limpiarProgresoGuia, traductorGuia, useIdiomaGuia, useT, vaciarGuardadoGuia, VerticalShell } from "@atiende/ui";
 import type { SidebarPiePildora, VerticalShellProps } from "@atiende/ui";
 import { GuiaDiferida, type CargarGuia } from "./GuiaDiferida.tsx";
 import { baseDeConsola, pistaGuia, servidorProgresoGuia } from "../lib/guia-progreso.ts";
@@ -14,6 +14,7 @@ import { useChatDatosDisponible } from "./BotonChatDatos.tsx";
 import { BannerPlan } from "./BannerPlan.tsx";
 import { PanelChateaConTusDatos } from "./PanelChateaConTusDatos.tsx";
 import type { ChatDatosConexion } from "./PanelChateaConTusDatos.tsx";
+import { nav } from "@atiende/ui/i18n/nav";
 
 export type VerticalShellConectadoProps = VerticalShellProps & {
   readonly apiBaseUrl: string;
@@ -51,6 +52,7 @@ export function seguridadHrefDe(notificacionesHref: string): string {
 
 export function VerticalShellConectado({ apiBaseUrl, token, notificacionesHref, chat: chatProp, copilotoHref, ocultarChat = false, guia, children, ...shell }: VerticalShellConectadoProps) {
   const notif = useNotifications(apiBaseUrl, token);
+  const t = useT(nav);
   const chat = ocultarChat ? undefined : chatProp;
   // Pildora "Pregúntale a tus datos" del pie del Sidebar (gemela de la de Likida): abre el panel real (o la pagina del Copiloto) y solo existe cuando el servidor confirma que el asistente esta activo (nunca una pildora "Pronto").
   const chatDisponible = useChatDatosDisponible(chat);
@@ -64,9 +66,9 @@ export function VerticalShellConectado({ apiBaseUrl, token, notificacionesHref, 
   const pie: SidebarPiePildora[] = [
     ...(shell.sidebarPie ?? []),
     // La campana del encabezado se quito: las notificaciones (y su punto de "sin leer") viven aqui, en escritorio y en "Mas" > "Cuenta".
-    { label: "Notificaciones", to: notificacionesHref, icon: Bell, indicador: notif.hayNoLeidas, contador: notif.unreadCount },
-    ...(yaEnNavegacion ? [] : [{ label: "Seguridad de la cuenta", to: seguridadHref, icon: ShieldCheck }]),
-    ...(chat && chatDisponible ? [copilotoHref ? { label: "Pregúntale a tus datos", to: copilotoHref, icon: MessageCircle } : { label: "Pregúntale a tus datos", onClick: () => setChatAbierto(true), icon: MessageCircle }] : []),
+    { label: t("nav.notificaciones"), to: notificacionesHref, icon: Bell, indicador: notif.hayNoLeidas, contador: notif.unreadCount },
+    ...(yaEnNavegacion ? [] : [{ label: t("nav.seguridadCuenta"), to: seguridadHref, icon: ShieldCheck }]),
+    ...(chat && chatDisponible ? [copilotoHref ? { label: t("nav.preguntaleATusDatos"), to: copilotoHref, icon: MessageCircle } : { label: t("nav.preguntaleATusDatos"), onClick: () => setChatAbierto(true), icon: MessageCircle }] : []),
     // ds3 «Guía» en movil: el boton de la cabecera solo existe en escritorio, asi que en movil la guia se abre desde «Más» > «Cuenta».
     ...(guiaMovil ? [{ label: tGuia("guia.boton"), onClick: () => abrirMenuGuia(), icon: CircleHelp }] : []),
   ];
@@ -86,6 +88,10 @@ export function VerticalShellConectado({ apiBaseUrl, token, notificacionesHref, 
         {...shell}
         onLogout={salir}
         sidebarPie={pie}
+        // ds3 (decision de Omar 7-nov-2026): campana con contador en la cabecera movil y «Preguntar» como destino fijo de la barra
+        // inferior, solo para roles con chat de datos y con el asistente confirmado por el servidor. Sin la bandera existen ocultos.
+        notificaciones={{ to: notificacionesHref, contador: notif.unreadCount, hayNoLeidas: notif.hayNoLeidas }}
+        preguntarHref={chat && chatDisponible && copilotoHref ? copilotoHref : undefined}
       >
         {/* PL-16: aviso de fin de prueba / tope de mensajes del plan, comun a las 6 verticales. */}
         <BannerPlan apiBaseUrl={apiBaseUrl} token={token} planHref={planHrefDe(notificacionesHref)} />
