@@ -121,6 +121,18 @@ describe("compuerta por nivel del STT de ElevenLabs (platica de fondo)", () => {
     expect(t.vistos).not.toContain("descartado:parcial_fondo");
   });
 
+  it("primer turno con platica constante y la voz del cliente cerca del piso (tras Krisp): el turno igual CIERRA con el commit forzado (E2E r3 c4: 15 de 19 fallas, la llamada colgaba por silencio)", async () => {
+    const t = await abrir();
+    t.audio(12, 600);
+    t.parcial("quiero tres tacos de pastor");
+    t.audio(1, 600);
+    t.parcial("quiero tres tacos de pastor y una coca");
+    t.r.vencer(BASE.finTurnoMaxMs);
+    expect(t.sock.json.some((m) => m["commit"] === true)).toBe(true);
+    t.commit("Quiero tres tacos de pastor y una coca.");
+    expect(t.vistos).toContain("final:Quiero tres tacos de pastor y una coca.");
+  });
+
   it("en una linea limpia (piso bajo) un cliente que habla bajito pasa siempre", async () => {
     const t = await abrir();
     t.audio(4, 0);
