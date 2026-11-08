@@ -61,6 +61,13 @@ describe("PostgresPrivacidadRepository -- sobre una base sin la migracion 030", 
     await nextQueryWorks(session);
   });
 
+  it("findOpenDataRightsRequestAsSystem: 42883 (sin la 106) -> available:false y la sesion queda utilizable", async () => {
+    const session = new AbortAwareFakeSession([{ match: /system_find_open_data_rights_request/, respond: () => undefinedFn("system_find_open_data_rights_request") }, NEXT_QUERY]);
+    await expect(new PostgresPrivacidadRepository(session).findOpenDataRightsRequestAsSystem(ORG, "+5219981234567")).resolves.toEqual({ available: false });
+    expect(session.calls).toContain("rollback to savepoint sp_privacy_arco_find_open");
+    await nextQueryWorks(session);
+  });
+
   it("listDataRightsRequests: 42P01 -> disponible:false (nunca una lista vacia real) y la sesion queda utilizable", async () => {
     const session = new AbortAwareFakeSession([{ match: /from restaurantes\.data_rights_requests/, respond: () => undefinedTable("data_rights_requests") }, NEXT_QUERY]);
     await expect(new PostgresPrivacidadRepository(session).listDataRightsRequests(ORG, {}, {})).resolves.toEqual({ disponible: false, items: [], total: 0, nextOffset: null });
@@ -153,5 +160,21 @@ describe("PostgresPrivacidadRepository -- sobre una base sin la migracion 030", 
     });
     await expect(repo.resolveDataRightsConfirmationAsSystem(ORG, "+5219981234567", true)).resolves.toMatchObject({ available: true, found: true, id: "req-1", rightType: "acceso", status: "recibida" });
     await expect(repo.purgeExpiredPrivacyData(100)).resolves.toMatchObject({ disponible: true, conversationsCleared: 3, voiceTurnsDeleted: 7, voiceCallsAnonymized: 2, ordersVoiceCleared: 0, outboxPayloadsErased: 0, staffNotificationsErased: 0 });
+  });
+
+  it("findOpenDataRightsRequestAsSystem: mapea la fila abierta y 0 filas -> found:false", async () => {
+    const conFila = new AbortAwareFakeSession([
+      { match: /system_find_open_data_rights_request/, respond: () => [{ out_id: "req-9", out_right_type: "cancelacion", out_status: "recibida", out_response_due_at: "2026-10-20 15:00:00+00" }] },
+    ]);
+    await expect(new PostgresPrivacidadRepository(conFila).findOpenDataRightsRequestAsSystem(ORG, "+5219981234567")).resolves.toEqual({
+      available: true,
+      found: true,
+      id: "req-9",
+      rightType: "cancelacion",
+      status: "recibida",
+      responseDueAt: "2026-10-20 15:00:00+00",
+    });
+    const sinFila = new AbortAwareFakeSession([{ match: /system_find_open_data_rights_request/, respond: () => [] }]);
+    await expect(new PostgresPrivacidadRepository(sinFila).findOpenDataRightsRequestAsSystem(ORG, "+5219981234567")).resolves.toEqual({ available: true, found: false });
   });
 });
