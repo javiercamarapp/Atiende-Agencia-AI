@@ -351,6 +351,7 @@ fuente.
 | Variable | Habilita | Sin ella |
 |---|---|---|
 | `VITE_API_BASE_URL` | Base URL que el bundle usa para llamar a `apps/api` | Default `http://localhost:8787` en dev; `""` en producción cuando `apps/web`/`apps/api` comparten dominio de Vercel (rutas relativas) |
+| `VITE_DISENO_LEGADO` | Interruptor de **emergencia** temporal: `1` (exacto) vuelve todo el panel al diseño anterior en el siguiente build (no es un secreto). Se retira junto con el código del diseño anterior | Diseño nuevo (ds3) para todas las organizaciones, superadmin, login y páginas públicas (lo normal) |
 | `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` | Supabase Realtime del panel de Agenda de citas (actualización en vivo) | El panel sigue funcionando con fetch manual (`getRealtimeClient()` → `null`, no rompe nada) |
 
 Nota sobre el endpoint `GET /superadmin/integraciones`: estas 2 últimas variables

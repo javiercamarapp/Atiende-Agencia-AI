@@ -3,17 +3,14 @@
 // Esc cierra y conserva el paso, el progreso llega al servidor (PUT /v1/onboarding/progreso) y «Retomar donde lo dejé» lo recupera.
 // Sin la bandera, la guia no se pinta. El boton «Guía» de la cabecera (carril del shell) emite `atiende:guia:abrir`; aqui se emite igual.
 import type { Page } from "@playwright/test";
+import type { ClienteMock } from "../mock-api/cliente.ts";
 import { expect, test } from "../helpers/fixtures.ts";
 import { restaurantes } from "../mock-api/fixtures/restaurantes.ts";
 
-async function conDs3(page: Page): Promise<void> {
-  await page.addInitScript(() => {
-    try {
-      window.localStorage.setItem("atiende-diseno", "ds3");
-    } catch {
-      // sin almacenamiento: la prueba lo reportara al no ver la guia
-    }
-  });
+// ds3 es el diseno por omision: ya no hay bandera que encender. Lo que estas pruebas necesitan es el PRIMER ingreso de la persona (sin
+// progreso guardado), que la API simulada solo da si se le pide; el resto de las pruebas entra como quien ya descarto la invitacion.
+async function primerIngreso(mock: ClienteMock): Promise<void> {
+  await mock.configurar({ guiaPrimerIngreso: true });
 }
 
 const abrirGuia = (page: Page) => page.evaluate(() => window.dispatchEvent(new CustomEvent("atiende:guia:abrir")));
@@ -30,7 +27,7 @@ async function seTocan(page: Page): Promise<boolean> {
 test.describe("guia @ds3", () => {
   test("owner de restaurantes: invitacion, recorrido corto sin tapar el foco, viaje, Esc y retomar", async ({ page, iniciarSesion, mock }, info) => {
     test.skip(info.project.name.startsWith("movil"), "el caso movil va en su propia prueba");
-    await conDs3(page);
+    await primerIngreso(mock);
     await iniciarSesion("restaurantes", "owner");
     const inv = page.locator(".guia-invitacion");
     await expect(inv).toContainText("Conoce Atiende");
@@ -80,9 +77,9 @@ test.describe("guia @ds3", () => {
     await page.keyboard.press("Escape");
   });
 
-  test("movil: la tarjeta es una hoja inferior que no tapa la barra de navegacion ni el elemento", async ({ page, iniciarSesion }, info) => {
+  test("movil: la tarjeta es una hoja inferior que no tapa la barra de navegacion ni el elemento", async ({ page, iniciarSesion, mock }, info) => {
     test.skip(!info.project.name.startsWith("movil"), "solo movil");
-    await conDs3(page);
+    await primerIngreso(mock);
     await iniciarSesion("restaurantes", "owner");
     await page.locator('.guia-invitacion [data-guia-modo="corto"]').click();
     const tarjeta = page.locator(".guia-tarjeta");
@@ -97,10 +94,10 @@ test.describe("guia @ds3", () => {
     await info.attach("movil-paso-1", { body: await page.screenshot(), contentType: "image/png" });
   });
 
-  test("movimiento reducido: sin viaje automatico, queda «Ir a …»", async ({ page, iniciarSesion }, info) => {
+  test("movimiento reducido: sin viaje automatico, queda «Ir a …»", async ({ page, iniciarSesion, mock }, info) => {
     test.skip(info.project.name.startsWith("movil"), "escritorio basta");
     await page.emulateMedia({ reducedMotion: "reduce" });
-    await conDs3(page);
+    await primerIngreso(mock);
     await iniciarSesion("restaurantes", "owner");
     await page.locator('.guia-invitacion [data-guia-modo="corto"]').click();
     const tarjeta = page.locator(".guia-tarjeta");
@@ -112,11 +109,15 @@ test.describe("guia @ds3", () => {
     await expect(page.locator("[data-guia-manual]")).toHaveText(/^Ir a /);
   });
 
-  test("sin la bandera ds3 la guia no se pinta ni escucha el boton", async ({ page, iniciarSesion, mock }) => {
+  // Antes «sin la bandera ds3 la guia no se pinta»: ds3 ya es de todos (solo VITE_DISENO_LEGADO=1 en el build lo apaga, y el build de
+  // e2e no lo usa), asi que sin preparar nada la guia existe: lee el progreso del servidor, respeta que ya se descarto (no invita) y el
+  // boton «Guía» abre su menu.
+  test("por omision la guia existe: lee el progreso, no reinvita a quien la descarto y escucha el boton", async ({ page, iniciarSesion, mock }) => {
     await iniciarSesion("restaurantes", "owner");
+    await expect.poll(async () => (await mock.buscar({ metodo: "GET", ruta: "/v1/onboarding/progreso" })).length).toBeGreaterThan(0);
     await page.waitForTimeout(800);
+    await expect(page.locator(".guia-invitacion")).toHaveCount(0);
     await abrirGuia(page);
-    await expect(page.locator(".guia-invitacion, #guia-menu, .guia-tarjeta")).toHaveCount(0);
-    expect(await mock.buscar({ ruta: "/v1/onboarding/progreso" })).toHaveLength(0);
+    await expect(page.locator("#guia-menu")).toContainText("Recorrido corto");
   });
 });

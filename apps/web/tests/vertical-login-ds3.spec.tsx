@@ -30,7 +30,7 @@ const { RentasLoginPage } = await import("../src/verticals/rentas/pages/Login.ts
 const { RestaurantesLoginPage } = await import("../src/verticals/restaurantes/pages/Login.tsx");
 const { COPIA_LOGIN_DS3 } = await import("../src/components/login-ds3-copia.ts");
 const { ESPERA_REENVIO_S } = await import("../src/components/VerticalLoginDs3.tsx");
-const { loginLegadoActivo } = await import("../src/components/VerticalLogin.tsx");
+const { disenoLegadoActivo } = await import("@atiende/ui");
 
 const API = "https://api.test";
 const noop = () => undefined;
@@ -146,16 +146,16 @@ describe.each(PAGINAS)("login ds3 · %s", (vertical, pagina) => {
 });
 
 describe("login · pantalla por omision e interruptor de emergencia", () => {
-  it("sin variable (o con cualquier valor que no sea «1») monta el login de Rovaq; VITE_LOGIN_LEGADO=1 vuelve al anterior", () => {
-    expect(loginLegadoActivo(undefined)).toBe(false);
-    expect(loginLegadoActivo("")).toBe(false);
-    expect(loginLegadoActivo("0")).toBe(false);
-    expect(loginLegadoActivo("true")).toBe(false);
-    expect(loginLegadoActivo("1")).toBe(true);
-    expect(loginLegadoActivo(" 1 ")).toBe(true);
+  it("sin variable (o con cualquier valor que no sea «1») monta el login de Rovaq; VITE_DISENO_LEGADO=1 vuelve al anterior", () => {
+    expect(disenoLegadoActivo(undefined)).toBe(false);
+    expect(disenoLegadoActivo("")).toBe(false);
+    expect(disenoLegadoActivo("0")).toBe(false);
+    expect(disenoLegadoActivo("true")).toBe(false);
+    expect(disenoLegadoActivo("1")).toBe(true);
+    expect(disenoLegadoActivo(" 1 ")).toBe(true);
   });
 
-  it("el build de pruebas (sin VITE_LOGIN_LEGADO) pinta la pantalla de Rovaq en la pagina real", async () => {
+  it("el build de pruebas (sin VITE_DISENO_LEGADO) pinta la pantalla de Rovaq en la pagina real", async () => {
     const c = await montar(PAGINAS[5]![1], "/citas/login");
     expect(c.querySelector("main.login-ds3")).not.toBeNull();
     expect(c.querySelector(".login-editorial")).toBeNull();
