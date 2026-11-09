@@ -25,5 +25,8 @@ export const comun = {
   "comun.error.integracion": "No se pudo conectar con {integracion}. Verifica la conexión e inténtalo de nuevo.",
   "comun.error.pendienteCredenciales": "{integracion} está pendiente de credenciales. Conecta la integración para ver datos reales aquí.",
   "comun.error.etiquetaPendiente": "Pendiente de credenciales",
+  "comun.error.explicacionTecnica": "No está disponible ahora. Vuelve a intentarlo en un momento.",
+  "comun.error.verDetalle": "Ver detalle técnico",
+  "comun.error.ocultarDetalle": "Ocultar detalle técnico",
   "comun.comoLeerEsto": "¿Cómo leer esto?",
 } as const satisfies ModuloEs;

@@ -11,7 +11,7 @@
 import { useId, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { cn } from "../lib/utils";
-import { TEXTOS_DS3_CONTENIDO } from "./ds3-contenido-textos";
+import { TEXTOS_DS3_RESUMEN } from "./ds3-contenido-textos";
 import { Card } from "./ui/card";
 import { SectionLabel } from "./SectionLabel";
 
@@ -77,7 +77,7 @@ export function ResumenLayout({
   subtitulo,
   frase,
   eyebrow = "Resumen",
-  titulo = TEXTOS_DS3_CONTENIDO.resumen.titulo,
+  titulo = TEXTOS_DS3_RESUMEN.titulo,
   estadoDatos,
   atencion,
   destacado,
@@ -116,7 +116,7 @@ export function ResumenLayout({
         {hayContenido(destacado) && <div data-parte="destacado" className="flex shrink-0 items-center gap-2.5 sm:pt-1">{destacado}</div>}
       </div>
       {estadoDatos && estadoDatos.length > 0 && (
-        <dl hidden aria-label={TEXTOS_DS3_CONTENIDO.resumen.estadoDatos} data-parte="estado-datos" data-testid="resumen-estado-datos" className="ds3-solo">
+        <dl hidden aria-label={TEXTOS_DS3_RESUMEN.estadoDatos} data-parte="estado-datos" data-testid="resumen-estado-datos" className="ds3-solo">
           {estadoDatos.map((d) => (
             <div key={d.etiqueta}>
               <dt>{d.etiqueta}:</dt>
@@ -140,7 +140,7 @@ export function ResumenLayout({
 /** «Requiere tu atención (n)» de Rovaq: lista de pendientes con punto de tono, detalle de una linea y cifra a la derecha. Solo ds3. */
 function ResumenAtencion({ items }: { readonly items: readonly ResumenAtencionItem[] }) {
   const id = useId();
-  const t = TEXTOS_DS3_CONTENIDO.resumen;
+  const t = TEXTOS_DS3_RESUMEN;
   return (
     <section hidden aria-labelledby={id} data-parte="atencion" data-testid="resumen-atencion" className="ds3-solo">
       <h2 id={id}>
