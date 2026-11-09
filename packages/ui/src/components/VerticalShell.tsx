@@ -52,18 +52,22 @@ export function construirMigas(sections: readonly SidebarSection[], pathname: st
   const mejor = itemActivo(sections, pathname);
   if (!mejor) return [{ etiqueta: raiz.etiqueta }];
   const migas: VerticalMiga[] = [raiz];
-  if (mejor.grupo.trim().toLowerCase() !== mejor.item.label.trim().toLowerCase()) migas.push({ etiqueta: mejor.grupo });
+  if (mejor.grupo && mejor.grupo.trim().toLowerCase() !== mejor.item.label.trim().toLowerCase()) migas.push({ etiqueta: mejor.grupo });
   migas.push({ etiqueta: mejor.item.label });
   return migas;
 }
 
-/** Item de navegacion activo: el de `sections` cuya ruta es el prefijo mas largo del `pathname` (null si ninguno). */
-export function itemActivo(sections: readonly SidebarSection[], pathname: string): { grupo: string; item: SidebarItem } | null {
-  let mejor: { grupo: string; item: SidebarItem } | null = null;
+/**
+ * Item de navegacion activo: el de `sections` cuya ruta es el prefijo mas largo del `pathname` (null si ninguno). `grupo` es la
+ * categoria del menu que lo contiene; los items de la seccion raiz (`siempreAbierto`: Resumen, Copiloto, CFO, Agenda...) se pintan
+ * sin titulo y no tienen categoria, asi que su `grupo` es null (antes heredaban el titulo oculto «Resumen» como antetitulo; R2 #6).
+ */
+export function itemActivo(sections: readonly SidebarSection[], pathname: string): { grupo: string | null; item: SidebarItem } | null {
+  let mejor: { grupo: string | null; item: SidebarItem } | null = null;
   for (const s of sections) {
     for (const it of s.items) {
       const coincide = pathname === it.to || pathname.startsWith(`${it.to}/`);
-      if (coincide && (!mejor || it.to.length > mejor.item.to.length)) mejor = { grupo: s.title, item: it };
+      if (coincide && (!mejor || it.to.length > mejor.item.to.length)) mejor = { grupo: s.siempreAbierto ? null : s.title, item: it };
     }
   }
   return mejor;
@@ -322,8 +326,8 @@ export function VerticalShell({
   const tituloBarra = barraDeConsola ? header.title : (sobrescrito?.titulo ?? barraDeRuta?.label ?? header.title);
   // ds3: el encabezado lleva SIEMPRE el nombre de la pagina (tambien en el Resumen); el de la consola queda solo si la ruta no es del menu.
   const tituloDs3 = sobrescrito?.titulo || activo?.item.label || header.title;
-  // ds3: grupo del menu de la pantalla activa, antetitulo del PageHeader.
-  const grupoNav = activo ? activo.grupo : null;
+  // ds3: categoria del menu de la pantalla activa, antetitulo del PageHeader (null en la seccion raiz y fuera del menu).
+  const grupoNav = activo?.grupo ?? null;
   const iconoBarra = IconoBarra ? <IconoBarra className="size-[15px] text-muted-foreground" strokeWidth={1.75} /> : header.icon;
   const selectores =
     organizationSelector || branchSelector ? (
