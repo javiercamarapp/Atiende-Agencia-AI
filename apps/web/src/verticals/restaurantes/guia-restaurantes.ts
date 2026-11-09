@@ -29,6 +29,12 @@ export const GUIA_RESTAURANTES: ContenidoConsola = {
     que: t("Ingresos, costos y margen por periodo. Lo que falta capturar se marca como pendiente, no se inventa.", "Revenue, costs and margin by period. Anything not yet captured shows as pending, never made up."),
     clave: { titulo: t("Margen y costos", "Margin and costs"), cuerpo: t("Importa tu archivo de SoftRestaurant para llenar los costos reales.", "Import your SoftRestaurant file to fill in real costs.") },
   },
+  general: {
+    ilu: "barras",
+    queT: t("Resumen general: todas tus sucursales", "Organization overview: all your branches"),
+    que: t("Las cifras de cada sucursal lado a lado, para comparar ventas y pedidos sin cambiar de sucursal.", "Each branch's numbers side by side, to compare sales and orders without switching branches."),
+    clave: { titulo: t("Compara sucursales", "Compare branches"), cuerpo: t("Si a una sucursal le falta un dato, su celda lo dice en vez de mostrar cero.", "If a branch is missing a number, its cell says so instead of showing zero.") },
+  },
   "operacion/agregados": {
     ilu: "lista",
     queT: t("Agregados: lo que un cliente pide sumar", "Add-ons: what a customer asks to add"),
