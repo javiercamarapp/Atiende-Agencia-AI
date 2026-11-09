@@ -1,4 +1,4 @@
-// Valoraciones del Copiloto («Pregúntale a tus datos»): «Útil» / «No fue útil» con motivo opcional de una lista cerrada (migracion 0076).
+// Valoraciones del Copiloto («Pregúntale a tus datos»): «Útil» / «No fue útil» con motivo opcional de una lista cerrada (migracion 0079).
 //
 //   PUT <base>/conversaciones/:conversationId/mensajes/:seq/valoracion   { util, motivo? } -> { util, motivo }
 //   GET <base>/valoraciones/resumen?dias=30                              -> { disponible, dias, utiles, noUtiles, motivos }
@@ -7,11 +7,11 @@
 // puso quien monta esto (`mountConversacionesRoutes`), asi que TODAS las verticales que guardan conversaciones lo tienen.
 //
 // Reglas:
-//   * Solo el AUTOR valora, solo respuestas del ASISTENTE de una conversacion propia, de su organizacion y vertical. La RLS de 0076 lo
+//   * Solo el AUTOR valora, solo respuestas del ASISTENTE de una conversacion propia, de su organizacion y vertical. La RLS de 0079 lo
 //     impone; aqui ademas se comprueba antes (defensa en profundidad) y un mensaje ajeno, de otra organizacion o inexistente responde 404.
 //   * Sin texto libre: el motivo es de una lista cerrada (cero PII). La organizacion y la vertical salen de la sesion, nunca del cuerpo.
 //   * El resumen es solo conteos y solo owner/admin de la organizacion (la funcion SQL lo exige; 42501 -> 403).
-//   * Base SIN migrar (0076 pendiente): SAVEPOINT + 42P01/42883/42703 -> PUT 503 «no disponible aun», resumen `disponible: false`. Nunca 500.
+//   * Base SIN migrar (0079 pendiente): SAVEPOINT + 42P01/42883/42703 -> PUT 503 «no disponible aun», resumen `disponible: false`. Nunca 500.
 import type { Context, Hono } from "hono";
 import { assertVerticalRole } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
@@ -30,7 +30,7 @@ export interface Valoracion {
   readonly motivo: MotivoValoracion | null;
 }
 
-export const VALORACIONES_NO_DISPONIBLE = "Las valoraciones todavía no están disponibles: falta aplicar la actualización de base de datos (0076).";
+export const VALORACIONES_NO_DISPONIBLE = "Las valoraciones todavía no están disponibles: falta aplicar la actualización de base de datos (0079).";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const DIAS_RESUMEN_POR_OMISION = 30;
 const MAX_DIAS_RESUMEN = 365;
@@ -104,7 +104,7 @@ export class PostgresValoracionesRepository implements ValoracionesRepository {
     return runWithSavepointFallback<ResultadoValoracion>({
       session: this.db,
       primary: async () => {
-        // Defensa en profundidad (la RLS de 0076 ya lo exige): el mensaje es del asistente, de una conversacion PROPIA de esta organizacion y vertical.
+        // Defensa en profundidad (la RLS de 0079 ya lo exige): el mensaje es del asistente, de una conversacion PROPIA de esta organizacion y vertical.
         const { rows } = await this.db.query<{ ok: number }>(
           `select 1 as ok
              from core.data_chat_message m

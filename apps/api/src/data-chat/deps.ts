@@ -41,7 +41,7 @@ export interface DataChatDeps {
   /** Repositorio de conversaciones guardadas (CHAT-04) sobre la sesion RLS del request. OPCIONAL: sin el se usa el de
    *  Postgres (`PostgresConversacionesRepository`); existe para inyectar uno en memoria en pruebas. */
   readonly conversaciones?: (db: TenantDbSession) => ConversacionesRepository;
-  /** Valoraciones «Útil / No fue útil» (migracion 0076) sobre la sesion RLS del request. OPCIONAL: sin el se usa el de Postgres; los tests
+  /** Valoraciones «Útil / No fue útil» (migracion 0079) sobre la sesion RLS del request. OPCIONAL: sin el se usa el de Postgres; los tests
    *  inyectan uno en memoria. */
   readonly valoraciones?: (db: TenantDbSession) => ValoracionesRepository;
   /** MOD-12: activa los roles auxiliares del Copiloto (enrutador de turno, compuerta de escalamiento, titulos de conversaciones y compactacion de

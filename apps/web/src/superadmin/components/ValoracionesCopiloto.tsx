@@ -1,5 +1,5 @@
-// Back office: «Útil / No fue útil» del Copiloto de todas las organizaciones (GET /superadmin/copiloto/valoraciones, migracion 0076).
-// Solo conteos por vertical y organizacion; ningun texto de pregunta ni de respuesta (la tabla ni siquiera los guarda). Base sin la 0076:
+// Back office: «Útil / No fue útil» del Copiloto de todas las organizaciones (GET /superadmin/copiloto/valoraciones, migracion 0079).
+// Solo conteos por vertical y organizacion; ningun texto de pregunta ni de respuesta (la tabla ni siquiera los guarda). Base sin la 0079:
 // aviso honesto «no disponible aún», nunca ceros inventados.
 import { Callout, ChartCard, DataTable, EstadoError } from "@atiende/ui";
 import type { DataTableColumna } from "@atiende/ui";
@@ -71,7 +71,7 @@ export function ValoracionesCopiloto({ apiBaseUrl, token }: { readonly apiBaseUr
         {carga.estado === "error" && <EstadoError compacto mensaje={`No se pudo cargar: ${carga.mensaje}`} onReintentar={recargar} />}
         {carga.estado === "ok" && !carga.data.disponible && (
           <Callout tone="warning" titulo="No disponible aún">
-            {carga.data.mensaje ?? "Falta aplicar la migración 0076."}
+            {carga.data.mensaje ?? "Falta aplicar la migración 0079."}
           </Callout>
         )}
         {carga.estado === "ok" && carga.data.disponible && (

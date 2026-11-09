@@ -105,7 +105,7 @@ export function CopilotoAcciones({
   const bloquesCsv = (mensaje.blocks ?? []).filter((b) => b.columns.length > 0 && b.rows.length > 0);
   const csv = (b: CopilotoBloque) => setErrorCsv(!descargarCsv(b, vertical));
 
-  // «Útil / No fue útil» (migracion 0076): solo con un mensaje GUARDADO (conversacion + seq) y un transporte que sepa valorar.
+  // «Útil / No fue útil» (migracion 0079): solo con un mensaje GUARDADO (conversacion + seq) y un transporte que sepa valorar.
   const { t } = useIdiomaCopiloto();
   const puedeValorar = Boolean(transporte.valorar && conversacionId && mensaje.seq !== undefined);
   const [valoracion, setValoracion] = useState<{ util: boolean; motivo: MotivoValoracionCopiloto | null } | null>(null);

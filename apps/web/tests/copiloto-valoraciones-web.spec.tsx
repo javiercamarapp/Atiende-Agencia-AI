@@ -2,7 +2,7 @@
 //
 // «Útil / No fue útil»: (1) el transporte del Copiloto (el mismo de las 6 verticales) hace PUT a la ruta real con solo {util, motivo} y
 // los errores HTTP (503 base sin migrar, 404 mensaje ajeno) llegan como error; (2) la tarjeta del back office pinta conteos por
-// organizacion, el % util sin inventar un 0 % y el aviso honesto sin la migracion 0076. `fetch` inyectado/simulado: sin red.
+// organizacion, el % util sin inventar un 0 % y el aviso honesto sin la migracion 0079. `fetch` inyectado/simulado: sin red.
 import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { crearTransporteCopiloto } from "../src/lib/copiloto/transporte.ts";
@@ -32,7 +32,7 @@ describe("transporte: valorar", () => {
     expect((llamadas[0]!.init.headers as Record<string, string>)["authorization"]).toBe("Bearer tok");
   });
 
-  it("503 (sin la 0076) y 404 (mensaje ajeno) rechazan para que el boton lo diga", async () => {
+  it("503 (sin la 0079) y 404 (mensaje ajeno) rechazan para que el boton lo diga", async () => {
     for (const status of [503, 404]) {
       const t = crearTransporteCopiloto({ baseUrl: BASE, token: "tok", fetchImpl: (async () => json(status, { message: "x" })) as unknown as typeof fetch });
       await expect(t.valorar!("c-1", 2, { util: true })).rejects.toBeInstanceOf(Error);
@@ -78,8 +78,8 @@ describe("back office: tarjeta de valoraciones", () => {
     expect(c.textContent).toContain("6 valoraciones");
   });
 
-  it("sin la migracion 0076: aviso honesto, sin tabla de ceros", async () => {
-    const c = await montar(json(200, { disponible: false, mensaje: "Las valoraciones todavía no están disponibles: falta aplicar la actualización de base de datos (0076).", dias: 30, total: { utiles: 0, noUtiles: 0, motivos: {} }, filas: [] }));
+  it("sin la migracion 0079: aviso honesto, sin tabla de ceros", async () => {
+    const c = await montar(json(200, { disponible: false, mensaje: "Las valoraciones todavía no están disponibles: falta aplicar la actualización de base de datos (0079).", dias: 30, total: { utiles: 0, noUtiles: 0, motivos: {} }, filas: [] }));
     expect(c.textContent).toContain("No disponible aún");
     expect(c.querySelector("table")).toBeNull();
   });

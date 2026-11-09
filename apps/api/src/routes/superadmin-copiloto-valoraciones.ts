@@ -1,8 +1,8 @@
-// Back office: valoraciones «Útil / No fue útil» del Copiloto de TODAS las organizaciones (migracion 0076), solo conteos por vertical y
+// Back office: valoraciones «Útil / No fue útil» del Copiloto de TODAS las organizaciones (migracion 0079), solo conteos por vertical y
 // organizacion. Ningun texto de pregunta ni de respuesta sale de aqui (la tabla ni siquiera los guarda).
 //
 // Autorizacion: el middleware de `/superadmin/*` (superadmin.ts) ya exige superadmin vigente; ademas la funcion SQL exige
-// `auth.uid() = p_caller_id` y superadmin (42501), asi que no es la unica barrera. Base sin migrar (0076 pendiente): `disponible: false`, nunca 500.
+// `auth.uid() = p_caller_id` y superadmin (42501), asi que no es la unica barrera. Base sin migrar (0079 pendiente): `disponible: false`, nunca 500.
 import { Hono } from "hono";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { isMigrationPendingError, runWithSavepointFallback } from "@atiende/db";

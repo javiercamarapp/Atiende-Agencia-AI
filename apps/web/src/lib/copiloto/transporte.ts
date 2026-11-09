@@ -9,7 +9,7 @@
 //   GET/PATCH/DELETE <baseUrl>/conversaciones/:id
 //   POST <baseUrl>/pins { conversationId, seq, bloque }   (fijar; el servidor deriva herramienta y argumentos del mensaje guardado)
 //   POST <baseUrl>/conversaciones/:id/reporte?seq=N -> application/pdf (reporte del mensaje; "Descargar PDF")
-//   PUT  <baseUrl>/conversaciones/:id/mensajes/:seq/valoracion { util, motivo? }   («Útil / No fue útil», migracion 0076)
+//   PUT  <baseUrl>/conversaciones/:id/mensajes/:seq/valoracion { util, motivo? }   («Útil / No fue útil», migracion 0079)
 //   POST <baseUrl>/adjuntos { nombre, contenidoBase64 } -> perfil del archivo (CSV / Excel / PDF analizado en el servidor; no se guarda)
 //
 // Reglas: el cliente solo manda la pregunta y el `conversationId` ("new" la primera vez, el uuid despues); el alcance
@@ -416,7 +416,7 @@ function crearTransporteCompleto(cfg: CopilotoTransporteConfig): CopilotoTranspo
           body: JSON.stringify({ util: valoracion.util, ...(valoracion.util ? {} : { motivo: valoracion.motivo ?? null }) }),
         }),
       );
-      // 503 = la base todavia no tiene la 0076; 404 = mensaje ajeno o ya borrado. El boton muestra el error y deja reintentar.
+      // 503 = la base todavia no tiene la 0079; 404 = mensaje ajeno o ya borrado. El boton muestra el error y deja reintentar.
       if (!res.ok) throw errorHttp(res);
     },
   };

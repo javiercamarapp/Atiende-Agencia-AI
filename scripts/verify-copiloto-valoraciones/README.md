@@ -1,7 +1,7 @@
 # verify-copiloto-valoraciones
 
 Postgres **real** (el gate de CI `scripts/verify-real-postgres-ci/run-gate.mjs` lo descubre solo): migración
-`packages/db/migrations/0076_copiloto_valoraciones.sql` (espejo en `supabase/migrations/20240101000630_0076_copiloto_valoraciones.sql`).
+`packages/db/migrations/0079_copiloto_valoraciones.sql` (espejo en `supabase/migrations/20240101000810_0079_copiloto_valoraciones.sql`).
 
 Cubre `core.data_chat_feedback` («Útil / No fue útil» de cada respuesta del Copiloto) y sus dos agregados:
 

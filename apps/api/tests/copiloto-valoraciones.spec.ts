@@ -1,4 +1,4 @@
-// Valoraciones «Útil / No fue útil» del Copiloto (migracion 0076): (1) validacion del cuerpo y suma de conteos; (2) rutas por HTTP real
+// Valoraciones «Útil / No fue útil» del Copiloto (migracion 0079): (1) validacion del cuerpo y suma de conteos; (2) rutas por HTTP real
 // (app.request) sobre la ruta compartida de hoteles con un repositorio EN MEMORIA que aplica el mismo alcance que la RLS (autor +
 // organizacion + vertical): la organizacion y la vertical salen de la sesion, nunca del cuerpo; (3) el repositorio Postgres contra una
 // sesion que reproduce la transaccion abortada de Postgres (base sin migrar y rechazo de RLS con SAVEPOINT); (4) el agrupado del back office.
@@ -134,7 +134,7 @@ describe("rutas de valoracion (hoteles)", () => {
     h.repo.disponible = false;
     const r = await h.app.request(h.url(h.conv), h.put(h.ownerToken, { util: true }));
     expect(r.status).toBe(503);
-    expect(JSON.stringify(await r.json())).toContain("0076");
+    expect(JSON.stringify(await r.json())).toContain("0079");
   });
 
   it("el resumen de la organizacion: conteos para el owner, 403 para quien la funcion rechaza", async () => {

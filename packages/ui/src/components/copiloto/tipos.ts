@@ -144,7 +144,7 @@ export interface CopilotoTransporte {
   valorar?(conversacionId: string, seq: number, valoracion: CopilotoValoracion): Promise<void>;
 }
 
-/** Motivos cerrados de «No fue útil» (sin texto libre: nada de datos personales). Mismos valores que la migracion 0076. */
+/** Motivos cerrados de «No fue útil» (sin texto libre: nada de datos personales). Mismos valores que la migracion 0079. */
 export const MOTIVOS_VALORACION_COPILOTO = ["dato_incorrecto", "incompleta", "no_entendio", "otro"] as const;
 export type MotivoValoracionCopiloto = (typeof MOTIVOS_VALORACION_COPILOTO)[number];
 

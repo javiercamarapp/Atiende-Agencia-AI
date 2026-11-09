@@ -1,4 +1,4 @@
--- Copiloto: valoraciones «Útil / No fue útil» (migracion 0076) -- verificacion contra Postgres REAL de core.data_chat_feedback y de
+-- Copiloto: valoraciones «Útil / No fue útil» (migracion 0079) -- verificacion contra Postgres REAL de core.data_chat_feedback y de
 -- core.data_chat_feedback_resumen / core.superadmin_data_chat_feedback_resumen. Cada escenario corre en su propio `begin; ... rollback;`.
 -- Alias `should_fail` = debe terminar en ERROR; alias `..._deberia_ser_N` = el valor esperado (scripts/verify-real-postgres-ci/run-gate.mjs).
 -- Sesion de sistema = sin `set local role` ni claim (auth.uid() null); usuario real = `set local role authenticated` + claim.

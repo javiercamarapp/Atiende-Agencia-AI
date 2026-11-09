@@ -636,6 +636,6 @@ export function mountConversacionesRoutes(app: Hono<CoreAuthHonoEnv>, deps: AppD
     return c.body(null, 204);
   });
 
-  // «Útil / No fue útil» de cada respuesta guardada y su resumen para owner/admin (migracion 0076): mismas rutas base, roles y sesion RLS.
+  // «Útil / No fue útil» de cada respuesta guardada y su resumen para owner/admin (migracion 0079): mismas rutas base, roles y sesion RLS.
   mountValoracionesRoutes(app, deps, cfg);
 }
