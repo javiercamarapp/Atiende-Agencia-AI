@@ -16,7 +16,7 @@
 // vencimientos-client.ts/declaraciones-client.ts: este paquete web no depende en
 // tiempo de build del paquete de dominio, solo lo referencia en comentarios) -- la
 // ruta HTTP serializa exactamente estas formas vía `c.json(resultado)`.
-import { fetchJson, postJson } from "./admin-client.ts";
+import { fetchJson, postJson, putJson } from "./admin-client.ts";
 
 export type NivelCoincidencia = "exacto" | "fuzzy" | "multi_linea" | "llm" | "manual";
 export type SeveridadAlerta = "info" | "warning" | "critical";
@@ -198,8 +198,9 @@ export async function verificarSpeiConciliacion(fetchImpl: typeof fetch, apiBase
 // serializa apps/api/.../despachos/conciliacion-persistida.ts (migracion 021). El servidor recalcula el motor al confirmar: este cliente solo manda ids.
 // ---------------------------------------------------------------------------------------------------------------------------------
 export type EstadoSesionConciliacion = "abierta" | "cerrada";
-export type EstadoMovimientoSesion = "conciliado" | "sugerido" | "sin_conciliar";
-export type OrigenMatchConciliacion = "motor" | "llm_aprobado" | "manual";
+export type EstadoMovimientoSesion = "conciliado" | "sugerido" | "ambiguo" | "sin_conciliar";
+export type OrigenMatchConciliacion = "motor" | "llm_aprobado" | "manual" | "autopiloto";
+export type MotivoSinConciliar = "sin_candidato" | "pocos_candidatos" | "sin_combinacion" | "demasiados_candidatos" | "presupuesto_agotado" | "ambiguo";
 
 export interface SesionConciliacionResumen {
   readonly id: string;
@@ -231,6 +232,9 @@ export interface CfdiSesion {
   readonly total: number;
   readonly fecha: string;
   readonly conciliado: boolean;
+  /** D-P3-11 (opcionales: el servidor sin la migración 018/025 no las manda). */
+  readonly cancelado?: boolean;
+  readonly direccion?: "emitido" | "recibido" | "indeterminado" | null;
 }
 
 export interface PropuestaMotorSesion {
@@ -240,6 +244,22 @@ export interface PropuestaMotorSesion {
   readonly nivel: 1 | 2;
   readonly confianza: number;
   readonly detalle: string;
+  /** D-P3-11: el CFDI tiene dirección indeterminada: solo se confirma tras revisarlo. */
+  readonly requiereRevision?: boolean;
+}
+
+/** D-P3-10: 2 o más combinaciones de CFDI suman el movimiento. */
+export interface AmbiguaSesion {
+  readonly movimientoId: string;
+  readonly combinaciones: readonly (readonly string[])[];
+  readonly truncado: boolean;
+  readonly exactas: boolean;
+}
+
+export interface SinConciliarSesion {
+  readonly movimientoId: string;
+  readonly motivo: MotivoSinConciliar;
+  readonly cercanos: readonly { readonly invoiceId: string; readonly diferenciaCentavos: number }[];
 }
 
 export interface MatchSesion {
@@ -269,6 +289,13 @@ export interface DetalleSesionConciliacion {
   readonly cfdis: readonly CfdiSesion[];
   readonly propuestas: readonly PropuestaMotorSesion[];
   readonly multiLinea: readonly { readonly movimientoId: string; readonly invoiceIds: readonly string[]; readonly confianza: number; readonly detalle: string }[];
+  /** D-P3-10 (opcionales: un servidor anterior no los manda). */
+  readonly ambiguas?: readonly AmbiguaSesion[];
+  readonly sinConciliar?: readonly SinConciliarSesion[];
+  /** Cuándo se calcularon las propuestas guardadas; `null` = se calcularon al vuelo (sesión anterior a la migración 025). */
+  readonly propuestasEn?: string | null;
+  readonly propuestasFuente?: "guardadas" | "calculadas" | "ninguna";
+  readonly ventana?: { readonly desde: string; readonly hasta: string; readonly dias: number };
   readonly matches: readonly MatchSesion[];
   readonly sugerencias: readonly SugerenciaSesion[];
 }
@@ -300,7 +327,7 @@ export function confirmarParesConciliacion(
   token: string,
   propertyId: string,
   sesionId: string,
-  pares: readonly { readonly movimientoId: string; readonly invoiceId: string }[],
+  pares: readonly { readonly movimientoId: string; readonly invoiceId: string; readonly revisado?: boolean }[],
 ): Promise<{ readonly matches: readonly MatchSesion[] }> {
   return postJson(fetchImpl, `${base(apiBaseUrl, propertyId)}/sesiones/${sesionId}/confirmar`, token, { pares });
 }
@@ -327,4 +354,18 @@ export function resolverSugerenciaConciliacion(
   aprobar: boolean,
 ): Promise<{ readonly estado: "aprobada" | "rechazada"; readonly matchId: string | null }> {
   return postJson(fetchImpl, `${base(apiBaseUrl, propertyId)}/sugerencias/${sugerenciaId}/${aprobar ? "aprobar" : "rechazar"}`, token, {});
+}
+
+/** D-P3-10: recalcula el motor sobre lo libre de la sesión y guarda las propuestas (el GET ya no las recalcula). */
+export function recalcularSesionConciliacion(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, sesionId: string): Promise<DetalleSesionConciliacion & { readonly guardado: boolean }> {
+  return postJson(fetchImpl, `${base(apiBaseUrl, propertyId)}/sesiones/${sesionId}/recalcular`, token, {});
+}
+
+/** D-P3-12: bandera del piloto automático de nivel 1 (apagada por omisión). */
+export function leerConfiguracionConciliacion(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string): Promise<{ readonly autoconfirmarNivel1: boolean }> {
+  return fetchJson(fetchImpl, `${base(apiBaseUrl, propertyId)}/configuracion`, token);
+}
+
+export function guardarConfiguracionConciliacion(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, autoconfirmarNivel1: boolean): Promise<{ readonly autoconfirmarNivel1: boolean }> {
+  return putJson(fetchImpl, `${base(apiBaseUrl, propertyId)}/configuracion`, token, { autoconfirmarNivel1 });
 }

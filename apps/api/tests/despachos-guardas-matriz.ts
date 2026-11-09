@@ -122,11 +122,15 @@ export const MATRIZ_GUARDAS: Readonly<Record<string, AccesoRuta>> = {
   "GET /conciliacion/sesiones": TODOS,
   "GET /conciliacion/sesiones/:id": TODOS,
   "POST /conciliacion/sesiones/:id/confirmar": ESCRIBE,
+  "POST /conciliacion/sesiones/:id/recalcular": ESCRIBE,
   "POST /conciliacion/sesiones/:id/cerrar": ESCRIBE,
   "POST /conciliacion/matches/:matchId/deshacer": ESCRIBE,
   "POST /conciliacion/sesiones/:id/sugerencias-llm": ESCRIBE,
   "POST /conciliacion/sugerencias/:id/aprobar": ESCRIBE,
   "POST /conciliacion/sugerencias/:id/rechazar": ESCRIBE,
+  // D-P3-12: bandera del piloto automatico de nivel 1 (leer y cambiar: solo admin; una ruta de configuracion nunca queda abierta a otros roles)
+  "GET /conciliacion/configuracion": SOLO_ADMIN,
+  "PUT /conciliacion/configuracion": SOLO_ADMIN,
   // conciliacion.ts
   "POST /conciliacion/matching": ESCRIBE,
   "POST /conciliacion/importar-estado-de-cuenta": ESCRIBE,

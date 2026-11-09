@@ -5,7 +5,10 @@ import {
   confirmarParesConciliacion,
   crearSesionConciliacion,
   deshacerMatchConciliacion,
+  guardarConfiguracionConciliacion,
+  leerConfiguracionConciliacion,
   listarSesionesConciliacion,
+  recalcularSesionConciliacion,
   obtenerSesionConciliacion,
   resolverSugerenciaConciliacion,
   sugerirConIaConciliacion,
@@ -59,5 +62,36 @@ describe("cliente de conciliacion persistida", () => {
   it("un error del servidor (503 sin IA) llega con su mensaje real", async () => {
     const { impl } = fetchQue({ error: "service_unavailable", message: "IA no configurada: sin proveedor." }, 503);
     await expect(sugerirConIaConciliacion(impl, "http://api.local", "tok", "p1", "s1")).rejects.toThrow("IA no configurada");
+  });
+});
+
+describe("cliente de conciliacion: recalcular, revision y piloto (D-P3-10/11/12)", () => {
+  it("recalcular es POST sin cuerpo de datos a .../recalcular", async () => {
+    const { impl, llamadas } = fetchQue({ guardado: true });
+    await recalcularSesionConciliacion(impl, "http://api.local", "tok", "p1", "s1");
+    expect(llamadas[0]!.url).toBe(`${B}/sesiones/s1/recalcular`);
+    expect(llamadas[0]!.init?.method).toBe("POST");
+  });
+
+  it("confirmar manda `revisado` solo cuando se pasa (el servidor decide nivel, confianza y origen)", async () => {
+    const { impl, llamadas } = fetchQue({ matches: [] }, 201);
+    await confirmarParesConciliacion(impl, "http://api.local", "tok", "p1", "s1", [{ movimientoId: "m1", invoiceId: "f1" }, { movimientoId: "m2", invoiceId: "f2", revisado: true }]);
+    expect(JSON.parse(String(llamadas[0]!.init?.body))).toEqual({ pares: [{ movimientoId: "m1", invoiceId: "f1" }, { movimientoId: "m2", invoiceId: "f2", revisado: true }] });
+  });
+
+  it("la bandera del piloto: GET para leer y PUT con el booleano para cambiar", async () => {
+    const { impl, llamadas } = fetchQue({ autoconfirmarNivel1: true });
+    await leerConfiguracionConciliacion(impl, "http://api.local", "tok", "p1");
+    await guardarConfiguracionConciliacion(impl, "http://api.local", "tok", "p1", true);
+    expect(llamadas.map((l) => [l.url, l.init?.method ?? "GET"])).toEqual([
+      [`${B}/configuracion`, "GET"],
+      [`${B}/configuracion`, "PUT"],
+    ]);
+    expect(JSON.parse(String(llamadas[1]!.init?.body))).toEqual({ autoconfirmarNivel1: true });
+  });
+
+  it("un 503 (base sin la migracion 025) llega como Error con el mensaje del servidor", async () => {
+    const { impl } = fetchQue({ error: "service_unavailable", message: "falta aplicar la migración 025" }, 503);
+    await expect(guardarConfiguracionConciliacion(impl, "http://api.local", "tok", "p1", true)).rejects.toThrow("falta aplicar la migración 025");
   });
 });

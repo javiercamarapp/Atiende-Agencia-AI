@@ -2,20 +2,26 @@
 // los pares que el SERVIDOR vuelve a calcular con el motor, deshace con motivo (useConfirm) y pide sugerencias al nivel 4 (IA) que quedan pendientes hasta que
 // una persona las aprueba o rechaza. Datos reales: rutas de apps/api/.../despachos/conciliacion-persistida.ts (migracion 021). Esta pantalla solo oculta lo
 // que el servidor rechazaria por rol; el servidor y la base son la autoridad. Sin IA configurada el boton lo dice (503 honesto) en lugar de simular.
+// D-P3-10/11/12 (migracion 025): las propuestas se GUARDAN en la sesion (boton "Recalcular"), un movimiento con 2+ combinaciones N-a-1 se muestra como
+// "ambiguo" (nunca se confirma sin elegir; confirmar un grupo llega con la tabla de grupos, D-07) y uno sin combinacion como "sin conciliar" con los CFDI mas
+// cercanos; un CFDI de direccion indeterminada exige revision explicita; el interruptor del piloto automatico de nivel 1 (apagado por omision) lo cambia solo el admin.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Bot, Check, Lock, Save, Undo2, X } from "lucide-react";
-import { Button, Callout, Card, CardContent, CardHeader, CardTitle, DataTable, EstadoCargando, EstadoError, Input, Label, notify, StatusBadge, useConfirm } from "@atiende/ui";
+import { Bot, Check, Lock, RefreshCw, Save, Undo2, X } from "lucide-react";
+import { Button, Callout, Card, CardContent, CardHeader, CardTitle, DataTable, EstadoCargando, EstadoError, Input, Label, notify, StatusBadge, Switch, useConfirm } from "@atiende/ui";
 import {
   cerrarSesionConciliacion,
   confirmarParesConciliacion,
   crearSesionConciliacion,
   deshacerMatchConciliacion,
+  guardarConfiguracionConciliacion,
+  leerConfiguracionConciliacion,
   listarSesionesConciliacion,
   obtenerSesionConciliacion,
+  recalcularSesionConciliacion,
   resolverSugerenciaConciliacion,
   sugerirConIaConciliacion,
 } from "../lib/conciliacion-client.ts";
-import type { CfdiSesion, DetalleSesionConciliacion, MovimientoSesion, SesionConciliacionResumen } from "../lib/conciliacion-client.ts";
+import type { CfdiSesion, DetalleSesionConciliacion, MotivoSinConciliar, MovimientoSesion, SesionConciliacionResumen } from "../lib/conciliacion-client.ts";
 import { formatMoney } from "../lib/format.ts";
 import { formatFechaSolo } from "../../../lib/formato-fecha.ts";
 
@@ -25,20 +31,30 @@ interface Props {
   readonly propertyId: string;
   /** Cosmetico (admin/contador): el servidor es la autoridad. */
   readonly puedeGestionar: boolean;
+  /** Cosmetico (solo admin): cambia el interruptor del piloto automatico. El servidor y la base repiten el guard. */
+  readonly esAdmin?: boolean;
 }
 
 const mensajeDe = (err: unknown, porDefecto: string): string => (err instanceof Error && err.message ? err.message : porDefecto);
-const ETIQUETA_ESTADO_MOV = { conciliado: "Conciliado", sugerido: "Sugerido por IA", sin_conciliar: "Sin conciliar" } as const;
-const TONO_ESTADO_MOV = { conciliado: "success", sugerido: "info", sin_conciliar: "neutral" } as const;
-const ETIQUETA_ORIGEN = { motor: "Motor", llm_aprobado: "IA aprobada", manual: "Manual" } as const;
+const ETIQUETA_ESTADO_MOV = { conciliado: "Conciliado", sugerido: "Sugerido por IA", ambiguo: "Ambiguo", sin_conciliar: "Sin conciliar" } as const;
+const TONO_ESTADO_MOV = { conciliado: "success", sugerido: "info", ambiguo: "warning", sin_conciliar: "neutral" } as const;
+const ETIQUETA_ORIGEN = { motor: "Motor", llm_aprobado: "IA aprobada", manual: "Manual", autopiloto: "Piloto automático" } as const;
+const ETIQUETA_MOTIVO: Record<MotivoSinConciliar, string> = {
+  sin_candidato: "Ningún CFDI candidato",
+  pocos_candidatos: "Menos de 2 CFDI en la ventana de fechas",
+  sin_combinacion: "Ninguna combinación de CFDI suma el monto",
+  demasiados_candidatos: "Más de 60 CFDI candidatos: no se evalúa para no inventar una combinación",
+  presupuesto_agotado: "La búsqueda de combinaciones superó su presupuesto: no se propone nada parcial",
+  ambiguo: "Varias combinaciones posibles",
+};
 const periodoActual = (): string => new Date().toISOString().slice(0, 7);
 
 function textoCfdi(c: CfdiSesion | undefined): string {
   return c ? `${c.emisorNombre ?? "Sin nombre"} · ${c.folioFiscal.slice(0, 8)} · ${formatMoney(c.total)}` : "CFDI no disponible";
 }
 
-export function SesionesConciliacion({ apiBaseUrl, token, propertyId, puedeGestionar }: Props) {
-  const { pedirTexto, dialogo } = useConfirm();
+export function SesionesConciliacion({ apiBaseUrl, token, propertyId, puedeGestionar, esAdmin = false }: Props) {
+  const { confirmar: pedirConfirmacion, pedirTexto, dialogo } = useConfirm();
   const [sesiones, setSesiones] = useState<readonly SesionConciliacionResumen[]>([]);
   const [disponible, setDisponible] = useState(true);
   const [cargando, setCargando] = useState(true);
@@ -55,6 +71,8 @@ export function SesionesConciliacion({ apiBaseUrl, token, propertyId, puedeGesti
   const [seleccion, setSeleccion] = useState<ReadonlySet<string>>(new Set());
   const [ocupado, setOcupado] = useState<string | null>(null);
   const [avisoIa, setAvisoIa] = useState<{ tono: "warning" | "info"; texto: string } | null>(null);
+  const [piloto, setPiloto] = useState<{ readonly cargado: boolean; readonly activo: boolean }>({ cargado: false, activo: false });
+  const [guardandoPiloto, setGuardandoPiloto] = useState(false);
 
   const cargarLista = useCallback(async () => {
     setError(null);
@@ -76,7 +94,8 @@ export function SesionesConciliacion({ apiBaseUrl, token, propertyId, puedeGesti
       try {
         const d = await obtenerSesionConciliacion(fetch, apiBaseUrl, token, propertyId, id);
         setDetalle(d);
-        setSeleccion(new Set(d.propuestas.map((p) => `${p.movimientoId}|${p.invoiceId}`)));
+        // Una propuesta con dirección indeterminada NO viene preseleccionada: solo se confirma tras revisarla.
+        setSeleccion(new Set(d.propuestas.filter((p) => !p.requiereRevision).map((p) => `${p.movimientoId}|${p.invoiceId}`)));
       } catch (err) {
         setDetalle(null);
         setErrorDetalle(mensajeDe(err, "No se pudo cargar la sesión."));
@@ -93,6 +112,34 @@ export function SesionesConciliacion({ apiBaseUrl, token, propertyId, puedeGesti
     setDetalle(null);
     void cargarLista();
   }, [cargarLista]);
+
+  useEffect(() => {
+    if (!esAdmin) {
+      setPiloto({ cargado: false, activo: false });
+      return;
+    }
+    let vigente = true;
+    leerConfiguracionConciliacion(fetch, apiBaseUrl, token, propertyId)
+      .then((c) => vigente && setPiloto({ cargado: true, activo: c.autoconfirmarNivel1 }))
+      .catch(() => vigente && setPiloto({ cargado: false, activo: false })); // sin dato (rol de solo lectura: 403, base sin migrar, error) no se muestra un interruptor que no sabemos si funciona
+    return () => {
+      vigente = false;
+    };
+  }, [apiBaseUrl, token, propertyId, esAdmin]);
+
+  async function cambiarPiloto(activo: boolean) {
+    setGuardandoPiloto(true);
+    try {
+      const r = await guardarConfiguracionConciliacion(fetch, apiBaseUrl, token, propertyId, activo);
+      setPiloto({ cargado: true, activo: r.autoconfirmarNivel1 });
+      notify.success(r.autoconfirmarNivel1 ? "Piloto automático encendido." : "Piloto automático apagado.");
+    } catch (err) {
+      // 503 (base sin la migración 025) o 403: se dice tal cual, el interruptor no cambia.
+      notify.error(mensajeDe(err, "No se pudo cambiar el piloto automático."));
+    } finally {
+      setGuardandoPiloto(false);
+    }
+  }
 
   const cfdiPorId = useMemo(() => new Map((detalle?.cfdis ?? []).map((c) => [c.id, c])), [detalle]);
   const movPorId = useMemo(() => new Map((detalle?.movimientos ?? []).map((m) => [m.id, m])), [detalle]);
@@ -141,10 +188,28 @@ export function SesionesConciliacion({ apiBaseUrl, token, propertyId, puedeGesti
 
   async function confirmarSeleccion() {
     if (!detalle) return;
-    const pares = detalle.propuestas.filter((p) => seleccion.has(`${p.movimientoId}|${p.invoiceId}`)).map((p) => ({ movimientoId: p.movimientoId, invoiceId: p.invoiceId }));
+    const elegidas = detalle.propuestas.filter((p) => seleccion.has(`${p.movimientoId}|${p.invoiceId}`));
+    const aRevisar = elegidas.filter((p) => p.requiereRevision);
+    if (aRevisar.length > 0) {
+      const ok = await pedirConfirmacion({
+        titulo: `Confirmar ${aRevisar.length} CFDI de dirección indeterminada`,
+        descripcion: "No se pudo saber si estos CFDI son emitidos o recibidos. Confirma solo si ya revisaste que el movimiento del banco corresponde a ese comprobante.",
+        confirmar: "Ya los revisé",
+      });
+      if (!ok) return;
+    }
+    const pares = elegidas.map((p) => ({ movimientoId: p.movimientoId, invoiceId: p.invoiceId, ...(p.requiereRevision ? { revisado: true } : {}) }));
     await ejecutar("confirmar", async () => {
       const r = await confirmarParesConciliacion(fetch, apiBaseUrl, token, propertyId, detalle.sesion.id, pares);
       return `${r.matches.length} conciliación(es) confirmada(s).`;
+    });
+  }
+
+  async function recalcular() {
+    if (!detalle) return;
+    await ejecutar("recalcular", async () => {
+      const r = await recalcularSesionConciliacion(fetch, apiBaseUrl, token, propertyId, detalle.sesion.id);
+      return r.guardado ? "Propuestas recalculadas y guardadas." : "Propuestas recalculadas (esta base aún no las guarda: falta la migración 025).";
     });
   }
 
@@ -212,6 +277,19 @@ export function SesionesConciliacion({ apiBaseUrl, token, propertyId, puedeGesti
           </Callout>
         )}
         {error && <EstadoError mensaje={error} onReintentar={() => void cargarLista()} />}
+
+        {disponible && piloto.cargado && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-3">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-foreground">Piloto automático de nivel 1</p>
+              <p className="text-xs text-muted-foreground">
+                Al guardar un estado de cuenta el sistema deja la sesión lista y, con esto encendido, confirma solo los cruces exactos únicos (un solo CFDI posible para el movimiento y un solo movimiento para el CFDI).
+                Nunca confirma grupos, cruces aproximados ni sugerencias de IA; cada uno queda en la bitácora y se puede deshacer con motivo.
+              </p>
+            </div>
+            <Switch aria-label="Piloto automático de nivel 1" checked={piloto.activo} disabled={guardandoPiloto} onCheckedChange={(v) => void cambiarPiloto(v)} />
+          </div>
+        )}
 
         {puedeGestionar && disponible && (
           <div className="flex flex-wrap items-end gap-2">
@@ -285,6 +363,9 @@ export function SesionesConciliacion({ apiBaseUrl, token, propertyId, puedeGesti
                   </h2>
                   {puedeGestionar && sesionAbierta && (
                     <div className="flex flex-wrap gap-2">
+                      <Button type="button" variant="outline" size="sm" loading={ocupado === "recalcular"} loadingText="Recalculando…" iconLeft={<RefreshCw />} onClick={() => void recalcular()}>
+                        Recalcular
+                      </Button>
                       <Button type="button" variant="outline" size="sm" loading={ocupado === "ia"} loadingText="Consultando IA…" iconLeft={<Bot />} onClick={() => void sugerir()}>
                         Sugerir con IA
                       </Button>
@@ -298,7 +379,12 @@ export function SesionesConciliacion({ apiBaseUrl, token, propertyId, puedeGesti
                 {sesionAbierta && (
                   <div className="flex flex-col gap-2">
                     <h3 className="text-sm font-medium text-foreground">Propuestas del motor</h3>
-                    <p className="text-xs text-muted-foreground">El servidor vuelve a calcular estas propuestas al confirmar: solo se guardan las que el motor sigue proponiendo.</p>
+                    <p className="text-xs text-muted-foreground">
+                      {detalle.propuestasFuente === "guardadas" && detalle.propuestasEn
+                        ? `Calculadas el ${formatFechaSolo(detalle.propuestasEn.slice(0, 10))}; usa «Recalcular» si llegaron CFDI o movimientos nuevos. `
+                        : "Se calcularon al abrir la sesión (esta sesión aún no tiene propuestas guardadas); «Recalcular» las guarda. "}
+                      Al confirmar, el servidor vuelve a verificar cada par con el motor: solo se guardan los que el motor sigue proponiendo.
+                    </p>
                     <DataTable
                       etiqueta="Propuestas del motor"
                       obtenerId={(p) => `${p.movimientoId}|${p.invoiceId}`}
@@ -312,6 +398,7 @@ export function SesionesConciliacion({ apiBaseUrl, token, propertyId, puedeGesti
                         { id: "mov", encabezado: "Movimiento", principal: true, celda: (p) => <MovimientoCelda m={movPorId.get(p.movimientoId)} /> },
                         { id: "cfdi", encabezado: "CFDI", celda: (p) => <span className="text-xs">{textoCfdi(cfdiPorId.get(p.invoiceId))}</span> },
                         { id: "nivel", encabezado: "Nivel", celda: (p) => <StatusBadge tone={p.nivel === 1 ? "success" : "info"}>{p.nivel === 1 ? "Exacto" : "Fuzzy"}</StatusBadge> },
+                        { id: "rev", encabezado: "Revisión", celda: (p) => (p.requiereRevision ? <StatusBadge tone="warning">Dirección indeterminada</StatusBadge> : <span className="text-muted-foreground">—</span>) },
                         { id: "conf", encabezado: "Confianza", alinear: "right", valorOrden: (p) => p.confianza, celda: (p) => `${Math.round(p.confianza)}%` },
                       ]}
                     />
@@ -327,6 +414,67 @@ export function SesionesConciliacion({ apiBaseUrl, token, propertyId, puedeGesti
                         {detalle.multiLinea.length} pago(s) cubren varios CFDI a la vez (multi-línea): se muestran en la conciliación de arriba, pero no se confirman desde aquí.
                       </Callout>
                     )}
+                  </div>
+                )}
+
+                {sesionAbierta && (detalle.ambiguas ?? []).length > 0 && (
+                  <div className="flex flex-col gap-2">
+                    <h3 className="text-sm font-medium text-foreground">Ambiguos ({detalle.ambiguas!.length})</h3>
+                    <p className="text-xs text-muted-foreground">
+                      Varias combinaciones de CFDI suman el mismo movimiento: el motor no elige una por ti. Confirmar un grupo todavía no está disponible (llega con la tabla de grupos, D-07): por ahora solo se muestran.
+                    </p>
+                    <ul className="flex flex-col gap-2" aria-label="Movimientos ambiguos">
+                      {detalle.ambiguas!.map((a) => (
+                        <li key={a.movimientoId} className="rounded-lg border border-border p-3">
+                          <p className="text-sm font-medium text-foreground">
+                            Ambiguo: elige una de {a.combinaciones.length}
+                            {a.truncado ? "+" : ""} combinaciones
+                          </p>
+                          <p className="mt-0.5 text-xs">
+                            <MovimientoCelda m={movPorId.get(a.movimientoId)} />
+                          </p>
+                          <ol className="mt-2 flex list-decimal flex-col gap-1 pl-5 text-xs text-muted-foreground">
+                            {a.combinaciones.slice(0, 10).map((comb, i) => (
+                              <li key={i}>{comb.map((id) => textoCfdi(cfdiPorId.get(id))).join("  +  ")}</li>
+                            ))}
+                          </ol>
+                          {a.combinaciones.length > 10 && <p className="mt-1 text-xs text-muted-foreground">Se muestran las primeras 10.</p>}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {sesionAbierta && (detalle.sinConciliar ?? []).filter((x) => x.motivo !== "ambiguo" && detalle.movimientos.find((m) => m.id === x.movimientoId)?.estado === "sin_conciliar").length > 0 && (
+                  <div className="flex flex-col gap-2">
+                    <h3 className="text-sm font-medium text-foreground">Sin conciliar: más cercanos</h3>
+                    <p className="text-xs text-muted-foreground">Por qué el motor no propuso nada y qué CFDI quedan más cerca en monto (solo informativo: no se aplica ninguno).</p>
+                    <DataTable
+                      etiqueta="Movimientos sin conciliar"
+                      obtenerId={(x) => x.movimientoId}
+                      filas={(detalle.sinConciliar ?? []).filter((x) => x.motivo !== "ambiguo" && detalle.movimientos.find((m) => m.id === x.movimientoId)?.estado === "sin_conciliar")}
+                      paginacion={{ tamano: 10 }}
+                      columnas={[
+                        { id: "mov", encabezado: "Movimiento", principal: true, celda: (x) => <MovimientoCelda m={movPorId.get(x.movimientoId)} /> },
+                        { id: "motivo", encabezado: "Motivo", celda: (x) => <span className="text-xs">{ETIQUETA_MOTIVO[x.motivo]}</span> },
+                        {
+                          id: "cercanos",
+                          encabezado: "CFDI más cercanos",
+                          celda: (x) =>
+                            x.cercanos.length === 0 ? (
+                              <span className="text-xs text-muted-foreground">Ninguno compatible</span>
+                            ) : (
+                              <ul className="flex flex-col gap-0.5 text-xs">
+                                {x.cercanos.map((c) => (
+                                  <li key={c.invoiceId}>
+                                    {textoCfdi(cfdiPorId.get(c.invoiceId))} <span className="text-muted-foreground">(a {formatMoney(c.diferenciaCentavos / 100)})</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            ),
+                        },
+                      ]}
+                    />
                   </div>
                 )}
 
