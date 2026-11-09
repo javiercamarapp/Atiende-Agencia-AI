@@ -37,6 +37,7 @@ import { rentasAdminDataChatRoutes } from "./admin-data-chat.ts";
 import { rentasFinanzasReglasComisionRoutes } from "./finanzas-reglas-comision.ts";
 import { rentasAdminCatalogoRoutes } from "./admin-catalogo.ts";
 import { rentasAdminStaffRoutes } from "./admin-staff.ts";
+import { rentasAdminOnboardingRoutes } from "./admin-onboarding.ts";
 import { rentasMensajesAutomaticosRoutes } from "./mensajes-automaticos.ts";
 
 export function rentasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
@@ -121,6 +122,8 @@ export function rentasRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", rentasAdminCatalogoRoutes(deps));
   // Rn-20 -- gestión del staff de rentas (invitar, cambiar rol, baja) con bitácora de membership.
   app.route("/", rentasAdminStaffRoutes(deps));
+  // Rn-36 -- checklist de onboarding calculado con datos reales (solo lectura, admin_gestora con acceso a toda la organización).
+  app.route("/", rentasAdminOnboardingRoutes(deps));
   // Fase 13 — calendario visual del panel de staff: listado de unidades + listado
   // unificado de ocupaciones (reserva + bloqueo) por unidad.
   app.route("/", rentasCalendarioRoutes(deps));
