@@ -44,6 +44,16 @@ export interface LedgerStore {
   ordenAplicado(entidadId: string): Promise<number | null>;
   /** Dejar la marca del evento recién aplicado. */
   sellarOrden(entidadId: string, creadoUnix: number): Promise<void>;
+  /**
+   * Liberar la marca de `eventId` porque su aplicación o su sello FALLARON. Sin esto, la marca
+   * escrita antes de aplicar convertiría el reintento del proveedor (que llega precisamente
+   * porque respondimos 5xx) en un 'duplicado' y el evento se perdería.
+   *
+   * Opcional: un almacén que corre marca + aplicación + sello en UNA transacción (el rollback ya
+   * borra la marca) no lo necesita. Un almacén sin transacción y sin este método conserva el
+   * comportamiento anterior (la marca sobrevive al fallo).
+   */
+  desmarcarVisto?(eventId: string): Promise<void>;
 }
 
 /**
@@ -69,6 +79,10 @@ export class LedgerEnMemoria implements LedgerStore {
   async sellarOrden(entidadId: string, creadoUnix: number): Promise<void> {
     this.orden.set(entidadId, creadoUnix);
   }
+
+  async desmarcarVisto(eventId: string): Promise<void> {
+    this.vistos.delete(eventId);
+  }
 }
 
 export type ResultadoAplicacion<T> =
@@ -87,9 +101,16 @@ export type ResultadoAplicacion<T> =
  *
  * `aplicar()` solo se invoca si el evento es nuevo Y no está fuera de orden.
  * El sello de orden se escribe DESPUÉS de que `aplicar()` resuelve con éxito:
- * si `aplicar()` lanza, no se sella nada y un reintento puede volver a
- * intentar — igual que el original del proyecto origen, que sella "al final" por la
- * misma razón.
+ * si `aplicar()` lanza, no se sella nada — igual que el original del proyecto
+ * origen, que sella "al final" por la misma razón.
+ *
+ * Si `aplicar()` o el sello lanzan, la marca de "visto" se libera
+ * (`desmarcarVisto`) antes de relanzar: el reintento del proveedor con el MISMO
+ * id vuelve a intentar en vez de quedar como 'duplicado'. Los handlers de este
+ * dominio FIJAN estado, así que repetir un `aplicar()` que se quedó a medias es
+ * seguro. Con un almacén transaccional, envuelve esta llamada en la transacción
+ * (ver `apps/api/src/routes/billing.ts`): el rollback deshace marca, efectos y
+ * sello juntos.
  */
 export async function aplicarConLedger<T>(
   store: LedgerStore,
@@ -111,7 +132,19 @@ export async function aplicarConLedger<T>(
     return { estado: 'fuera_de_orden', ultimoAplicado: ultimo };
   }
 
-  const resultado = await opts.aplicar();
-  await store.sellarOrden(opts.entidadId, opts.creadoUnix);
+  let resultado: T;
+  try {
+    resultado = await opts.aplicar();
+    await store.sellarOrden(opts.entidadId, opts.creadoUnix);
+  } catch (err) {
+    if (store.desmarcarVisto) {
+      try {
+        await store.desmarcarVisto(opts.eventId);
+      } catch {
+        // El error original es el que importa (causa del 5xx); un fallo al desmarcar no lo tapa.
+      }
+    }
+    throw err;
+  }
   return { estado: 'aplicado', resultado };
 }

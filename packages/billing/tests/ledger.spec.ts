@@ -99,3 +99,49 @@ describe('aplicarConLedger — el ledger nunca permite un cobro duplicado por re
     expect(cobros).toBe(1);
   });
 });
+
+describe('aplicarConLedger — un fallo transitorio NO consume el evento (el reintento del proveedor sí se aplica)', () => {
+  it('si aplicar() lanza, la marca de "visto" se libera y el reintento con el MISMO id se aplica', async () => {
+    const store = new LedgerEnMemoria();
+    let intentos = 0;
+    const aplicar = async () => {
+      intentos += 1;
+      if (intentos === 1) throw new Error('postgres: conexión reiniciada');
+      return 'aplicado-en-reintento';
+    };
+
+    await expect(aplicarConLedger(store, { eventId: 'evt_transitorio', entidadId: 'sub_t', creadoUnix: 1000, aplicar })).rejects.toThrow(/conexión reiniciada/);
+    const r = await aplicarConLedger(store, { eventId: 'evt_transitorio', entidadId: 'sub_t', creadoUnix: 1000, aplicar });
+
+    expect(r).toEqual({ estado: 'aplicado', resultado: 'aplicado-en-reintento' });
+    expect(intentos).toBe(2);
+    expect(await store.ordenAplicado('sub_t')).toBe(1000);
+  });
+
+  it('si el sello de orden lanza después de aplicar, el evento tampoco queda marcado: el reintento lo vuelve a aplicar y sella', async () => {
+    const store = new LedgerEnMemoria();
+    const sellarReal = store.sellarOrden.bind(store);
+    let sellos = 0;
+    store.sellarOrden = async (entidadId, creadoUnix) => {
+      sellos += 1;
+      if (sellos === 1) throw new Error('timeout al sellar');
+      return sellarReal(entidadId, creadoUnix);
+    };
+    let aplicaciones = 0;
+    const aplicar = async () => { aplicaciones += 1; };
+
+    await expect(aplicarConLedger(store, { eventId: 'evt_sello', entidadId: 'sub_s', creadoUnix: 7, aplicar })).rejects.toThrow(/timeout al sellar/);
+    const r = await aplicarConLedger(store, { eventId: 'evt_sello', entidadId: 'sub_s', creadoUnix: 7, aplicar });
+
+    expect(r.estado).toBe('aplicado');
+    expect(aplicaciones).toBe(2);
+    expect(await store.ordenAplicado('sub_s')).toBe(7);
+  });
+
+  it('un duplicado real (ya aplicado con éxito) sigue siendo duplicado: liberar la marca solo ocurre ante un fallo', async () => {
+    const store = new LedgerEnMemoria();
+    await aplicarConLedger(store, { eventId: 'evt_ok', entidadId: 'sub_ok', creadoUnix: 1, aplicar: async () => 'ok' });
+    const r = await aplicarConLedger(store, { eventId: 'evt_ok', entidadId: 'sub_ok', creadoUnix: 1, aplicar: async () => 'otra vez' });
+    expect(r.estado).toBe('duplicado');
+  });
+});
