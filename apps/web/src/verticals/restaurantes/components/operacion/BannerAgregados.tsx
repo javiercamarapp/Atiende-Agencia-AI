@@ -38,12 +38,14 @@ export function BannerAgregados({ apiBaseUrl, token, propertyId, orgSlug, activo
 
   if (!activo || pendientes === 0 || enLaPantalla) return null;
   return (
-    <div role="status" aria-live="polite" data-testid="banner-agregados-global" className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border-2 border-primary bg-card p-3">
-      <p className="flex items-center gap-2 text-base font-bold text-foreground">
+    // ds3 (ds3/contenido.css, ganchos ds3-aviso*): aviso teñido de 1 px como el callout de Rovaq, CTA en primario suave de 30 px, y nunca
+    // encima del chat. Sin la bandera, el banner de siempre.
+    <div role="status" aria-live="polite" data-testid="banner-agregados-global" className="ds3-aviso mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border-2 border-primary bg-card p-3">
+      <p className="ds3-aviso-texto flex items-center gap-2 text-base font-bold text-foreground">
         <ListPlus className="size-5 shrink-0 text-primary" aria-hidden="true" />
         {textoPendientes(pendientes)}
       </p>
-      <Link to={destino} className="inline-flex h-12 items-center rounded-full bg-primary px-5 text-base font-semibold text-primary-foreground">
+      <Link to={destino} className="ds3-aviso-cta inline-flex h-12 items-center rounded-full bg-primary px-5 text-base font-semibold text-primary-foreground">
         {t("restaurantes.agregados.validarAhora")}
 
       </Link>

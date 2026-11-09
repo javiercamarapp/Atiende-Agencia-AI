@@ -26,5 +26,8 @@ export const comunEn: Traduccion<typeof comun> = {
   "comun.error.integracion": "We couldn't connect to {integracion}. Check the connection and try again.",
   "comun.error.pendienteCredenciales": "{integracion} is waiting for credentials. Connect the integration to see real data here.",
   "comun.error.etiquetaPendiente": "Credentials pending",
+  "comun.error.explicacionTecnica": "This isn't available right now. Try again in a moment.",
+  "comun.error.verDetalle": "Show technical details",
+  "comun.error.ocultarDetalle": "Hide technical details",
   "comun.comoLeerEsto": "How to read this",
 };
