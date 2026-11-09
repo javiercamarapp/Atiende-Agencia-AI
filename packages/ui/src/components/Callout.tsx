@@ -3,6 +3,8 @@ import { AlertTriangle, CheckCircle2, Info, OctagonAlert, X } from "lucide-react
 import { cva } from "class-variance-authority";
 
 import { cn } from "../lib/utils";
+import { useT } from "../i18n/proveedor";
+import { comun } from "../i18n/mensajes/comun.ts";
 
 export const CALLOUT_TONES = ["neutral", "info", "success", "warning", "danger"] as const;
 export type CalloutTone = (typeof CALLOUT_TONES)[number];
@@ -46,6 +48,7 @@ export interface CalloutProps extends Omit<React.HTMLAttributes<HTMLDivElement>,
  * role="status" (no interrumpe al lector de pantalla).
  */
 export function Callout({ tone = "info", titulo, icon, accion, onDismiss, className, children, role, ...props }: CalloutProps) {
+  const t = useT(comun);
   const { Icono, clase } = iconoPorTono[tone];
   return (
     <div role={role ?? (tone === "danger" ? "alert" : "status")} data-tone={tone} className={cn(calloutVariants({ tone }), className)} {...props}>
@@ -59,7 +62,7 @@ export function Callout({ tone = "info", titulo, icon, accion, onDismiss, classN
         <button
           type="button"
           onClick={onDismiss}
-          aria-label="Cerrar aviso"
+          aria-label={t("comun.cerrarAviso")}
           className="shrink-0 rounded-md p-1 text-muted-foreground transition-colors duration-fast ease-brand hover:bg-foreground/5 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <X className="size-4" aria-hidden="true" />

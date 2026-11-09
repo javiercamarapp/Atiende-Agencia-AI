@@ -49,8 +49,8 @@ export {
 } from "./lib/arranque.js";
 export { CLAVE_IDIOMA, IDIOMAS, IDIOMA_CAMBIO_EVENTO, guardarIdioma, leerIdioma, type Idioma } from "./lib/idioma.js";
 export { ThemeBoot, useTemaGlobal } from "./components/ThemeBoot.js";
-export { aplicarTema, aplicarBanderaDiseno, leerTema, sincronizarDisenoOrganizacion, type Tema } from "./lib/tema.js";
-export { DISENO_DS3, disenoPorDefecto, leerDisenoDs3 } from "./lib/diseno.js";
+export { aplicarTema, aplicarBanderaDiseno, leerTema, type Tema } from "./lib/tema.js";
+export { DISENO_DS3, disenoLegadoActivo, leerDisenoDs3 } from "./lib/diseno.js";
 export { StatCard, TrendStatCard, type StatCardSello, type StatCardVariante } from "./components/StatCard.js";
 export { EstadoVacio, VarianteEstadoVacioProvider } from "./components/EstadoVacio.js";
 export { EstadoError } from "./components/EstadoError.js";
@@ -83,7 +83,7 @@ export { PageContainer, type PageContainerProps } from "./components/PageContain
 export { Callout, CALLOUT_TONES, type CalloutProps, type CalloutTone } from "./components/Callout.js";
 export { Sidebar, categoriaDeRuta, type SidebarItem, type SidebarSection, type SidebarProps, type SidebarPiePildora, type SidebarUser } from "./components/Sidebar.js";
 export { MobileAccountMenu, type MobileAccountMenuProps } from "./components/MobileAccountMenu.js";
-export { BottomNav, BOTTOM_NAV_MAX_DESTINOS, MobileHeader, type BottomNavItem, type BottomNavProps, type MobileHeaderTitulo } from "./components/BottomNav.js";
+export { BottomNav, BOTTOM_NAV_MAX_DESTINOS, CampanaMovil, MAS_ABRIR_EVENTO, MobileHeader, type BottomNavItem, type BottomNavProps, type CampanaMovilProps, type MobileHeaderTitulo } from "./components/BottomNav.js";
 export {
   VerticalShell,
   VerticalShellEstado,
@@ -279,5 +279,18 @@ export { VistaPreviaLlamada, type VistaPreviaLlamadaProps } from "./components/v
 export * from "./components/resumen-piezas.js";
 export * from "./components/consola-kit.js";
 export * from "./components/graficas-cfo.js";
+// ds3 «Guía»: recorrido guiado animado (menu, foco que no tapa, tarjeta, viaje entre pantallas), progreso por persona y «Primeros pasos».
+// El componente de la guia (GuiaRecorrido) NO va en el barril: se importa diferido desde `@atiende/ui/guia` y solo con la bandera ds3.
+export { GUIA_ABRIR_EVENTO_RECORRIDO, GUIA_RECORRIDO_EVENTO, GUIA_VACIAR_EVENTO, abrirMenuGuia, iniciarRecorridoGuia, vaciarGuardadoGuia } from "./components/guia/eventos";
+export type { GuiaRecorridoProps } from "./components/guia/GuiaRecorrido";
+export { PrimerosPasos, resumirPrimerosPasos, hitosNuevos } from "./components/guia/PrimerosPasos";
+export type { PrimerPaso, PrimerosPasosProps, EstadoPrimerPaso } from "./components/guia/PrimerosPasos";
+export { construirTour, contarPasos, colocarTarjeta, pantallasDelMenu, rutaRelativa, slugDe } from "./components/guia/motor";
+export type { ContenidoConsola, ContenidoPantalla, ModoTour, PasoTour, SeccionMenu, TextoBilingue } from "./components/guia/motor";
+export { limpiarProgresoGuia, normalizar as normalizarProgresoGuia } from "./components/guia/estado";
+export type { ProgresoLocal, ServidorProgreso } from "./components/guia/estado";
+export { TEXTOS_GUIA, traductorGuia, useIdiomaGuia } from "./components/guia/textos";
+export type { ClaveGuia, IdiomaGuia } from "./components/guia/textos";
+export { Ilustracion as IlustracionGuia, TIPOS_ILUSTRACION } from "./components/guia/ilustraciones";
 // i18n ES/EN (ds3): proveedor, `t()` con claves tipadas, plurales y formato es-MX / en-US. La preferencia vive en lib/idioma.
 export * from "./i18n/index.js";
