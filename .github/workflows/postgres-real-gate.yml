@@ -78,8 +78,20 @@ name: Postgres real (gate)
 # initdb (mismo patrón que scripts/verify-caller-binding-fase3/run.sh), nunca vía
 # el servicio `postgres:` ni `run-gate.mjs`. Ver scripts/verify-fallback-savepoint/
 # README.md para el detalle completo de qué demuestra y por qué.
+#
+# Filtro por rutas y borradores (desaturar Actions, nov-2026)
+# ------------------------------------------------------------------------------
+# En push a main y en workflow_dispatch corren TODOS los gates, siempre. En pull_request, el job `cambios`
+# lee la lista de archivos del PR (API de GitHub) y cada gate corre solo si el PR toca algo que ese gate
+# puede ver (tabla en el job `cambios`). Un PR que solo toca apps/web, packages/ui o docs ya no levanta
+# Postgres. En PR en borrador no corre ningun gate pesado; al marcarlo como listo (ready_for_review) el
+# workflow vuelve a correr completo. El check `Migraciones reales + assertions RLS/GRANT contra Postgres real`
+# corre SIEMPRE y es el que se pide como requerido: pasa si cada gate que debia correr termino en success y
+# cada gate omitido lo fue por el filtro; cualquier otro resultado (fallo, cancelado) lo deja en rojo. Si la
+# API no responde, el filtro falla hacia el lado seguro: corre todo.
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
   workflow_dispatch: {}
@@ -101,8 +113,84 @@ concurrency:
 #   - `postgres-real-gate` es el agregador que CONSERVA el nombre histórico del check: pasa solo si los 6
 #     shards pasaron Y si los reportes de los shards cubren EXACTAMENTE las carpetas descubiertas.
 jobs:
+  # Decide que gates corren. Salidas ("true"/"false"):
+  #   base         -> shards RLS/GRANT y SAVEPOINT. Y fuerza TODOS los demas. Rutas: package.json,
+  #                   package-lock.json, este workflow, .github/actions/, supabase/, packages/*/migrations/,
+  #                   packages/db/, scripts/verify-*/ y scripts/eval-copiloto/ (los run.sh se leen archivos
+  #                   entre carpetas verify-*, asi que cualquier cambio ahi corre todo).
+  #   citas        -> base o packages/domain-citas/ (citas-concurrencia, solo SQL).
+  #   licitaciones -> base o packages/domain-licitaciones/ (datos-empresa y step-up, solo SQL).
+  #   restaurantes -> base o packages/domain-restaurantes/ (restaurantes-whatsapp-concurrencia, solo SQL).
+  #   backend      -> base o cualquier codigo de servidor: apps/api, apps/worker, apps/voice-worker,
+  #                   packages/** salvo packages/ui, tsconfig*.json, vitest*.ts, test-setup/ (gates que
+  #                   ejecutan codigo TS real: whatsapp-concurrencia, preview de agente/voz, eval del
+  #                   Copiloto y rentas-concurrencia; importan apps/api y varios packages).
+  cambios:
+    name: Gates de Postgres que aplican a este cambio
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      borrador: ${{ steps.f.outputs.borrador }}
+      base: ${{ steps.f.outputs.base }}
+      citas: ${{ steps.f.outputs.citas }}
+      licitaciones: ${{ steps.f.outputs.licitaciones }}
+      restaurantes: ${{ steps.f.outputs.restaurantes }}
+      backend: ${{ steps.f.outputs.backend }}
+    steps:
+      - name: Archivos del PR -> gates
+        id: f
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENTO: ${{ github.event_name }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          BORRADOR: ${{ github.event_name == 'pull_request' && github.event.pull_request.draft }}
+          CAMBIADOS: ${{ github.event.pull_request.changed_files || 0 }}
+        run: |
+          set -uo pipefail
+          SALIDAS="base citas licitaciones restaurantes backend"
+          todos() { for k in $SALIDAS; do echo "$k=$1" >> "$GITHUB_OUTPUT"; done; echo "todos los gates=$1"; }
+          echo "borrador=$BORRADOR" >> "$GITHUB_OUTPUT"
+          if [ "$EVENTO" != "pull_request" ]; then
+            echo "Evento $EVENTO: corren todos los gates"; todos true; exit 0
+          fi
+          if [ "$BORRADOR" = "true" ]; then
+            echo "::notice::PR en borrador: los gates de Postgres corren al marcarlo como listo para revision"
+            todos false; exit 0
+          fi
+          lista="$RUNNER_TEMP/archivos.txt"
+          if ! gh api --paginate "repos/$REPO/pulls/$PR/files" --jq '.[] | .filename, (.previous_filename // empty)' > "$lista"; then
+            echo "::warning::No pude leer los archivos del PR: corren todos los gates"; todos true; exit 0
+          fi
+          # La API devuelve como maximo 3000 archivos; con mas (o con una lista vacia) no se filtra.
+          if [ "$CAMBIADOS" -ge 3000 ] || [ ! -s "$lista" ]; then
+            echo "Lista de archivos incompleta o vacia: corren todos los gates"; todos true; exit 0
+          fi
+          echo "Archivos del PR: $(wc -l < "$lista")"
+          BASE='^(package\.json|package-lock\.json|\.github/workflows/postgres-real-gate\.yml|\.github/actions/|supabase/|packages/[^/]+/migrations/|packages/db/|scripts/verify-|scripts/eval-copiloto/)'
+          BACKEND='^(apps/(api|worker|voice-worker)/|packages/|tsconfig[^/]*\.json$|vitest[^/]*\.ts$|test-setup/)'
+          base=false; grep -qE "$BASE" "$lista" && base=true
+          decide() {
+            local v=$base
+            if [ "$v" != true ] && "${@:2}"; then v=true; fi
+            echo "$1=$v" >> "$GITHUB_OUTPUT"; echo "$1=$v"
+          }
+          toca() { grep -qE "$1" "$lista"; }
+          # Sin `grep -q` al final del tubo: con pipefail, el SIGPIPE del primer grep daria un falso "no".
+          toca_backend() { [ -n "$(grep -E "$BACKEND" "$lista" | grep -vE '^packages/ui/')" ]; }
+          decide base false
+          decide citas toca '^packages/domain-citas/'
+          decide licitaciones toca '^packages/domain-licitaciones/'
+          decide restaurantes toca '^packages/domain-restaurantes/'
+          decide backend toca_backend
+
   postgres-real-gate-shard:
     name: Gate Postgres real (shard ${{ matrix.shard }}/6)
+    needs: cambios
+    if: needs.cambios.outputs.base == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -132,13 +220,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Setup Node
-        uses: actions/setup-node@v7
-        with:
-          node-version: "22"
-
-      - name: npm ci
-        run: npm ci
+      # Node 22 + npm ci, o node_modules restaurado del cache de main (ver .github/actions/node-deps).
+      - name: Node + dependencias
+        uses: ./.github/actions/node-deps
 
       - name: Guard de prefijos de versión duplicados en supabase/migrations (scripts/verify-migration-versions)
         run: npm run verify:migration-versions
@@ -176,34 +260,89 @@ jobs:
           if-no-files-found: warn
           retention-days: 3
 
-  # Conserva el nombre histórico del check. if: always() para que un shard fallido/cancelado/omitido produzca
-  # rojo y no un "skipped" (que cuenta como éxito para la protección de rama).
+  # Conserva el nombre histórico del check y corre SIEMPRE (if: always()), para que una regla de check
+  # requerido nunca se quede esperando. Desde el filtro por rutas es el veredicto de TODOS los gates de este
+  # workflow (antes solo de los shards): cada gate que `cambios` marco debe terminar en success, y cada gate
+  # que `cambios` no marco debe quedar "skipped". Un fallo, una cancelacion o un `cambios` roto -> rojo.
   postgres-real-gate:
     name: Migraciones reales + assertions RLS/GRANT contra Postgres real
-    needs: [postgres-real-gate-shard]
+    needs:
+      - cambios
+      - postgres-real-gate-shard
+      - fallback-savepoint-gate
+      - whatsapp-concurrencia-gate
+      - restaurantes-agente-preview-pg-real-gate
+      - citas-concurrencia-gate
+      - datos-empresa-concurrencia-gate
+      - stepup-concurrencia-gate
+      - restaurantes-whatsapp-concurrencia-gate
+      - eval-copiloto-congelado
+      - rentas-concurrencia-gate
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Veredicto de los shards
+      - name: Veredicto de los gates
         env:
-          SHARDS: ${{ needs.postgres-real-gate-shard.result }}
+          CAMBIOS: ${{ needs.cambios.result }}
+          BORRADOR: ${{ needs.cambios.outputs.borrador }}
+          E_BASE: ${{ needs.cambios.outputs.base }}
+          E_CITAS: ${{ needs.cambios.outputs.citas }}
+          E_LICITACIONES: ${{ needs.cambios.outputs.licitaciones }}
+          E_RESTAURANTES: ${{ needs.cambios.outputs.restaurantes }}
+          E_BACKEND: ${{ needs.cambios.outputs.backend }}
+          R_SHARDS: ${{ needs.postgres-real-gate-shard.result }}
+          R_SAVEPOINT: ${{ needs.fallback-savepoint-gate.result }}
+          R_WA: ${{ needs.whatsapp-concurrencia-gate.result }}
+          R_PREVIEW: ${{ needs.restaurantes-agente-preview-pg-real-gate.result }}
+          R_CITAS: ${{ needs.citas-concurrencia-gate.result }}
+          R_DATOS_EMPRESA: ${{ needs.datos-empresa-concurrencia-gate.result }}
+          R_STEPUP: ${{ needs.stepup-concurrencia-gate.result }}
+          R_REST_WA: ${{ needs.restaurantes-whatsapp-concurrencia-gate.result }}
+          R_COPILOTO: ${{ needs.eval-copiloto-congelado.result }}
+          R_RENTAS: ${{ needs.rentas-concurrencia-gate.result }}
         run: |
-          echo "postgres-real-gate-shard=$SHARDS"
-          if [ "$SHARDS" != "success" ]; then
-            echo "::error::Algún shard del gate de Postgres real no terminó en success"
+          if [ "$CAMBIOS" != "success" ]; then
+            echo "::error::El job cambios no terminó en success ($CAMBIOS): no hay veredicto confiable"
             exit 1
           fi
+          fallo=0
+          revisar() {
+            # $1 nombre, $2 debia correr (true/false), $3 resultado del job
+            if [ "$2" = "true" ]; then
+              [ "$3" = "success" ] || { echo "::error::$1 debia correr y terminó en $3"; fallo=1; }
+            else
+              [ "$3" = "skipped" ] || { echo "::error::$1 no debia correr y terminó en $3"; fallo=1; }
+            fi
+            echo "$1: debia_correr=$2 resultado=$3"
+          }
+          revisar "shards RLS/GRANT" "$E_BASE" "$R_SHARDS"
+          revisar "fallback-savepoint" "$E_BASE" "$R_SAVEPOINT"
+          revisar "whatsapp-concurrencia" "$E_BACKEND" "$R_WA"
+          revisar "restaurantes-agente-preview" "$E_BACKEND" "$R_PREVIEW"
+          revisar "citas-concurrencia" "$E_CITAS" "$R_CITAS"
+          revisar "datos-empresa-concurrencia" "$E_LICITACIONES" "$R_DATOS_EMPRESA"
+          revisar "stepup-concurrencia" "$E_LICITACIONES" "$R_STEPUP"
+          revisar "restaurantes-whatsapp-concurrencia" "$E_RESTAURANTES" "$R_REST_WA"
+          revisar "eval-copiloto" "$E_BACKEND" "$R_COPILOTO"
+          revisar "rentas-concurrencia" "$E_BACKEND" "$R_RENTAS"
+          if [ "$BORRADOR" = "true" ]; then
+            echo "::notice::PR en borrador: gates omitidos; corren al marcarlo como listo para revision"
+          fi
+          exit $fallo
 
       - name: Checkout
+        if: needs.cambios.outputs.base == 'true'
         uses: actions/checkout@v7
 
       - name: Setup Node
+        if: needs.cambios.outputs.base == 'true'
         uses: actions/setup-node@v7
         with:
           node-version: "22"
 
       - name: Descargar reportes de los shards
+        if: needs.cambios.outputs.base == 'true'
         uses: actions/download-artifact@v8
         with:
           pattern: postgres-gate-report-*
@@ -212,10 +351,13 @@ jobs:
       # Cobertura idéntica: la unión de lo EJECUTADO por los 6 shards debe ser exactamente lo que descubre
       # run-gate.mjs (cada scripts/verify-*/ con los 3 archivos, una sola vez), con los 6 reportes presentes.
       - name: Cobertura exacta (reportes de shards == carpetas descubiertas)
+        if: needs.cambios.outputs.base == 'true'
         run: node scripts/verify-real-postgres-ci/run-gate.mjs --verify-reports "$RUNNER_TEMP/reportes"
 
   fallback-savepoint-gate:
     name: SAVEPOINT real para fallback por SQLSTATE (scripts/verify-fallback-savepoint)
+    needs: cambios
+    if: needs.cambios.outputs.base == 'true'
     runs-on: ubuntu-latest
     # Job APARTE, sin el servicio `postgres:` de arriba: scripts/verify-fallback-
     # savepoint/run.sh levanta su PROPIO Postgres efímero vía initdb (mismo patrón
@@ -263,6 +405,8 @@ jobs:
 
   whatsapp-concurrencia-gate:
     name: Webhook de WhatsApp con mensajes simultaneos (scripts/verify-whatsapp-concurrencia)
+    needs: cambios
+    if: needs.cambios.outputs.backend == 'true'
     runs-on: ubuntu-latest
     # Job APARTE: levanta su PROPIO Postgres efimero via initdb CON TLS (el motor de produccion exige TLS, y el servicio `postgres:`
     # de arriba no lo trae), aplica las migraciones reales y corre la API real de produccion con OpenRouter y Meta simulados.
@@ -272,13 +416,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Setup Node
-        uses: actions/setup-node@v7
-        with:
-          node-version: "22"
-
-      - name: npm ci
-        run: npm ci
+      # Node 22 + npm ci, o node_modules restaurado del cache de main (ver .github/actions/node-deps).
+      - name: Node + dependencias
+        uses: ./.github/actions/node-deps
 
       - name: Confirmar initdb/pg_ctl/psql disponibles
         run: |
@@ -305,6 +445,8 @@ jobs:
 
   restaurantes-agente-preview-pg-real-gate:
     name: Preview de agente y de voz con sesion de staff contra Postgres real (scripts/verify-restaurantes-agente-preview-rate-limit)
+    needs: cambios
+    if: needs.cambios.outputs.backend == 'true'
     runs-on: ubuntu-latest
     # Job APARTE: la parte 2 de scripts/verify-restaurantes-agente-preview-rate-limit/run.sh es un spec de vitest (apps/api/tests/restaurantes-agente-preview-pg-real.spec.ts)
     # que levanta la RUTA HTTP real con el motor de produccion contra un Postgres efimero (initdb, puerto alto) con TODAS las migraciones. `run-gate.mjs` solo corre
@@ -315,13 +457,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Setup Node
-        uses: actions/setup-node@v7
-        with:
-          node-version: "22"
-
-      - name: npm ci
-        run: npm ci
+      # Node 22 + npm ci, o node_modules restaurado del cache de main (ver .github/actions/node-deps).
+      - name: Node + dependencias
+        uses: ./.github/actions/node-deps
 
       - name: Confirmar initdb/pg_ctl/psql disponibles
         run: |
@@ -348,6 +486,8 @@ jobs:
 
   citas-concurrencia-gate:
     name: Doble cita con 2+ conexiones simultaneas (scripts/verify-citas-concurrencia)
+    needs: cambios
+    if: needs.cambios.outputs.citas == 'true'
     runs-on: ubuntu-latest
     # Job APARTE (mismo servicio postgres que el gate de arriba): el runner generico run-gate.mjs ejecuta cada escenario de
     # assertions.sql en UNA conexion, y esta verificacion necesita varias conexiones SIMULTANEAS (C-17). scripts/verify-citas-
@@ -403,6 +543,8 @@ jobs:
 
   datos-empresa-concurrencia-gate:
     name: Decision de datos de empresa con 2 conexiones simultaneas (scripts/verify-licitaciones-aprobacion-datos-empresa/concurrencia.sh)
+    needs: cambios
+    if: needs.cambios.outputs.licitaciones == 'true'
     runs-on: ubuntu-latest
     # Job APARTE (mismo servicio postgres que el gate de arriba): el runner generico run-gate.mjs ejecuta cada escenario de assertions.sql en UNA
     # conexion, y la transicion condicional de `licitaciones.decide_company_item` (migracion 036, WI-04) necesita DOS conexiones SIMULTANEAS: una
@@ -458,6 +600,8 @@ jobs:
 
   stepup-concurrencia-gate:
     name: Consumo del step-up con 2 conexiones simultaneas (scripts/verify-licitaciones-stepup-y-bitacora/concurrencia.sh)
+    needs: cambios
+    if: needs.cambios.outputs.licitaciones == 'true'
     runs-on: ubuntu-latest
     # Job APARTE (mismo servicio postgres que el gate de arriba): el consumo de un solo uso del step-up (`core.consume_step_up`, migracion 038) necesita
     # DOS conexiones SIMULTANEAS con el mismo jti: una retiene el consumo sin confirmar y se comprueba que la otra espera un Lock; despues, 10 rondas con
@@ -511,6 +655,8 @@ jobs:
 
   restaurantes-whatsapp-concurrencia-gate:
     name: WhatsApp y pedidos de restaurantes con 2+ conexiones simultaneas (scripts/verify-restaurantes-whatsapp-concurrencia)
+    needs: cambios
+    if: needs.cambios.outputs.restaurantes == 'true'
     runs-on: ubuntu-latest
     # Job APARTE (mismo servicio postgres que el gate de arriba): el runner generico run-gate.mjs ejecuta cada escenario de
     # assertions.sql en UNA conexion y esta verificacion necesita varias conexiones SIMULTANEAS. scripts/verify-restaurantes-
@@ -566,6 +712,8 @@ jobs:
 
   eval-copiloto-congelado:
     name: Arnes de evaluacion del Copiloto - respuestas esperadas congeladas vs Postgres sembrado (scripts/eval-copiloto)
+    needs: cambios
+    if: needs.cambios.outputs.backend == 'true'
     runs-on: ubuntu-latest
     # Job APARTE (mismo servicio postgres que el gate de arriba). Aplica las migraciones reales y las semillas del arnes
     # (scripts/eval-copiloto/seeds) y exige que `congelar.ts --check` reproduzca BYTE A BYTE scripts/eval-copiloto/datos/*.congelado.json:
@@ -595,13 +743,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Setup Node
-        uses: actions/setup-node@v7
-        with:
-          node-version: "22"
-
-      - name: npm ci
-        run: npm ci
+      # Node 22 + npm ci, o node_modules restaurado del cache de main (ver .github/actions/node-deps).
+      - name: Node + dependencias
+        uses: ./.github/actions/node-deps
 
       - name: Confirmar cliente psql disponible
         run: |
@@ -621,6 +765,8 @@ jobs:
 
   rentas-concurrencia-gate:
     name: Concurrencia real de rentas con N conexiones (scripts/verify-rentas-concurrencia)
+    needs: cambios
+    if: needs.cambios.outputs.backend == 'true'
     runs-on: ubuntu-latest
     # Job APARTE (mismo servicio postgres que el gate de arriba), mismo patron que citas-concurrencia-gate: el runner generico run-gate.mjs
     # ejecuta cada escenario en UNA conexion y esta verificacion necesita N conexiones SIMULTANEAS (Rn-P3-12). run.sh aplica las

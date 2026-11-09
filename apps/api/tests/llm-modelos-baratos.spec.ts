@@ -3,7 +3,7 @@
 import { randomBytes } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import { DATA_CHAT_RETRY_ROLES, buildRoleLadder, loadLlmModelsConfig } from "../src/production/llm-gateway.ts";
-import { DATA_CHAT_RETRY_SUFFIX, ALLOWED_PROVIDER_HOSTS, VERIFIED_MODEL_HOSTS, defaultHostsForModel, parseLlmModelsJson, resolveRoleRoute, routingForModel } from "../src/production/llm-models.ts";
+import { ACTIVIDADES_LLM, DATA_CHAT_RETRY_SUFFIX, ALLOWED_PROVIDER_HOSTS, VERIFIED_MODEL_HOSTS, defaultHostsForModel, parseLlmModelsJson, resolveRoleRoute, routingForModel } from "../src/production/llm-models.ts";
 import { TEST_ENV } from "./fixtures.ts";
 import type { ApiEnv } from "../src/env.ts";
 
@@ -27,13 +27,13 @@ const PILOTO = {
 };
 
 describe("sin LLM_MODELS_JSON: la escalera actual", () => {
-  it("el chat de las 6 verticales usa Luna -> DeepSeek V4.1 Flash -> Gemini 2.5 Flash-Lite -> Muse Spark 1.3 y el reintento DeepSeek V4 Pro", () => {
+  it("el chat de datos de las 6 verticales usa la ruta de la actividad (Luna primero, sin modelos sin ZDR) y el reintento Gemini 3.5 Flash-Lite", () => {
     for (const env of [envConJson(null), envConJson("")]) {
       const cfg = loadLlmModelsConfig(env);
       expect(cfg).toEqual({ roles: {} });
       for (const v of VERTICALES) {
-        expect(buildRoleLadder(env, `${v}:data_chat`, cfg)!.map((p) => p.model)).toEqual(["openai/gpt-6-luna", "deepseek/deepseek-v4.1-flash", "google/gemini-2.5-flash-lite", "meta/muse-spark-1.3"]);
-        expect(buildRoleLadder(env, `${v}:${DATA_CHAT_RETRY_SUFFIX}`, cfg)![0]!.model).toBe("deepseek/deepseek-v4-pro");
+        expect(buildRoleLadder(env, `${v}:data_chat`, cfg)!.map((p) => p.model)).toEqual(ACTIVIDADES_LLM.datos_preguntas.route.models.map((m) => m.model));
+        expect(buildRoleLadder(env, `${v}:${DATA_CHAT_RETRY_SUFFIX}`, cfg)![0]!.model).toBe("google/gemini-3.5-flash-lite");
       }
     }
   });
@@ -57,7 +57,7 @@ describe("LLM_MODELS_JSON: rol barato y rol escalado por entorno", () => {
     }
     // el agente de WhatsApp y el copiloto de superadmin NO cambian
     expect(buildRoleLadder(env, "restaurantes:whatsapp_agent", cfg)![0]!.model).toBe("openai/gpt-6-luna");
-    expect(buildRoleLadder(env, "superadmin:copiloto", cfg)![0]!.model).toBe("anthropic/claude-sonnet-5.5");
+    expect(buildRoleLadder(env, "superadmin:copiloto", cfg)!.map((p) => p.model)).toEqual(ACTIVIDADES_LLM.copiloto_superadmin.route.models.map((m) => m.model));
   });
 
   it("cada escalon sale por proveedores de EE.UU. permitidos, con ZDR forzado donde existe, data_collection deny y require_parameters", () => {
@@ -70,8 +70,9 @@ describe("LLM_MODELS_JSON: rol barato y rol escalado por entorno", () => {
         for (const h of r.only!) expect(ALLOWED_PROVIDER_HOSTS, `${rung.model} -> ${h}`).toContain(h);
         expect(r.dataCollection).toBe("deny");
         expect(r.requireParameters).toBe(true);
-        // ZDR forzado donde el endpoint lo ofrece (DeepSeek, Mistral...); Luna (OpenAI) lo recibe solo con OPENROUTER_ZDR=1.
-        if (VERIFIED_MODEL_HOSTS[rung.model]?.zdr) expect(r.zdr, rung.model).toBe(true);
+        // ZDR forzado en TODOS los escalones (todas las superficies tocan datos), aun con OPENROUTER_ZDR apagado.
+        expect(VERIFIED_MODEL_HOSTS[rung.model]?.zdr, rung.model).toBe(true);
+        expect(r.zdr, rung.model).toBe(true);
       }
     }
   });
@@ -88,7 +89,7 @@ describe("LLM_MODELS_JSON: rol barato y rol escalado por entorno", () => {
   });
 
   it("gpt-oss-120b se enruta a sus proveedores reales (no a openai/azure) y solo se estrecha a ellos", () => {
-    expect(defaultHostsForModel("openai/gpt-oss-120b")).toEqual(["deepinfra", "baseten", "coreweave", "amazon-bedrock", "google-vertex"]);
+    expect(defaultHostsForModel("openai/gpt-oss-120b")).toEqual(["deepinfra", "baseten", "coreweave", "parasail", "groq"]);
     const json = (only: string[]) => JSON.stringify({ roles: { "*:data_chat": { models: [{ model: "openai/gpt-oss-120b", temperature: "omit" }], routing: { only } } } });
     expect(parseLlmModelsJson(json(["deepinfra"])).errors).toEqual([]);
     expect(parseLlmModelsJson(json(["openai"])).errors.join(" ")).toMatch(/no estan verificados/);

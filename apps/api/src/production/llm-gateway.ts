@@ -48,7 +48,6 @@ import {
   InMemoryBudgetLedgerStore,
   InMemoryCircuitBreakerStore,
   LlmGateway,
-  OpenAiProvider,
   OpenRouterProvider,
   RedisCircuitBreakerStore,
   UpstashRestClient,
@@ -62,7 +61,7 @@ import { emitirNotificacion } from "@atiende/db";
 import { ProductionLlmUsageRecorder, ProductionOrgMonthlyBudgetStore, ProductionRoleDailyTurnStore } from "./llm-usage-gateway-adapters.ts";
 import { RESUMEN_DIARIO_LLM_ROLE } from "../resumen-diario/redaccion.ts";
 import type { ApiEnv } from "../env.ts";
-import { COMPACTACION_HISTORIAL_ROLE, COMPUERTA_ESCALAMIENTO_ROLE, DATA_CHAT_RETRY_SUFFIX, ENRUTADOR_TURNO_ROLE, NEW_PLATFORM_LLM_ROLES, REPORTE_ANALISIS_FINANCIERO_ROLE, REPORTE_ANALISIS_GENERAL_ROLE, REPORTE_REDACCION_FINANCIERO_ROLE, REPORTE_REDACCION_GENERAL_ROLE, RESTAURANTES_TRANSCRIPCION_ROLE, TITULOS_RESUMENES_ROLE, parseLlmModelsJson, resolveRoleRoute, routingForModel, rungsDeModelosAgente, SUPERADMIN_COPILOTO_ROLE, type LlmModelsConfig } from "./llm-models.ts";
+import { COMPACTACION_HISTORIAL_ROLE, COMPUERTA_ESCALAMIENTO_ROLE, DATA_CHAT_RETRY_SUFFIX, ENRUTADOR_TURNO_ROLE, NEW_PLATFORM_LLM_ROLES, REPORTE_ANALISIS_FINANCIERO_ROLE, REPORTE_ANALISIS_GENERAL_ROLE, REPORTE_REDACCION_FINANCIERO_ROLE, REPORTE_REDACCION_GENERAL_ROLE, RESTAURANTES_EXTRACCION_MENU_ROLE, RESTAURANTES_TRANSCRIPCION_ROLE, TITULOS_RESUMENES_ROLE, parseLlmModelsJson, resolveRoleRoute, routingForModel, rungsDeModelosAgente, SUPERADMIN_COPILOTO_ROLE, type LlmModelsConfig } from "./llm-models.ts";
 
 export const RESTAURANTES_WHATSAPP_AGENT_ROLE = "restaurantes:whatsapp_agent";
 export const RESTAURANTES_WHATSAPP_AGENT_ESCALATED_ROLE = "restaurantes:whatsapp_agent_escalated";
@@ -128,6 +127,8 @@ export const ALL_PRODUCTION_ROLES: readonly string[] = [
   RESTAURANTES_DATA_CHAT_ROLE,
   // R-32: transcripcion de notas de voz (llamador: apps/api/src/routes/verticals/restaurantes/transcripcion-voz.ts). Apagable.
   RESTAURANTES_TRANSCRIPCION_ROLE,
+  // Alta autoservicio: extraccion del menu (PDF/foto) a borrador (llamador: routes/verticals/restaurantes/admin-menu-importar.ts).
+  RESTAURANTES_EXTRACCION_MENU_ROLE,
   HOTELES_DATA_CHAT_ROLE,
   RENTAS_DATA_CHAT_ROLE,
   DESPACHOS_DATA_CHAT_ROLE,
@@ -192,7 +193,7 @@ export function buildBreakerStore(env: ApiEnv): CircuitBreakerStore {
 
 /** Escalera de un rol: un escalon por modelo de su ruta. `undefined` si no hay ningun proveedor. */
 export function buildRoleLadder(env: ApiEnv, role: string, models: LlmModelsConfig): LlmProvider[] | undefined {
-  const { openrouter, openai } = env.llmProviders;
+  const { openrouter } = env.llmProviders;
   if (openrouter) {
     const route = resolveRoleRoute(role, models);
     return route.models.map(
@@ -209,8 +210,8 @@ export function buildRoleLadder(env: ApiEnv, role: string, models: LlmModelsConf
         }),
     );
   }
-  // LEGADO: sin llave de OpenRouter, el proveedor directo de OpenAI (un solo modelo para todos los roles).
-  if (openai) return [new OpenAiProvider({ apiKey: openai.apiKey, model: openai.model })];
+  // Sin llave de OpenRouter NO hay escalera: el proveedor directo de OpenAI (legado) no garantiza retencion cero y todas las superficies tocan
+  // datos de clientes, asi que se falla CERRADO (el llamador cae a su modo sin IA). `OPENAI_API_KEY` sola ya no enciende el LLM.
   return undefined;
 }
 
@@ -237,7 +238,8 @@ export function buildCircuitBreaker(env: ApiEnv, engine?: TenancyEngine): Circui
 }
 
 function hasAnyProvider(env: ApiEnv): boolean {
-  return Boolean(env.llmProviders.openrouter || env.llmProviders.openai);
+  // Solo OpenRouter (con ZDR forzado por rol): el legado directo de OpenAI no cuenta como proveedor (falla cerrado, ver `buildRoleLadder`).
+  return Boolean(env.llmProviders.openrouter);
 }
 
 /** Modelos que una organizacion de restaurantes puede ELEGIR para un rol (lista permitida de domain-restaurantes). Se registran como alternativas del

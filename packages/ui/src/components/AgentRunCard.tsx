@@ -6,6 +6,8 @@ import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { cn } from "../lib/utils";
 import { StatusBadge, type StatusTone } from "./ui/status-badge";
+import { useT } from "../i18n/proveedor";
+import { datos } from "../i18n/mensajes/datos.ts";
 
 export interface AgentRunEstado {
   readonly tone: StatusTone;
@@ -24,6 +26,7 @@ export interface AgentRunCardProps {
 }
 
 export function AgentRunCard({ nombre, estado, meta, href, className }: AgentRunCardProps) {
+  const t = useT(datos);
   const conCorrida = estado !== undefined || (meta !== undefined && meta !== null && meta !== "");
   return (
     <div className={cn("rounded-lg border border-border bg-card px-3 py-2.5", className)}>
@@ -42,13 +45,13 @@ export function AgentRunCard({ nombre, estado, meta, href, className }: AgentRun
             <>
               {" — "}
               <Link to={href} className="font-medium underline">
-                ver ficha
+                {t("datos.agente.verFicha")}
               </Link>
             </>
           )}
         </p>
       ) : (
-        <p className="mt-1 text-xs text-faint">Sin corridas registradas.</p>
+        <p className="mt-1 text-xs text-faint">{t("datos.agente.sinCorridas")}</p>
       )}
     </div>
   );
