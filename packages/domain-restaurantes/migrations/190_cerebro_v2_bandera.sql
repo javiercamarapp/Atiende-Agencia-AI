@@ -1,7 +1,7 @@
 -- Bandera por ORGANIZACION del «cerebro v2» del agente de WhatsApp de restaurantes: las reglas medidas del repo suelto (emergencias y alergia con aviso URGENTE,
 -- cancelacion/retractacion con «¿mantengo o cancelo?», guardia del texto final, faltante vs pedido aparte, pago, busqueda, dedupe de avisos y politicas del
 -- 31-oct como datos), el modelo principal GPT-6 Luna con respaldo Claude Haiku 5.5 y el enrutamiento con retencion cero (ZDR) en OpenRouter.
--- Prefijo de supabase/migrations asignado: 20240101000611 (interno 190). Extiende `restaurantes.agent_runtime_settings` (migracion 055, una fila por organizacion):
+-- Prefijo de supabase/migrations asignado: 20240101000821 (interno 190). Extiende `restaurantes.agent_runtime_settings` (migracion 055, una fila por organizacion):
 -- NO crea tablas.
 --
 -- Solo agrega UNA columna boolean con valor por omision false: ninguna fila existente cambia de comportamiento (todas las organizaciones siguen con el agente de

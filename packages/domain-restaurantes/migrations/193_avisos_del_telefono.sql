@@ -1,5 +1,5 @@
 -- Avisos al equipo (callback_requests) de UN telefono, para el cerebro v2 de WhatsApp de restaurantes.
--- Prefijo de supabase/migrations asignado: 20240101000614 (interno 193).
+-- Prefijo de supabase/migrations asignado: 20240101000824 (interno 193).
 --
 -- Contexto: el cerebro medido del repo suelto decide con los avisos del telefono: la guarda de alergia de crear_pedido (el pedido espera mientras el
 -- aviso de alergia siga abierto, hasta 120 min; resuelto, se toma con la nota «ALERGIA declarada») y el dedupe por categoria (un aviso abierto de la

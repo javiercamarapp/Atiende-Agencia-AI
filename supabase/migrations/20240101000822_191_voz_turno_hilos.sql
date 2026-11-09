@@ -1,5 +1,5 @@
 -- Turno de VOZ del cerebro v2 (POST /v1/restaurantes/voz/turno): estado por LLAMADA para el worker de voz (Deepgram STT -> API -> TTS).
--- Prefijo de supabase/migrations asignado: 20240101000612 (interno 191).
+-- Prefijo de supabase/migrations asignado: 20240101000822 (interno 191).
 --
 -- Que agrega (1 tabla, 2 funciones):
 --   1. restaurantes.voz_turno_hilo  -- una fila por (organizacion, call_id): historial de la llamada (lo que dijo el cliente y lo que contesto el

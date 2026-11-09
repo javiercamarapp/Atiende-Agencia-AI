@@ -1,5 +1,5 @@
 -- Barredor de turnos HUERFANOS del webhook de WhatsApp de restaurantes (turno asincrono del cerebro v2).
--- Prefijo de supabase/migrations asignado: 20240101000613 (interno 192).
+-- Prefijo de supabase/migrations asignado: 20240101000823 (interno 192).
 --
 -- Contexto: con el turno asincrono el webhook responde 200 a Meta al confirmar la fase A (mensaje reclamado + turno de conversacion tomado) y el turno del
 -- agente corre DESPUES (`waitUntil` de Vercel, 60 s). Si la funcion muere (timeout, crash) o la fase B falla, Meta ya no reintenta: el mensaje queda

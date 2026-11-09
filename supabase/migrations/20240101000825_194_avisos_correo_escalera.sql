@@ -1,5 +1,5 @@
 -- Avisos del agente sin atender FUERA DEL PANEL (correo) con la escalera del repo suelto, para el cerebro v2 de WhatsApp de restaurantes.
--- Prefijo de supabase/migrations asignado: 20240101000621 (interno 194).
+-- Prefijo de supabase/migrations asignado: 20240101000825 (interno 194).
 --
 -- Contexto: el suelto (alertas-operativas.ts + alertas-ruteo.ts) manda CORREO por cada aviso del agente (callback_requests) sin resolver: nivel 1 a los 10 min
 -- (los de alto riesgo de inmediato), repeticion a los 20 (nivel 2) y escalada al dueno a los 30 (nivel 3); niveles 1-2 al personal de la sucursal o de alcance
