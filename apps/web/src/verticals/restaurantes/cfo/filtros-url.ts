@@ -3,6 +3,10 @@
 // Sin `toLocale*`: las fechas son de calendario `YYYY-MM-DD` y se formatean a mano.
 import { COMPARAR_CFO } from "@atiende/domain-restaurantes/cfo";
 import type { CompararCfo, Granularidad } from "@atiende/domain-restaurantes/cfo";
+import { etiquetasTraducidas, idiomaActivo, traductorActivo } from "@atiende/ui";
+import { restaurantesCfo } from "@atiende/ui/i18n/restaurantes/cfo";
+
+const tr = traductorActivo(restaurantesCfo);
 
 export const MAX_DIAS_CFO = 400;
 export type VistaCfo = "total" | "sucursal";
@@ -16,15 +20,18 @@ export interface FiltrosCfo {
   readonly vista: VistaCfo;
 }
 
-export const ETIQUETA_COMPARAR: Readonly<Record<CompararCfo, string>> = {
-  periodo_anterior: "Periodo anterior",
-  anio_anterior: "Mismo periodo del año pasado",
-  mismo_dia_semana_4: "Promedio del mismo día (4 semanas)",
-};
+/** Etiqueta en el idioma activo (i18n): cada lectura traduce; en espanol, los textos de siempre. */
+export const ETIQUETA_COMPARAR: Readonly<Record<CompararCfo, string>> = etiquetasTraducidas<CompararCfo>(
+  ["periodo_anterior", "anio_anterior", "mismo_dia_semana_4"],
+  (c) => `restaurantes.cfo.comparar.${c}` as const,
+  restaurantesCfo,
+);
 
 const FECHA_RE = /^\d{4}-\d{2}-\d{2}$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"] as const;
+// Ingles: «Oct 7, 2026» (a mano, como el espanol: sin toLocale ni Intl en el CFO).
+const MESES_EN = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
 
 const aMs = (f: string): number => Date.parse(`${f}T00:00:00Z`);
 const aFecha = (ms: number): string => new Date(ms).toISOString().slice(0, 10);
@@ -52,15 +59,17 @@ export function hoyLocal(ahora: Date = new Date()): string {
   return `${ahora.getFullYear()}-${p(ahora.getMonth() + 1)}-${p(ahora.getDate())}`;
 }
 
-/** «2026-10-07» -> «7 oct 2026»; solo día y mes si `conAnio` es false. */
+/** «2026-10-07» -> «7 oct 2026» («Oct 7, 2026» en ingles); solo día y mes si `conAnio` es false. */
 export function etiquetaFecha(f: string, conAnio = true): string {
   if (!fechaValida(f)) return f;
   const [a, m, d] = f.split("-");
+  if (idiomaActivo() === "en") return `${MESES_EN[Number(m) - 1]} ${Number(d)}${conAnio ? `, ${a}` : ""}`;
+
   return `${Number(d)} ${MESES[Number(m) - 1]}${conAnio ? ` ${a}` : ""}`;
 }
 
 export function etiquetaRango(desde: string, hasta: string): string {
-  return desde === hasta ? etiquetaFecha(desde) : `${etiquetaFecha(desde, false)} al ${etiquetaFecha(hasta)}`;
+  return desde === hasta ? etiquetaFecha(desde) : tr("restaurantes.cfo.rango.entre", { desde: etiquetaFecha(desde, false), hasta: etiquetaFecha(hasta) });
 }
 
 const primeroDelMes = (f: string): string => `${f.slice(0, 7)}-01`;
@@ -80,15 +89,26 @@ export interface AtajoRango {
   readonly rango: (hoy: string) => { readonly desde: string; readonly hasta: string };
 }
 
+type IdAtajo = "hoy" | "ayer" | "7d" | "30d" | "mes" | "mes_anterior" | "trimestre" | "12m";
+const ETIQUETA_ATAJO = etiquetasTraducidas<IdAtajo>(["hoy", "ayer", "7d", "30d", "mes", "mes_anterior", "trimestre", "12m"], (id) => `restaurantes.cfo.rango.${id}` as const, restaurantesCfo);
+/** `etiqueta` se traduce en cada lectura al idioma activo. */
+const atajo = (id: IdAtajo, rango: AtajoRango["rango"]): AtajoRango => ({
+  id,
+  get etiqueta() {
+    return ETIQUETA_ATAJO[id];
+  },
+  rango,
+});
+
 export const ATAJOS_RANGO: readonly AtajoRango[] = [
-  { id: "hoy", etiqueta: "Hoy", rango: (h) => ({ desde: h, hasta: h }) },
-  { id: "ayer", etiqueta: "Ayer", rango: (h) => ({ desde: sumarDias(h, -1), hasta: sumarDias(h, -1) }) },
-  { id: "7d", etiqueta: "Últimos 7 días", rango: (h) => ({ desde: sumarDias(h, -6), hasta: h }) },
-  { id: "30d", etiqueta: "Últimos 30 días", rango: (h) => ({ desde: sumarDias(h, -29), hasta: h }) },
-  { id: "mes", etiqueta: "Mes actual", rango: (h) => ({ desde: primeroDelMes(h), hasta: h }) },
-  { id: "mes_anterior", etiqueta: "Mes anterior", rango: (h) => mesAnterior(h) },
-  { id: "trimestre", etiqueta: "Trimestre actual", rango: (h) => ({ desde: primeroDelTrimestre(h), hasta: h }) },
-  { id: "12m", etiqueta: "Últimos 12 meses", rango: (h) => ({ desde: sumarDias(h, -364), hasta: h }) },
+  atajo("hoy", (h) => ({ desde: h, hasta: h })),
+  atajo("ayer", (h) => ({ desde: sumarDias(h, -1), hasta: sumarDias(h, -1) })),
+  atajo("7d", (h) => ({ desde: sumarDias(h, -6), hasta: h })),
+  atajo("30d", (h) => ({ desde: sumarDias(h, -29), hasta: h })),
+  atajo("mes", (h) => ({ desde: primeroDelMes(h), hasta: h })),
+  atajo("mes_anterior", (h) => mesAnterior(h)),
+  atajo("trimestre", (h) => ({ desde: primeroDelTrimestre(h), hasta: h })),
+  atajo("12m", (h) => ({ desde: sumarDias(h, -364), hasta: h })),
 ];
 
 /** El atajo que produce exactamente este rango, o `personalizado`. */
@@ -106,9 +126,10 @@ export function filtrosPorDefecto(hoy: string): FiltrosCfo {
 
 /** Valida un rango como lo hace el API (fechas reales, desde <= hasta, máx. 400 días). Devuelve el mensaje de error o null. */
 export function errorDeRango(desde: string, hasta: string): string | null {
-  if (!fechaValida(desde) || !fechaValida(hasta)) return "Elige fechas válidas.";
-  if (desde > hasta) return "La fecha inicial no puede ser posterior a la final.";
-  if (diasEntre(desde, hasta) > MAX_DIAS_CFO) return `El rango máximo es de ${MAX_DIAS_CFO} días.`;
+  if (!fechaValida(desde) || !fechaValida(hasta)) return tr("restaurantes.cfo.rango.fechasInvalidas");
+  if (desde > hasta) return tr("restaurantes.cfo.rango.inicioPosterior");
+  if (diasEntre(desde, hasta) > MAX_DIAS_CFO) return tr("restaurantes.cfo.rango.maximo", { n: MAX_DIAS_CFO });
+
   return null;
 }
 

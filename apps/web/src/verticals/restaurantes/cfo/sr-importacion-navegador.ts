@@ -10,13 +10,25 @@
 import { ALIAS_SR_INFERIDOS, esColumnaPersonal, normalizarEncabezado, normalizarTipoServicio, parsearFechaSr, parsearMontoCentavos } from "@atiende/domain-restaurantes/cfo";
 import type { TipoLayoutSr } from "@atiende/domain-restaurantes/cfo";
 
+import { traductorActivo } from "@atiende/ui";
+import type { Clave } from "@atiende/ui";
+import { restaurantesCfoSr } from "@atiende/ui/i18n/restaurantes/cfoSr";
 export { ArchivoImportacionError, IMPORTACION_MAX_BYTES, leerArchivoClientes as leerArchivoSr } from "../lib/clientes-importacion.ts";
+
+const tr = traductorActivo(restaurantesCfoSr);
 export type { ArchivoLeido as ArchivoSrLeido } from "../lib/clientes-importacion.ts";
 
-export const TIPOS_REPORTE_SR: ReadonlyArray<{ readonly valor: TipoLayoutSr; readonly etiqueta: string; readonly ayuda: string }> = [
-  { valor: "resumen_servicio", etiqueta: "Ventas por tipo de servicio", ayuda: "Un renglón por día y tipo de servicio (comedor, para llevar, domicilio, rápido)." },
-  { valor: "cuentas", etiqueta: "Listado de cuentas / tickets", ayuda: "Un renglón por cuenta, con su folio." },
-];
+/** `etiqueta` y `ayuda` se traducen en cada lectura al idioma activo (i18n). */
+const tipoReporte = (valor: TipoLayoutSr): { readonly valor: TipoLayoutSr; readonly etiqueta: string; readonly ayuda: string } => ({
+  valor,
+  get etiqueta() {
+    return tr(`restaurantes.cfoSr.reporte.${valor}` as Clave);
+  },
+  get ayuda() {
+    return tr(`restaurantes.cfoSr.reporte.${valor}Ayuda` as Clave);
+  },
+});
+export const TIPOS_REPORTE_SR: ReadonlyArray<{ readonly valor: TipoLayoutSr; readonly etiqueta: string; readonly ayuda: string }> = [tipoReporte("resumen_servicio"), tipoReporte("cuentas")];
 
 export type CampoSr = string;
 
@@ -26,27 +38,15 @@ export interface DefinicionCampoSr {
   readonly requerido: boolean;
 }
 
-const ETIQUETAS: Readonly<Record<string, string>> = {
-  folio: "Folio de la cuenta",
-  fecha: "Fecha",
-  hora: "Hora",
-  servicio: "Tipo de servicio",
-  total: "Total",
-  subtotal: "Subtotal",
-  descuento: "Descuento",
-  propina: "Propina",
-  forma_pago: "Forma de pago",
-  cancelada: "Cancelada",
-  cancelado: "Importe cancelado",
-  impuesto: "Impuesto (IVA)",
-  tickets: "Número de cuentas",
-};
+const CAMPOS_CON_ETIQUETA: ReadonlySet<string> = new Set(["folio", "fecha", "hora", "servicio", "total", "subtotal", "descuento", "propina", "forma_pago", "cancelada", "cancelado", "impuesto", "tickets"]);
+/** Etiqueta legible del campo en el idioma activo; un campo desconocido se muestra por su nombre. */
+const etiquetaCampo = (campo: string): string => (CAMPOS_CON_ETIQUETA.has(campo) ? tr(`restaurantes.cfoSr.campo.${campo}` as Clave) : campo);
 
 const REQUERIDOS: Readonly<Record<TipoLayoutSr, readonly string[]>> = { cuentas: ["folio", "fecha", "total"], resumen_servicio: ["fecha", "servicio", "total"] };
 
 export function camposDeTipo(tipo: TipoLayoutSr): readonly DefinicionCampoSr[] {
   const aliases = tipo === "cuentas" ? ALIAS_SR_INFERIDOS.cuentas : ALIAS_SR_INFERIDOS.resumen_servicio;
-  return Object.keys(aliases).map((campo) => ({ campo, etiqueta: ETIQUETAS[campo] ?? campo, requerido: REQUERIDOS[tipo].includes(campo) }));
+  return Object.keys(aliases).map((campo) => ({ campo, etiqueta: etiquetaCampo(campo), requerido: REQUERIDOS[tipo].includes(campo) }));
 }
 
 const aliasDe = (tipo: TipoLayoutSr, campo: string): readonly string[] => {
@@ -96,7 +96,7 @@ export function nombresPersonales(filas: readonly (readonly string[])[], filaEnc
   for (const r of filasDeEncabezado(filas, filaEncabezado)) {
     (filas[r] ?? []).forEach((h, i) => {
       // Solo el renglón ELEGIDO es un encabezado que se puede nombrar; el texto de cualquier otro renglón es dato del negocio: ahí solo la posición.
-      if (h.trim() !== "" && esColumnaPersonal(h) && !out.has(i)) out.set(i, r === filaEncabezado && !/\d/.test(h) && h.length <= 30 ? h.trim() : `Columna ${i + 1}`);
+      if (h.trim() !== "" && esColumnaPersonal(h) && !out.has(i)) out.set(i, r === filaEncabezado && !/\d/.test(h) && h.length <= 30 ? h.trim() : tr("restaurantes.cfoSr.columnaN", { n: String(i + 1) }));
     });
   }
   return new Map([...out.entries()].sort((x, y) => x[0] - y[0]));
@@ -113,16 +113,8 @@ const TIPO_DE_CAMPO: Readonly<Record<string, Tipo>> = {
   folio: "folio", fecha: "fecha", hora: "hora", servicio: "servicio", total: "dinero", subtotal: "dinero", descuento: "dinero", propina: "dinero", impuesto: "dinero",
   cancelado: "dinero", forma_pago: "forma_pago", cancelada: "booleano", tickets: "entero",
 };
-const ESPERADO: Readonly<Record<Tipo, string>> = {
-  dinero: "un monto como $1,234.50 (puede llevar $, signo menos, MXN y separadores de miles)",
-  fecha: "una fecha como 21/09/2026 o 2026-09-21 (años 2000 a 2100)",
-  hora: "una hora como 14:30",
-  entero: "un número entero de hasta 6 dígitos (1,234 también sirve)",
-  booleano: "una palabra corta sin números (Sí/No, cancelada, normal…)",
-  servicio: "un tipo de servicio (comedor, para llevar, domicilio, rápido)",
-  forma_pago: "una forma de pago (efectivo, tarjeta, transferencia…)",
-  folio: "un folio de hasta 24 caracteres (letras, números, guiones o #; un solo espacio como en «A 001») con al menos un número",
-};
+/** Lo que se esperaba de cada tipo de valor, en el idioma activo. */
+const esperado = (tipo: Tipo): string => tr(`restaurantes.cfoSr.esperado.${tipo}` as Clave);
 
 const RE_CORREO = /[^\s@]+@[^\s@]+\.[^\s@]+/;
 const RE_DINERO = [/^[-(]?\$?(\d{1,3}(,\d{3})+|\d+)(\.\d{1,6})?\)?$/, /^-?\$?\d+,\d{1,2}$/, /^-?\$?\d{1,3}(\.\d{3})+,\d{1,2}$/];
@@ -185,6 +177,8 @@ const FORMAS_PAGO: ReadonlyArray<readonly [RegExp, string]> = [
   [/\bvales?\b/, "vales"],
   [/\bcheque\b/, "cheque"],
 ];
+// Valores normalizados que se ENVIAN al API (no texto de pantalla): no se traducen.
+// i18n-ignorar: valor que se envia al API, no texto de pantalla
 const SERVICIO_ETIQUETA: Readonly<Record<string, string>> = { comedor: "Comedor", para_llevar: "Para llevar", domicilio: "Domicilio", rapido: "Rápido", otro: "Otro" };
 const SI = new Set(["si", "s", "1", "true", "verdadero", "x", "yes"]);
 const NO = new Set(["no", "n", "0", "false", "falso"]);
@@ -192,10 +186,12 @@ const NO = new Set(["no", "n", "0", "false", "falso"]);
 /** Sí/No de «cancelada»: contiene «cancel» (sin «no»/«sin» delante) -> Sí; cualquier otra palabra corta sin dígitos ni «@» -> No; el resto se rechaza. */
 function parsearCancelada(v: string): "Sí" | "No" | null {
   const n = normalizarEncabezado(v);
+  // i18n-ignorar: valor que se envia al API, no texto de pantalla
   if (SI.has(n)) return "Sí";
   if (NO.has(n)) return "No";
   if (/[\d@]/.test(v) || n.length > 20 || n === "") return null;
   if (/^(no|sin)\b/.test(n)) return "No";
+  // i18n-ignorar: valor que se envia al API, no texto de pantalla
   return n.includes("cancel") || n.includes("anul") ? "Sí" : "No";
 }
 
@@ -206,8 +202,8 @@ export function parsearCeldaSr(campo: string, valor: string, opciones: { readonl
   const v = valor.trim();
   if (v === "") return { ok: true, valor: null };
   const tipo = TIPO_DE_CAMPO[campo];
-  if (!tipo) return { ok: false, esperado: "un dato conocido" };
-  const no = (confirmable = false): ResultadoCelda => ({ ok: false, esperado: ESPERADO[tipo], ...(confirmable ? { confirmable: true } : {}) });
+  if (!tipo) return { ok: false, esperado: tr("restaurantes.cfoSr.esperado.desconocido") };
+  const no = (confirmable = false): ResultadoCelda => ({ ok: false, esperado: esperado(tipo), ...(confirmable ? { confirmable: true } : {}) });
   if (RE_CORREO.test(v) || pareceTarjeta(v)) return no();
   const digitos = v.replace(/\D/g, "").length;
   switch (tipo) {
@@ -295,7 +291,7 @@ export interface ErrorLocalSr {
 
 /** «Renglón 5, «Total»: se esperaba un monto… (el valor no se muestra). …» */
 export const MENSAJE_ERROR_LOCAL = (e: ErrorLocalSr): string =>
-  `Renglón ${e.renglon}, «${e.etiqueta}»: se esperaba ${e.esperado} (el valor no se muestra). ${e.descartaRenglon ? "Corrige esa celda o elige otra columna; ese renglón no se envía." : "Ese dato se envía vacío y el renglón se conserva."}`;
+  tr("restaurantes.cfoSr.errorLocal", { renglon: String(e.renglon), etiqueta: e.etiqueta, esperado: e.esperado, accion: tr(e.descartaRenglon ? "restaurantes.cfoSr.errorLocalDescarta" : "restaurantes.cfoSr.errorLocalVacio") });
 
 export interface TablaSr {
   readonly tabla: Array<Array<string | null>>;

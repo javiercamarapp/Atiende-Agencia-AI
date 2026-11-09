@@ -2,6 +2,10 @@
 // (`formatoPesos`, `formatoCentavos`, `formatoPct`, ...): sin `toLocale*` (guard de formato único).
 import { formatoCentavos, formatoEntero, formatoMinutos, formatoPct, formatoPesos } from "@atiende/domain-restaurantes/cfo";
 import type { Cifra, Confianza, TipoValorKpi, VariacionKpi } from "@atiende/domain-restaurantes/cfo";
+import { etiquetasTraducidas, idiomaActivo, traductorActivo } from "@atiende/ui";
+import { restaurantesCfo } from "@atiende/ui/i18n/restaurantes/cfo";
+
+const tr = traductorActivo(restaurantesCfo);
 
 export const SIN_DATO = "—";
 
@@ -29,7 +33,7 @@ export const textoCifra = (c: Cifra | null | undefined, tipo: TipoValorKpi): str
 
 /** «+12.3 %», «−2.1 pp», «+3 min»; null = «sin base». */
 export function textoVariacion(v: VariacionKpi): string {
-  if (!finito(v.valor)) return "sin base";
+  if (!finito(v.valor)) return tr("restaurantes.cfo.sinBase");
   const signo = v.valor > 0 ? "+" : v.valor < 0 ? "−" : "";
   const abs = Math.abs(v.valor);
   switch (v.tipo) {
@@ -47,23 +51,26 @@ export function tonoVariacion(v: VariacionKpi, mejorSi: "mayor" | "menor" | "neu
   return sube === (mejorSi === "mayor") ? "bueno" : "malo";
 }
 
-export const ETIQUETA_CONFIANZA: Readonly<Record<Confianza, string>> = {
-  medido: "Medido",
-  estimado: "Estimado",
-  capturado: "Capturado",
-  importado: "SoftRestaurant",
-  sin_dato: "Sin dato",
-};
+/** Etiquetas en el idioma activo (i18n): cada lectura traduce; en espanol, los textos de siempre. */
+export const ETIQUETA_CONFIANZA: Readonly<Record<Confianza, string>> = etiquetasTraducidas<Confianza>(
+  ["medido", "estimado", "capturado", "importado", "sin_dato"],
+  (c) => `restaurantes.cfo.confianza.${c}` as const,
+  restaurantesCfo,
+);
 
-const ETIQUETA_CANAL: Readonly<Record<string, string>> = { domicilio: "Domicilio", recoger: "Para recoger" };
-const ETIQUETA_SOURCE: Readonly<Record<string, string>> = { web: "En línea", voice: "Voz", whatsapp: "WhatsApp", admin: "Equipo" };
-export const etiquetaCanal = (c: string): string => ETIQUETA_CANAL[c] ?? c;
-export const etiquetaSource = (s: string): string => ETIQUETA_SOURCE[s] ?? s;
-export const etiquetaFormaPago = (f: string): string => (f === "efectivo" ? "Efectivo" : f === "tarjeta" ? "Tarjeta" : "Sin dato");
+const ETIQUETA_CANAL = etiquetasTraducidas<"domicilio" | "recoger">(["domicilio", "recoger"], (c) => `restaurantes.cfo.canal.${c}` as const, restaurantesCfo);
+const ETIQUETA_SOURCE = etiquetasTraducidas<"web" | "voice" | "whatsapp" | "admin">(["web", "voice", "whatsapp", "admin"], (s) => `restaurantes.cfo.source.${s}` as const, restaurantesCfo);
+export const etiquetaCanal = (c: string): string => (Object.hasOwn(ETIQUETA_CANAL, c) ? ETIQUETA_CANAL[c as "domicilio"] : c);
+export const etiquetaSource = (s: string): string => (Object.hasOwn(ETIQUETA_SOURCE, s) ? ETIQUETA_SOURCE[s as "web"] : s);
+export const etiquetaFormaPago = (f: string): string => tr(f === "efectivo" ? "restaurantes.cfo.pago.efectivo" : f === "tarjeta" ? "restaurantes.cfo.pago.tarjeta" : "restaurantes.cfo.pago.sinDato");
 
 const MESES_LARGOS = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"] as const;
-/** «2026-10-01» o «2026-10» -> «octubre 2026». */
+const MESES_LARGOS_EN = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"] as const;
+/** «2026-10-01» o «2026-10» -> «octubre 2026» («October 2026» en ingles). */
 export function etiquetaMes(mes: string): string {
   const m = /^(\d{4})-(\d{2})/.exec(mes);
-  return m ? `${MESES_LARGOS[Number(m[2]) - 1] ?? m[2]} ${m[1]}` : mes;
+  if (!m) return mes;
+  return idiomaActivo() === "en" ? `${MESES_LARGOS_EN[Number(m[2]) - 1] ?? m[2]} ${m[1]}` : `${MESES_LARGOS[Number(m[2]) - 1] ?? m[2]} ${m[1]}`;
+
 }
+

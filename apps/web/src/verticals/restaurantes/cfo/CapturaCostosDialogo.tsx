@@ -4,22 +4,18 @@
 import { useEffect, useState } from "react";
 import type { ConceptoCosto, CostoHistorialItem, SucursalApi } from "@atiende/domain-restaurantes/cfo";
 import { CONCEPTOS_COSTO } from "@atiende/domain-restaurantes/cfo";
-import { Callout, EstadoCargando, FormDialog, FormField, Input, Selector, Textarea, notify } from "@atiende/ui";
+import { Callout, EstadoCargando, FormDialog, FormField, Input, Selector, Textarea, etiquetasTraducidas, notify, useT } from "@atiende/ui";
+import { restaurantesCfoCostos } from "@atiende/ui/i18n/restaurantes/cfoCostos";
 import { fetchCostoHistorial, guardarCostos, type ContextoCfo } from "./cfo-client.ts";
 import { etiquetaFecha } from "./filtros-url.ts";
 import { SIN_DATO, etiquetaMes, pesosExactos, porcentaje } from "./formato.ts";
 
-export const ETIQUETA_CONCEPTO: Readonly<Record<ConceptoCosto, string>> = {
-  insumos: "Insumos (costo de ventas del mes)",
-  food_cost_objetivo_pct: "Food cost objetivo (% de las ventas)",
-  nomina: "Nómina",
-  renta: "Renta",
-  servicios: "Servicios (luz, agua, gas, internet)",
-  comision_terminal: "Comisiones de terminal",
-  marketing: "Marketing",
-  mantenimiento: "Mantenimiento",
-  otros: "Otros gastos",
-};
+/** Etiqueta de cada concepto en el idioma activo (cada lectura traduce; en espanol, los textos de siempre). */
+export const ETIQUETA_CONCEPTO: Readonly<Record<ConceptoCosto, string>> = etiquetasTraducidas<ConceptoCosto>(
+  ["insumos", "food_cost_objetivo_pct", "nomina", "renta", "servicios", "comision_terminal", "marketing", "mantenimiento", "otros"],
+  (c) => `restaurantes.cfoCostos.concepto.${c}` as const,
+  restaurantesCfoCostos,
+);
 
 export const ORGANIZACION = "organizacion";
 
@@ -58,6 +54,7 @@ export interface CapturaCostosDialogoProps {
 const ahoraMes = (m: string): string => m.slice(0, 7);
 
 export function CapturaCostosDialogo({ abierto, onCerrar, api, sucursales, puedeOrganizacion, mesInicial, conceptoInicial = "insumos", ambitoInicial, onGuardado }: CapturaCostosDialogoProps) {
+  const t = useT(restaurantesCfoCostos);
   const ambitoPorDefecto = ambitoInicial && (ambitoInicial !== ORGANIZACION || puedeOrganizacion) ? ambitoInicial : (sucursales[0]?.propertyId ?? (puedeOrganizacion ? ORGANIZACION : ""));
   const [ambito, setAmbito] = useState(ambitoPorDefecto);
   const [mes, setMes] = useState(ahoraMes(mesInicial));
@@ -86,7 +83,7 @@ export function CapturaCostosDialogo({ abierto, onCerrar, api, sucursales, puede
     setHistorial({ estado: "cargando" });
     fetchCostoHistorial(api, ambito === ORGANIZACION ? null : ambito, `${mes}-01`, concepto)
       .then((r) => !cancelado && setHistorial({ estado: "listo", items: r.historial }))
-      .catch((err) => !cancelado && setHistorial({ estado: "error", mensaje: err instanceof Error ? err.message : "No se pudo cargar el historial." }));
+      .catch((err) => !cancelado && setHistorial({ estado: "error", mensaje: err instanceof Error ? err.message : t("restaurantes.cfoCostos.errorHistorial") }));
     return () => {
       cancelado = true;
     };
@@ -94,7 +91,7 @@ export function CapturaCostosDialogo({ abierto, onCerrar, api, sucursales, puede
 
   const esPct = concepto === "food_cost_objetivo_pct";
   const interpretado = esPct ? parsePct(valor) : pesosAMontoCentavos(valor);
-  const valorError = valor.trim() === "" ? undefined : interpretado === undefined ? (esPct ? "Escribe un porcentaje entre 0 y 100 (máximo 2 decimales)." : "Escribe un monto en pesos, por ejemplo 12500 o 12500.50.") : undefined;
+  const valorError = valor.trim() === "" ? undefined : interpretado === undefined ? t(esPct ? "restaurantes.cfoCostos.errorPct" : "restaurantes.cfoCostos.errorMonto") : undefined;
   const puedeGuardar = mesValido && ambito !== "" && interpretado !== undefined && interpretado !== null && !guardando;
 
   async function guardar() {
@@ -112,11 +109,11 @@ export function CapturaCostosDialogo({ abierto, onCerrar, api, sucursales, puede
           nota: nota.trim() === "" ? null : nota.trim(),
         },
       ]);
-      notify.success(`Se guardó ${ETIQUETA_CONCEPTO[concepto].toLowerCase()} de ${etiquetaMes(`${mes}-01`)}.`);
+      notify.success(t("restaurantes.cfoCostos.guardado", { concepto: ETIQUETA_CONCEPTO[concepto].toLowerCase(), mes: etiquetaMes(`${mes}-01`) }));
       onGuardado();
       onCerrar();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo guardar el costo.");
+      setError(err instanceof Error ? err.message : t("restaurantes.cfoCostos.errorGuardar"));
     } finally {
       setGuardando(false);
     }
@@ -126,34 +123,34 @@ export function CapturaCostosDialogo({ abierto, onCerrar, api, sucursales, puede
     <FormDialog
       open={abierto}
       onOpenChange={(o) => !o && onCerrar()}
-      titulo="Capturar costos"
-      subtitulo="Lo que captures aquí completa el estado de resultados. Cada cambio crea una versión nueva y la anterior queda en el historial."
+      titulo={t("restaurantes.cfoCostos.titulo")}
+      subtitulo={t("restaurantes.cfoCostos.subtitulo")}
       anchoClase="max-w-3xl"
       anchoRiel="200px"
       onGuardar={() => void guardar()}
       guardando={guardando}
       guardarDeshabilitado={!puedeGuardar}
-      textoBotonGuardar="Guardar costo"
+      textoBotonGuardar={t("restaurantes.cfoCostos.guardar")}
       bloquearCierre={guardando}
     >
       <div className="space-y-3 pr-1" data-testid="captura-costos">
         {error && <Callout tone="danger">{error}</Callout>}
         <div className="grid gap-3 sm:grid-cols-2">
-          <FormField label="Sucursal" required>
+          <FormField label={t("restaurantes.cfoCostos.sucursal")} required>
             <Selector value={ambito} onChange={(e) => setAmbito(e.target.value)} data-testid="captura-ambito">
               {sucursales.map((s) => (
                 <option key={s.propertyId} value={s.propertyId}>
                   {s.nombre}
                 </option>
               ))}
-              {puedeOrganizacion && <option value={ORGANIZACION}>Organización (costo sin sucursal)</option>}
+              {puedeOrganizacion && <option value={ORGANIZACION}>{t("restaurantes.cfoCostos.organizacion")}</option>}
             </Selector>
           </FormField>
-          <FormField label="Mes" required error={mesValido ? undefined : "Elige un mes."}>
+          <FormField label={t("restaurantes.cfoCostos.mes")} required error={mesValido ? undefined : t("restaurantes.cfoCostos.eligeMes")}>
             <Input type="month" value={mes} onChange={(e) => setMes(e.target.value)} data-testid="captura-mes" />
           </FormField>
         </div>
-        <FormField label="Concepto" required>
+        <FormField label={t("restaurantes.cfoCostos.concepto")} required>
           <Selector value={concepto} onChange={(e) => { setConcepto(e.target.value as ConceptoCosto); setValor(""); }} data-testid="captura-concepto">
             {CONCEPTOS_COSTO.map((c) => (
               <option key={c} value={c}>
@@ -162,29 +159,30 @@ export function CapturaCostosDialogo({ abierto, onCerrar, api, sucursales, puede
             ))}
           </Selector>
         </FormField>
-        <FormField label={esPct ? "% objetivo sobre ventas netas sin IVA" : "Monto del mes en pesos"} required hint={esPct ? "Se aplica a las ventas netas sin IVA de cada periodo (estimado)." : "Escríbelo sin signo de pesos. El mes completo; si ves un periodo parcial se prorratea."} {...(valorError ? { error: valorError } : {})}>
+        <FormField label={t(esPct ? "restaurantes.cfoCostos.pctObjetivo" : "restaurantes.cfoCostos.montoMes")} required hint={t(esPct ? "restaurantes.cfoCostos.pctAyuda" : "restaurantes.cfoCostos.montoAyuda")} {...(valorError ? { error: valorError } : {})}>
           <Input inputMode="decimal" value={valor} onChange={(e) => setValor(e.target.value)} placeholder={esPct ? "32" : "12500.00"} data-testid="captura-valor" />
         </FormField>
-        <FormField label="Nota (opcional)" hint="Hasta 300 caracteres. Por ejemplo, de qué factura sale el monto.">
+        <FormField label={t("restaurantes.cfoCostos.nota")} hint={t("restaurantes.cfoCostos.notaAyuda")}>
           <Textarea value={nota} maxLength={300} rows={2} onChange={(e) => setNota(e.target.value)} />
         </FormField>
 
-        <section aria-label="Historial de versiones" data-testid="captura-historial" className="rounded-lg border border-border p-3">
-          <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Historial de versiones</h3>
+        <section aria-label={t("restaurantes.cfoCostos.historial")} data-testid="captura-historial" className="rounded-lg border border-border p-3">
+          <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("restaurantes.cfoCostos.historial")}</h3>
           {historial.estado === "cargando" ? (
-            <EstadoCargando lineas={1} etiqueta="Cargando el historial…" />
+            <EstadoCargando lineas={1} etiqueta={t("restaurantes.cfoCostos.cargandoHistorial")} />
           ) : historial.estado === "error" ? (
             <p className="text-xs text-muted-foreground">{historial.mensaje}</p>
           ) : historial.items.length === 0 ? (
-            <p className="text-xs text-muted-foreground">Todavía no hay una captura de este concepto en este mes.</p>
+            <p className="text-xs text-muted-foreground">{t("restaurantes.cfoCostos.sinHistorial")}</p>
           ) : (
             <ol className="space-y-1 text-xs">
               {historial.items.map((h) => (
                 <li key={h.id} className="flex flex-wrap items-baseline gap-x-2" data-testid="captura-version">
-                  <span className="font-medium">Versión {h.version}</span>
+                  <span className="font-medium">{t("restaurantes.cfoCostos.version", { n: String(h.version) })}</span>
                   <span className="tabular-nums">{h.pct !== null ? porcentaje(h.pct) : h.montoCentavos !== null ? pesosExactos(h.montoCentavos) : SIN_DATO}</span>
                   <span className="text-muted-foreground">{etiquetaFecha(h.creadoEn.slice(0, 10))}</span>
-                  {h.vigente && <span className="rounded-full bg-success-tint px-1.5 py-0.5 text-2xs font-medium text-success">Vigente</span>}
+                  {h.vigente && <span className="rounded-full bg-success-tint px-1.5 py-0.5 text-2xs font-medium text-success">{t("restaurantes.cfoCostos.vigente")}</span>}
+
                   {h.nota && <span className="text-muted-foreground">· {h.nota}</span>}
                 </li>
               ))}

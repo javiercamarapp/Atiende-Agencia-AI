@@ -74,7 +74,15 @@ const IGUALES_PERMITIDOS = new Set<string>([
   // Ajustes del agente de voz: nivel del modelo y ritmo de habla.
   "Premium",
   "Normal",
+  // CFO de restaurantes: terminos financieros y nombres propios que en ingles se escriben igual.
+  "SoftRestaurant",
+  "EBITDA",
+  "Food cost",
+  "Marketing",
+  "Puzzle",
+  "Lift",
 ]);
+
 
 describe("catalogo i18n", () => {
   it("hay traduccion para cada modulo y ninguna de mas", () => {
