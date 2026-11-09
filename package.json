@@ -28,6 +28,7 @@
     "db:seed": "node packages/db/src/cli.ts seed",
     "audit:deps": "npm audit --audit-level=high",
     "verify:migration-versions": "node --experimental-strip-types scripts/verify-migration-versions/check-migration-versions.ts",
+    "verify:sql-privilegios": "node --experimental-strip-types scripts/guard-sql-privilegios/guard.ts",
     "smoke:post-deploy": "node --experimental-strip-types scripts/smoke-post-deploy/smoke.ts",
     "demo:pm": "node scripts/seed-pm-demo/demo-pm.mjs",
     "demo:verificar": "node --experimental-strip-types scripts/seed-pm-demo/verificar-demo.ts",
