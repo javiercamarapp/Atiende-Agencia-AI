@@ -410,6 +410,13 @@ export function VerticalShell({
           key={contentKey}
           className="ds3-shell-contenido flex-1 min-h-0 overflow-y-auto focus:outline-none px-4 pt-[calc(5.5rem+var(--safe-area-top))] pb-[calc(7rem+var(--safe-area-bottom))] md:px-5 md:pt-3.5 md:pb-5"
         >
+          {/* ds3: antetitulo (= grupo del menu) de las pantallas sin PageHeader ni ResumenLayout, que traen el suyo; ds3/contenido.css lo apaga
+              cuando la pagina ya tiene uno y en el chat. Texto real: nunca un <p> vacio. Fuera de la pagina para no tocar su contenido. */}
+          {grupoNav ? (
+            <p hidden data-testid="eyebrow-pagina" className="ds3-solo ds3-eyebrow-pagina">
+              {grupoNav}
+            </p>
+          ) : null}
           {/* Transicion de navegacion: entrada breve (tokens de motion) al cambiar de ruta, solo con movimiento permitido. Sin `max-w`: ancho completo del marco. */}
           <div key={pathname} className="ds3-shell-pagina motion-safe:animate-page-in">
             <TituloBarraContext.Provider value={fijarTitulo}>

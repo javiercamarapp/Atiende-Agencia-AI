@@ -57,12 +57,12 @@ const render = (ruta: string, hijo: React.ReactNode) =>
 const q = (sel: string) => rendered!.container.querySelector<HTMLElement>(sel);
 
 describe("ds3 — antetitulo derivado del grupo del menu", () => {
-  it("en /staff el PageHeader trae el grupo «Configuración» oculto, sin texto en el DOM", () => {
+  it("en /staff el PageHeader trae el grupo «Configuración» oculto, con el texto real (nunca un <p> vacio)", () => {
     rendered = render("/v/demo/staff", <PageHeader titulo="Staff" />);
     const eb = q('[data-testid="encabezado-eyebrow-derivado"]')!;
     expect(eb.hidden).toBe(true);
     expect(eb.getAttribute("data-eyebrow")).toBe("Configuración");
-    expect(eb.textContent).toBe("");
+    expect(eb.textContent).toBe("Configuración");
   });
 
   it("un eyebrow propio gana al derivado", () => {
