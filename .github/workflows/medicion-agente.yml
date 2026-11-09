@@ -178,7 +178,7 @@ jobs:
           sparse-checkout: scripts/medicion-nube
 
       - name: Descargar artefactos de las repeticiones
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           pattern: medicion-${{ inputs.etiqueta }}-rep*
           path: ${{ runner.temp }}/reps
