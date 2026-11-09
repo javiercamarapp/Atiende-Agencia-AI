@@ -20,6 +20,7 @@ import {
   type ConversacionCompleta,
   type ConversacionResumen,
   type CopilotoBloque,
+  type CopilotoCobertura,
   type CopilotoEvento,
   type CopilotoFuente,
   type CopilotoMensaje,
@@ -126,13 +127,24 @@ export function normalizarRespuesta(raw: unknown, seq?: number): CopilotoRespues
   const blocks = Array.isArray(r["blocks"]) ? (r["blocks"] as CopilotoBloque[]) : undefined;
   const sources = Array.isArray(r["sources"]) ? (r["sources"] as CopilotoFuente[]) : undefined;
   const seqFinal = typeof r["seq"] === "number" ? r["seq"] : seq;
+  const cobertura = coberturaDe(r["coverage"]);
   return {
     text: typeof r["text"] === "string" ? r["text"] : "",
     status,
     ...(blocks && blocks.length > 0 ? { blocks } : {}),
     ...(sources && sources.length > 0 ? { sources } : {}),
+    ...(cobertura ? { cobertura } : {}),
     ...(seqFinal !== undefined ? { seq: seqFinal } : {}),
   };
+}
+
+/** `coverage` del motor ({ consulted, withData }) -> «x de y fuentes». Cualquier forma inesperada se descarta: sin dato, no se pinta. */
+export function coberturaDe(raw: unknown): CopilotoCobertura | undefined {
+  if (!esObjeto(raw)) return undefined;
+  const y = raw["consulted"];
+  const x = raw["withData"];
+  if (typeof y !== "number" || typeof x !== "number" || !Number.isInteger(y) || !Number.isInteger(x) || y < 1 || y > 50 || x < 0 || x > y) return undefined;
+  return { conDatos: x, consultadas: y };
 }
 
 /** Parsea UNA linea NDJSON a un evento del contrato; `null` si no es un evento valido (linea corrupta o desconocida). */

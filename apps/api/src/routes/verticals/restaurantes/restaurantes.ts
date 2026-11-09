@@ -8,6 +8,7 @@ import type { AppDeps } from "../../../deps.ts";
 import { restaurantesAdminKpisRoutes } from "./admin-kpis.ts";
 import { restaurantesAdminDataChatRoutes } from "./admin-data-chat.ts";
 import { restaurantesAdminCatalogRoutes } from "./admin-catalog.ts";
+import { restaurantesAdminMenuImportarRoutes } from "./admin-menu-importar.ts";
 import { restaurantesAdminPromotionsRoutes } from "./admin-promotions.ts";
 import { restaurantesAdminBranchesRoutes } from "./admin-branches.ts";
 import { restaurantesOperacionAndamiajeRoutes } from "./operacion-andamiaje.ts";
@@ -30,6 +31,7 @@ import { restaurantesRepartidorLicenciasInternoRoutes } from "./repartidor-licen
 import { restaurantesAuditoriaRoutes } from "./auditoria.ts";
 import { restaurantesAdminConfigRoutes } from "./admin-config.ts";
 import { restaurantesAdminModeloPmRoutes } from "./admin-modelo-pm.ts";
+import { restaurantesWhatsappEmbeddedSignupRoutes } from "./whatsapp-embedded-signup.ts";
 import { restaurantesAdminConocimientoRoutes } from "./admin-conocimiento.ts";
 import { restaurantesAdminOnboardingRoutes } from "./admin-onboarding.ts";
 import { restaurantesResumenConfigRoutes } from "./resumen-config.ts";
@@ -59,6 +61,7 @@ export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", restaurantesAdminDataChatRoutes(deps));
   // Fase 5 — back-office CORE (catálogo/sucursales/pedidos/clientes, ver diseño §1).
   app.route("/", restaurantesAdminCatalogRoutes(deps));
+  app.route("/", restaurantesAdminMenuImportarRoutes(deps));
   // Fase 11 — promociones/marketing: CRUD admin real de código de descuento (ver
   // domain-restaurantes/src/promotions.ts).
   app.route("/", restaurantesAdminPromotionsRoutes(deps));
@@ -102,6 +105,7 @@ export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", restaurantesAdminConfigRoutes(deps));
   // Modelo PM (migración 023) — política/cobertura/WhatsApp por sucursal y marcas no_domicilio.
   app.route("/", restaurantesAdminModeloPmRoutes(deps));
+  app.route("/", restaurantesWhatsappEmbeddedSignupRoutes(deps));
   app.route("/", restaurantesAdminConocimientoRoutes(deps));
   // R-33: checklist de onboarding calculado con datos reales (solo lectura, owner/admin).
   app.route("/", restaurantesAdminOnboardingRoutes(deps));

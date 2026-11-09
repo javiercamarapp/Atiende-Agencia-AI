@@ -204,6 +204,8 @@ export type { ContratosRepository, ContratoVersionRow, InsumosFacturacionRow, Te
 export { InMemoryContratosRepository, PostgresContratosRepository } from "./superadmin-contratos-repository.ts";
 export type { BillingSnapshotRow, CfoOrgRow, CfoRepository } from "./superadmin-cfo-repository.ts";
 export { InMemoryCfoRepository, PostgresCfoRepository } from "./superadmin-cfo-repository.ts";
+export type { CapturaCfoRow, CfoCockpitRepository, ClaveSupuestoCfo, SupuestoCfoRow, TipoCapturaCfo, UsoCfoRow } from "./superadmin-cfo-cockpit-repository.ts";
+export { CLAVES_SUPUESTO_CFO, InMemoryCfoCockpitRepository, PostgresCfoCockpitRepository, TIPOS_CAPTURA_CFO } from "./superadmin-cfo-cockpit-repository.ts";
 export type { InfraCostRow, PylRepository } from "./superadmin-pyl-repository.ts";
 export { InMemoryPylRepository, PostgresPylRepository } from "./superadmin-pyl-repository.ts";
 export type { CfoAccessLogRow, CfoZoneRepository, CfoZoneRoleRow, ZonaCfoAccion, ZonaCfoRol } from "./superadmin-zona-cfo-repository.ts";
@@ -308,6 +310,22 @@ export {
   traducirErrorAltaPropiedad,
 } from "./alta-propiedad-repository.ts";
 export type { AltaPropiedadCodigo, AltaPropiedadInput, AltaPropiedadRepository, PropiedadActivada, PropiedadCreada } from "./alta-propiedad-repository.ts";
+export {
+  correoConFormaValida,
+  InMemoryRegistroAutoservicioRepository,
+  PostgresRegistroAutoservicioRepository,
+  RegistroAutoservicioError,
+  RegistroAutoservicioNoDisponibleError,
+  traducirErrorRegistroAutoservicio,
+} from "./registro-autoservicio-repository.ts";
+export type {
+  MetodoRegistro,
+  OrganizacionRegistradaMem,
+  RegistroAutoservicioCodigo,
+  RegistroAutoservicioRepository,
+  RegistroCompletado,
+  SolicitudRegistroInput,
+} from "./registro-autoservicio-repository.ts";
 export { hayOnboardingEvento, registrarOnboardingEvento } from "./onboarding-evento.ts";
 export type { OnboardingEventoInput, ResultadoRegistroEvento, TipoOnboardingEvento } from "./onboarding-evento.ts";
 export type { GuardarProgresoGuia, ModoRecorrido, OnboardingProgresoRepository, ProgresoGuia } from "./onboarding-progreso-repository.ts";

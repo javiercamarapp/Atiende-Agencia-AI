@@ -45,11 +45,19 @@ export type CopilotoStatus =
   | "apagado"
   | "forbidden";
 
+/** «x de y fuentes» de UNA respuesta: consultas distintas que corrieron en el turno y cuantas trajeron datos (lo manda el servidor). */
+export interface CopilotoCobertura {
+  readonly conDatos: number;
+  readonly consultadas: number;
+}
+
 export interface CopilotoRespuesta {
   readonly text: string;
   readonly status: CopilotoStatus;
   readonly blocks?: readonly CopilotoBloque[];
   readonly sources?: readonly CopilotoFuente[];
+  /** Ausente si el servidor no la mando (respuesta vieja, guardada o sin consultas): entonces no se pinta, nunca se inventa. */
+  readonly cobertura?: CopilotoCobertura;
   /** Posicion del mensaje en la conversacion guardada (habilita PDF y fijar). */
   readonly seq?: number;
   /** `out_of_catalog`: preguntas que si se pueden consultar (se ofrecen como chips). */
@@ -80,6 +88,7 @@ export interface CopilotoMensaje {
   readonly status?: CopilotoStatus;
   readonly blocks?: readonly CopilotoBloque[];
   readonly sources?: readonly CopilotoFuente[];
+  readonly cobertura?: CopilotoCobertura;
   readonly seq?: number;
   readonly sugerencias?: readonly string[];
   readonly reintentarEnSeg?: number;

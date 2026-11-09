@@ -15,6 +15,7 @@ import { healthRoutes } from "./routes/health.ts";
 import { authRoutes } from "./routes/auth.ts";
 import { authGoogleRoutes } from "./routes/auth-google.ts";
 import { authMagicLinkRoutes } from "./routes/auth-magic-link.ts";
+import { registroRestaurantesRoutes } from "./routes/registro-restaurantes.ts";
 import { authLoginTelefonoRoutes } from "./routes/auth-login-telefono.ts";
 import { auth2faRoutes } from "./routes/auth-2fa.ts";
 import { authAccountRoutes } from "./routes/auth-account.ts";
@@ -119,6 +120,7 @@ export function buildApp(deps: AppDeps): Hono {
   app.route("/", authRoutes(deps));
   app.route("/", authGoogleRoutes(deps));
   app.route("/", authMagicLinkRoutes(deps));
+  app.route("/", registroRestaurantesRoutes(deps));
   app.route("/", authLoginTelefonoRoutes(deps));
   app.route("/", auth2faRoutes(deps));
   app.route("/", authAccountRoutes(deps));
