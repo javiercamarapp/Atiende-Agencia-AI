@@ -155,7 +155,7 @@ describe("ResumenPage (citas)", () => {
     rendered = render();
     await esperar();
 
-    expect(texto()).toContain("No se pudo cargar");
+    expect(texto()).toContain("No disponible ahora"); // titulo de EstadoError (auditoria R2 #12)
     expect(texto()).not.toContain("Citas esta semana");
     expect(texto()).toContain("Reintentar");
   });

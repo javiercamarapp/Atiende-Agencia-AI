@@ -179,7 +179,7 @@ describe("<ConocimientoNegocio />", () => {
     let intento = 0;
     stub([], { lista: () => (++intento === 1 ? json({ message: "Falla del servidor" }, 500) : json({ disponible: true, topeCaracteres: 6000, entradas: [GENERAL] })) });
     await montar();
-    expect(rendered!.container.textContent).toContain("No se pudo cargar");
+    expect(rendered!.container.textContent).toContain("No disponible ahora"); // titulo de EstadoError (auditoria R2 #12)
     await pulsarYEsperar(boton("Reintentar")!);
     expect(rendered!.container.querySelector('[data-entrada="k1"]')).not.toBeNull();
   });
