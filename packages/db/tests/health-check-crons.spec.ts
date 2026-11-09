@@ -1,6 +1,6 @@
 // Sondeo externo de la senal `crons` del /health (brief plataforma-pm-crons-y-vigilancia): servidor falso por fetch inyectado.
 // ok => exit 0; crons != ok en DOS sondeos seguidos => exit 1 con un mensaje claro por estado; un solo dato malo no alarma;
-// y el workflow deja un ::warning:: visible cuando falta PROD_BASE_URL (en vez de salir en verde silencioso).
+// y el workflow falla en rojo con un ::error:: cuando falta PROD_BASE_URL (en vez de salir en verde silencioso; un fork se omite).
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -94,12 +94,15 @@ describe("health-check: senal de crons", () => {
 describe("prod-health.yml", () => {
   const yml = readFileSync(path.join(REPO, ".github", "workflows", "prod-health.yml"), "utf8");
 
-  it("sin PROD_BASE_URL deja un ::warning:: visible y un aviso en el resumen (y sigue sin dar rojo)", () => {
+  it("sin PROD_BASE_URL falla en rojo con un ::error:: visible y un aviso en el resumen (solo un fork se omite en verde)", () => {
     const rama = yml.slice(yml.indexOf('if [ -z "${PROD_BASE_URL:-}" ]'), yml.indexOf("salida=\"$(node"));
-    expect(rama).toContain("::warning");
+    expect(rama).toContain("::error");
     expect(rama).toContain("GITHUB_STEP_SUMMARY");
+    expect(rama).toContain("resultado=sin_configurar");
+    expect(rama).toContain("exit 1");
+    // Un fork (sin la variable) no sondea nada y sale en verde.
+    expect(rama).toContain("ES_FORK");
     expect(rama).toContain("resultado=omitido");
-    expect(rama).toContain("exit 0");
   });
 
   it("no cambia la frecuencia (cada 15 minutos) ni agrega disparadores", () => {

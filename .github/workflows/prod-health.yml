@@ -6,9 +6,9 @@ name: Prod health (sondeo programado de /health)
 # correo de workflows fallidos a quien tenga esas notificaciones activas) y deja el motivo en el resumen del job.
 #
 # Configuracion (variables del repositorio, NO secretos: Settings > Secrets and variables > Actions > Variables):
-# - PROD_BASE_URL            https://<tu-dominio-de-produccion>. Sin ella el job no sondea nada: sale en verde (para no dar
-#                            falsos rojos en forks ni antes de configurarlo) pero deja un ::warning:: visible en la corrida y
-#                            en el resumen, nunca un verde silencioso.
+# - PROD_BASE_URL            https://<tu-dominio-de-produccion> (hoy https://app.useatiende.ai). OBLIGATORIA en este repo:
+#                            sin ella el job FALLA en rojo con un ::error:: (antes salia en verde sin sondear nada, y la
+#                            auditoria del 7-nov encontro el sondeo "verde" sin revisar nada). Solo en un fork se omite.
 # - PROD_HEALTH_OPEN_ISSUE   "true" para que, ademas, abra (o comente en) un issue "Salud de produccion" mientras
 #                            dure la caida y lo cierre al recuperarse. Apagado por defecto: un issue en un repo
 #                            publico anuncia la caida a cualquiera.
@@ -50,6 +50,7 @@ jobs:
       OPEN_ISSUE: ${{ vars.PROD_HEALTH_OPEN_ISSUE }}
       GH_TOKEN: ${{ github.token }}
       REPO: ${{ github.repository }}
+      ES_FORK: ${{ github.event.repository.fork }}
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
       - name: Checkout (rama por defecto)
@@ -68,10 +69,15 @@ jobs:
         run: |
           set -uo pipefail
           if [ -z "${PROD_BASE_URL:-}" ]; then
-            echo "::warning title=Sondeo de salud omitido::PROD_BASE_URL no esta configurada: no se sondea /health ni los crons de produccion. Define la variable de repo PROD_BASE_URL (Settings > Secrets and variables > Actions > Variables)."
-            echo "PROD_BASE_URL no esta configurada: no se sondea nada (ni /health ni los crons)." | tee -a "$GITHUB_STEP_SUMMARY"
-            echo "resultado=omitido" >> "$GITHUB_OUTPUT"
-            exit 0
+            if [ "${ES_FORK:-false}" = "true" ]; then
+              echo "Fork sin PROD_BASE_URL: no se sondea nada." | tee -a "$GITHUB_STEP_SUMMARY"
+              echo "resultado=omitido" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "::error title=Sondeo de salud sin configurar::PROD_BASE_URL no esta configurada: NO se esta vigilando produccion. Define la variable de repo PROD_BASE_URL=https://app.useatiende.ai (Settings > Secrets and variables > Actions > Variables)."
+            echo "FALLA: PROD_BASE_URL no esta configurada; produccion no se esta vigilando." | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "resultado=sin_configurar" >> "$GITHUB_OUTPUT"
+            exit 1
           fi
           salida="$(node --experimental-strip-types scripts/health-check/check.ts "$PROD_BASE_URL")"
           rc=$?
@@ -86,7 +92,7 @@ jobs:
           exit "$rc"
 
       - name: Issue de seguimiento (solo si PROD_HEALTH_OPEN_ISSUE=true)
-        if: always() && env.OPEN_ISSUE == 'true' && steps.sondeo.outputs.resultado != 'omitido'
+        if: always() && env.OPEN_ISSUE == 'true' && steps.sondeo.outputs.resultado != 'omitido' && steps.sondeo.outputs.resultado != 'sin_configurar'
         env:
           RESULTADO: ${{ steps.sondeo.outputs.resultado }}
           DETALLE: ${{ steps.sondeo.outputs.detalle }}
