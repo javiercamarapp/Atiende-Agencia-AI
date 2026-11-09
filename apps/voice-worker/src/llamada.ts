@@ -11,9 +11,9 @@
 //   5. Escalera, puente de audio, controlador. Al terminar: se vacia la despedida, se cuelga, se registran turnos, costo por escalon y cierre.
 //
 // El worker nunca contesta a medias: sin contexto de la API (o sin token) dice el pregrabado de falla y cuelga, sin abrir sesion con el proveedor.
-import { ControladorLlamada, afirmaPedidoRegistrado, canonicalizeMexicanPhone, crearEjecutorTools, crearGuardiaPersonaVoz, evaluarPersonaVoz, transporteHttp, LIMITES_VOZ_PM } from "@atiende/domain-restaurantes";
+import { ControladorLlamada, afirmaPedidoRegistrado, canonicalizeMexicanPhone, consultasDeProductoDelMensaje, crearEjecutorTools, crearGuardiaPersonaVoz, evaluarPersonaVoz, transporteHttp, LIMITES_VOZ_PM } from "@atiende/domain-restaurantes";
 import type { AbrirSesionLlamada, EjecutorTools, MensajeId, SumideroLog, TransporteTools, VozResultado } from "@atiende/domain-restaurantes";
-import { MezcladorSalida, conAvisosDeHerramienta, costoTotalMicroUsd, eventoSinPII, eventosCostoLlamada, referenciaLlamada } from "@atiende/voice-core";
+import { MezcladorSalida, conAvisosDeHerramienta, esAfirmacion, costoTotalMicroUsd, eventoSinPII, eventosCostoLlamada, referenciaLlamada } from "@atiende/voice-core";
 import type { EscaleraLlamada, LimitesLlamada, VozSesionLlamada } from "@atiende/voice-core";
 import { ErrorApi } from "./api-cliente.ts";
 import type { AperturaPrivacidad, ClienteApi, ContextoLlamada, TurnoRegistro } from "./api-cliente.ts";
@@ -45,6 +45,19 @@ export const CONFIRMACION_VOZ_PM = { confirmar: "confirmar_resumen", crear: "cre
 /** Sin acuse rapido en un turno que la guardia de voz de PM marca como riesgo o como pedir una persona (alergia, cobro, privacidad, queja, urgencia...): la guardia del
  * controlador dira su propio texto (revision #752 P1-2). La plataforma ademas omite el acuse en sus propios turnos de riesgo (`esTurnoDeRiesgoVoz`). */
 export const OMITIR_ACUSE_VOZ_PM = (texto: string): boolean => evaluarPersonaVoz(texto) !== null;
+
+/** Lecturas que el worker de PM PRECARGA antes de la primera vuelta del modelo (latencia, E2E r3: una vuelta de Luna ~2.5 s solo para pedirlas). Primer turno:
+ * `buscar_cliente` y `consultar_sucursal`; cualquier turno que nombre productos: `buscar_producto` por producto (hasta 3). Una afirmacion pura no precarga. */
+export function precargaVozPm(texto: string, turno: number, branchSlug: string): { nombre: string; args: Record<string, unknown> }[] {
+  const out: { nombre: string; args: Record<string, unknown> }[] = [];
+  if (turno === 1) out.push({ nombre: "buscar_cliente", args: {} }, { nombre: "consultar_sucursal", args: { branch_slug: branchSlug } });
+  if (!esAfirmacion(texto)) {
+    const { entera, partes } = consultasDeProductoDelMensaje(texto);
+    const consultas = partes.length > 0 ? partes : entera ? [entera] : [];
+    for (const query of consultas.slice(0, 3)) out.push({ nombre: "buscar_producto", args: { query, branch_slug: branchSlug } });
+  }
+  return out.slice(0, 4);
+}
 
 /** Una respuesta ambigua a la pregunta de grabacion con al menos estas palabras ya es el cliente siguiendo con su pedido: no se repregunta. */
 export const PALABRAS_RESPUESTA_CON_CONTENIDO = 4;
@@ -337,6 +350,7 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
         h.usuarioDijo?.(texto);
         void procesarConsentimiento(texto);
       },
+      precargar: (texto, turno) => precargaVozPm(texto, turno, entrada.branchSlug),
       interrumpido: () => {
         puente.cortarAudio();
         h.interrumpido();
