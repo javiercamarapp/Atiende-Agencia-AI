@@ -683,3 +683,18 @@ Política completa y propuesta de retención/particionado: `docs/runbooks/TABLAS
    (autocommit, nunca `-1`; `create index concurrently` no bloquea INSERT/UPDATE).
 4. `supabase db push`: con los índices ya creados, la 0100 es un no-op; si encuentra uno INVALID, aborta y dice cuál borrar.
 5. Rollback: `drop index concurrently if exists <esquema>.<nombre>;` por índice (lista en el runbook).
+## ¿La base va por detrás del repo? (migración 0101, Ola 4 G4)
+
+`core.migraciones_aplicadas()` (`packages/db/migrations/0101_migraciones_aplicadas.sql`, espejo
+`supabase/migrations/20240101000901_0101_migraciones_aplicadas.sql`) devuelve, solo a una sesión de sistema, las versiones que
+registró la CLI de Supabase. El **detalle** de `GET /health` (con el secreto interno) las trae en `migraciones`; el /health público no.
+
+- Comprobar a mano tras un deploy: `SMOKE_INTERNAL_SECRET=<secreto interno> npm run smoke:post-deploy -- https://<dominio> --detalle`.
+  La línea `AVISO migraciones` dice cuántas migraciones del repo faltan en la base (`--detalle` las lista; `--estricto` hace que el aviso
+  falle el smoke). Sin la variable, la comprobación queda "sin medir".
+- El workflow `smoke-post-deploy.yml` NO recibe el secreto (sigue sin secretos): ahí la comprobación sale "sin medir". Darle el secreto es
+  decisión de Javier (implica guardar el secreto interno en GitHub Actions; sus logs son públicos, por eso el smoke solo imprime el conteo).
+- Contra la base sin la 0101 el detalle responde `migraciones: { estado: "sin_medir", motivo: "funcion_no_migrada" }` (nunca 500).
+
+Orden: (1) mergear el código; (2) `supabase db push` (aplica la 0101; respaldo no necesario: solo crea una función); (3) correr el smoke
+con el secreto. Rollback: `drop function if exists core.migraciones_aplicadas();`.
