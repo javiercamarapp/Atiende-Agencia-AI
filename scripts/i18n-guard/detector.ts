@@ -48,6 +48,18 @@ export function nombreVisible(nombre: string): boolean {
 const ESPANOL = /[áéíóúñÁÉÍÓÚÑ¿¡]/;
 const LETRAS = /\p{L}{2,}/u;
 /** Una clave del catalogo (`nav.resumen`, `shell.tema.claro`): es un identificador, no texto. */
+/** Nombre de la marca: se escribe igual en los dos idiomas. */
+const MARCA = new Set(["atiende", "Atiende"]);
+/** Lista de clases utilitarias (`group-[.toast]:text-sm mt-0.5`, `uppercase tracking-wide text-xs`): la mayoria de los tokens
+ *  lleva `-`, `:`, `[` o `/` y no hay mayusculas, acentos ni puntuacion final. */
+export function esListaDeClases(texto: string): boolean {
+  const tokens = texto.trim().split(/\s+/);
+  if (/[A-ZÁÉÍÓÚÑáéíóúñ¿¡.,;!?]$/.test(texto.trim()) || /[A-ZÁÉÍÓÚÑáéíóúñ¿¡]/.test(texto) || tokens.length === 0) return false;
+  if (!tokens.every((t) => /[a-z]/.test(t))) return false;
+  // Casi todos los tokens con `-`, `:`, `[` o `/` (alguna clase suelta como `uppercase` o `flex` se tolera).
+  const conMarca = tokens.filter((t) => /[-:[\]/]/.test(t)).length;
+  return tokens.length === 1 ? conMarca === 1 : conMarca / tokens.length >= 0.6;
+}
 const CLAVE_CATALOGO = /^[a-z][A-Za-z0-9]*(\.[A-Za-z0-9]+)+$/;
 const FUNCIONES_TRADUCCION = new Set(["t", "traducir"]);
 
@@ -131,7 +143,7 @@ export function detectar(codigo: string, nombre = "archivo.tsx"): Hallazgo[] {
   const visitar = (n: ts.Node): void => {
     if (ts.isImportDeclaration(n) || ts.isExportDeclaration(n) || ts.isTypeNode(n)) return;
     if (ts.isJsxText(n)) {
-      if (LETRAS.test(n.text)) anotar(n, n.text);
+      if (LETRAS.test(n.text) && !MARCA.has(n.text.trim())) anotar(n, n.text);
       return;
     }
     const texto = textoDeLiteral(n);
@@ -139,7 +151,7 @@ export function detectar(codigo: string, nombre = "archivo.tsx"): Hallazgo[] {
       // Clave de objeto (`{ "Hola": 1 }`) o indice: no es texto mostrado.
       if (n.parent && ts.isPropertyAssignment(n.parent) && n.parent.name === n) return;
       if (n.parent && (ts.isElementAccessExpression(n.parent) || ts.isLiteralTypeNode(n.parent))) return;
-      if (LETRAS.test(texto) && !CLAVE_CATALOGO.test(texto) && !esArgumentoDeTraduccion(n) && (esVisible(n) || ESPANOL.test(texto))) anotar(n, texto);
+      if (LETRAS.test(texto) && !CLAVE_CATALOGO.test(texto) && !MARCA.has(texto.trim()) && !esListaDeClases(texto) && !esArgumentoDeTraduccion(n) && (esVisible(n) || ESPANOL.test(texto))) anotar(n, texto);
       if (!ts.isTemplateExpression(n)) return;
     }
     ts.forEachChild(n, visitar);

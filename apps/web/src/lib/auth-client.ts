@@ -12,8 +12,8 @@ export interface OrganizationSummary {
   readonly nombre: string;
   readonly vertical: string;
   readonly rol: string;
-  /** Diseno del panel de esta organizacion (`core.organization.diseno`, migracion 0060): `null` = actual, `"ds3"` = nuevo.
-   *  Ausente en sesiones persistidas antes del campo: entonces no se toca nada (ver `useDisenoOrganizacion`). */
+  /** Diseno del panel de esta organizacion (`core.organization.diseno`, migraciones 0060/0076). Informativo: el web pinta el
+   *  diseno nuevo para todas las organizaciones y ya no lo lee (unico interruptor: `VITE_DISENO_LEGADO=1` en el build). */
   readonly diseno?: string | null;
 }
 

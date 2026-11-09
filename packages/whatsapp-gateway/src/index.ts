@@ -14,6 +14,8 @@ export type { CatalogoPlantillas, ContextoMedicion, DispatchItemOutcome, Dispatc
 export { DEFAULT_GRAPH_API_VERSION, MAX_BUTTON_ID_LENGTH, MAX_BUTTON_TITLE_LENGTH, MAX_INTERACTIVE_BUTTONS, MAX_TEXT_BODY_LENGTH, MetaGraphWhatsAppClient } from "./providers/meta-graph-client.ts";
 export type { MetaGraphWhatsAppClientOptions } from "./providers/meta-graph-client.ts";
 export { FakeWhatsAppGraphClient } from "./providers/fake-graph-client.ts";
+export { WhatsAppGraphClientPorNumero } from "./providers/cliente-por-numero.ts";
+export type { ResolutorTokenPorNumero, WhatsAppGraphClientPorNumeroOptions } from "./providers/cliente-por-numero.ts";
 export type { FakeWhatsAppGraphClientOptions } from "./providers/fake-graph-client.ts";
 export { detectarOptOut, normalizarTextoOptOut } from "./opt-out.ts";
 export type { IntencionOptOut, OpcionesDeteccionOptOut } from "./opt-out.ts";
