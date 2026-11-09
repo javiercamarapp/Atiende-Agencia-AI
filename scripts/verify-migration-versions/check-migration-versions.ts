@@ -87,6 +87,16 @@ export interface GuardResult {
   duplicates: DuplicateVersion[];
   divergences: MirrorDivergence[];
   internalNumberDuplicates: InternalNumberDuplicate[];
+  /** Espejos de `supabase/migrations/` sin ninguna fuente en `packages/*\/migrations/`
+   *  (ni por nombre base ni declarada en `RENAMED_MIRRORS`). Ola 4 (G1). */
+  orphans: string[];
+}
+
+export interface OrphanMirrorResult {
+  orphans: string[];
+  /** Espejos renombrados declarados en `RENAMED_MIRRORS` cuyo contenido ya no es
+   *  byte-idéntico a la fuente declarada (rutas de fuente relativas al repo). */
+  renamedDivergences: MirrorDivergence[];
 }
 
 const VERSION_PREFIX_RE = /^(\d+)_/;
@@ -107,6 +117,22 @@ const KNOWN_INTERNAL_NUMBER_DUPLICATES: ReadonlySet<string> = new Set([
   "packages/domain-hoteles/migrations:018",
   "packages/domain-restaurantes/migrations:007",
 ]);
+
+// Espejos RENOMBRADOS: el archivo de `supabase/migrations/` no se llama
+// `<timestamp>_<nombre base de la fuente>`, sino que al copiarlo se le insertó el
+// nombre de la vertical (p. ej. `003_cierre_mensual_schema.sql` ->
+// `20240101000048_003_despachos_cierre_mensual_schema.sql`). Ya están aplicados en
+// producción con ese nombre (el prefijo es la `version` de Supabase), así que no se
+// renombran: se declaran aquí, espejo -> fuente (ruta relativa al repo), y el guard
+// exige que sigan siendo byte-idénticos. Cualquier otro espejo sin fuente por nombre
+// base es un HUÉRFANO y hace fallar el guard (Ola 4, G1).
+export const RENAMED_MIRRORS: Readonly<Record<string, string>> = {
+  "20240101000037_002_despachos_migracion_catalogo_schema.sql": "packages/domain-despachos/migrations/002_migracion_catalogo_schema.sql",
+  "20240101000048_003_despachos_cierre_mensual_schema.sql": "packages/domain-despachos/migrations/003_cierre_mensual_schema.sql",
+  "20240101000246_035_restaurantes_voz_kpi_alertas_costo.sql": "packages/domain-restaurantes/migrations/035_voz_kpi_alertas_costo.sql",
+  "20240101000253_037_restaurantes_demo_organization.sql": "packages/domain-restaurantes/migrations/037_demo_organization.sql",
+  "20240101000255_036_restaurantes_kpis_veraces.sql": "packages/domain-restaurantes/migrations/036_kpis_veraces.sql",
+};
 
 function listSqlFiles(dir: string): string[] {
   return readdirSync(dir).filter((f) => f.endsWith(".sql"));
@@ -233,17 +259,67 @@ export function findNewInternalNumberDuplicates(duplicates: InternalNumberDuplic
   });
 }
 
+/**
+ * Espejos de `migrationsDir` que no tienen fuente: ningún archivo con el mismo
+ * nombre base bajo `packageSearchRoots` y tampoco una entrada en `renamed`
+ * (espejo -> ruta de la fuente relativa a `repoRoot`) cuya fuente exista. Los
+ * renombrados con fuente existente se comparan byte a byte; si difieren van a
+ * `renamedDivergences`. Solo lee disco.
+ */
+export function findOrphanMirrors(
+  migrationsDir: string,
+  packageSearchRoots: string[],
+  options: { readonly repoRoot: string; readonly renamed?: Readonly<Record<string, string>> },
+): OrphanMirrorResult {
+  const renamed = options.renamed ?? RENAMED_MIRRORS;
+  const basenames = new Set<string>();
+  for (const dir of findMigrationsDirs(packageSearchRoots)) {
+    if (path.resolve(dir) === path.resolve(migrationsDir)) continue;
+    for (const f of listSqlFiles(dir)) basenames.add(f);
+  }
+  const orphans: string[] = [];
+  const renamedDivergences: MirrorDivergence[] = [];
+  for (const f of listSqlFiles(migrationsDir)) {
+    const m = f.match(MIRROR_BASENAME_RE);
+    if (!m) continue;
+    if (basenames.has(m[1] as string)) continue;
+    const declared = renamed[f];
+    if (!declared) {
+      orphans.push(f);
+      continue;
+    }
+    let source: Buffer;
+    try {
+      source = readFileSync(path.join(options.repoRoot, declared));
+    } catch {
+      orphans.push(f);
+      continue;
+    }
+    if (!source.equals(readFileSync(path.join(migrationsDir, f)))) {
+      renamedDivergences.push({ file: f, candidates: [declared] });
+    }
+  }
+  return { orphans: orphans.sort(), renamedDivergences };
+}
+
 export function runMigrationVersionGuard(migrationsDir: string, packageSearchRoots: string[], options?: { readonly repoRoot?: string }): GuardResult {
   const repoRoot = options?.repoRoot ?? path.resolve(migrationsDir, "..", "..");
+  const orphanResult = findOrphanMirrors(migrationsDir, packageSearchRoots, { repoRoot });
   return {
     duplicates: findDuplicateVersions(migrationsDir),
-    divergences: findMirrorDivergences(migrationsDir, packageSearchRoots),
+    divergences: [...findMirrorDivergences(migrationsDir, packageSearchRoots), ...orphanResult.renamedDivergences],
     internalNumberDuplicates: findNewInternalNumberDuplicates(findDuplicateInternalNumbers(packageSearchRoots), repoRoot),
+    orphans: orphanResult.orphans,
   };
 }
 
 export function hasProblems(result: GuardResult): boolean {
-  return result.duplicates.length > 0 || result.divergences.length > 0 || result.internalNumberDuplicates.length > 0;
+  return (
+    result.duplicates.length > 0 ||
+    result.divergences.length > 0 ||
+    result.internalNumberDuplicates.length > 0 ||
+    result.orphans.length > 0
+  );
 }
 
 export function formatGuardReport(result: GuardResult): string {
@@ -272,6 +348,13 @@ export function formatGuardReport(result: GuardResult): string {
         `    elegirlo) y renombra su espejo en supabase/migrations/ en consecuencia.`,
     );
   }
+  for (const file of result.orphans) {
+    lines.push(
+      `  - espejo huérfano: supabase/migrations/${file} no tiene fuente en packages/*/migrations/ (ni por nombre base\n` +
+        `    ni declarada en RENAMED_MIRRORS). Copia el SQL byte a byte como fuente canónica en el paquete dueño\n` +
+        `    (\`packages/<paquete>/migrations/<NNN_nombre>.sql\`); si el espejo se renombró al copiarlo, decláralo en RENAMED_MIRRORS.`,
+    );
+  }
   return lines.join("\n");
 }
 
@@ -298,12 +381,12 @@ if (isMainModule()) {
     console.error(formatGuardReport(result));
     console.error(
       `\n${result.duplicates.length} versión(es) duplicada(s), ${result.divergences.length} espejo(s) divergente(s), ` +
-        `${result.internalNumberDuplicates.length} número(s) interno(s) duplicado(s) nuevo(s).`,
+        `${result.internalNumberDuplicates.length} número(s) interno(s) duplicado(s) nuevo(s), ${result.orphans.length} espejo(s) huérfano(s).`,
     );
     process.exit(1);
   }
 
   console.log(
-    "verify-migration-versions: OK -- ningún prefijo de versión duplicado en supabase/migrations/, ningún espejo diverge de su fuente real en packages/*/migrations/, y ningún número interno NUEVO se repite dentro de un mismo paquete.",
+    "verify-migration-versions: OK -- ningún prefijo de versión duplicado en supabase/migrations/, ningún espejo diverge de su fuente real en packages/*/migrations/ ni queda huérfano, y ningún número interno NUEVO se repite dentro de un mismo paquete.",
   );
 }
