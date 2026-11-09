@@ -82,6 +82,10 @@ Todas opcionales y `null`/vacías si no existen; ninguna bloquea el arranque. La
 | `META_APP_ID` | Meta for Developers → tu App → Settings → Basic | Comprobar que la app está suscrita a la WABA; Embedded Signup | La verificación marca "app no verificada" |
 | `WHATSAPP_WABA_IDS` | WhatsApp Manager → ID de la cuenta de WhatsApp Business (varias, separadas por comas) | WABAs a revisar por defecto | Hay que pasar `--waba` al script |
 | `WHATSAPP_ES_CONFIG_ID` | Meta for Developers → Facebook Login for Business → configuración de Embedded Signup v4 | Alta de números por Embedded Signup | Esa vía no está disponible |
+| `WHATSAPP_SYSTEM_USER_ID` | Business Manager de la plataforma → Usuarios del sistema → el usuario cuyo token es `WHATSAPP_ACCESS_TOKEN` → ID | Embedded Signup le da acceso MANAGE sobre la WABA del restaurante, para enviar con el token de siempre (no se guardan tokens de clientes) | Embedded Signup no está disponible |
+| `WHATSAPP_EMBEDDED_SIGNUP` | `true` para encender «Conectar mi número con Meta» en el panel de restaurantes | Interruptor del alta de números por Embedded Signup | Apagado: el panel dice «no disponible aún» con lo que falta |
+
+Guía paso a paso de lo que el dueño de la app de Meta tiene que dar de alta: `docs/restaurantes/WHATSAPP-EMBEDDED-SIGNUP.md`.
 
 Verificación de solo lectura (sin enviar nada): `scripts/verificar-meta-whatsapp/` (ver su README). Lee el token únicamente de `WHATSAPP_ACCESS_TOKEN` en el entorno de tu terminal.
 
