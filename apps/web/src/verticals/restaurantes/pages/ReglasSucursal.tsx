@@ -3,7 +3,8 @@
 // WhatsApp propio. Solo owner/admin (el servidor, admin-modelo-pm.ts + RLS, es el enforcement
 // real). Se monta bajo demanda desde Sucursales.tsx: no carga nada hasta que se abre.
 import { useEffect, useState } from "react";
-import { Button, Checkbox, EstadoCargando, EstadoError, Input, Label, Selector, useConfirm } from "@atiende/ui";
+import { Button, Checkbox, EstadoCargando, EstadoError, Input, Label, Selector, useConfirm, useT } from "@atiende/ui";
+import { restaurantesReglas } from "@atiende/ui/i18n/restaurantes/reglas";
 import { fetchKnownZones } from "../lib/config-client.ts";
 import { ColoniasAmbiguas } from "./ColoniasAmbiguas.tsx";
 import type { KnownZone } from "../lib/config-client.ts";
@@ -45,6 +46,7 @@ interface Fallo {
 }
 
 export function ReglasSucursal({ apiBaseUrl, token, propertyId, branchId }: Props) {
+  const t = useT(restaurantesReglas);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fallo, setFallo] = useState<Fallo | null>(null);
@@ -99,7 +101,7 @@ export function ReglasSucursal({ apiBaseUrl, token, propertyId, branchId }: Prop
       setWhatsapp(numero ?? "");
       setLoaded(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudieron cargar las reglas de la sucursal.");
+      setError(err instanceof Error ? err.message : t("restaurantes.reglas.error.cargar"));
     }
   }
 
@@ -116,7 +118,7 @@ export function ReglasSucursal({ apiBaseUrl, token, propertyId, branchId }: Prop
         if (!cancelado) setAgente(v);
       })
       .catch((err) => {
-        if (!cancelado) setErrorAgente(err instanceof Error ? err.message : "No se pudo leer el estado del agente de WhatsApp.");
+        if (!cancelado) setErrorAgente(err instanceof Error ? err.message : t("restaurantes.reglas.error.leerAgente"));
       });
     return () => {
       cancelado = true;
@@ -126,11 +128,11 @@ export function ReglasSucursal({ apiBaseUrl, token, propertyId, branchId }: Prop
   async function handleCambiarAgente(activo: boolean) {
     if (!activo) {
       const ok = await confirmar({
-        titulo: "Apagar el agente de WhatsApp de esta sucursal",
-        descripcion: "El agente dejará de contestar los mensajes de esta sucursal: el cliente recibirá un aviso de que lo atenderá una persona y su conversación llegará a la bandeja de Conversaciones para que alguien del equipo la conteste. ¿Apagarlo?",
+        titulo: t("restaurantes.reglas.agente.apagarTitulo"),
+        descripcion: t("restaurantes.reglas.agente.apagarDesc"),
         tono: "danger",
-        confirmar: "Apagar agente",
-        cancelar: "Volver",
+        confirmar: t("restaurantes.reglas.agente.apagar"),
+        cancelar: t("restaurantes.reglas.volver"),
       });
       if (!ok) return;
     }
@@ -139,16 +141,16 @@ export function ReglasSucursal({ apiBaseUrl, token, propertyId, branchId }: Prop
     setNotice(null);
     try {
       setAgente(await updateInterruptorAgenteWhatsapp(fetch, apiBaseUrl, token, propertyId, branchId, activo));
-      setNotice(activo ? "Agente de WhatsApp encendido en esta sucursal." : "Agente de WhatsApp apagado: los mensajes de esta sucursal llegan a la bandeja de Conversaciones.");
+      setNotice(t(activo ? "restaurantes.reglas.agente.encendido" : "restaurantes.reglas.agente.apagado"));
     } catch (err) {
-      setFallo({ seccion: "agente", mensaje: err instanceof Error ? err.message : "No se pudo cambiar el agente de WhatsApp.", reintentar: () => void handleCambiarAgente(activo) });
+      setFallo({ seccion: "agente", mensaje: err instanceof Error ? err.message : t("restaurantes.reglas.agente.errorCambiar"), reintentar: () => void handleCambiarAgente(activo) });
     } finally {
       setSaving(false);
     }
   }
 
   function updateTurno(index: number, patch: Partial<TurnoHorario>) {
-    setTurnos((prev) => prev.map((t, i) => (i === index ? { ...t, ...patch } : t)));
+    setTurnos((prev) => prev.map((turno, i) => (i === index ? { ...turno, ...patch } : turno)));
   }
 
   function toggleDia(index: number, dia: number) {
@@ -161,11 +163,11 @@ export function ReglasSucursal({ apiBaseUrl, token, propertyId, branchId }: Prop
     const domicilio = parseMontoOpcional(minDomicilio);
     const recoger = parseMontoOpcional(minRecoger);
     if (domicilio === undefined || recoger === undefined) {
-      setFallo({ seccion: "reglas", mensaje: "Los pedidos mínimos deben ser un monto en pesos (o quedar vacíos para no exigir mínimo)." });
+      setFallo({ seccion: "reglas", mensaje: t("restaurantes.reglas.error.minimos") });
       return;
     }
-    if (turnos.some((t) => t.dias.length === 0 || !t.abre || !t.cierra || t.abre === t.cierra)) {
-      setFallo({ seccion: "reglas", mensaje: "Cada turno necesita al menos un día y una hora de apertura distinta a la de cierre." });
+    if (turnos.some((tu) => tu.dias.length === 0 || !tu.abre || !tu.cierra || tu.abre === tu.cierra)) {
+      setFallo({ seccion: "reglas", mensaje: t("restaurantes.reglas.error.turnos") });
       return;
     }
     setSaving(true);
@@ -185,13 +187,13 @@ export function ReglasSucursal({ apiBaseUrl, token, propertyId, branchId }: Prop
         politicaGuardada = true;
       }
       await updateZonasReparto(fetch, apiBaseUrl, token, propertyId, branchId, [...zonasElegidas]);
-      setNotice("Reglas guardadas.");
+      setNotice(t("restaurantes.reglas.guardadas"));
     } catch (err) {
-      const detalle = err instanceof Error ? err.message : "Error desconocido.";
+      const detalle = err instanceof Error ? err.message : t("restaurantes.reglas.error.desconocido");
       setFallo(
         politicaGuardada
-          ? { seccion: "reglas", mensaje: `El horario, los mínimos y la propina sí se guardaron, pero NO se pudieron guardar las zonas de reparto: ${detalle}`, reintentar: () => void handleGuardarReglas(true) }
-          : { seccion: "reglas", mensaje: err instanceof Error ? err.message : "No se pudieron guardar las reglas.", reintentar: () => void handleGuardarReglas(false) },
+          ? { seccion: "reglas", mensaje: t("restaurantes.reglas.error.zonas", { detalle }), reintentar: () => void handleGuardarReglas(true) }
+          : { seccion: "reglas", mensaje: err instanceof Error ? err.message : t("restaurantes.reglas.error.guardar"), reintentar: () => void handleGuardarReglas(false) },
       );
     } finally {
       setSaving(false);
@@ -202,11 +204,11 @@ export function ReglasSucursal({ apiBaseUrl, token, propertyId, branchId }: Prop
     const vaciar = whatsapp.trim() === "";
     if (vaciar && whatsappGuardado) {
       const ok = await confirmar({
-        titulo: "Desconectar el WhatsApp de la sucursal",
-        descripcion: "La sucursal se quedará sin número propio y dejará de recibir mensajes por su agente de WhatsApp. ¿Desconectarlo?",
+        titulo: t("restaurantes.reglas.wa.desconectarTitulo"),
+        descripcion: t("restaurantes.reglas.wa.desconectarDesc"),
         tono: "danger",
-        confirmar: "Desconectar número",
-        cancelar: "Volver",
+        confirmar: t("restaurantes.reglas.wa.desconectar"),
+        cancelar: t("restaurantes.reglas.volver"),
       });
       if (!ok) return;
     }
@@ -217,26 +219,26 @@ export function ReglasSucursal({ apiBaseUrl, token, propertyId, branchId }: Prop
       if (vaciar) {
         if (whatsappGuardado) await deleteWhatsappSucursal(fetch, apiBaseUrl, token, propertyId, branchId);
         setWhatsappGuardado(null);
-        setNotice(whatsappGuardado ? "Número de WhatsApp desconectado." : "Número de WhatsApp guardado.");
+        setNotice(t(whatsappGuardado ? "restaurantes.reglas.wa.desconectado" : "restaurantes.reglas.wa.guardado"));
       } else {
         setWhatsappGuardado(await updateWhatsappSucursal(fetch, apiBaseUrl, token, propertyId, branchId, whatsapp.trim()));
-        setNotice("Número de WhatsApp guardado.");
+        setNotice(t("restaurantes.reglas.wa.guardado"));
       }
     } catch (err) {
-      setFallo({ seccion: "whatsapp", mensaje: err instanceof Error ? err.message : "No se pudo guardar el número de WhatsApp.", reintentar: () => void handleGuardarWhatsapp() });
+      setFallo({ seccion: "whatsapp", mensaje: err instanceof Error ? err.message : t("restaurantes.reglas.wa.error"), reintentar: () => void handleGuardarWhatsapp() });
     } finally {
       setSaving(false);
     }
   }
 
   async function handleCrearPuente() {
-    const turnos = puenteCerrado ? [] : puenteTurnos.filter((t) => t.abre && t.cierra);
-    if (!puenteDesde || !puenteHasta || (!puenteCerrado && (turnos.length === 0 || turnos.some((t) => t.abre === t.cierra)))) {
-      setFallo({ seccion: "puente", mensaje: "Un puente necesita fecha inicial y final y al menos un turno con apertura distinta al cierre (o marcar «Cerrado todo el día»)." });
+    const turnos = puenteCerrado ? [] : puenteTurnos.filter((tu) => tu.abre && tu.cierra);
+    if (!puenteDesde || !puenteHasta || (!puenteCerrado && (turnos.length === 0 || turnos.some((tu) => tu.abre === tu.cierra)))) {
+      setFallo({ seccion: "puente", mensaje: t("restaurantes.reglas.puente.errorDatos") });
       return;
     }
     if (puenteHasta < puenteDesde) {
-      setFallo({ seccion: "puente", mensaje: "Un puente necesita que la fecha final no sea anterior a la inicial." });
+      setFallo({ seccion: "puente", mensaje: t("restaurantes.reglas.puente.errorFechas") });
       return;
     }
     setSaving(true);
@@ -251,9 +253,9 @@ export function ReglasSucursal({ apiBaseUrl, token, propertyId, branchId }: Prop
         ...(puenteMotivo.trim() ? { motivo: puenteMotivo.trim() } : {}),
       });
       setPuentes((await fetchPuentes(fetch, apiBaseUrl, token, propertyId)).filter((p) => p.branchId === branchId));
-      setNotice(puenteCerrado ? "Cierre de fecha guardado." : "Puente guardado.");
+      setNotice(t(puenteCerrado ? "restaurantes.reglas.puente.cierreGuardado" : "restaurantes.reglas.puente.guardado"));
     } catch (err) {
-      setFallo({ seccion: "puente", mensaje: err instanceof Error ? err.message : "No se pudo guardar el puente.", reintentar: () => void handleCrearPuente() });
+      setFallo({ seccion: "puente", mensaje: err instanceof Error ? err.message : t("restaurantes.reglas.puente.errorGuardar"), reintentar: () => void handleCrearPuente() });
     } finally {
       setSaving(false);
     }
@@ -261,11 +263,11 @@ export function ReglasSucursal({ apiBaseUrl, token, propertyId, branchId }: Prop
 
   async function handleBorrarPuente(puente: Puente) {
     const ok = await confirmar({
-      titulo: "Quitar el puente",
-      descripcion: `¿Quitar ${puente.horario.length === 0 ? "el cierre" : "el puente"} del ${puente.fechaDesde} al ${puente.fechaHasta}? Volverá a regir el horario semanal en esas fechas.`,
+      titulo: t("restaurantes.reglas.puente.quitarTitulo"),
+      descripcion: t(puente.horario.length === 0 ? "restaurantes.reglas.puente.quitarCierre" : "restaurantes.reglas.puente.quitarPuente", { desde: puente.fechaDesde, hasta: puente.fechaHasta }),
       tono: "danger",
-      confirmar: "Quitar puente",
-      cancelar: "Volver",
+      confirmar: t("restaurantes.reglas.puente.quitar"),
+      cancelar: t("restaurantes.reglas.volver"),
     });
     if (!ok) return;
     setSaving(true);
@@ -274,17 +276,17 @@ export function ReglasSucursal({ apiBaseUrl, token, propertyId, branchId }: Prop
       await deletePuente(fetch, apiBaseUrl, token, propertyId, puente.id);
       setPuentes((prev) => prev.filter((p) => p.id !== puente.id));
     } catch (err) {
-      setFallo({ seccion: "puente", mensaje: err instanceof Error ? err.message : "No se pudo borrar el puente.", reintentar: () => void handleBorrarPuente(puente) });
+      setFallo({ seccion: "puente", mensaje: err instanceof Error ? err.message : t("restaurantes.reglas.puente.errorBorrar"), reintentar: () => void handleBorrarPuente(puente) });
     } finally {
       setSaving(false);
     }
   }
 
   const falloDe = (seccion: Seccion) =>
-    fallo?.seccion === seccion ? <EstadoError titulo="No se pudo guardar" mensaje={fallo.mensaje} compacto className="w-full basis-full" onReintentar={fallo.reintentar ?? (() => setFallo(null))} /> : null;
+    fallo?.seccion === seccion ? <EstadoError titulo={t("restaurantes.reglas.noSeGuardo")} mensaje={fallo.mensaje} compacto className="w-full basis-full" onReintentar={fallo.reintentar ?? (() => setFallo(null))} /> : null;
 
   if (!loaded) {
-    return error ? <EstadoError mensaje={error} onReintentar={() => void load()} /> : <EstadoCargando etiqueta="Cargando reglas de pedido…" />;
+    return error ? <EstadoError mensaje={error} onReintentar={() => void load()} /> : <EstadoCargando etiqueta={t("restaurantes.reglas.cargando")} />;
   }
 
   return (
@@ -293,13 +295,13 @@ export function ReglasSucursal({ apiBaseUrl, token, propertyId, branchId }: Prop
       {notice && <p className="m-0 text-xs text-muted-foreground">{notice}</p>}
 
       <section className="flex flex-col gap-2">
-        <h3 className="m-0 text-sm font-semibold text-foreground">Horario</h3>
+        <h3 className="m-0 text-sm font-semibold text-foreground">{t("restaurantes.reglas.horario")}</h3>
         <p className="m-0 text-xs text-muted-foreground">
-          Sin turnos = sin límite de horario. Si la hora de cierre es menor que la de apertura, el turno termina pasada la medianoche (ej. 12:00 a 01:00). Para doble turno agregue dos. «Último pedido» es opcional: sin hora rige 30 minutos antes del cierre; una hora menor que la apertura es de la madrugada del día siguiente (ej. 00:30).
+          {t("restaurantes.reglas.horarioAyuda")}
         </p>
         {turnos.map((turno, index) => (
           <div key={index} className="flex flex-col gap-2 rounded-md border border-border p-2">
-            <div className="flex flex-wrap gap-2" role="group" aria-label={`Días del turno ${index + 1}`}>
+            <div className="flex flex-wrap gap-2" role="group" aria-label={t("restaurantes.reglas.diasTurno", { n: index + 1 })}>
               {NOMBRES_DIAS.map((nombre, dia) => (
                 <Checkbox key={dia} label={nombre} wrapperClassName="text-xs" checked={turno.dias.includes(dia)} onChange={() => toggleDia(index, dia)} />
               ))}
@@ -307,38 +309,38 @@ export function ReglasSucursal({ apiBaseUrl, token, propertyId, branchId }: Prop
             <div className="flex flex-wrap items-end gap-2">
               <div className="flex flex-col gap-1">
                 <Label htmlFor={`abre-${branchId}-${index}`} className="text-xs text-muted-foreground">
-                  Abre
+                  {t("restaurantes.reglas.abre")}
                 </Label>
                 <Input id={`abre-${branchId}-${index}`} type="time" value={turno.abre} onChange={(e) => updateTurno(index, { abre: e.target.value })} className="w-[120px]" />
               </div>
               <div className="flex flex-col gap-1">
                 <Label htmlFor={`cierra-${branchId}-${index}`} className="text-xs text-muted-foreground">
-                  Cierra
+                  {t("restaurantes.reglas.cierra")}
                 </Label>
                 <Input id={`cierra-${branchId}-${index}`} type="time" value={turno.cierra} onChange={(e) => updateTurno(index, { cierra: e.target.value })} className="w-[120px]" />
               </div>
               <div className="flex flex-col gap-1">
                 <Label htmlFor={`ultimo-domicilio-${branchId}-${index}`} className="text-xs text-muted-foreground">
-                  Último pedido a domicilio
+                  {t("restaurantes.reglas.ultimoDomicilio")}
                 </Label>
                 <Input id={`ultimo-domicilio-${branchId}-${index}`} type="time" value={turno.ultimoPedidoDomicilio ?? ""} onChange={(e) => updateTurno(index, { ultimoPedidoDomicilio: e.target.value || undefined })} className="w-[120px]" />
               </div>
               <div className="flex flex-col gap-1">
                 <Label htmlFor={`ultimo-recoger-${branchId}-${index}`} className="text-xs text-muted-foreground">
-                  Último pedido para recoger
+                  {t("restaurantes.reglas.ultimoRecoger")}
                 </Label>
                 <Input id={`ultimo-recoger-${branchId}-${index}`} type="time" value={turno.ultimoPedidoRecoger ?? ""} onChange={(e) => updateTurno(index, { ultimoPedidoRecoger: e.target.value || undefined })} className="w-[120px]" />
               </div>
               <Button type="button" variant="outline" size="sm" onClick={() => setTurnos((prev) => prev.filter((_, i) => i !== index))}>
-                Quitar turno
+                {t("restaurantes.reglas.quitarTurno")}
               </Button>
             </div>
-            <p className="m-0 text-xs text-muted-foreground">{turno.dias.length > 0 && turno.abre && turno.cierra ? describirTurno(turno) : "Turno incompleto"}</p>
+            <p className="m-0 text-xs text-muted-foreground">{turno.dias.length > 0 && turno.abre && turno.cierra ? describirTurno(turno) : t("restaurantes.reglas.turnoIncompleto")}</p>
           </div>
         ))}
         <div>
           <Button type="button" variant="outline" size="sm" onClick={() => setTurnos((prev) => [...prev, { dias: [0, 1, 2, 3, 4, 5, 6], abre: "12:00", cierra: "01:00" }])}>
-            Agregar turno
+            {t("restaurantes.reglas.agregarTurno")}
           </Button>
         </div>
       </section>
@@ -346,36 +348,36 @@ export function ReglasSucursal({ apiBaseUrl, token, propertyId, branchId }: Prop
       <section className="flex flex-wrap items-end gap-3">
         <div className="flex flex-col gap-1">
           <Label htmlFor={`min-dom-${branchId}`} className="text-xs text-muted-foreground">
-            Pedido mínimo a domicilio ($)
+            {t("restaurantes.reglas.minDomicilio")}
           </Label>
-          <Input id={`min-dom-${branchId}`} inputMode="decimal" placeholder="Sin mínimo" value={minDomicilio} onChange={(e) => setMinDomicilio(e.target.value)} className="w-[140px]" />
+          <Input id={`min-dom-${branchId}`} inputMode="decimal" placeholder={t("restaurantes.reglas.sinMinimo")} value={minDomicilio} onChange={(e) => setMinDomicilio(e.target.value)} className="w-[140px]" />
         </div>
         <div className="flex flex-col gap-1">
           <Label htmlFor={`min-rec-${branchId}`} className="text-xs text-muted-foreground">
-            Pedido mínimo para recoger ($)
+            {t("restaurantes.reglas.minRecoger")}
           </Label>
-          <Input id={`min-rec-${branchId}`} inputMode="decimal" placeholder="Sin mínimo" value={minRecoger} onChange={(e) => setMinRecoger(e.target.value)} className="w-[140px]" />
+          <Input id={`min-rec-${branchId}`} inputMode="decimal" placeholder={t("restaurantes.reglas.sinMinimo")} value={minRecoger} onChange={(e) => setMinRecoger(e.target.value)} className="w-[140px]" />
         </div>
         <div className="flex flex-col gap-1">
           <Label htmlFor={`propina-${branchId}`} className="text-xs text-muted-foreground">
-            Propina
+            {t("restaurantes.reglas.propina")}
           </Label>
           <Selector id={`propina-${branchId}`} size="sm" value={propina} onChange={(e) => setPropina(e.target.value as PropinaPolitica | "")} wrapperClassName="w-auto min-w-48">
-            <option value="">No preguntar</option>
-            <option value="solo_tarjeta">Solo si paga con tarjeta</option>
-            <option value="siempre">Siempre</option>
-            <option value="nunca">Nunca</option>
+            <option value="">{t("restaurantes.reglas.propina.noPreguntar")}</option>
+            <option value="solo_tarjeta">{t("restaurantes.reglas.propina.soloTarjeta")}</option>
+            <option value="siempre">{t("restaurantes.reglas.propina.siempre")}</option>
+            <option value="nunca">{t("restaurantes.reglas.propina.nunca")}</option>
           </Selector>
         </div>
       </section>
 
       <section className="flex flex-col gap-2">
-        <h3 className="m-0 text-sm font-semibold text-foreground">Zonas de reparto</h3>
+        <h3 className="m-0 text-sm font-semibold text-foreground">{t("restaurantes.reglas.zonas")}</h3>
         <p className="m-0 text-xs text-muted-foreground">
-          Con zonas marcadas, los pedidos a domicilio fuera de ellas se rechazan. Sin zonas marcadas no se valida la colonia; en Los Taquitos de PM el agente entonces pide el pin de ubicación o pasa el pedido a una persona. Las zonas se dan de alta en Configuración.
+          {t("restaurantes.reglas.zonasAyuda")}
         </p>
         {zonas.length === 0 ? (
-          <p className="m-0 text-xs text-muted-foreground">Todavía no hay zonas conocidas.</p>
+          <p className="m-0 text-xs text-muted-foreground">{t("restaurantes.reglas.sinZonas")}</p>
         ) : (
           <div className="flex flex-wrap gap-3">
             {zonas.map((zona) => (
@@ -402,88 +404,86 @@ export function ReglasSucursal({ apiBaseUrl, token, propertyId, branchId }: Prop
 
       <div>
         <Button type="button" size="sm" onClick={() => void handleGuardarReglas()} loading={saving}>
-          Guardar reglas
+          {t("restaurantes.reglas.guardarReglas")}
         </Button>
       </div>
       {falloDe("reglas")}
 
       <section className="flex flex-col gap-2 border-t border-border pt-3" data-testid={`puentes-${branchId}`}>
-        <h3 className="m-0 text-sm font-semibold text-foreground">Puentes (horario por fechas)</h3>
+        <h3 className="m-0 text-sm font-semibold text-foreground">{t("restaurantes.reglas.puentes")}</h3>
         <p className="m-0 text-xs text-muted-foreground">
-          En las fechas indicadas rigen estos turnos en lugar del horario semanal (por ejemplo, abrir los dos turnos en un puente). Para un feriado o imprevisto marque «Cerrado todo el día»: la sucursal no recibe pedidos esas fechas.
+          {t("restaurantes.reglas.puentesAyuda")}
         </p>
         {puentes.map((p) => (
           <div key={p.id} className="flex flex-wrap items-center gap-2 text-xs text-foreground">
             <span>
-              {p.fechaDesde} → {p.fechaHasta}: {p.horario.length === 0 ? "Cerrado todo el día" : p.horario.map((t) => `${t.abre}–${t.cierra}`).filter((v, i, a) => a.indexOf(v) === i).join(" y ")}
+              {p.fechaDesde} → {p.fechaHasta}: {p.horario.length === 0 ? t("restaurantes.reglas.cerradoTodoElDia") : p.horario.map((tu) => `${tu.abre}–${tu.cierra}`).filter((v, i, a) => a.indexOf(v) === i).join(t("restaurantes.reglas.horarioY"))}
               {p.motivo ? ` (${p.motivo})` : ""}
             </span>
             <Button type="button" variant="outline" size="sm" className="h-7 text-xs" onClick={() => void handleBorrarPuente(p)} disabled={saving}>
-              Quitar
+              {t("restaurantes.reglas.quitar")}
             </Button>
           </div>
         ))}
         <div className="flex flex-wrap items-end gap-3">
           <div className="flex flex-col gap-1">
             <Label htmlFor={`puente-desde-${branchId}`} className="text-xs text-muted-foreground">
-              Desde
+              {t("restaurantes.reglas.desde")}
             </Label>
             <Input id={`puente-desde-${branchId}`} type="date" value={puenteDesde} onChange={(e) => setPuenteDesde(e.target.value)} className="w-[150px]" />
           </div>
           <div className="flex flex-col gap-1">
             <Label htmlFor={`puente-hasta-${branchId}`} className="text-xs text-muted-foreground">
-              Hasta
+              {t("restaurantes.reglas.hasta")}
             </Label>
             <Input id={`puente-hasta-${branchId}`} type="date" value={puenteHasta} onChange={(e) => setPuenteHasta(e.target.value)} className="w-[150px]" />
           </div>
-          <Checkbox label="Cerrado todo el día" wrapperClassName="text-xs" checked={puenteCerrado} onChange={() => setPuenteCerrado((v) => !v)} />
-          {!puenteCerrado && puenteTurnos.map((t, i) => (
+          <Checkbox label={t("restaurantes.reglas.cerradoTodoElDia")} wrapperClassName="text-xs" checked={puenteCerrado} onChange={() => setPuenteCerrado((v) => !v)} />
+          {!puenteCerrado && puenteTurnos.map((tu, i) => (
             <div key={i} className="flex flex-col gap-1">
               <Label htmlFor={`puente-turno-${i}-${branchId}`} className="text-xs text-muted-foreground">
-                Turno {i + 1} (abre / cierra)
+                {t("restaurantes.reglas.turnoN", { n: i + 1 })}
               </Label>
               <div className="flex gap-1">
-                <Input id={`puente-turno-${i}-${branchId}`} type="time" value={t.abre} onChange={(e) => setPuenteTurnos((prev) => prev.map((x, j) => (j === i ? { ...x, abre: e.target.value } : x)))} className="w-[110px]" />
-                <Input type="time" aria-label={`Cierre del turno ${i + 1}`} value={t.cierra} onChange={(e) => setPuenteTurnos((prev) => prev.map((x, j) => (j === i ? { ...x, cierra: e.target.value } : x)))} className="w-[110px]" />
+                <Input id={`puente-turno-${i}-${branchId}`} type="time" value={tu.abre} onChange={(e) => setPuenteTurnos((prev) => prev.map((x, j) => (j === i ? { ...x, abre: e.target.value } : x)))} className="w-[110px]" />
+                <Input type="time" aria-label={t("restaurantes.reglas.cierreTurno", { n: i + 1 })} value={tu.cierra} onChange={(e) => setPuenteTurnos((prev) => prev.map((x, j) => (j === i ? { ...x, cierra: e.target.value } : x)))} className="w-[110px]" />
               </div>
             </div>
           ))}
           <div className="flex flex-col gap-1">
             <Label htmlFor={`puente-motivo-${branchId}`} className="text-xs text-muted-foreground">
-              Motivo (opc.)
+              {t("restaurantes.reglas.motivo")}
             </Label>
             <Input id={`puente-motivo-${branchId}`} value={puenteMotivo} onChange={(e) => setPuenteMotivo(e.target.value)} className="w-[180px]" />
           </div>
           <Button type="button" variant="outline" size="sm" onClick={() => void handleCrearPuente()} disabled={saving}>
-            Guardar puente
+            {t("restaurantes.reglas.guardarPuente")}
           </Button>
         </div>
         {falloDe("puente")}
       </section>
 
       <section className="flex flex-col gap-2 border-t border-border pt-3" data-testid={`agente-whatsapp-${branchId}`}>
-        <h3 className="m-0 text-sm font-semibold text-foreground">Agente de WhatsApp</h3>
+        <h3 className="m-0 text-sm font-semibold text-foreground">{t("restaurantes.reglas.agente")}</h3>
         {errorAgente ? (
-          <EstadoError titulo="No se pudo leer el estado" mensaje={errorAgente} compacto className="w-full" />
+          <EstadoError titulo={t("restaurantes.reglas.agente.noLeido")} mensaje={errorAgente} compacto className="w-full" />
         ) : agente === null ? (
-          <EstadoCargando etiqueta="Leyendo el estado del agente…" />
+          <EstadoCargando etiqueta={t("restaurantes.reglas.agente.leyendo")} />
         ) : !agente.disponible ? (
           <p role="status" className="m-0 text-xs text-muted-foreground">
-            No disponible aún: apagar el agente por sucursal requiere aplicar la migración 053 en esta base. Mientras tanto el agente atiende normalmente.
+            {t("restaurantes.reglas.agente.noDisponible")}
           </p>
         ) : (
           <>
             <Checkbox
-              label="El agente contesta los mensajes de WhatsApp de esta sucursal"
+              label={t("restaurantes.reglas.agente.contesta")}
               wrapperClassName="text-xs"
               checked={agente.agenteActivo}
               disabled={saving}
               onChange={() => void handleCambiarAgente(!agente.agenteActivo)}
             />
             <p className="m-0 text-xs text-muted-foreground">
-              {agente.agenteActivo
-                ? "Si lo apaga, el cliente recibe un aviso de que lo atenderá una persona y la conversación queda en la bandeja de Conversaciones. Sin costo de IA."
-                : "Apagado: el agente no contesta en esta sucursal. Cada conversación nueva llega a la bandeja de Conversaciones y debe atenderla una persona del equipo."}
+              {t(agente.agenteActivo ? "restaurantes.reglas.agente.siApaga" : "restaurantes.reglas.agente.apagadoAyuda")}
             </p>
           </>
         )}
@@ -493,12 +493,13 @@ export function ReglasSucursal({ apiBaseUrl, token, propertyId, branchId }: Prop
       <section className="flex flex-wrap items-end gap-3 border-t border-border pt-3">
         <div className="flex flex-col gap-1">
           <Label htmlFor={`wa-${branchId}`} className="text-xs text-muted-foreground">
-            WhatsApp de esta sucursal (phone_number_id de Meta)
+            {t("restaurantes.reglas.wa.campo")}
           </Label>
-          <Input id={`wa-${branchId}`} inputMode="numeric" placeholder="Sin número propio" value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} className="w-[240px]" />
+          <Input id={`wa-${branchId}`} inputMode="numeric" placeholder={t("restaurantes.reglas.wa.sinNumero")} value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} className="w-[240px]" />
         </div>
         <Button type="button" variant="outline" size="sm" onClick={() => void handleGuardarWhatsapp()} disabled={saving}>
-          Guardar número
+          {t("restaurantes.reglas.wa.guardar")}
+
         </Button>
         {falloDe("whatsapp")}
       </section>

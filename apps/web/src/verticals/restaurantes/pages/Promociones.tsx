@@ -18,7 +18,11 @@
 // que cambia es que los formularios ya no viven siempre abiertos en la página.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { Button, Callout, Card, CardContent, Checkbox, EstadoCargando, EstadoError, EstadoVacio, FormDialog, FormField, Input, Label, Selector, PageContainer, StatusBadge, formatMoney } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, Checkbox, EstadoCargando, EstadoError, EstadoVacio, FormDialog, FormField, Input, Label, Selector, PageContainer, StatusBadge, formatMoney, localeActivo, useT } from "@atiende/ui";
+import type { Traductor } from "@atiende/ui";
+import { restaurantesPromociones } from "@atiende/ui/i18n/restaurantes/promociones";
+import { restaurantesReglas } from "@atiende/ui/i18n/restaurantes/reglas";
+import { NOMBRES_DIAS } from "../lib/modelo-pm-client.ts";
 import { CalendarRange, Plus } from "lucide-react";
 import {
   createPromotion,
@@ -32,12 +36,13 @@ import type { Product } from "../lib/catalog-client.ts";
 import { puedeEn } from "../lib/permisos.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 
-const DAY_LABELS: readonly string[] = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
+/** Dom..Sáb en el idioma activo (mismas etiquetas que el horario de la sucursal). */
+const DAY_LABELS: readonly string[] = NOMBRES_DIAS;
 
-function formatValue(type: PromotionType, value: number): string {
-  if (type === "bogo") return "2x1";
-  if (type === "cortesia") return "Combo de cortesía";
-  return type === "percentage" ? `${value}% de descuento` : `$${formatMoney(value)} de descuento`;
+function formatValue(t: Traductor, type: PromotionType, value: number): string {
+  if (type === "bogo") return t("restaurantes.promociones.valor.bogo");
+  if (type === "cortesia") return t("restaurantes.promociones.valor.cortesia");
+  return type === "percentage" ? t("restaurantes.promociones.valor.porcentaje", { valor: value }) : t("restaurantes.promociones.valor.fijo", { valor: formatMoney(value) });
 }
 
 // BUG REAL corregido aquí (revisión de PR #170): `dateInputToIso` construye el
@@ -111,11 +116,12 @@ function alternarProducto(elegidos: readonly string[], id: string, marcado: bool
 
 /** PL-23: las promociones son de owner/admin. Un staff que llega por URL ve un estado honesto en vez de un 403 del servidor. */
 export function PromocionesPage(ctx: RestaurantesShellContext) {
+  const t = useT(restaurantesPromociones);
   if (!puedeEn(ctx.role, "promociones.ver")) {
     return (
       <PageContainer padding="none">
-        <h1 className="sr-only">Promociones</h1>
-        <Callout tone="info">Solo el dueño o un administrador puede ver y gestionar las promociones.</Callout>
+        <h1 className="sr-only">{t("restaurantes.promociones.titulo")}</h1>
+        <Callout tone="info">{t("restaurantes.promociones.soloDueno")}</Callout>
       </PageContainer>
     );
   }
@@ -123,6 +129,7 @@ export function PromocionesPage(ctx: RestaurantesShellContext) {
 }
 
 function PromocionesContenido({ apiBaseUrl, token, propertyId }: RestaurantesShellContext) {
+  const t = useT(restaurantesPromociones, restaurantesReglas);
   const [promotions, setPromotions] = useState<readonly Promotion[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Los errores de crear/editar se pintan DENTRO de su dialogo (QA-restaurantes-R1-botones-17): el estado de la pagina queda
@@ -148,7 +155,7 @@ function PromocionesContenido({ apiBaseUrl, token, propertyId }: RestaurantesShe
   const [products, setProducts] = useState<readonly Product[] | null>(null);
   const [productsError, setProductsError] = useState<string | null>(null);
   useEffect(() => {
-    fetchProducts(fetch, apiBaseUrl, token, propertyId).then(setProducts, (err) => setProductsError(err instanceof Error ? err.message : "No se pudo cargar el catálogo."));
+    fetchProducts(fetch, apiBaseUrl, token, propertyId).then(setProducts, (err) => setProductsError(err instanceof Error ? err.message : t("restaurantes.promociones.error.catalogo")));
   }, [apiBaseUrl, token, propertyId]);
 
   async function load() {
@@ -156,7 +163,7 @@ function PromocionesContenido({ apiBaseUrl, token, propertyId }: RestaurantesShe
     try {
       setPromotions(await fetchPromotions(fetch, apiBaseUrl, token, propertyId));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudieron cargar las promociones.");
+      setError(err instanceof Error ? err.message : t("restaurantes.promociones.error.cargar"));
     }
   }
 
@@ -170,20 +177,20 @@ function PromocionesContenido({ apiBaseUrl, token, propertyId }: RestaurantesShe
     const value = sinValor ? 1 : Number(form.value);
     // QA-restaurantes-R2-botones-07: cada rechazo local explica por que no se creo (antes el boton parecia muerto).
     if (!form.code.trim() || !form.name.trim()) {
-      setErrorCrear("Escribe el código y el nombre para el staff: no pueden quedar vacíos ni solo con espacios.");
+      setErrorCrear(t("restaurantes.promociones.error.codigoNombre"));
       return;
     }
     if (!Number.isFinite(value) || value <= 0) {
-      setErrorCrear(form.type === "percentage" ? "El valor del descuento debe ser mayor que 0 (y hasta 100)." : "El valor del descuento debe ser mayor que 0.");
+      setErrorCrear(t(form.type === "percentage" ? "restaurantes.promociones.error.valorPct" : "restaurantes.promociones.error.valor"));
       return;
     }
     // Mismas reglas que el servidor (que re-valida): automatica exige canal; cortesia exige listas y cantidad.
     if (form.autoApply && form.canal === "") {
-      setErrorCrear("Una promoción automática necesita un canal (por ejemplo, solo recoger).");
+      setErrorCrear(t("restaurantes.promociones.error.canal"));
       return;
     }
     if (form.type === "cortesia" && (form.productIds.length === 0 || form.courtesyProductIds.length === 0 || !(Number(form.courtesyQuantity) >= 1))) {
-      setErrorCrear("El combo de cortesía necesita los productos que lo disparan, los productos de cortesía y las piezas por producto.");
+      setErrorCrear(t("restaurantes.promociones.error.cortesia"));
       return;
     }
     setCreating(true);
@@ -210,7 +217,7 @@ function PromocionesContenido({ apiBaseUrl, token, propertyId }: RestaurantesShe
       setModalCrearAbierto(false);
       await load();
     } catch (err) {
-      setErrorCrear(err instanceof Error ? err.message : "No se pudo crear la promoción.");
+      setErrorCrear(err instanceof Error ? err.message : t("restaurantes.promociones.error.crear"));
     } finally {
       setCreating(false);
     }
@@ -234,7 +241,7 @@ function PromocionesContenido({ apiBaseUrl, token, propertyId }: RestaurantesShe
       setEditingId(null);
       await load();
     } catch (err) {
-      setErrorEdicion(err instanceof Error ? err.message : "No se pudo actualizar la vigencia.");
+      setErrorEdicion(err instanceof Error ? err.message : t("restaurantes.promociones.error.vigencia"));
     } finally {
       setSavingEdit(false);
     }
@@ -247,7 +254,7 @@ function PromocionesContenido({ apiBaseUrl, token, propertyId }: RestaurantesShe
       await setPromotionActive(fetch, apiBaseUrl, token, propertyId, p.id, !p.isActive);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo cambiar el estado de la promoción.");
+      setError(err instanceof Error ? err.message : t("restaurantes.promociones.error.estado"));
     } finally {
       setTogglingId(null);
     }
@@ -258,7 +265,7 @@ function PromocionesContenido({ apiBaseUrl, token, propertyId }: RestaurantesShe
   return (
     <PageContainer padding="none">
       <header className="flex flex-wrap items-center justify-end gap-3">
-        <h1 className="sr-only">Promociones</h1>
+        <h1 className="sr-only">{t("restaurantes.promociones.titulo")}</h1>
         <Button
           type="button"
           onClick={() => {
@@ -267,16 +274,16 @@ function PromocionesContenido({ apiBaseUrl, token, propertyId }: RestaurantesShe
           }}
         >
           <Plus />
-          Crear un código nuevo
+          {t("restaurantes.promociones.crearNuevo")}
         </Button>
       </header>
 
       {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
 
       <section className="flex flex-col gap-2">
-        <p className="m-0 text-sm font-semibold text-foreground">Códigos existentes</p>
-        {!promotions && !error && <EstadoCargando etiqueta="Cargando promociones…" />}
-        {promotions && promotions.length === 0 && <EstadoVacio mensaje="Todavía no hay ninguna promoción creada." />}
+        <p className="m-0 text-sm font-semibold text-foreground">{t("restaurantes.promociones.existentes")}</p>
+        {!promotions && !error && <EstadoCargando etiqueta={t("restaurantes.promociones.cargando")} />}
+        {promotions && promotions.length === 0 && <EstadoVacio mensaje={t("restaurantes.promociones.vacio")} />}
         {promotions && promotions.length > 0 && (
           <div className="flex flex-col gap-2">
             {promotions.map((p) => (
@@ -286,29 +293,32 @@ function PromocionesContenido({ apiBaseUrl, token, propertyId }: RestaurantesShe
                     <div className="m-0 flex flex-wrap items-center gap-1.5 text-sm font-semibold text-foreground">
                       <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-foreground">{p.code}</code>
                       <span>· {p.name}</span>
-                      {p.autoApply && <StatusBadge tone="neutral" dot={false}>Automática</StatusBadge>}
-                      {p.channels && p.channels.length > 0 && <StatusBadge tone="neutral" dot={false}>{p.channels.map((c) => (c === "recoger" ? "Solo recoger" : "Solo domicilio")).join(" / ")}</StatusBadge>}
+                      {p.autoApply && <StatusBadge tone="neutral" dot={false}>{t("restaurantes.promociones.automatica")}</StatusBadge>}
+                      {p.channels && p.channels.length > 0 && <StatusBadge tone="neutral" dot={false}>{p.channels.map((c) => t(c === "recoger" ? "restaurantes.promociones.soloRecoger" : "restaurantes.promociones.soloDomicilio")).join(" / ")}</StatusBadge>}
                       {!p.isActive && (
                         <StatusBadge tone="neutral" dot={false} className="text-muted-foreground">
-                          Inactiva
+                          {t("restaurantes.promociones.inactiva")}
                         </StatusBadge>
                       )}
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      {formatValue(p.type, p.value)}
-                      {p.minOrderTotal !== null ? ` · pedido mín. $${formatMoney(p.minOrderTotal)}` : ""}
-                      {p.maxUses !== null ? ` · usado ${p.timesUsed}/${p.maxUses}` : ` · usado ${p.timesUsed} veces`}
+                      {formatValue(t, p.type, p.value)}
+                      {p.minOrderTotal !== null ? t("restaurantes.promociones.pedidoMin", { monto: formatMoney(p.minOrderTotal) }) : ""}
+                      {p.maxUses !== null ? t("restaurantes.promociones.usadoDe", { usos: p.timesUsed, max: p.maxUses }) : t("restaurantes.promociones.usadoVeces", { usos: p.timesUsed })}
                       {p.daysOfWeek && p.daysOfWeek.length > 0 ? ` · ${p.daysOfWeek.map((d) => DAY_LABELS[d]).join("/")}` : ""}
                       {p.startTime && p.endTime ? ` · ${p.startTime}-${p.endTime}` : ""}
                     </p>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Vigencia: {p.startsAt ? new Date(p.startsAt).toLocaleDateString("es-MX") : "sin inicio"} → {p.endsAt ? new Date(p.endsAt).toLocaleDateString("es-MX") : "sin fin"}
+                      {t("restaurantes.promociones.vigencia", {
+                        desde: p.startsAt ? new Date(p.startsAt).toLocaleDateString(localeActivo()) : t("restaurantes.promociones.sinInicio"),
+                        hasta: p.endsAt ? new Date(p.endsAt).toLocaleDateString(localeActivo()) : t("restaurantes.promociones.sinFin"),
+                      })}
                     </p>
                   </div>
                   <div className="flex shrink-0 gap-2">
                     <Button type="button" variant="outline" size="sm" onClick={() => startEdit(p)}>
                       <CalendarRange />
-                      Editar vigencia
+                      {t("restaurantes.promociones.editarVigencia")}
                     </Button>
                     <Button
                       type="button"
@@ -317,7 +327,7 @@ function PromocionesContenido({ apiBaseUrl, token, propertyId }: RestaurantesShe
                       onClick={() => void handleToggleActive(p)}
                       loading={togglingId === p.id}
                     >
-                      {p.isActive ? "Desactivar" : "Activar"}
+                      {t(p.isActive ? "restaurantes.promociones.desactivar" : "restaurantes.promociones.activar")}
                     </Button>
                   </div>
                 </CardContent>
@@ -330,83 +340,83 @@ function PromocionesContenido({ apiBaseUrl, token, propertyId }: RestaurantesShe
       <FormDialog
         open={modalCrearAbierto}
         onOpenChange={setModalCrearAbierto}
-        titulo="Crear un código nuevo"
-        subtitulo="El código nace activo. El horario (hora de inicio/fin) solo se ajusta por API por ahora; los días, el canal y las fechas de vigencia sí se eligen aquí."
+        titulo={t("restaurantes.promociones.crearNuevo")}
+        subtitulo={t("restaurantes.promociones.crearSub")}
         anchoClase="max-w-3xl"
         footer={
           <Button type="submit" form="restaurantes-promocion-nueva" className="w-full md:w-auto" loading={creating}>
-            Crear código
+            {t("restaurantes.promociones.crearCodigo")}
           </Button>
         }
       >
         <form id="restaurantes-promocion-nueva" onSubmit={handleCreate} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {errorCrear && (
             <div className="sm:col-span-2">
-              <EstadoError titulo="No se pudo crear el código" mensaje={errorCrear} compacto />
+              <EstadoError titulo={t("restaurantes.promociones.error.crearCodigo")} mensaje={errorCrear} compacto />
             </div>
           )}
-          <FormField label="Código">
+          <FormField label={t("restaurantes.promociones.codigo")}>
             <Input
               id="promocion-codigo"
               type="text"
-              placeholder="CÓDIGO (ej. BIENVENIDA10)"
+              placeholder={t("restaurantes.promociones.codigoPh")}
               value={form.code}
               onChange={(e) => setForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))}
               required
             />
           </FormField>
-          <FormField label="Nombre para el staff">
+          <FormField label={t("restaurantes.promociones.nombreStaff")}>
             <Input
               id="promocion-nombre"
               type="text"
-              placeholder="Nombre para el staff"
+              placeholder={t("restaurantes.promociones.nombreStaff")}
               value={form.name}
               onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
               required
             />
           </FormField>
-          <FormField label="Tipo de descuento">
+          <FormField label={t("restaurantes.promociones.tipo")}>
             <Selector
               id="promocion-tipo"
               value={form.type}
               onChange={(e) => setForm((f) => ({ ...f, type: e.target.value as PromotionType }))}
             >
-              <option value="percentage">% descuento</option>
-              <option value="fixed">$ fijo</option>
-              <option value="bogo">2x1</option>
-              <option value="cortesia">Combo de cortesía</option>
+              <option value="percentage">{t("restaurantes.promociones.tipo.porcentaje")}</option>
+              <option value="fixed">{t("restaurantes.promociones.tipo.fijo")}</option>
+              <option value="bogo">{t("restaurantes.promociones.valor.bogo")}</option>
+              <option value="cortesia">{t("restaurantes.promociones.valor.cortesia")}</option>
             </Selector>
           </FormField>
           {form.type !== "bogo" && form.type !== "cortesia" && (
-            <FormField label="Valor">
+            <FormField label={t("restaurantes.promociones.valor")}>
               <Input
                 id="promocion-valor"
                 type="number"
                 min="0"
                 step="0.01"
-                placeholder={form.type === "percentage" ? "Valor (0-100)" : "Valor ($)"}
+                placeholder={t(form.type === "percentage" ? "restaurantes.promociones.valorPctPh" : "restaurantes.promociones.valorFijoPh")}
                 value={form.value}
                 onChange={(e) => setForm((f) => ({ ...f, value: e.target.value }))}
                 required
               />
             </FormField>
           )}
-          <FormField label="Canal">
+          <FormField label={t("restaurantes.promociones.canal")}>
             <Selector id="promocion-canal" value={form.canal} onChange={(e) => setForm((f) => ({ ...f, canal: e.target.value as "" | PromotionCanal }))}>
-              <option value="">Todos los canales</option>
-              <option value="recoger">Solo recoger</option>
-              <option value="domicilio">Solo domicilio</option>
+              <option value="">{t("restaurantes.promociones.todosCanales")}</option>
+              <option value="recoger">{t("restaurantes.promociones.soloRecoger")}</option>
+              <option value="domicilio">{t("restaurantes.promociones.soloDomicilio")}</option>
             </Selector>
           </FormField>
           <Checkbox
             id="promocion-auto"
             checked={form.autoApply}
             onChange={(e) => setForm((f) => ({ ...f, autoApply: e.target.checked }))}
-            label="Aplicar automáticamente (sin código, según día y canal). Exige elegir un canal."
+            label={t("restaurantes.promociones.autoAplicar")}
             wrapperClassName="sm:col-span-2"
           />
           <fieldset className="flex flex-wrap items-center gap-3 sm:col-span-2">
-            <legend className="text-xs text-muted-foreground">Días (vacío = todos)</legend>
+            <legend className="text-xs text-muted-foreground">{t("restaurantes.promociones.dias")}</legend>
             {DAY_LABELS.map((label, d) => (
               <Checkbox
                 key={d}
@@ -421,7 +431,7 @@ function PromocionesContenido({ apiBaseUrl, token, propertyId }: RestaurantesShe
           {(form.type === "bogo" || form.type === "cortesia") && (
             <div className="flex flex-col gap-1.5 sm:col-span-2">
               <Label id="promocion-productos-etiqueta" className="text-xs text-muted-foreground">
-                {form.type === "bogo" ? "Productos del 2x1 (vacío = todos)" : "Productos que disparan el combo"}
+                {t(form.type === "bogo" ? "restaurantes.promociones.productosBogo" : "restaurantes.promociones.productosDisparan")}
               </Label>
               <div id="promocion-productos" role="group" aria-labelledby="promocion-productos-etiqueta" className="flex max-h-48 flex-col gap-2 overflow-y-auto rounded-field border border-input p-3">
                 {products?.map((pr) => (
@@ -434,14 +444,14 @@ function PromocionesContenido({ apiBaseUrl, token, propertyId }: RestaurantesShe
                   />
                 ))}
               </div>
-              {productsError && <p className="m-0 text-xs text-destructive">No se pudo cargar el catálogo: {productsError}</p>}
+              {productsError && <p className="m-0 text-xs text-destructive">{t("restaurantes.promociones.error.catalogoDetalle", { detalle: productsError })}</p>}
             </div>
           )}
           {form.type === "cortesia" && (
             <>
               <div className="flex flex-col gap-1.5">
                 <Label id="promocion-cortesia-etiqueta" className="text-xs text-muted-foreground">
-                  Productos de cortesía (el cliente elige)
+                  {t("restaurantes.promociones.productosCortesia")}
                 </Label>
                 <div id="promocion-cortesia" role="group" aria-labelledby="promocion-cortesia-etiqueta" className="flex max-h-48 flex-col gap-2 overflow-y-auto rounded-field border border-input p-3">
                   {products?.map((pr) => (
@@ -455,37 +465,37 @@ function PromocionesContenido({ apiBaseUrl, token, propertyId }: RestaurantesShe
                   ))}
                 </div>
               </div>
-              <FormField label="Piezas de cortesía por producto">
+              <FormField label={t("restaurantes.promociones.piezasCortesia")}>
                 <Input id="promocion-cortesia-cantidad" type="number" min="1" max="10" step="1" value={form.courtesyQuantity} onChange={(e) => setForm((f) => ({ ...f, courtesyQuantity: e.target.value }))} />
               </FormField>
             </>
           )}
-          <FormField label="Pedido mínimo ($, opc.)">
+          <FormField label={t("restaurantes.promociones.pedidoMinimo")}>
             <Input
               id="promocion-minimo"
               type="number"
               min="0"
               step="0.01"
-              placeholder="Pedido mínimo ($, opc.)"
+              placeholder={t("restaurantes.promociones.pedidoMinimo")}
               value={form.minOrderTotal}
               onChange={(e) => setForm((f) => ({ ...f, minOrderTotal: e.target.value }))}
             />
           </FormField>
-          <FormField label="Tope de usos (opc.)">
+          <FormField label={t("restaurantes.promociones.topeUsos")}>
             <Input
               id="promocion-tope"
               type="number"
               min="1"
               step="1"
-              placeholder="Tope de usos (opc.)"
+              placeholder={t("restaurantes.promociones.topeUsos")}
               value={form.maxUses}
               onChange={(e) => setForm((f) => ({ ...f, maxUses: e.target.value }))}
             />
           </FormField>
-          <FormField label="Vigente desde">
+          <FormField label={t("restaurantes.promociones.vigenteDesde")}>
             <Input id="promocion-desde" type="date" value={form.startsAt} onChange={(e) => setForm((f) => ({ ...f, startsAt: e.target.value }))} />
           </FormField>
-          <FormField label="Vigente hasta">
+          <FormField label={t("restaurantes.promociones.vigenteHasta")}>
             <Input id="promocion-hasta" type="date" value={form.endsAt} onChange={(e) => setForm((f) => ({ ...f, endsAt: e.target.value }))} />
           </FormField>
         </form>
@@ -494,11 +504,11 @@ function PromocionesContenido({ apiBaseUrl, token, propertyId }: RestaurantesShe
       <FormDialog
         open={editingId !== null}
         onOpenChange={(abierto) => !abierto && setEditingId(null)}
-        titulo="Editar vigencia"
+        titulo={t("restaurantes.promociones.editarVigencia")}
         subtitulo={promocionEnEdicion ? `${promocionEnEdicion.code} · ${promocionEnEdicion.name}` : undefined}
         anchoClase="max-w-2xl"
         guardando={savingEdit}
-        textoBotonGuardar="Guardar"
+        textoBotonGuardar={t("restaurantes.promociones.guardar")}
         onGuardar={() => {
           if (editingId) void handleSaveEdit(editingId);
         }}
@@ -506,13 +516,14 @@ function PromocionesContenido({ apiBaseUrl, token, propertyId }: RestaurantesShe
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {errorEdicion && (
             <div className="sm:col-span-2">
-              <EstadoError titulo="No se pudo actualizar la vigencia" mensaje={errorEdicion} compacto />
+              <EstadoError titulo={t("restaurantes.promociones.error.vigenciaTitulo")}
+ mensaje={errorEdicion} compacto />
             </div>
           )}
-          <FormField label="Vigente desde">
+          <FormField label={t("restaurantes.promociones.vigenteDesde")}>
             <Input id="promocion-edit-desde" type="date" value={editStartsAt} onChange={(e) => setEditStartsAt(e.target.value)} />
           </FormField>
-          <FormField label="Vigente hasta">
+          <FormField label={t("restaurantes.promociones.vigenteHasta")}>
             <Input id="promocion-edit-hasta" type="date" value={editEndsAt} onChange={(e) => setEditEndsAt(e.target.value)} />
           </FormField>
         </div>
