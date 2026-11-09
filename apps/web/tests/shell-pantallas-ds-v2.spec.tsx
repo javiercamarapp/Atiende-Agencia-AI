@@ -141,5 +141,7 @@ describe("SinOrganizacionPage y SeleccionarVerticalPage", () => {
     for (const v of ["despachos", "citas", "hoteles", "licitaciones", "rentas", "restaurantes"]) expect(hrefs).toContain(`/${v}/login`);
     expect(hrefs).toContain("/terminos");
     expect(hrefs).toContain("/privacidad");
+    // Alta autoservicio: CTA de registro de restaurantes.
+    expect(hrefs).toContain("/restaurantes/registro");
   });
 });

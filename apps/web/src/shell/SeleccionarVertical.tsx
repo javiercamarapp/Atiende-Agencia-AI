@@ -48,7 +48,13 @@ export function SeleccionarVerticalPage() {
         <p className="login-kicker">Bienvenido a atiende.ai</p>
         <h1 className="login-serif mt-2 text-xl sm:text-2xl text-foreground">¿A qué negocio quieres entrar?</h1>
         <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
-          Elige tu vertical para ir a su panel de acceso.
+          Elige tu vertical para ir a su panel de acceso.{" "}
+          {/* Alta autoservicio: hoy solo restaurantes tiene registro sin superadmin (rentas tiene el suyo en /rentas/registro). En la misma
+              linea a proposito: el selector debe caber sin scroll en 1280x720 (e2e login-sin-scroll). */}
+          ¿Tienes un restaurante?{" "}
+          <Link to="/restaurantes/registro" className="font-semibold text-foreground underline underline-offset-2 hover:opacity-70 transition-opacity">
+            Crea tu cuenta
+          </Link>
         </p>
       </div>
 
