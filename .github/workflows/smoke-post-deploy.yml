@@ -1,7 +1,7 @@
 name: Smoke post-deploy
 
 # PL-11. Despues de un despliegue a Produccion (o a mano con una URL), comprueba desde fuera que lo esencial
-# responde: /health, cabeceras de seguridad, login rechazando credenciales inexistentes con 401, la guarda de
+# responde: /health 200 con la senal `crons` en "ok", cabeceras de seguridad (HSTS, nosniff, X-Frame-Options), login rechazando credenciales inexistentes con 401, la guarda de
 # Origin, una ruta protegida sin token y la SPA. Ver scripts/smoke-post-deploy/smoke.ts.
 #
 # Seguridad del workflow:
