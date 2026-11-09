@@ -62,7 +62,7 @@ Logs solo con `eventoSinPII` (lista cerrada de campos; la llamada se correlacion
 | `GEMINI_BACKEND`, `VERTEX_PROJECT`, `VERTEX_LOCATION`, `VERTEX_SERVICE_ACCOUNT_JSON` | no | `GEMINI_BACKEND=vertex` mueve el escalón 1 a Vertex AI (cuenta de servicio; sin verificar; **no activar** hasta ~10 restaurantes) |
 | `VOICE_DNIS_MAP` | sí | JSON `{ "<número>": { "orgSlug", "organizationId", "propertyId", "branchSlug", "secretoEnv", "topeMensualUsd"?, "modoEntrada"?, "numerosSucursal"? } }` (`numerosSucursal`: líneas de la sucursal que desvían al puente). `secretoEnv` **nombra** la variable que trae el secreto de la sucursal (nunca va en el JSON) |
 | `<secretoEnv>` | sí, una por sucursal | Secreto de la sucursal (`POST /v1/restaurantes/:propertyId/admin/config/sucursales/:branchId/voz/secreto`, se muestra una vez) |
-| `VOICE_TOPE_MENSUAL_USD` | no | Tope de gasto de voz **de plataforma** por organización y mes. Sin valor no hay tope. Un `topeMensualUsd` en la tabla DNIS lo sobreescribe por organización |
+| `VOICE_TOPE_MENSUAL_USD` | no | Tope de gasto de voz **de plataforma** por organización y mes. **Sin valor = 50 USD** (`TOPE_MENSUAL_VOZ_POR_OMISION_USD`, Ola 4 H4); para quitar el tope hay que poner `sin_tope` explícito. Un `topeMensualUsd` en la tabla DNIS lo sobreescribe por organización |
 | `VOICE_ROOM_PREFIX` | no | Prefijo de las salas SIP (por defecto `llamada-`) |
 | `VOICE_ASSETS_DIR` | no | Carpeta de los pregrabados (por defecto `assets/`) |
 | `PORT` | no | Puerto de `/salud` (por defecto 8080) |
