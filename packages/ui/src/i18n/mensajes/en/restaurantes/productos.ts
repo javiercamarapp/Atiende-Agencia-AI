@@ -17,6 +17,7 @@ export const restaurantesProductosEn: Traduccion<typeof restaurantesProductos> =
   "restaurantes.productos.error.precio": "Couldn't update the price.",
   "restaurantes.productos.error.domicilio": "Couldn't update the delivery rule.",
   "restaurantes.productos.error.producto": "Couldn't update the product.",
+  "restaurantes.productos.importarMenu": "Import menu",
   "restaurantes.productos.nuevaCategoria": "New category",
   "restaurantes.productos.nuevoProducto": "New product",
   "restaurantes.productos.soloStaff": "You can mark products as sold out or available at this branch. Only the owner or an admin can change prices and edit the catalog.",

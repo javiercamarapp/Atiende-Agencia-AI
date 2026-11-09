@@ -24,6 +24,7 @@ import {
   updateZonasReparto,
 } from "../lib/modelo-pm-client.ts";
 import type { PropinaPolitica, Puente, TurnoHorario, TurnoPuente } from "../lib/modelo-pm-client.ts";
+import { ConectarWhatsappMeta } from "../components/ConectarWhatsappMeta.tsx";
 import { fetchInterruptorAgenteWhatsapp, updateInterruptorAgenteWhatsapp } from "../lib/conocimiento-client.ts";
 import type { InterruptorAgenteWhatsapp } from "../lib/conocimiento-client.ts";
 
@@ -502,6 +503,16 @@ export function ReglasSucursal({ apiBaseUrl, token, propertyId, branchId }: Prop
         </Button>
         {falloDe("whatsapp")}
       </section>
+      <ConectarWhatsappMeta
+        apiBaseUrl={apiBaseUrl}
+        token={token}
+        propertyId={propertyId}
+        branchId={branchId}
+        onConectado={(numero) => {
+          setWhatsappGuardado(numero);
+          setWhatsapp(numero);
+        }}
+      />
       {dialogo}
     </div>
   );

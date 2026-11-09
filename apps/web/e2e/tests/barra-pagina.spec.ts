@@ -62,8 +62,10 @@ test.describe("barra de pagina: cada pagina muestra su nombre @ds", () => {
           expect(nombreEsperado(seccion.texto), `${objetivo}: la barra de ${seccion.href} debe llevar el nombre de la pagina`).toContain(texto);
         }
         // La barra va delgada en CADA pagina: sin campana, sin chat, sin fecha. Las funciones siguen en el pie del menu lateral.
+        // Excepcion del diseno: la pantalla de chat (Copiloto de las verticales) va sin encabezado en escritorio.
         const barraCompleta = page.getByTestId("barra-pagina");
-        await expect(barraCompleta, `${seccion.href}: la barra superior debe estar visible`).toBeVisible();
+        if (esCopilotoDeVertical(seccion.texto, objetivo)) await expect(barraCompleta, `${seccion.href}: la pantalla de chat va sin encabezado`).toBeHidden();
+        else await expect(barraCompleta, `${seccion.href}: la barra superior debe estar visible`).toBeVisible();
         await expect(barraCompleta.locator('[aria-label^="Notificaciones"]'), `${seccion.href}: sin campana en la barra`).toHaveCount(0);
         await expect(barraCompleta.getByTestId("barra-pagina-fecha"), `${seccion.href}: sin chip de fecha en la barra`).toHaveCount(0);
         // (En el Copiloto el TITULO de la barra es ese nombre: lo que no debe haber es un boton o enlace de chat.)

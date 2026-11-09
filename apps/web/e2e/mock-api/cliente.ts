@@ -19,7 +19,8 @@ export class ClienteMock {
     return `${this.escenario}~${personaId}`;
   }
 
-  async configurar(config: { latenciaMs?: number; fallas?: readonly Falla[]; agregarFallas?: readonly Falla[] }): Promise<void> {
+  /** `guiaPrimerIngreso: true`: la «Guía» ds3 ve a la persona por primera vez (sin progreso) y ofrece su invitacion (ver fixtures/comun.ts). */
+  async configurar(config: { latenciaMs?: number; fallas?: readonly Falla[]; agregarFallas?: readonly Falla[]; guiaPrimerIngreso?: boolean }): Promise<void> {
     const res = await fetch(this.ruta("config"), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(config) });
     if (!res.ok) throw new Error(`mock-api: configurar fallo (${res.status})`);
   }

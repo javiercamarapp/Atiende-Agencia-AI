@@ -7,6 +7,7 @@ import type {
   DataRightsPaginacion,
   DataRightsRequestsFiltro,
   DataRightsRequestsPage,
+  OpenDataRightsLookup,
   RegisterDataRightsOutcome,
   UpdateDataRightsStatusResult,
 } from "./data-rights.ts";
@@ -59,6 +60,8 @@ export interface PrivacidadRepository {
     readonly detail: string | null;
   }): Promise<RegisterDataRightsOutcome>;
   resolveDataRightsConfirmationAsSystem(organizationId: string, customerPhone: string, confirm: boolean): Promise<ConfirmDataRightsOutcome>;
+  /** Solicitud abierta mas reciente de ESE telefono (migracion 106); solo lectura. Base sin migrar -> `available: false`. */
+  findOpenDataRightsRequestAsSystem(organizationId: string, customerPhone: string): Promise<OpenDataRightsLookup>;
   setVoiceRecordingConsent(organizationId: string, conversationId: string, consent: RecordingConsent): Promise<SetRecordingConsentResult>;
   purgeExpiredPrivacyData(limit: number): Promise<PurgeOutcome>;
 

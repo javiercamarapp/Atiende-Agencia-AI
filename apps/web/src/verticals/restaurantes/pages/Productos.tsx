@@ -31,7 +31,7 @@ import {
   useT,
 } from "@atiende/ui";
 import { restaurantesProductos } from "@atiende/ui/i18n/restaurantes/productos";
-import { FolderPlus, Pencil, Plus } from "lucide-react";
+import { FileUp, FolderPlus, Pencil, Plus } from "lucide-react";
 import {
   createCategory,
   createProduct,
@@ -44,6 +44,7 @@ import type { Category, Product } from "../lib/catalog-client.ts";
 import { AliasChips } from "../components/AliasChips.tsx";
 import { CategoriasCatalogo } from "../components/CategoriasCatalogo.tsx";
 import { EditarProductoDialog } from "../components/EditarProductoDialog.tsx";
+import { ImportarMenuDialog } from "../components/ImportarMenuDialog.tsx";
 import { marcarAgotadoHastaManana } from "../lib/autopiloto-client.ts";
 import { fetchNoDomicilio, setNoDomicilio } from "../lib/modelo-pm-client.ts";
 import type { NoDomicilioMarks } from "../lib/modelo-pm-client.ts";
@@ -58,6 +59,8 @@ export function ProductosPage({ apiBaseUrl, token, propertyId, role }: Restauran
   const [products, setProducts] = useState<readonly Product[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
+  // Alta autoservicio: importar el menu completo (PDF, foto o CSV) con revision antes de guardar.
+  const [dialogoImportar, setDialogoImportar] = useState(false);
   // Marcas "no se vende a domicilio" (modelo PM, migración 023). `null` = no disponibles (base sin
   // migrar o sin permiso): la UI oculta esos controles en vez de mostrar un estado falso.
   const [marks, setMarks] = useState<NoDomicilioMarks | null>(null);
@@ -260,6 +263,10 @@ export function ProductosPage({ apiBaseUrl, token, propertyId, role }: Restauran
 
       {puedeEditarCatalogo ? (
         <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button type="button" variant="outline" onClick={() => setDialogoImportar(true)}>
+            <FileUp />
+            {t("restaurantes.productos.importarMenu")}
+          </Button>
           <Button type="button" variant="outline" onClick={abrirCategoria}>
             <FolderPlus />
             {t("restaurantes.productos.nuevaCategoria")}
@@ -422,6 +429,10 @@ export function ProductosPage({ apiBaseUrl, token, propertyId, role }: Restauran
             />
           </CardContent>
         </Card>
+      )}
+
+      {puedeEditarCatalogo && (
+        <ImportarMenuDialog open={dialogoImportar} onOpenChange={setDialogoImportar} apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} onTerminado={() => void load()} />
       )}
 
       <FormDialog

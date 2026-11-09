@@ -10,7 +10,7 @@
 import { useEffect, useId, useLayoutEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
-import { aplicarTema, AtiendeMark, AtiendeWordmark, FormField, GoogleIcon, leerTema } from "@atiende/ui";
+import { aplicarTema, AtiendeMark, AtiendeWordmark, FormField, GoogleIcon, leerIdioma, leerTema, useI18n } from "@atiende/ui";
 import { LoginArtwork } from "./LoginArtwork.tsx";
 import { iniciarMagicLink, mensajeGoogleError, mensajeMagicLinkError, urlIniciarGoogleLogin, verificarGoogleConfigurado } from "../lib/google-auth.ts";
 import { esCorreoValido, useEscritorio, type VerticalLoginProps } from "./login-comun.ts";
@@ -52,7 +52,10 @@ export function VerticalLoginDs3({ apiBaseUrl, vertical, nombre, descripcion, ki
   const [ahora, setAhora] = useState(() => Date.now());
   const espera = Math.max(0, Math.ceil((hasta - ahora) / 1000));
   const [searchParams, setSearchParams] = useSearchParams();
-  const locale = searchParams.get("lang") === "en" ? "en" : "es";
+  // i18n: `?lang=` manda en esta pantalla; sin el, la preferencia guardada. Solo el clic en ES/EN la guarda (cambiarIdioma).
+  const { cambiarIdioma: guardarIdiomaElegido } = useI18n();
+  const lang = searchParams.get("lang");
+  const locale = lang === "en" || lang === "es" ? lang : leerIdioma();
   const en = locale === "en";
   const tr = (es: string, english: string) => (en ? english : es);
   const escritorio = useEscritorio();
@@ -89,6 +92,7 @@ export function VerticalLoginDs3({ apiBaseUrl, vertical, nombre, descripcion, ki
     const params = new URLSearchParams(searchParams);
     params.set("lang", siguiente);
     setSearchParams(params, { replace: true });
+    guardarIdiomaElegido(siguiente);
   }
 
   const googleHabilitado = conGoogle && googleConfigurado && !comprobandoGoogle;

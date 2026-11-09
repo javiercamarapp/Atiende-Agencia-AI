@@ -3,8 +3,8 @@
 // la pagina): sin "Pregúntale a tus datos", campana ni fecha (orden del dueno). Ninguna pagina los repite en su cuerpo.
 // En las 29 rutas con shell, en claro, oscuro y 375 px, exige EXACTAMENTE UNA instancia visible de cada control:
 //   escritorio: barra delgada solo con titulo; campana y chat accesibles desde el pie del menu lateral.
-//   movil (375 px): la barra de escritorio no existe; el encabezado movil (logo + menu de cuenta + fila con el titulo) la
-//   sustituye; campana y chat viven en "Mas" > "Cuenta".
+//   movil (375 px): la barra de escritorio no existe; el encabezado movil (logo + campana + fila con el titulo) la sustituye;
+//   la cuenta y el chat viven en la hoja "Mas".
 // El PNG solo se escribe si CAPTURAS_UNI_MARCO_DIR apunta a una carpeta (CI no genera nada). Corre tambien en oscuro (@oscuro).
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
@@ -13,7 +13,7 @@ import { expect, test } from "../helpers/fixtures.ts";
 import type { Locator } from "@playwright/test";
 import type { Page } from "../helpers/fixtures.ts";
 import { afirmarPantallaSana } from "../helpers/humo.ts";
-import { esMovil } from "../helpers/navegacion.ts";
+import { abrirMasMovil, esMovil } from "../helpers/navegacion.ts";
 import { restaurantes } from "../mock-api/fixtures/restaurantes.ts";
 
 const BASE = `/restaurantes/${restaurantes.orgSlug}`;
@@ -70,8 +70,6 @@ async function contarChat(page: Page): Promise<{ total: number; enMain: number; 
   return { total, enMain, textos };
 }
 
-/** Controles con `aria-label` "Notificaciones..." visibles en toda la pantalla (en escritorio incluye la pildora del pie del menu lateral; en movil, con el menu cerrado, ninguno). */
-const campanas = (page: Page) => page.locator('[aria-label^="Notificaciones"]').filter({ visible: true });
 
 test.describe("UNI-MARCO restaurantes: una sola barra, un solo juego de controles @oscuro", () => {
   test("las 29 rutas llevan exactamente una barra delgada (solo titulo; sin chat, campana ni fecha)", async ({ page, iniciarSesion, vigilante }, info) => {
@@ -88,8 +86,11 @@ test.describe("UNI-MARCO restaurantes: una sola barra, un solo juego de controle
       await expect(page.locator("main#contenido-principal").getByRole("link", { name: /Pregúntale a tus datos/ }), `${nombre}: sin pildora «Pregúntale a tus datos» en el cuerpo`).toHaveCount(0);
       if (!esMovil(page)) {
         const barra = page.getByTestId("barra-pagina");
-        await expect(barra, `${nombre}: exactamente una barra visible`).toHaveCount(1);
-        await expect(barra).toBeVisible();
+        await expect(barra, `${nombre}: exactamente una barra`).toHaveCount(1);
+        // La pantalla de chat (Copiloto) va sin encabezado en escritorio; el resto lleva la barra visible.
+        const sinCabecera = nombre === "copiloto";
+        if (sinCabecera) await expect(barra, `${nombre}: la pantalla de chat va sin encabezado`).toBeHidden();
+        else await expect(barra).toBeVisible();
         await expect(page.getByTestId("barra-pagina-titulo"), `${nombre}: titulo de la pagina en la barra`).toHaveText(/\S/);
         // Orden del dueno: la barra va delgada. Sin "Pregúntale a tus datos", sin campana, sin fecha (ni en la barra ni en el cuerpo).
         const chat = await contarChat(page);
@@ -101,7 +102,8 @@ test.describe("UNI-MARCO restaurantes: una sola barra, un solo juego de controle
         expect(chat.enMain, `${nombre}: ningun "Pregúntale a tus datos" dentro del cuerpo de la pagina`).toBe(0);
         await expect(barra.locator('[aria-label^="Notificaciones"]'), `${nombre}: sin campana en la barra`).toHaveCount(0);
         await expect(page.getByTestId("barra-pagina-fecha"), `${nombre}: sin chip de fecha`).toHaveCount(0);
-        expect(((await barra.boundingBox())?.height ?? 99), `${nombre}: barra delgada (~44 px)`).toBeLessThanOrEqual(48);
+        // La barra se aplana (display: contents) dentro de la zona del encabezado del marco: se mide la zona (44 px).
+        if (!sinCabecera) expect(((await page.locator(".ds3-cabecera-zona").boundingBox())?.height ?? 99), `${nombre}: barra delgada (~44 px)`).toBeLessThanOrEqual(48);
         // Las funciones siguen accesibles desde el pie del menu lateral.
         await expect(page.locator("aside").getByRole("link", { name: "Notificaciones" }), `${nombre}: Notificaciones en el pie del menu`).toHaveCount(1);
         await expect(page.getByTestId("mobile-header"), `${nombre}: el encabezado movil no se ve en escritorio`).toBeHidden();
@@ -110,27 +112,28 @@ test.describe("UNI-MARCO restaurantes: una sola barra, un solo juego de controle
         const cabecera = page.getByTestId("mobile-header");
         await expect(cabecera, `${nombre}: un solo encabezado movil visible`).toBeVisible();
         await expect(page.getByTestId("mobile-pagina-titulo"), `${nombre}: titulo de la pagina en el encabezado movil`).toHaveText(/\S/);
-        await expect(campanas(page), `${nombre}: sin campana en el encabezado movil`).toHaveCount(0);
-        expect((await cabecera.boundingBox())?.height ?? 99, `${nombre}: encabezado movil compacto`).toBeLessThanOrEqual(84);
+        // Decision de Omar 7-nov-2026: la cabecera movil lleva la campana (una sola).
+        await expect(cabecera.locator('[aria-label^="Notificaciones"]').filter({ visible: true }), `${nombre}: una campana en el encabezado movil`).toHaveCount(1);
+        // ds3: si la pagina no trae <h1>, el nombre de la cabecera hace de h1 y se ve como fila de 32 px bajo ella (si no, la pantalla
+        // quedaria sin su nombre a la vista); solo entonces la cabecera crece esos 32 px.
+        const tituloEsH1 = (await page.getByTestId("mobile-pagina-titulo").getAttribute("role")) === "heading";
+        expect((await cabecera.boundingBox())?.height ?? 99, `${nombre}: encabezado movil compacto`).toBeLessThanOrEqual(tituloEsH1 ? 84 + 33 : 84);
         const antes = await contarChat(page);
         expect(antes.total, `${nombre}: sin "Pregúntale a tus datos" en el encabezado ni en el cuerpo`).toBe(0);
         expect(antes.enMain, `${nombre}: ningun chat dentro del cuerpo`).toBe(0);
-        // El menu de cuenta conserva tema y cierre de sesion; el chat y las notificaciones viven en "Mas" > "Cuenta".
-        await cabecera.getByRole("button", { name: "Abrir menú de cuenta" }).click();
-        const menu = page.getByRole("dialog");
-        await expect(menu.getByRole("button", { name: "Cerrar sesión" }), `${nombre}: cerrar sesion sigue en el menu de cuenta`).toHaveCount(1);
-        await expect(menu.getByRole("link", { name: NOMBRE_CHAT }).or(menu.getByRole("button", { name: NOMBRE_CHAT })), `${nombre}: el chat ya no va en el menu de cuenta`).toHaveCount(0);
+        // La cuenta (tema, idioma y «Salir») vive al pie de la hoja «Más»; el encabezado no lleva menu de cuenta.
+        await expect(cabecera.getByRole("button", { name: "Abrir menú de cuenta" }), `${nombre}: sin menu de cuenta en el encabezado`).toBeHidden();
+        const hoja = await abrirMasMovil(page);
+        await expect(hoja.getByTestId("mas-cuenta").getByRole("button", { name: "Salir" }), `${nombre}: «Salir» al pie de la hoja Más`).toHaveCount(1);
         await page.keyboard.press("Escape");
-        await expect(menu).toBeHidden();
+        await expect(hoja).toBeHidden();
       }
       if (nombre === "copiloto") await expect(page.getByTestId("barra-pagina-titulo").or(page.getByTestId("mobile-pagina-titulo")).first(), "la barra del Copiloto NO lleva el nombre de la funcion (solo menu y h1)").not.toContainText("Pregúntale a tus datos");
       if (dir) await page.screenshot({ path: join(dir, `${nombre}-${info.project.name}.png`) });
       if (nombre === "copiloto" && dir) {
-        // "Consulta" con el campo vacio abre las tarjetas (VENTAS, OPERACION, CLIENTES, CFO).
-        await page.getByRole("button", { name: "Consulta" }).click();
-        await expect(page.getByTestId("copiloto-categorias").or(page.locator(".copiloto-categorias-entra")).first()).toBeVisible();
-        await page.waitForTimeout(400);
-        await page.screenshot({ path: join(dir, `copiloto-tarjetas-${info.project.name}.png`) });
+        // Portada con los temas (Ventas, Operacion, Clientes, CFO) y sus preguntas.
+        await expect(page.getByTestId("copiloto-temas")).toBeVisible();
+        await page.screenshot({ path: join(dir, `copiloto-temas-${info.project.name}.png`) });
       }
     }
     vigilante.verificar();

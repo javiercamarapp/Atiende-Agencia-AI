@@ -17,6 +17,7 @@ export const restaurantesProductos = {
   "restaurantes.productos.error.precio": "No se pudo actualizar el precio.",
   "restaurantes.productos.error.domicilio": "No se pudo actualizar la regla de domicilio.",
   "restaurantes.productos.error.producto": "No se pudo actualizar el producto.",
+  "restaurantes.productos.importarMenu": "Importar menú",
   "restaurantes.productos.nuevaCategoria": "Nueva categoría",
   "restaurantes.productos.nuevoProducto": "Nuevo producto",
   "restaurantes.productos.soloStaff": "Puedes marcar productos como agotados o disponibles en esta sucursal. Solo el dueño o un administrador cambia precios y edita el catálogo.",
