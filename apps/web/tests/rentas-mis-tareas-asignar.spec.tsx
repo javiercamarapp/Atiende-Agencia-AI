@@ -352,14 +352,14 @@ describe("TareasSemana -- tablero «Próximos 7 días»", () => {
     );
     rendered = montarSemana();
     await esperar();
-    expect(rendered.container.textContent).toContain("No se pudo cargar la información");
+    expect(rendered.container.textContent).toContain("No disponible ahora");
     falla = false;
     await act(async () => {
       click(botonPagina(rendered!, "Reintentar")!);
       await esperar();
     });
     expect(rendered.container.textContent).toContain("1 tarea");
-    expect(rendered.container.textContent).not.toContain("No se pudo cargar la información");
+    expect(rendered.container.textContent).not.toContain("No disponible ahora");
   });
 
   it("sin la lista de personas (migración 033 pendiente) las tareas siguen visibles, sin nombres, con un aviso honesto", async () => {
