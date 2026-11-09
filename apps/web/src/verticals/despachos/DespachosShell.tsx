@@ -125,7 +125,7 @@ const NAV_ITEMS: ReadonlyArray<{ to: string; clave: Clave }> = [
   { to: "configuracion", clave: "nav.configuracion" },
 ];
 
-function buildSidebarSections(t: Traductor, orgSlug: string, conCopiloto: boolean): SidebarSection[] {
+export function buildSidebarSections(t: Traductor, orgSlug: string, conCopiloto: boolean): SidebarSection[] {
   const to = (path: string) => `/despachos/${orgSlug}/${path}`;
   const item = (path: string) => {
     const found = NAV_ITEMS.find((i) => i.to === path)!;
@@ -245,6 +245,7 @@ export function DespachosShell({ apiBaseUrl, orgSlug, onRequireLogin, children }
       branchSelector={contribuyenteSelector("despachos-contribuyente-activo")}
       mobileSelector={contribuyenteSelector("despachos-contribuyente-activo-movil")}
       contentKey={propertyId}
+      guia={{ cargar: () => import("./guia-despachos.ts").then((m) => ({ contenido: m.GUIA_DESPACHOS, esenciales: m.esencialesDespachos(role) })) }}
     >
       {children({ apiBaseUrl, token: session.token, propertyId, orgSlug, role, staffFullName: session.fullName, staffEmail: session.email })}
       {/* D-30: dialogo de segundo factor de las acciones sensibles (lib/step-up.ts); se monta una sola vez por shell. */}
