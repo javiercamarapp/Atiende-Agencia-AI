@@ -238,6 +238,8 @@ export function HistorialPage({ apiBaseUrl, token, propertyId, role }: Restauran
               })
             }
           />
+        }
+      />
 
       {/* Filtros en una sola linea de pildoras (Rovaq): periodo, sucursal, incidencias / no entregados, busqueda, estado y fechas. */}
       <div className="flex flex-wrap items-center gap-2" role="group" aria-label={t("restaurantes.historial.filtros")}>
