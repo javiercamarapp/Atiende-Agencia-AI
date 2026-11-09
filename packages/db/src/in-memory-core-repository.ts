@@ -18,6 +18,7 @@ import type {
   AcceptStaffInviteInput,
   AcceptStaffInviteResult,
   BillingWebhookEventMark,
+  BillingWebhookTxRepository,
   BillingWebhookEventSummaryRow,
   BillingWebhookLogFilters,
   BillingWebhookLogPage,
@@ -806,6 +807,27 @@ export class InMemoryCoreRepository implements CoreRepository, CoreStaffReposito
 
   async sealBillingEntityOrder(entityId: string, createdUnix: number): Promise<void> {
     this.billingEntityOrder.set(entityId, createdUnix);
+  }
+
+  /** Emula el ROLLBACK de la transacción real: si `fn` lanza, la marca de visto, el sello de
+   *  orden y el estado de billing vuelven a como estaban antes de empezar. */
+  async withBillingWebhookTransaction<T>(fn: (tx: BillingWebhookTxRepository) => Promise<T>): Promise<T> {
+    const vistos = new Map(this.seenBillingWebhookEventIds);
+    const orden = new Map(this.billingEntityOrder);
+    const billing = new Map(this.organizationBilling);
+    try {
+      return await fn(this);
+    } catch (err) {
+      for (const [destino, copia] of [
+        [this.seenBillingWebhookEventIds, vistos],
+        [this.billingEntityOrder, orden],
+        [this.organizationBilling, billing],
+      ] as const) {
+        (destino as Map<string, unknown>).clear();
+        for (const [k, v] of copia as Map<string, unknown>) (destino as Map<string, unknown>).set(k, v);
+      }
+      throw err;
+    }
   }
 
   // ---- /superadmin/facturacion — ver el contrato completo en
