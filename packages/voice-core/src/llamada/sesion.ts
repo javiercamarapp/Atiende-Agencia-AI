@@ -7,6 +7,8 @@ export interface ToolCallPedida {
   readonly id: string;
   readonly nombre: string;
   readonly args: Readonly<Record<string, unknown>>;
+  /** Lectura PRECARGADA por la sesion (no la pidio el modelo): si falla o expira no cuenta como falla de herramienta de la llamada. */
+  readonly precarga?: boolean;
 }
 
 /** A que componente (`deepgram`, `heygen`, `openrouter:<modelo>`) pertenece un aviso de costo: la escalera lo desglosa en `core.usage_cost_event`. */

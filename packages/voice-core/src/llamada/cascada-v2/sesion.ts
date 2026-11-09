@@ -766,7 +766,12 @@ class SesionCascadaV2 implements VozSesionLlamada {
     const resultados = await Promise.all(
       llamadas.map(async (tc) => {
         try {
-          return { tc, salida: await this.h.ejecutarTool({ id: tc.id, nombre: tc.nombre, args: JSON.parse(tc.argsJson) as Record<string, unknown> }) };
+          // Plazo propio corto: una lectura lenta no retrasa el turno (el modelo la pide si la necesita).
+          const plazo = new Promise<null>((r) => {
+            const t = setTimeout(() => r(null), PRECARGA_PLAZO_MS);
+            (t as { unref?: () => void }).unref?.();
+          });
+          return { tc, salida: await Promise.race([this.h.ejecutarTool({ id: tc.id, nombre: tc.nombre, args: JSON.parse(tc.argsJson) as Record<string, unknown>, precarga: true }), plazo]) };
         } catch {
           return { tc, salida: null };
         }
@@ -1011,6 +1016,8 @@ function armarPilaStt(opts: CascadaV2Opciones, config: ConfigPlataformaVoz, aper
 /** Lecturas precargadas por turno y caracteres por resultado (el contexto precargado no debe encarecer el prompt mas de lo que ahorra). */
 export const PRECARGA_MAX = 4;
 export const PRECARGA_MAX_CHARS = 3_000;
+/** Plazo de cada lectura precargada: pasado, se descarta y el turno sigue (E2E r4: la API local tardo 4 s y retraso 6 s el turno). */
+export const PRECARGA_PLAZO_MS = 1_200;
 
 /** Resultado de lectura que vale la pena entregar: sin error y con contenido (una lista vacia o `null` no). */
 function resultadoUtil(salida: unknown): boolean {
