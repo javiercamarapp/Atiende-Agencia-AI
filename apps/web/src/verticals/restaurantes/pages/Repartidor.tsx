@@ -46,10 +46,14 @@ import {
   TabsList,
   TabsTrigger,
   formatMoney,
+  localeActivo,
   statusTone,
   useConfirm,
+  useT,
   useTemaGlobal,
 } from "@atiende/ui";
+import { restaurantesChofer } from "@atiende/ui/i18n/restaurantes/chofer";
+import { restaurantesComun } from "@atiende/ui/i18n/restaurantes/comun";
 import { AlertTriangle, MapPin, Map as MapIcon, Phone } from "lucide-react";
 import { clearSession, readPersistedSession } from "../../../lib/auth-client.ts";
 import type { LoginSession } from "../../../lib/auth-client.ts";
@@ -66,24 +70,21 @@ import { PanelChofer } from "../components/chofer/PanelChofer.tsx";
 import { SESSION_EXPIRED_EVENT } from "../../../lib/authed-fetch.ts";
 import type { SessionExpiredEventDetail } from "../../../lib/authed-fetch.ts";
 
-const STATUS_LABELS: Record<RepartidorOrderStatus, string> = {
-  pending: "Recibido",
-  preparando: "Preparando",
-  en_camino: "En camino",
-  entregado: "Entregado",
-  completado: "Completado",
-  cancelado: "Cancelado",
-  problema: "Incidencia",
-};
+/** Estado del pedido -> clave compartida de restaurantes (`restaurantes.estado.*`: Recibido, Preparando, En camino...). */
+const STATUS_CLAVE = {
+  pending: "restaurantes.estado.pending",
+  preparando: "restaurantes.estado.preparando",
+  en_camino: "restaurantes.estado.en_camino",
+  entregado: "restaurantes.estado.entregado",
+  completado: "restaurantes.estado.completado",
+  cancelado: "restaurantes.estado.cancelado",
+  problema: "restaurantes.estado.problema",
+} as const satisfies Record<RepartidorOrderStatus, string>;
 
-const NEXT_STATUS_LABEL: Record<RepartidorOrderStatus, string> = {
-  pending: "",
-  preparando: "Marcar en camino",
-  en_camino: "Marcar entregado",
-  entregado: "",
-  completado: "",
-  cancelado: "",
-  problema: "",
+/** Boton para avanzar el pedido; solo los estados con siguiente paso tienen etiqueta. */
+const NEXT_STATUS_CLAVE: Partial<Record<RepartidorOrderStatus, "restaurantes.chofer.legado.siguiente.preparando" | "restaurantes.chofer.legado.siguiente.en_camino">> = {
+  preparando: "restaurantes.chofer.legado.siguiente.preparando",
+  en_camino: "restaurantes.chofer.legado.siguiente.en_camino",
 };
 
 /** Vista de las entregas del repartidor (exportada para probarla sin sesión/router; la ruta usa `RepartidorPedidosPage`). */
@@ -91,6 +92,7 @@ export function RepartidorPedidosView({ apiBaseUrl, token, propertyId }: { apiBa
   const [orders, setOrders] = useState<readonly RepartidorOrder[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [changingId, setChangingId] = useState<string | null>(null);
+  const t = useT(restaurantesComun, restaurantesChofer);
   // La nota de incidencia se pide con `pedirTexto` (`useConfirm`, con `AlertDialog`); el diálogo lo monta `dialogo`.
   const { pedirTexto, dialogo } = useConfirm();
 
@@ -99,7 +101,7 @@ export function RepartidorPedidosView({ apiBaseUrl, token, propertyId }: { apiBa
     try {
       setOrders(await fetchAssignedOrders(fetch, apiBaseUrl, token, propertyId));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudieron cargar tus pedidos.");
+      setError(err instanceof Error ? err.message : t("restaurantes.chofer.legado.errorCarga"));
     }
   }
 
@@ -116,7 +118,7 @@ export function RepartidorPedidosView({ apiBaseUrl, token, propertyId }: { apiBa
       await updateAssignedOrderStatus(fetch, apiBaseUrl, token, propertyId, order.id, next);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo actualizar el pedido.");
+      setError(err instanceof Error ? err.message : t("restaurantes.chofer.legado.errorActualizar"));
     } finally {
       setChangingId(null);
     }
@@ -130,9 +132,9 @@ export function RepartidorPedidosView({ apiBaseUrl, token, propertyId }: { apiBa
       const { telefono } = await pedirTelefonoCliente(fetch, apiBaseUrl, token, propertyId, order.id, nuevaLlaveIdempotencia());
       const enlace = enlaceTelefono(telefono);
       if (enlace) window.location.href = enlace;
-      else setError("El número del cliente no es válido. Avisa al encargado.");
+      else setError(t("restaurantes.chofer.numeroInvalido"));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo obtener el número del cliente.");
+      setError(err instanceof Error ? err.message : t("restaurantes.chofer.errorNumero"));
     } finally {
       setChangingId(null);
     }
@@ -140,12 +142,12 @@ export function RepartidorPedidosView({ apiBaseUrl, token, propertyId }: { apiBa
 
   async function handleReportarIncidencia(order: RepartidorOrder) {
     const nota = await pedirTexto({
-      titulo: "Reportar incidencia",
-      descripcion: "¿Qué pasó? (se guarda y administración lo ve de inmediato)",
+      titulo: t("restaurantes.chofer.legado.reportarIncidencia"),
+      descripcion: t("restaurantes.chofer.legado.incidenciaDescripcion"),
       tono: "danger",
-      confirmar: "Reportar incidencia",
-      cancelar: "Volver",
-      campo: { etiqueta: "Nota para administración", placeholder: "Ej. El cliente no abrió y no contesta el teléfono.", multilinea: true, maxLength: 2000 },
+      confirmar: t("restaurantes.chofer.legado.reportarIncidencia"),
+      cancelar: t("restaurantes.volver"),
+      campo: { etiqueta: t("restaurantes.chofer.legado.notaAdmin"), placeholder: t("restaurantes.chofer.legado.notaEjemplo"), multilinea: true, maxLength: 2000 },
     });
     if (nota === null) return; // Volver, Escape o cerrar: no se llama al API
     setChangingId(order.id);
@@ -154,7 +156,7 @@ export function RepartidorPedidosView({ apiBaseUrl, token, propertyId }: { apiBa
       await updateAssignedOrderStatus(fetch, apiBaseUrl, token, propertyId, order.id, "problema", nota.trim());
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo reportar la incidencia.");
+      setError(err instanceof Error ? err.message : t("restaurantes.chofer.legado.errorIncidencia"));
     } finally {
       setChangingId(null);
     }
@@ -166,23 +168,24 @@ export function RepartidorPedidosView({ apiBaseUrl, token, propertyId }: { apiBa
   return (
     <main id="contenido-principal" tabIndex={-1} className="min-h-screen bg-background focus:outline-none">
       <PageContainer padding="default" className="mx-auto max-w-2xl gap-4">
-      <h1 className="m-0 font-display text-xl font-semibold text-foreground">Mis entregas</h1>
+      <h1 className="m-0 font-display text-xl font-semibold text-foreground">{t("restaurantes.chofer.titulo")}</h1>
 
       {/* R-15: tres pestanas. "Mis pedidos" es la vista de siempre; las otras dos cargan solo al abrirse (Radix monta su contenido al activarlas). */}
       <Tabs defaultValue="pedidos" className="flex flex-col gap-3">
       <TabsList>
-        <TabsTrigger value="pedidos">Mis pedidos</TabsTrigger>
-        <TabsTrigger value="historial">Historial del día</TabsTrigger>
-        <TabsTrigger value="perfil">Mi perfil</TabsTrigger>
+        <TabsTrigger value="pedidos">{t("restaurantes.chofer.tab.pedidos")}</TabsTrigger>
+        <TabsTrigger value="historial">{t("restaurantes.chofer.tab.historial")}</TabsTrigger>
+        <TabsTrigger value="perfil">{t("restaurantes.chofer.tab.perfil")}</TabsTrigger>
       </TabsList>
 
       <TabsContent value="pedidos" className="mt-0 flex flex-col gap-4">
       {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
-      {!orders && !error && <EstadoCargando etiqueta="Cargando tus entregas…" />}
-      {orders && orders.length === 0 && <EstadoVacio mensaje="No tienes ningún pedido asignado por ahora." />}
+      {!orders && !error && <EstadoCargando etiqueta={t("restaurantes.chofer.cargandoEntregas")} />}
+      {orders && orders.length === 0 && <EstadoVacio mensaje={t("restaurantes.chofer.legado.sinPedidos")} />}
 
       {[...activos, ...resto].map((o) => {
-        const nextLabel = NEXT_STATUS_LABEL[o.status];
+        const nextClave = NEXT_STATUS_CLAVE[o.status];
+        const nextLabel = nextClave ? t(nextClave) : "";
         return (
           <Card key={o.id}>
             <CardContent className="p-4">
@@ -192,11 +195,11 @@ export function RepartidorPedidosView({ apiBaseUrl, token, propertyId }: { apiBa
                     {o.customerName} · ${formatMoney(o.total)}
                   </p>
                   <p className="mt-0.5 text-xs text-muted-foreground">
-                    {o.customerPhone} · {new Date(o.createdAt).toLocaleString("es-MX")}
+                    {o.customerPhone} · {new Date(o.createdAt).toLocaleString(localeActivo())}
                   </p>
                 </div>
                 <StatusBadge tone={statusTone(ORDER_STATUS_TONES, o.status)} className="self-start">
-                  {STATUS_LABELS[o.status]}
+                  {t(STATUS_CLAVE[o.status])}
                 </StatusBadge>
               </div>
 
@@ -219,14 +222,14 @@ export function RepartidorPedidosView({ apiBaseUrl, token, propertyId }: { apiBa
                   <Button asChild variant="outline">
                     <a href={urlDestinoMapa(o.notes, o.customerAddress) ?? undefined} target="_blank" rel="noreferrer">
                       <MapIcon />
-                      {destinoEsPin(o.notes) ? "Mapa (pin del cliente)" : "Mapa"}
+                      {destinoEsPin(o.notes) ? t("restaurantes.chofer.legado.mapaPin") : t("restaurantes.chofer.legado.mapa")}
                     </a>
                   </Button>
                 )}
                 {o.status !== "entregado" && o.status !== "cancelado" && (
                   <Button type="button" variant="outline" onClick={() => void handleLlamar(o)} disabled={changingId === o.id}>
                     <Phone />
-                    Llamar
+                    {t("restaurantes.chofer.llamar")}
                   </Button>
                 )}
                 {nextLabel && (
@@ -242,7 +245,7 @@ export function RepartidorPedidosView({ apiBaseUrl, token, propertyId }: { apiBa
                     disabled={changingId === o.id}
                   >
                     <AlertTriangle />
-                    Reportar incidencia
+                    {t("restaurantes.chofer.legado.reportarIncidencia")}
                   </Button>
                 )}
               </div>
@@ -270,6 +273,7 @@ export function RepartidorPedidosPage() {
   // Esta ruta vive fuera de todo shell (el que aplica el tema): se aplica aqui, con la bandera de diseno apagada o no (BUG-E2E-REST-004).
   useTemaGlobal();
   const navigate = useNavigate();
+  const t = useT(restaurantesChofer);
   const { orgSlug } = useParams<{ orgSlug: string }>();
   const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "http://localhost:8787";
 
@@ -306,7 +310,7 @@ export function RepartidorPedidosPage() {
         const branches = await fetchBranches(fetch, apiBaseUrl, session.token, orgSlug);
         if (cancelado) return;
         if (branches.length === 0) {
-          setError("Este negocio todavía no tiene ninguna sucursal configurada.");
+          setError(t("restaurantes.chofer.legado.sinSucursal"));
           return;
         }
         // Igual que RestaurantesShell.tsx: usa la primera sucursal hasta que haya un
@@ -316,7 +320,7 @@ export function RepartidorPedidosPage() {
         // repartidor-orders.ts).
         setPropertyId(branches[0]!.propertyId);
       } catch (err) {
-        if (!cancelado) setError(err instanceof Error ? err.message : "No se pudieron cargar las sucursales.");
+        if (!cancelado) setError(err instanceof Error ? err.message : t("restaurantes.chofer.legado.errorSucursales"));
       }
     })();
     return () => {
@@ -339,7 +343,7 @@ export function RepartidorPedidosPage() {
   if (!propertyId) {
     return (
       <PageContainer as="main" padding="default" className="mx-auto max-w-2xl gap-6 min-h-screen bg-background">
-        <EstadoCargando etiqueta="Cargando…" />
+        <EstadoCargando etiqueta={t("restaurantes.chofer.cargando")} />
       </PageContainer>
     );
   }

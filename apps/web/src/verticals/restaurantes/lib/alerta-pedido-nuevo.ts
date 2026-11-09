@@ -2,12 +2,10 @@
 // (o silencia 5 min), con vibracion donde el navegador la ofrece (Android). Logica pura con temporizadores inyectables para probarla.
 //
 // Limite honesto de la web: iOS y Android exigen un toque previo para reproducir audio y no garantizan sonido con la pantalla bloqueada o
-// la app en segundo plano; la pantalla lo dice (`AVISO_SONIDO_LIMITES`) en vez de prometer lo que el navegador no cumple.
+// la app en segundo plano; la pantalla lo dice (texto del catalogo i18n: avisoSonidoLimites del modulo de operacion) en vez de prometer lo que el navegador no cumple.
 
 export const INTERVALO_ALERTA_MS = 8_000;
 export const SILENCIO_MS = 5 * 60_000;
-
-export const AVISO_SONIDO_LIMITES = "Con la pantalla bloqueada o la app en segundo plano el celular puede no sonar (sobre todo en iPhone). Deja esta pantalla abierta y encendida.";
 
 export interface AlertaRepetida {
   /** Empieza a sonar (suena de inmediato y luego cada intervalo). No hace nada si ya esta sonando o esta en silencio. */

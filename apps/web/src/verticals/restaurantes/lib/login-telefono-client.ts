@@ -2,7 +2,12 @@
 // apps/api/src/routes/auth-login-telefono.ts. Sin React y con `fetchImpl` inyectado para probar la red real con vitest en entorno node.
 // La respuesta de `solicitar` es la MISMA exista o no la cuenta: aqui nunca se confirma ni se niega que un celular tenga cuenta.
 import type { LoginSession } from "../../../lib/auth-client.ts";
+import { traductorActivo } from "@atiende/ui";
+import { restaurantesAccesoChofer } from "@atiende/ui/i18n/restaurantes/accesoChofer";
 import { deleteJson, fetchJson, sendJson } from "./admin-client.ts";
+
+// Respaldo en el idioma activo cuando el servidor no manda su propio `message` (el del servidor se muestra tal cual).
+const tr = traductorActivo(restaurantesAccesoChofer);
 
 /** 10 digitos nacionales de un celular mexicano, o null. Acepta +52/52/521, espacios, guiones y parentesis (mismas reglas que el servidor). */
 export function normalizarCelular(entrada: string): string | null {
@@ -30,8 +35,8 @@ export type MotivoFallo = "no_disponible" | "demasiados" | "invalido" | "red";
 export type ResultadoSolicitud = { readonly ok: true; readonly expiraEnSegundos: number } | { readonly ok: false; readonly motivo: MotivoFallo; readonly mensaje: string };
 export type ResultadoVerificacion = { readonly ok: true; readonly session: LoginSession } | { readonly ok: false; readonly motivo: MotivoFallo; readonly mensaje: string };
 
-const MSG_RED = "No pudimos conectarnos. Revisa tu señal e inténtalo de nuevo.";
-const MSG_NO_DISPONIBLE = "El acceso con celular todavía no está disponible. Entra con tu correo o pídele ayuda a tu encargado.";
+const msgRed = () => tr("restaurantes.accesoChofer.error.red");
+const msgNoDisponible = () => tr("restaurantes.accesoChofer.error.noDisponible");
 
 function base(apiBaseUrl: string): string {
   return apiBaseUrl.replace(/\/$/, "");
@@ -64,12 +69,12 @@ export async function solicitarCodigoCelular(fetchImpl: typeof fetch, apiBaseUrl
       body: JSON.stringify({ telefono: celularNacional }),
     });
     if (res.ok) return { ok: true, expiraEnSegundos: Number(((await res.json()) as { expiraEnSegundos?: unknown }).expiraEnSegundos) || 300 };
-    if (res.status === 503) return { ok: false, motivo: "no_disponible", mensaje: MSG_NO_DISPONIBLE };
-    if (res.status === 429) return { ok: false, motivo: "demasiados", mensaje: await mensajeDe(res, "Pediste demasiados códigos. Espera unos minutos e inténtalo de nuevo.") };
-    if (res.status === 400) return { ok: false, motivo: "invalido", mensaje: await mensajeDe(res, "Escribe tu celular de 10 dígitos.") };
-    return { ok: false, motivo: "red", mensaje: "No pudimos enviar el código. Inténtalo de nuevo en un momento." };
+    if (res.status === 503) return { ok: false, motivo: "no_disponible", mensaje: msgNoDisponible() };
+    if (res.status === 429) return { ok: false, motivo: "demasiados", mensaje: await mensajeDe(res, tr("restaurantes.accesoChofer.error.demasiadosCodigos")) };
+    if (res.status === 400) return { ok: false, motivo: "invalido", mensaje: await mensajeDe(res, tr("restaurantes.accesoChofer.error.celular")) };
+    return { ok: false, motivo: "red", mensaje: tr("restaurantes.accesoChofer.error.envio") };
   } catch {
-    return { ok: false, motivo: "red", mensaje: MSG_RED };
+    return { ok: false, motivo: "red", mensaje: msgRed() };
   }
 }
 
@@ -84,12 +89,12 @@ export async function verificarCodigoCelular(fetchImpl: typeof fetch, apiBaseUrl
       const b = (await res.json()) as { token: string; refreshToken: string; email: string; fullName?: string; organizations: LoginSession["organizations"] };
       return { ok: true, session: { token: b.token, refreshToken: b.refreshToken, email: b.email, fullName: b.fullName ?? "", organizations: b.organizations } };
     }
-    if (res.status === 503) return { ok: false, motivo: "no_disponible", mensaje: MSG_NO_DISPONIBLE };
-    if (res.status === 429) return { ok: false, motivo: "demasiados", mensaje: await mensajeDe(res, "Demasiados intentos. Espera unos minutos.") };
-    if (res.status === 400) return { ok: false, motivo: "invalido", mensaje: await mensajeDe(res, "Escribe el código de 6 dígitos.") };
-    return { ok: false, motivo: "invalido", mensaje: "Código incorrecto o vencido. Pide uno nuevo." };
+    if (res.status === 503) return { ok: false, motivo: "no_disponible", mensaje: msgNoDisponible() };
+    if (res.status === 429) return { ok: false, motivo: "demasiados", mensaje: await mensajeDe(res, tr("restaurantes.accesoChofer.error.demasiadosIntentos")) };
+    if (res.status === 400) return { ok: false, motivo: "invalido", mensaje: await mensajeDe(res, tr("restaurantes.accesoChofer.error.codigo")) };
+    return { ok: false, motivo: "invalido", mensaje: tr("restaurantes.accesoChofer.error.codigoIncorrecto") };
   } catch {
-    return { ok: false, motivo: "red", mensaje: MSG_RED };
+    return { ok: false, motivo: "red", mensaje: msgRed() };
   }
 }
 

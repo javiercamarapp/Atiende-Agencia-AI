@@ -1,6 +1,8 @@
 // Tarjeta de un pedido de la cola movil del encargado (PLAN-PANEL-OPERADOR §5.4-A). Presentacional: no hace red; recibe la accion ya
 // resuelta por el servidor (`accionesDisponibles`). Boton grande >= 56 dp (h-14), desactivado tras el primer toque.
-import { Button, Card, CardContent, StatusBadge, cn, formatMoney } from "@atiende/ui";
+import { Button, Card, CardContent, StatusBadge, cn, formatMoney, useT } from "@atiende/ui";
+import { restaurantesComun } from "@atiende/ui/i18n/restaurantes/comun";
+import { restaurantesOperacion } from "@atiende/ui/i18n/restaurantes/operacion";
 import type { TarjetaPedido as TarjetaPedidoDato } from "@atiende/domain-restaurantes/operacion";
 import { BellOff, Home, MessageSquareOff, Store } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -23,6 +25,7 @@ export interface TarjetaPedidoProps {
 }
 
 export function TarjetaPedido({ pedido, minutos, ocupado, sinReconocer, alAccion, alReconocer, rutaViajes }: TarjetaPedidoProps) {
+  const t = useT(restaurantesComun, restaurantesOperacion);
   const semaforo = semaforoPedido(pedido.estado, pedido.canal, minutos);
   const accion = accionPrincipal(pedido);
   const listoDomicilio = pedido.canal === "domicilio" && pedido.estado === "preparando" && pedido.listoAt !== null;
@@ -43,7 +46,7 @@ export function TarjetaPedido({ pedido, minutos, ocupado, sinReconocer, alAccion
         <div className="flex flex-wrap items-center gap-2">
           <StatusBadge tone="neutral" dot={false} className="text-sm">
             <Canal className="size-4" aria-hidden="true" />
-            {domicilio ? "Domicilio" : "Recoger"}
+            {t(domicilio ? "restaurantes.canal.domicilio" : "restaurantes.canal.recoger")}
           </StatusBadge>
           <StatusBadge tone="neutral" dot={false} className="text-sm">
             {etiquetaOrigen(pedido.origen)}
@@ -51,7 +54,7 @@ export function TarjetaPedido({ pedido, minutos, ocupado, sinReconocer, alAccion
           {pedido.sinAviso && (
             <StatusBadge tone="warning" dot={false} className="text-sm">
               <MessageSquareOff className="size-4" aria-hidden="true" />
-              Sin aviso al cliente: llamar
+              {t("restaurantes.operacion.tarjeta.sinAviso")}
             </StatusBadge>
           )}
         </div>
@@ -61,7 +64,7 @@ export function TarjetaPedido({ pedido, minutos, ocupado, sinReconocer, alAccion
         </div>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-xl font-bold text-foreground">${formatMoney(pedido.total)}</p>
-          <SemaforoMinutos semaforo={semaforo} minutos={minutos} prefijo={pedido.estado === "pending" ? "Esperando" : pedido.estado === "en_camino" ? "En camino" : undefined} />
+          <SemaforoMinutos semaforo={semaforo} minutos={minutos} prefijo={pedido.estado === "pending" ? t("restaurantes.operacion.tarjeta.esperando") : pedido.estado === "en_camino" ? t("restaurantes.operacion.tarjeta.enCamino") : undefined} />
         </div>
         {accion && accion !== "salio" && (
           <Button
@@ -69,7 +72,7 @@ export function TarjetaPedido({ pedido, minutos, ocupado, sinReconocer, alAccion
             className="h-14 w-full text-lg"
             disabled={ocupado}
             loading={ocupado}
-            aria-label={`${ETIQUETA_ACCION[accion]} pedido #${pedido.numero}`}
+            aria-label={t("restaurantes.operacion.tarjeta.accionAria", { accion: ETIQUETA_ACCION[accion] ?? accion, numero: String(pedido.numero) })}
             onClick={(e) => {
               e.stopPropagation();
               alAccion(pedido, accion);
@@ -80,15 +83,16 @@ export function TarjetaPedido({ pedido, minutos, ocupado, sinReconocer, alAccion
         )}
         {(accion === "salio" || listoDomicilio) && (
           <Button asChild className="h-14 w-full text-lg" variant="outline">
-            <Link to={rutaViajes} aria-label={`Despachar pedido #${pedido.numero} en Viajes`}>
-              Despachar en Viajes
+            <Link to={rutaViajes} aria-label={t("restaurantes.operacion.tarjeta.despacharAria", { numero: String(pedido.numero) })}>
+              {t("restaurantes.operacion.tarjeta.despachar")}
             </Link>
           </Button>
         )}
         {sinReconocer && (
           <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
             <BellOff className="size-4" aria-hidden="true" />
-            Toca la tarjeta para detener el aviso.
+            {t("restaurantes.operacion.tarjeta.tocaParaDetener")}
+
           </p>
         )}
       </CardContent>

@@ -1,3 +1,16 @@
 /** Restaurantes, grupo «operacion»: Comandas, conversaciones, callbacks, avisos, historial, operacion del dia y repartidor. Un PR por grupo edita SOLO este archivo (y su par en en/), sin chocar con los demas. */
-// Vacio hasta que el PR de este grupo agregue sus modulos (una linea por modulo).
-export type ModulosRestaurantesOperacion = Record<never, never>;
+import type { restaurantesOperacion } from "../operacion.ts";
+import type { restaurantesCaptura } from "../captura.ts";
+import type { restaurantesViajes } from "../viajes.ts";
+import type { restaurantesAgregados } from "../agregados.ts";
+import type { restaurantesChofer } from "../chofer.ts";
+import type { restaurantesAccesoChofer } from "../accesoChofer.ts";
+
+export interface ModulosRestaurantesOperacion {
+  readonly restaurantesOperacion: typeof restaurantesOperacion;
+  readonly restaurantesCaptura: typeof restaurantesCaptura;
+  readonly restaurantesViajes: typeof restaurantesViajes;
+  readonly restaurantesAgregados: typeof restaurantesAgregados;
+  readonly restaurantesChofer: typeof restaurantesChofer;
+  readonly restaurantesAccesoChofer: typeof restaurantesAccesoChofer;
+}
