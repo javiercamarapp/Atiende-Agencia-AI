@@ -20,7 +20,7 @@ test.describe("captura del Resumen de despachos @captura", () => {
     }
     await expect(page.getByRole("link", { name: "Ver cobranza" })).toHaveAttribute("href", `/despachos/${despachos.orgSlug}/cobranza`);
     await expect(page.getByRole("link", { name: "Ver cierre" })).toHaveAttribute("href", `/despachos/${despachos.orgSlug}/cierre-mensual`);
-    await expect(page.getByRole("region", { name: "Última corrida" })).toContainText("Sin registro de corridas");
+    await expect(page.getByRole("region", { name: "Última corrida" })).toContainText("Aún no disponible");
     await afirmarSinScrollHorizontal(page);
     await afirmarModo(page, info.project.name.endsWith("oscuro") ? "oscuro" : "claro");
     vigilante.verificar();

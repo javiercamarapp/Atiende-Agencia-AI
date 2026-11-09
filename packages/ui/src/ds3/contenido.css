@@ -112,8 +112,25 @@ html[data-diseno="ds3"] .ds3-eyebrow-pagina.ds3-solo {
   text-transform: uppercase;
   color: hsl(var(--muted-foreground));
 }
-html[data-diseno="ds3"] .ds3-eyebrow-pagina.ds3-solo:has(+ .ds3-shell-pagina :is(.ds3-encabezado, .ds3-resumen)),
-html[data-diseno="ds3"] .ds3-shell-marco[data-pantalla="chat"] .ds3-eyebrow-pagina.ds3-solo {
+/* Encabezado de respaldo del shell (auditoria R2 #5): antetitulo + nombre de la pantalla 20/600/-0.5 juntos, con el ritmo de 12 del PageHeader
+ * antes de los avisos y del contenido. Se apaga entero si la pagina trae su encabezado (PageHeader o ResumenLayout) y en el chat; el nombre se
+ * apaga si la pagina pinta su propio <h1> visible (queda solo el antetitulo, como antes). Un <h1> sr-only no cuenta: ahi el nombre se ve
+ * aqui y el shell lo deja fuera del arbol accesible (aria-hidden) para no duplicar el nivel 1.
+ */
+html[data-diseno="ds3"] .ds3-encabezado-shell.ds3-solo { margin: 0 0 12px; min-width: 0; }
+html[data-diseno="ds3"] .ds3-encabezado-shell .ds3-eyebrow-pagina.ds3-solo { margin: 0 0 5px; }
+html[data-diseno="ds3"] .ds3-encabezado-shell-titulo.ds3-encabezado-shell-titulo {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.5px;
+}
+html[data-diseno="ds3"] .ds3-encabezado-shell.ds3-solo:has(~ .ds3-shell-pagina :is(.ds3-encabezado, .ds3-resumen)),
+html[data-diseno="ds3"] .ds3-shell-marco[data-pantalla="chat"] .ds3-encabezado-shell.ds3-solo {
+  display: none;
+}
+html[data-diseno="ds3"] .ds3-encabezado-shell.ds3-solo:has(~ .ds3-shell-pagina :is(h1, [role="heading"][aria-level="1"]):not(.sr-only)) .ds3-encabezado-shell-titulo {
   display: none;
 }
 

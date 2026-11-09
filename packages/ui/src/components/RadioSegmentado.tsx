@@ -2,8 +2,8 @@
 // spec): `role="radiogroup"` con una pildora `<label>` por opcion y un `<input type="radio"
 // class="sr-only">` real (teclado y lector de pantalla nativos, sin RadioGroup de Radix). El foco
 // se pinta en el label con la regla `label:has(> input.sr-only:focus-visible)` de index.css.
-// Activa = azul de Atiende donde Likida usa tinta; inactiva = hairline sobre tarjeta. Bajo ds3 (`ds3-segmentado`, ds3/contenido.css) es el
-// segmented de Rovaq: una pildora de 1 px, opciones de 28 px y la activa en azul suave, en una sola linea.
+// Activa = primario suave de Rovaq con el azul de Atiende (tinte --primary-soft, texto --primary-ink y anillo de 1 px al 30 %), no el azul
+// solido (auditoria R2 #8); inactiva = hairline sobre tarjeta. 28 px de alto y radio de control (8 px bajo ds3).
 import type { ReactNode } from "react";
 import { cn } from "../lib/utils";
 
@@ -35,9 +35,9 @@ export function RadioSegmentado<T extends string = string>({ name, label, opcion
           <label
             key={o.id}
             className={cn(
-              "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-pill font-medium",
+              "inline-flex min-h-7 items-center gap-1.5 rounded-control border px-3 py-1 text-pill font-medium transition-colors duration-fast ease-brand",
               disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer",
-              activa ? "bg-primary text-primary-foreground" : "border border-border bg-card text-foreground",
+              activa ? "border-primary/30 bg-primary-soft text-primary-ink" : "border-border bg-card text-foreground hover:bg-soft",
             )}
           >
             <input type="radio" name={name} value={o.id} checked={activa} disabled={disabled} onChange={() => onChange(o.id)} className="sr-only" />

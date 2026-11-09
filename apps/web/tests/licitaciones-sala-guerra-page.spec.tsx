@@ -260,7 +260,7 @@ describe("SalaGuerraPage -- tablero", () => {
     stubFetch({ "GET /sala-guerra": () => ({ ok: false, status: 500, body: { message: "boom" } }) });
     mount(CTX);
     await settle();
-    expect(rendered!.container.textContent).toContain("No se pudo cargar");
+    expect(rendered!.container.textContent).toContain("No disponible ahora"); // titulo de EstadoError (auditoria R2 #12)
     expect(buttons().some((b) => /reintentar/i.test(b.textContent ?? ""))).toBe(true);
   });
 });

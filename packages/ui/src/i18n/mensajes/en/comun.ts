@@ -21,7 +21,7 @@ export const comunEn: Traduccion<typeof comun> = {
   "comun.obligatorio": " (required)",
   "comun.cerrarAviso": "Dismiss",
   "comun.migas": "Breadcrumb",
-  "comun.error.titulo": "We couldn't load this information",
+  "comun.error.titulo": "Not available right now",
   "comun.error.servidor": "We couldn't reach the server. Check your connection and try again.",
   "comun.error.integracion": "We couldn't connect to {integracion}. Check the connection and try again.",
   "comun.error.pendienteCredenciales": "{integracion} is waiting for credentials. Connect the integration to see real data here.",

@@ -25,6 +25,7 @@ import { Sidebar, type SidebarItem, type SidebarPiePildora, type SidebarSection,
 import { I18nContexto, useT, type ContextoI18n } from "../i18n/proveedor";
 import { shell } from "../i18n/mensajes/shell.ts";
 import { GrupoNavContext } from "./PageHeader";
+import { RanuraAvisosProvider, useRanuraAvisosShell } from "./AvisoPagina";
 
 export const VERTICAL_SHELL_MAIN_ID = "contenido-principal";
 
@@ -52,18 +53,22 @@ export function construirMigas(sections: readonly SidebarSection[], pathname: st
   const mejor = itemActivo(sections, pathname);
   if (!mejor) return [{ etiqueta: raiz.etiqueta }];
   const migas: VerticalMiga[] = [raiz];
-  if (mejor.grupo.trim().toLowerCase() !== mejor.item.label.trim().toLowerCase()) migas.push({ etiqueta: mejor.grupo });
+  if (mejor.grupo && mejor.grupo.trim().toLowerCase() !== mejor.item.label.trim().toLowerCase()) migas.push({ etiqueta: mejor.grupo });
   migas.push({ etiqueta: mejor.item.label });
   return migas;
 }
 
-/** Item de navegacion activo: el de `sections` cuya ruta es el prefijo mas largo del `pathname` (null si ninguno). */
-export function itemActivo(sections: readonly SidebarSection[], pathname: string): { grupo: string; item: SidebarItem } | null {
-  let mejor: { grupo: string; item: SidebarItem } | null = null;
+/**
+ * Item de navegacion activo: el de `sections` cuya ruta es el prefijo mas largo del `pathname` (null si ninguno). `grupo` es la
+ * categoria del menu que lo contiene; los items de la seccion raiz (`siempreAbierto`: Resumen, Copiloto, CFO, Agenda...) se pintan
+ * sin titulo y no tienen categoria, asi que su `grupo` es null (antes heredaban el titulo oculto «Resumen» como antetitulo; R2 #6).
+ */
+export function itemActivo(sections: readonly SidebarSection[], pathname: string): { grupo: string | null; item: SidebarItem } | null {
+  let mejor: { grupo: string | null; item: SidebarItem } | null = null;
   for (const s of sections) {
     for (const it of s.items) {
       const coincide = pathname === it.to || pathname.startsWith(`${it.to}/`);
-      if (coincide && (!mejor || it.to.length > mejor.item.to.length)) mejor = { grupo: s.title, item: it };
+      if (coincide && (!mejor || it.to.length > mejor.item.to.length)) mejor = { grupo: s.siempreAbierto ? null : s.title, item: it };
     }
   }
   return mejor;
@@ -292,11 +297,12 @@ export function VerticalShell({
   const { pathname } = useLocation();
   const mainRef = React.useRef<HTMLElement>(null);
   const [sinH1, setSinH1] = React.useState(false);
-  // Una pagina sin <h1> propio no deja la pantalla sin encabezado: la barra hace de nivel 1 hasta que la pagina pinte el suyo.
+  // Una pagina sin <h1> propio no deja la pantalla sin encabezado: la barra (y, bajo ds3, el encabezado de respaldo del shell) hace de
+  // nivel 1 hasta que la pagina pinte el suyo. Se mide solo dentro de la pagina: el encabezado de respaldo del shell no cuenta.
   React.useEffect(() => {
     const main = mainRef.current;
     if (!main) return undefined;
-    const medir = () => setSinH1(main.querySelector('h1, [role="heading"][aria-level="1"]') === null);
+    const medir = () => setSinH1(main.querySelector(':scope > .ds3-shell-pagina :is(h1, [role="heading"][aria-level="1"])') === null);
     medir();
     // Sincrono (flushSync): si el cambio se aplicara en una tarea posterior, entre que la pagina pinta su <h1> (p. ej. al bajar
     // su chunk perezoso o sus datos) y que la barra deja de hacer de nivel 1 habria un instante con DOS encabezados de nivel 1.
@@ -307,6 +313,8 @@ export function VerticalShell({
   const [sobrescrito, fijarTitulo] = React.useState<TituloBarra | null>(null);
   const [accionesBarra, fijarAcciones] = React.useState<React.ReactNode>(null);
   const [marco, fijarMarco] = React.useState<HTMLElement | null>(null);
+  const ranuraAvisos = useRanuraAvisosShell();
+  const abrirGuia = () => (onGuia ? onGuia() : window.dispatchEvent(new CustomEvent(GUIA_ABRIR_EVENTO, { detail: { ruta: pathname } })));
   // Los destinos del pie del Sidebar ("Ver los otros paneles") tambien son paginas del panel aunque no esten en `sections`:
   // la barra les pone su nombre en vez del titulo de la consola. Van DESPUES de `sections`, asi un destino que ya es de una
   // categoria (p. ej. "Costos de IA" -> "Costos y margen") conserva el nombre de su categoria.
@@ -322,8 +330,8 @@ export function VerticalShell({
   const tituloBarra = barraDeConsola ? header.title : (sobrescrito?.titulo ?? barraDeRuta?.label ?? header.title);
   // ds3: el encabezado lleva SIEMPRE el nombre de la pagina (tambien en el Resumen); el de la consola queda solo si la ruta no es del menu.
   const tituloDs3 = sobrescrito?.titulo || activo?.item.label || header.title;
-  // ds3: grupo del menu de la pantalla activa, antetitulo del PageHeader.
-  const grupoNav = activo ? activo.grupo : null;
+  // ds3: categoria del menu de la pantalla activa, antetitulo del PageHeader (null en la seccion raiz y fuera del menu).
+  const grupoNav = activo?.grupo ?? null;
   const iconoBarra = IconoBarra ? <IconoBarra className="size-[15px] text-muted-foreground" strokeWidth={1.75} /> : header.icon;
   const selectores =
     organizationSelector || branchSelector ? (
@@ -348,13 +356,17 @@ export function VerticalShell({
 
       <MobileHeader
         title={<AtiendeWordmark className="scale-90 origin-left" />}
-        pagina={{ icon: iconoBarra, title: tituloBarra, comoH1: sinH1 }}
+        pagina={{ icon: iconoBarra, title: tituloBarra, comoH1: sinH1, comoH1Ds3: false }}
         action={
           <div className="ds3-movil-acciones flex items-center gap-1 min-w-0">
             {mobileSelector ? <div className="min-w-0 max-w-[48vw]">{mobileSelector}</div> : null}
             {/* ds3 (decision de Omar 7-nov-2026, igual que Rovaq): campana con contador y «Más» de 44 que abre la hoja con el sidebar
                 completo (cuenta, tema y salir incluidos); el menu de cuenta del diseno actual se oculta. El chat de datos no va aqui: es
                 «Preguntar» de la barra inferior. */}
+            {/* «Guía» tambien en movil (auditoria R2 #3): en escritorio vive junto al titulo de la barra, que en movil no existe. */}
+            <button type="button" hidden data-testid="movil-guia" aria-label={t("shell.guia")} onClick={abrirGuia} className="ds3-solo ds3-movil-guia">
+              <CircleHelp aria-hidden="true" strokeWidth={1.75} />
+            </button>
             {notificaciones ? <CampanaMovil {...notificaciones} /> : null}
             <button
               type="button"
@@ -379,19 +391,22 @@ export function VerticalShell({
         {/* ds3: la zona es la barra de 44 px (la cabecera interna se aplana con display:contents) y el boton «Guía» queda junto al
             titulo; vive FUERA de [data-testid="barra-pagina"] para que la barra del diseno actual siga sin botones propios. */}
         <div className="ds3-cabecera-zona hidden md:block shrink-0" data-sin-cabecera={barraDeConsola ? "" : undefined}>
+          {/* Sin <h1> de la pagina, bajo ds3 el nivel 1 es el encabezado de respaldo del contenido (no la barra): la barra pinta su nombre
+              con la pieza ds3 (que nunca es encabezado) y la del diseno actual, que si lo es, queda apagada por ds3-no. */}
           <BarraPagina
             icon={iconoBarra}
             title={tituloBarra}
-            tituloDs3={tituloDs3 !== tituloBarra ? tituloDs3 : undefined}
+            tituloDs3={tituloDs3 !== tituloBarra || sinH1 ? tituloDs3 : undefined}
             acciones={accionesBarra}
             comoH1={sinH1}
+            comoH1Ds3={false}
             className="ds3-cabecera"
           />
           <button
             type="button"
             hidden
             data-testid="barra-guia"
-            onClick={() => (onGuia ? onGuia() : window.dispatchEvent(new CustomEvent(GUIA_ABRIR_EVENTO, { detail: { ruta: pathname } })))}
+            onClick={abrirGuia}
             className="ds3-solo ds3-guia"
           >
             <CircleHelp aria-hidden="true" strokeWidth={1.75} />
@@ -406,20 +421,39 @@ export function VerticalShell({
           key={contentKey}
           className="ds3-shell-contenido flex-1 min-h-0 overflow-y-auto focus:outline-none px-4 pt-[calc(5.5rem+var(--safe-area-top))] pb-[calc(7rem+var(--safe-area-bottom))] md:px-5 md:pt-3.5 md:pb-5"
         >
-          {/* ds3: antetitulo (= grupo del menu) de las pantallas sin PageHeader ni ResumenLayout, que traen el suyo; ds3/contenido.css lo apaga
-              cuando la pagina ya tiene uno y en el chat. Texto real: nunca un <p> vacio. Fuera de la pagina para no tocar su contenido. */}
-          {grupoNav ? (
-            <p hidden data-testid="eyebrow-pagina" className="ds3-solo ds3-eyebrow-pagina">
-              {grupoNav}
+          {/* ds3: encabezado de respaldo de las pantallas sin PageHeader ni ResumenLayout (que traen el suyo): antetitulo (= categoria del
+              menu) y, si la pagina no pinta ningun <h1>, el nombre de la pantalla como nivel 1 (20/600), juntos y ANTES de los avisos
+              (auditoria R2 #5). ds3/contenido.css lo apaga cuando la pagina ya tiene encabezado y en el chat, y apaga el nombre cuando la
+              pagina trae su propio <h1> visible (uno sr-only no cuenta: ~31 pantallas lo usan porque el nombre visible era el de la barra). Texto real: nunca un <p> vacio. Fuera de la pagina para no tocar su contenido. */}
+          <header hidden data-testid="encabezado-shell" className="ds3-solo ds3-encabezado-shell">
+            {grupoNav ? (
+              <p hidden data-testid="eyebrow-pagina" className="ds3-solo ds3-eyebrow-pagina">
+                {grupoNav}
+              </p>
+            ) : null}
+            {/* Nivel 1 solo si la pagina no trae <h1>. Si trae uno solo para lectores de pantalla (sr-only: el nombre visible era el de la
+                barra), aqui se ve el nombre pero queda fuera del arbol accesible para no duplicar el nivel 1. */}
+            <p
+              role={sinH1 ? "heading" : undefined}
+              aria-level={sinH1 ? 1 : undefined}
+              aria-hidden={sinH1 ? undefined : true}
+              data-testid="encabezado-shell-titulo"
+              className="ds3-encabezado-shell-titulo truncate font-display text-xl font-semibold text-foreground"
+            >
+              {tituloDs3}
             </p>
-          ) : null}
+          </header>
+          {/* Ranura de avisos de respaldo (banners globales) cuando la pagina no trae encabezado propio con la suya. */}
+          <div ref={ranuraAvisos.refShell} data-testid="ranura-avisos-shell" className="ds3-ranura-avisos" />
           {/* Transicion de navegacion: entrada breve (tokens de motion) al cambiar de ruta, solo con movimiento permitido. Sin `max-w`: ancho completo del marco. */}
           <div key={pathname} className="ds3-shell-pagina motion-safe:animate-page-in">
             <TituloBarraContext.Provider value={fijarTitulo}>
               <AccionesBarraContext.Provider value={fijarAcciones}>
                 <MarcoShellContext.Provider value={marco}>
                   <GrupoNavContext.Provider value={grupoNav}>
-                    <RutaBoundary resetKey={pathname}>{children}</RutaBoundary>
+                    <RanuraAvisosProvider value={ranuraAvisos.valor}>
+                      <RutaBoundary resetKey={pathname}>{children}</RutaBoundary>
+                    </RanuraAvisosProvider>
                   </GrupoNavContext.Provider>
                 </MarcoShellContext.Provider>
               </AccionesBarraContext.Provider>

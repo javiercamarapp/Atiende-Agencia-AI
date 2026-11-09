@@ -180,7 +180,7 @@ describe("PrimerosPasosPage (citas)", () => {
     rendered = render();
     await esperar();
     const text = rendered.container.textContent ?? "";
-    expect(text).toContain("No se pudo cargar");
+    expect(text).toContain("No disponible ahora"); // titulo de EstadoError (auditoria R2 #12)
     expect(text).not.toMatch(/\d+ de \d+ pasos/);
     expect(text).not.toContain("Listo para recibir citas");
     expect(rendered.container.querySelector("progress")).toBeNull();
