@@ -4,9 +4,10 @@
 // Los roles que el servidor rechazaria NI SIQUIERA llaman al backend: ven el estado "sin acceso" directo.
 import { useMemo } from "react";
 import { Lock } from "lucide-react";
-import { EstadoVacio, SeccionFijadosCopiloto } from "@atiende/ui";
+import { EstadoVacio, SeccionFijadosCopiloto, useIdiomaCopiloto } from "@atiende/ui";
 import { apiBaseUrlFromRequestUrl, withAuthRefresh } from "../../../lib/authed-fetch.ts";
 import { COPILOTO_HOTELES } from "../../../lib/copiloto/config/hoteles.ts";
+import { textoSinAccesoEn } from "../../../lib/copiloto/config/idioma.ts";
 import { crearClienteFijados } from "../../../lib/copiloto/fijados.ts";
 import { consultarEstadoCopiloto, crearTransporteCopiloto } from "../../../lib/copiloto/transporte.ts";
 import type { CopilotoTransporteConfig } from "../../../lib/copiloto/transporte.ts";
@@ -22,10 +23,11 @@ export function urlChatDatosHoteles(apiBaseUrl: string, propertyId: string): str
 }
 
 export function HotelesCopilotoPage(ctx: HotelesShellContext) {
+  const { t, idioma } = useIdiomaCopiloto();
   if (!COPILOTO_HOTELES_ROLES.has(ctx.role)) {
     return (
       <div className="p-4">
-        <EstadoVacio icon={Lock} titulo="Sin acceso" mensaje={COPILOTO_HOTELES.textoSinAcceso} />
+        <EstadoVacio icon={Lock} titulo={t("paginaSinAcceso")} mensaje={textoSinAccesoEn(COPILOTO_HOTELES, idioma)} />
       </div>
     );
   }
