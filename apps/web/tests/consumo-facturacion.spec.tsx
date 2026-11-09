@@ -4,7 +4,7 @@
 // honesto; un error de servidor no inventa cifras.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ConsumoFacturacion } from "../src/verticals/restaurantes/pages/ConsumoFacturacion.tsx";
-import { flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+import { esperarHasta, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 
 let rendered: RenderedComponent | undefined;
 afterEach(() => {
@@ -36,28 +36,28 @@ describe("ConsumoFacturacion", () => {
   it("muestra KPIs, bolsa con aviso del 80 %, proyeccion con rango, sucursales e historial", async () => {
     stubFetch(200, CONSUMO);
     rendered = renderComponent(<ConsumoFacturacion apiBaseUrl="https://api.test" token="tok" />);
-    await flushMicrotasks();
+    await esperarHasta(() => document.querySelector('[data-testid="consumo-kpis"]') !== null, "las cifras de consumo");
     const texto = document.body.textContent ?? "";
     expect(texto).toContain("1,300");
     expect(texto).toContain("80 %");
     expect(document.querySelector('[data-testid="consumo-proyeccion"]')?.textContent).toMatch(/7,690/);
     expect(document.querySelector('[data-testid="consumo-sucursales"]')?.textContent).toContain("Centro");
     expect(document.querySelector('[data-testid="consumo-historial"]')).not.toBeNull();
+    // Una sola peticion: cargar las cifras no debe volver a disparar la carga.
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1);
   });
 
   it("sin migraciones muestra el motivo, sin cifras", async () => {
     stubFetch(200, { disponible: false, motivo: "Faltan migraciones" });
     rendered = renderComponent(<ConsumoFacturacion apiBaseUrl="https://api.test" token="tok" />);
-    await flushMicrotasks();
-    expect(document.body.textContent).toContain("Faltan migraciones");
+    await esperarHasta(() => (document.body.textContent ?? "").includes("Faltan migraciones"), "el motivo de no disponible");
     expect(document.querySelector('[data-testid="consumo-kpis"]')).toBeNull();
   });
 
   it("un 403 muestra error, sin cifras", async () => {
     stubFetch(403, { message: "No perteneces a esta organización." });
     rendered = renderComponent(<ConsumoFacturacion apiBaseUrl="https://api.test" token="tok" />);
-    await flushMicrotasks();
-    expect(document.body.textContent).toContain("No perteneces");
+    await esperarHasta(() => (document.body.textContent ?? "").includes("No perteneces"), "el error del servidor");
     expect(document.querySelector('[data-testid="consumo-kpis"]')).toBeNull();
   });
 });
