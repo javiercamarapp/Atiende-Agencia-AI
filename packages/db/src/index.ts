@@ -24,6 +24,7 @@ export type {
   UpsertOrganizationBillingInput,
   ActivacionPorPago,
   BillingWebhookEventMark,
+  BillingWebhookTxRepository,
   SuperadminOrganizationBillingRow,
   BillingWebhookEventSummaryRow,
   BillingWebhookLogResult,

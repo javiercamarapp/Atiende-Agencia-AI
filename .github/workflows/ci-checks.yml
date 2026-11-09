@@ -125,8 +125,16 @@ jobs:
       - name: Node + dependencias
         uses: ./.github/actions/node-deps
 
+      # El programa raíz de tsc (todos los paquetes backend + sus tests + scripts en un solo programa) ya
+      # llega al tope de heap por omisión de V8 en el runner (~2 GB): desde el 8-nov moría con
+      # "JavaScript heap out of memory" (exit 134) a los ~55 s. Se sube el tope a 6 GB (el runner tiene
+      # 7 GB o más; el resto queda para el SO). Mismo `npm run typecheck`, misma cobertura de tipos.
+      # `/usr/bin/time` deja en el log el pico de memoria (RSS máximo del tsc más grande) para ver cuánto
+      # margen queda antes de que vuelva a hacer falta partir el programa raíz por paquete.
       - name: Typecheck (raíz + --workspaces --if-present, incluye apps/web)
-        run: npm run typecheck
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+        run: /usr/bin/time -f "typecheck: pico de memoria %M KB, %e s" npm run typecheck
 
       - name: Lint (ESLint, todo el árbol)
         run: npm run lint
