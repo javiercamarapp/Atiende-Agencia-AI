@@ -176,6 +176,7 @@ interface OutboxRow {
   id: string;
   attempts: number;
   payload: unknown;
+  organization_id: string;
 }
 
 export class PostgresWhatsAppRepository implements WhatsAppRepository {
@@ -299,8 +300,9 @@ export class PostgresWhatsAppRepository implements WhatsAppRepository {
 
   async claimOutboxBatch(limit: number, leaseSeconds: number): Promise<readonly MessagingOutboxItem[]> {
     return this.guarded(async () => {
-      const { rows } = await this.db.query<OutboxRow>(`select id, attempts, payload from licitaciones.claim_whatsapp_outbox_batch($1, $2);`, [limit, leaseSeconds]);
-      return rows.map((r) => ({ id: r.id, attempts: r.attempts, payload: r.payload }));
+      // organization_id: el medidor mensual de mensajes por plan (PL-16) solo mide items con organizacion (Ola 4, H3).
+      const { rows } = await this.db.query<OutboxRow>(`select id, attempts, payload, organization_id from licitaciones.claim_whatsapp_outbox_batch($1, $2);`, [limit, leaseSeconds]);
+      return rows.map((r) => ({ id: r.id, attempts: r.attempts, payload: r.payload, organizationId: r.organization_id }));
     });
   }
 
@@ -528,7 +530,7 @@ export class InMemoryWhatsAppRepository implements WhatsAppRepository {
     this.guard();
     const picked = this.outbox.filter((r) => r.status === "pending").slice(0, limit);
     for (const r of picked) r.status = "processing";
-    return picked.map((r) => ({ id: r.id, attempts: r.attempts, payload: r.payload }));
+    return picked.map((r) => ({ id: r.id, attempts: r.attempts, payload: r.payload, organizationId: r.organizationId }));
   }
 
   async markOutboxSent(id: string): Promise<void> {
