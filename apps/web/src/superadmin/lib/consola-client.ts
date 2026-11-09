@@ -5,7 +5,9 @@
 //
 // REGLA DE LA CASA: nunca inventar una cifra. Cada campo del resumen es `{ valor, codigo?, razon? }`; `valor: null` se
 // pinta como "—" con su `razon`, jamas como 0.
-import { formatMoney } from "@atiende/ui";
+import { etiquetasTraducidas, formatMoney, localeActivo, traductorActivo } from "@atiende/ui";
+import { superadminComun } from "@atiende/ui/i18n/superadmin/comun";
+import { superadminConsola } from "@atiende/ui/i18n/superadmin/consola";
 import { PIE_SUPERADMIN, RUTAS_SIN_MENU, TODAS_LAS_RUTAS } from "../rutas.ts";
 
 export interface Campo<T> {
@@ -101,14 +103,17 @@ async function getJson<T>(apiBaseUrl: string, token: string, ruta: string, mensa
   return (await res.json()) as T;
 }
 
+// Textos que arma este modulo (errores, saludo, agentes, verticales): siguen al idioma activo de la consola.
+const tr = traductorActivo(superadminComun, superadminConsola);
+
 export const fetchConsolaResumen = (apiBaseUrl: string, token: string) =>
-  getJson<ConsolaResumen>(apiBaseUrl, token, "/superadmin/consola/resumen", "No se pudo cargar el resumen de la consola.");
+  getJson<ConsolaResumen>(apiBaseUrl, token, "/superadmin/consola/resumen", tr("superadmin.consola.error.resumen"));
 
 export const fetchAgentesActividad = (apiBaseUrl: string, token: string) =>
-  getJson<AgentesActividad>(apiBaseUrl, token, "/superadmin/consola/agentes-actividad", "No se pudo cargar la actividad de los agentes.");
+  getJson<AgentesActividad>(apiBaseUrl, token, "/superadmin/consola/agentes-actividad", tr("superadmin.consola.error.agentes"));
 
 export async function fetchOrganizacionesConsola(apiBaseUrl: string, token: string): Promise<readonly OrganizacionConsola[]> {
-  const body = await getJson<{ organizations: OrganizacionConsola[] }>(apiBaseUrl, token, "/superadmin/organizations", "No se pudieron cargar las organizaciones.");
+  const body = await getJson<{ organizations: OrganizacionConsola[] }>(apiBaseUrl, token, "/superadmin/organizations", tr("superadmin.comun.error.organizaciones"));
   return body.organizations;
 }
 
@@ -122,11 +127,12 @@ export function horaMexico(fecha: Date): number {
   return Number(h) % 24;
 }
 
-export function saludoMexico(fecha: Date = new Date()): "Buenos días" | "Buenas tardes" | "Buenas noches" {
+/** "Buenos días" / "Buenas tardes" / "Buenas noches", en el idioma activo. */
+export function saludoMexico(fecha: Date = new Date()): string {
   const hora = horaMexico(fecha);
-  if (hora >= 5 && hora < 12) return "Buenos días";
-  if (hora >= 12 && hora < 20) return "Buenas tardes"; // mismo corte que restaurantes: «buenas noches» desde las 20:00
-  return "Buenas noches";
+  if (hora >= 5 && hora < 12) return tr("superadmin.consola.saludo.manana");
+  if (hora >= 12 && hora < 20) return tr("superadmin.consola.saludo.tarde"); // mismo corte que restaurantes: «buenas noches» desde las 20:00
+  return tr("superadmin.consola.saludo.noche");
 }
 
 // ---- rutas --------------------------------------------------------------------------------------------------------
@@ -148,16 +154,40 @@ export interface GrupoAgente {
   readonly incluye: (role: string) => boolean;
 }
 
+// `nombre` se lee en cada render (getter): sigue al idioma activo.
 export const GRUPOS_AGENTE: readonly GrupoAgente[] = [
-  { clave: "extractor", nombre: "Agente extractor", ruta: "/superadmin/agente-extractor", incluye: (r) => r === "licitaciones:requirement_extractor" },
-  { clave: "conciliacion", nombre: "Agente de conciliación", ruta: "/superadmin/agente-conciliacion", incluye: (r) => r === "despachos:conciliacion_llm_agent" },
+  {
+    clave: "extractor",
+    get nombre() {
+      return tr("superadmin.consola.agente.extractor");
+    },
+    ruta: "/superadmin/agente-extractor",
+    incluye: (r) => r === "licitaciones:requirement_extractor",
+  },
+  {
+    clave: "conciliacion",
+    get nombre() {
+      return tr("superadmin.consola.agente.conciliacion");
+    },
+    ruta: "/superadmin/agente-conciliacion",
+    incluye: (r) => r === "despachos:conciliacion_llm_agent",
+  },
   {
     clave: "whatsapp",
-    nombre: "Agente de WhatsApp y voz",
+    get nombre() {
+      return tr("superadmin.consola.agente.whatsapp");
+    },
     ruta: "/superadmin/agente-whatsapp",
     incluye: (r) => r.endsWith(":whatsapp_agent") || r.endsWith(":whatsapp_agent_escalated") || r === "rentas:mensajeria_agent",
   },
-  { clave: "copiloto", nombre: "Copiloto", ruta: "/superadmin/copiloto", incluye: (r) => r === "superadmin:copiloto" },
+  {
+    clave: "copiloto",
+    get nombre() {
+      return tr("superadmin.consola.agente.copiloto");
+    },
+    ruta: "/superadmin/copiloto",
+    incluye: (r) => r === "superadmin:copiloto",
+  },
 ];
 
 export interface ActividadGrupo {
@@ -178,7 +208,7 @@ export function actividadPorGrupo(filas: readonly AgenteActividad[]): readonly A
 export function costoPorAgente(filas: readonly AgenteActividad[]): readonly { etiqueta: string; valor: number }[] {
   const segmentos = actividadPorGrupo(filas).map((a) => ({ etiqueta: a.grupo.nombre, valor: a.costoUsd }));
   const otros = filas.filter((f) => !GRUPOS_AGENTE.some((g) => g.incluye(f.role))).reduce((s, f) => s + f.historico.costoUsd, 0);
-  if (otros > 0) segmentos.push({ etiqueta: "Otros roles", valor: otros });
+  if (otros > 0) segmentos.push({ etiqueta: tr("superadmin.consola.otrosRoles"), valor: otros });
   return segmentos.filter((s) => s.valor > 0);
 }
 
@@ -193,18 +223,12 @@ export function fechaHoraCorta(iso: string | null): string | null {
   if (!iso) return null;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
-  return d.toLocaleString("es-MX", { timeZone: TZ, day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleString(localeActivo(), { timeZone: TZ, day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 }
 
-export const NOMBRE_VERTICAL: Readonly<Record<string, string>> = {
-  hoteles: "Hoteles",
-  restaurantes: "Restaurantes",
-  citas: "Citas",
-  licitaciones: "Licitaciones",
-  despachos: "Despachos",
-  rentas: "Rentas vacacionales",
-  plataforma: "Plataforma",
-};
+const VERTICALES_CONSOLA = ["hoteles", "restaurantes", "citas", "licitaciones", "despachos", "rentas", "plataforma"] as const;
+/** Nombre visible de cada vertical, en el idioma activo (traduce en cada lectura). */
+export const NOMBRE_VERTICAL: Readonly<Record<string, string>> = etiquetasTraducidas(VERTICALES_CONSOLA, (v) => `superadmin.comun.vertical.${v}` as const, superadminComun);
 
 /** Ventana de la serie diaria que el endpoint entrega (14 dias): 7d recorta; 30d y Todo muestran lo que hay, y se dice. */
 export const DIAS_SERIE = 14;

@@ -71,6 +71,11 @@ const IGUALES_PERMITIDOS = new Set<string>([
   "Subtotal",
   "Total",
   "{min} min",
+  // Consola de superadmin: terminos que la consola ya escribe igual en los dos idiomas.
+  "Vertical",
+  "{n} vertical",
+  "Plan",
+  "Onboarding",
 ]);
 
 describe("catalogo i18n", () => {

@@ -1,5 +1,11 @@
 // Tipos y rotulos del "Equipo" de una organizacion (alta del equipo inicial por superadmin, SA-L-26 minimo). La forma es la de
 // apps/api/src/routes/superadmin-organizaciones-equipo.ts: el correo llega ENMASCARADO y nunca hay hashes ni tokens.
+import { etiquetasTraducidas, traductorActivo } from "@atiende/ui";
+import type { Clave } from "@atiende/ui";
+import { superadminEquipo } from "@atiende/ui/i18n/superadmin/equipo";
+
+const tr = traductorActivo(superadminEquipo);
+
 export interface EquipoMiembro {
   readonly userId: string;
   readonly correo: string;
@@ -52,50 +58,59 @@ export interface RolEquipo {
   readonly esDueno: boolean;
 }
 
+/** Rol invitable con su rotulo en el idioma activo (getter: traduce en cada lectura). */
+const rol = (valor: string, clave: Clave, esDueno: boolean): RolEquipo => ({
+  valor,
+  get nombre() {
+    return tr(clave);
+  },
+  esDueno,
+});
+
 /** Roles de la lista blanca de cada vertical (la base valida la lista, migracion 0070; aqui solo los rotulos). */
 export const ROLES_EQUIPO_POR_VERTICAL: Readonly<Record<string, readonly RolEquipo[]>> = {
   restaurantes: [
-    { valor: "owner", nombre: "Dueño (owner)", esDueno: true },
-    { valor: "admin", nombre: "Administrador (admin)", esDueno: false },
-    { valor: "staff", nombre: "Equipo (staff)", esDueno: false },
-    { valor: "repartidor", nombre: "Repartidor", esDueno: false },
+    rol("owner", "superadmin.equipo.rol.owner", true),
+    rol("admin", "superadmin.equipo.rol.admin", false),
+    rol("staff", "superadmin.equipo.rol.staff", false),
+    rol("repartidor", "superadmin.equipo.rol.repartidor", false),
   ],
   citas: [
-    { valor: "owner", nombre: "Dueño (owner)", esDueno: true },
-    { valor: "admin", nombre: "Administrador (admin)", esDueno: false },
-    { valor: "staff", nombre: "Equipo (staff)", esDueno: false },
+    rol("owner", "superadmin.equipo.rol.owner", true),
+    rol("admin", "superadmin.equipo.rol.admin", false),
+    rol("staff", "superadmin.equipo.rol.staff", false),
   ],
   hoteles: [
-    { valor: "owner", nombre: "Dueño (owner)", esDueno: true },
-    { valor: "gm", nombre: "Gerente general (gm)", esDueno: false },
-    { valor: "frontdesk", nombre: "Recepción", esDueno: false },
-    { valor: "reservations", nombre: "Reservaciones", esDueno: false },
-    { valor: "housekeeping", nombre: "Ama de llaves", esDueno: false },
-    { valor: "maintenance", nombre: "Mantenimiento", esDueno: false },
-    { valor: "fnb", nombre: "Alimentos y bebidas", esDueno: false },
-    { valor: "accountant", nombre: "Contabilidad", esDueno: false },
+    rol("owner", "superadmin.equipo.rol.owner", true),
+    rol("gm", "superadmin.equipo.rol.gm", false),
+    rol("frontdesk", "superadmin.equipo.rol.frontdesk", false),
+    rol("reservations", "superadmin.equipo.rol.reservations", false),
+    rol("housekeeping", "superadmin.equipo.rol.housekeeping", false),
+    rol("maintenance", "superadmin.equipo.rol.maintenance", false),
+    rol("fnb", "superadmin.equipo.rol.fnb", false),
+    rol("accountant", "superadmin.equipo.rol.accountant", false),
   ],
   despachos: [
-    { valor: "admin", nombre: "Dueño del despacho (admin)", esDueno: true },
-    { valor: "contador", nombre: "Contador", esDueno: false },
-    { valor: "auditor", nombre: "Auditor", esDueno: false },
-    { valor: "readonly", nombre: "Solo lectura", esDueno: false },
+    rol("admin", "superadmin.equipo.rol.duenoDespacho", true),
+    rol("contador", "superadmin.equipo.rol.contador", false),
+    rol("auditor", "superadmin.equipo.rol.auditor", false),
+    rol("readonly", "superadmin.equipo.rol.soloLectura", false),
   ],
   licitaciones: [
-    { valor: "owner", nombre: "Dueño (owner)", esDueno: true },
-    { valor: "admin", nombre: "Administrador (admin)", esDueno: false },
-    { valor: "analyst", nombre: "Analista", esDueno: false },
-    { valor: "writer", nombre: "Redactor", esDueno: false },
-    { valor: "reviewer", nombre: "Revisor", esDueno: false },
-    { valor: "viewer", nombre: "Solo lectura", esDueno: false },
+    rol("owner", "superadmin.equipo.rol.owner", true),
+    rol("admin", "superadmin.equipo.rol.admin", false),
+    rol("analyst", "superadmin.equipo.rol.analyst", false),
+    rol("writer", "superadmin.equipo.rol.writer", false),
+    rol("reviewer", "superadmin.equipo.rol.reviewer", false),
+    rol("viewer", "superadmin.equipo.rol.soloLectura", false),
   ],
   rentas: [
-    { valor: "admin_gestora", nombre: "Dueño / gestora (admin_gestora)", esDueno: true },
-    { valor: "operador:acceso_total", nombre: "Operador (acceso total)", esDueno: false },
-    { valor: "operador:calendario_mensajeria", nombre: "Operador (calendario y mensajes)", esDueno: false },
-    { valor: "operador:solo_calendario", nombre: "Operador (solo calendario)", esDueno: false },
-    { valor: "contador", nombre: "Contador", esDueno: false },
-    { valor: "limpieza", nombre: "Limpieza", esDueno: false },
+    rol("admin_gestora", "superadmin.equipo.rol.adminGestora", true),
+    rol("operador:acceso_total", "superadmin.equipo.rol.operadorTotal", false),
+    rol("operador:calendario_mensajeria", "superadmin.equipo.rol.operadorCalendarioMensajes", false),
+    rol("operador:solo_calendario", "superadmin.equipo.rol.operadorCalendario", false),
+    rol("contador", "superadmin.equipo.rol.contador", false),
+    rol("limpieza", "superadmin.equipo.rol.limpieza", false),
   ],
 };
 
@@ -107,7 +122,11 @@ export function rolesEquipoDe(vertical: string | undefined): readonly RolEquipo[
 /** Compatibilidad: roles de restaurantes. */
 export const ROLES_EQUIPO: readonly RolEquipo[] = rolesEquipoDe("restaurantes");
 
-export const NOMBRE_ROL_EQUIPO: Readonly<Record<string, string>> = { owner: "Dueño", admin: "Administrador", staff: "Equipo", repartidor: "Repartidor" };
+export const NOMBRE_ROL_EQUIPO: Readonly<Record<string, string>> = etiquetasTraducidas(
+  ["owner", "admin", "staff", "repartidor"] as const,
+  (r) => (r === "repartidor" ? "superadmin.equipo.rol.repartidor" : (`superadmin.equipo.rolCorto.${r}` as const)),
+  superadminEquipo,
+);
 
 /** Rotulo del rol en la vertical de la organizacion (en despachos `admin` es el dueño). */
 export function nombreRolEquipo(vertical: string | undefined, rol: string): string {
