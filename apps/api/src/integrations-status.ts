@@ -189,6 +189,13 @@ export const INTEGRATIONS: readonly IntegrationDefinition[] = [
       "DOS productos de la MISMA cuenta de Stripe: (1) checkout/webhook de la suscripción SaaS de Atiende a sus organizaciones clientes (POST /billing/checkout, /billing/webhook) y (2) cobro con tarjeta al huésped de un folio de hoteles (PaymentIntents, hotelesPaymentsPort). STRIPE_SECRET_KEY habilita ambos; STRIPE_WEBHOOK_SECRET solo el webhook de (1).",
     variables: ["STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET"],
   },
+  {
+    id: "stripe-cobro-plan",
+    nombre: "Stripe — cobro por plan medido (IVA)",
+    habilita:
+      "Suscripcion por plan con IVA 16 % (POST /billing/checkout-plan y la suscripcion SPEI del superadmin, routes/cobro-stripe.ts). STRIPE_IVA_TAX_RATE_ID es el ID (no secreto) de la tasa de IVA exclusiva creada en Stripe; sin ella esas rutas responden 503 en vez de emitir facturas sin IVA.",
+    variables: ["STRIPE_SECRET_KEY", "STRIPE_IVA_TAX_RATE_ID"],
+  },
 
   // ---- PACs de CFDI (hoteles) ----
   {

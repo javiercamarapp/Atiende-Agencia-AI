@@ -109,6 +109,8 @@ import {
   PostgresContratosRepository,
   PostgresPlataformaPrivacidadRepository,
   PostgresCostosPlanesRepository,
+  PostgresCobroPlanesRepository,
+  PostgresCobroStripeRepository,
   PostgresOrgAdminRepository,
   PostgresPlatformSwitchRepository,
   PostgresStaffSecurityRepository,
@@ -137,6 +139,7 @@ import { ProductionResumenDiarioRepository } from "./resumen-diario-repository.t
 import { ProductionSuperadminAccionesRepository } from "./superadmin-acciones-repository.ts";
 import { StripeHotelesPaymentsPort } from "./hoteles-payments-port.ts";
 import { StripeSaasBillingCheckoutPort, StripeSaasBillingCustomerLookup } from "./saas-billing-stripe-port.ts";
+import { HttpStripePlanClient } from "./stripe-plan-port.ts";
 import { createPlatformSwitchGuard } from "../platform-switches.ts";
 import { crearDespachadorAlertas, configAlertasDesdeEnv } from "../alertas/index.ts";
 import { notProductionReady } from "./not-ready.ts";
@@ -645,6 +648,8 @@ export function buildProductionDeps(): AppDeps {
     platformSwitchRepo: (db) => new PostgresPlatformSwitchRepository(db),
     orgAdminRepo: (db) => new PostgresOrgAdminRepository(db),
     costosPlanesRepo: (db) => new PostgresCostosPlanesRepository(db),
+    cobroPlanesRepo: (db) => new PostgresCobroPlanesRepository(db),
+    cobroStripeRepo: (db) => new PostgresCobroStripeRepository(db),
     cfoRepo: (db) => new PostgresCfoRepository(db),
     pylRepo: (db) => new PostgresPylRepository(db),
     cfoZoneRepo: (db) => new PostgresCfoZoneRepository(db),
@@ -693,6 +698,7 @@ export function buildProductionDeps(): AppDeps {
     // separadas.
     saasBillingStripeClient: env.stripe.secretKey ? new StripeSaasBillingCheckoutPort(fetch, { secretKey: env.stripe.secretKey }) : undefined,
     saasBillingPortalClient: env.stripe.secretKey ? new StripeSaasBillingCheckoutPort(fetch, { secretKey: env.stripe.secretKey }) : undefined,
+    stripePlanClient: env.stripe.secretKey ? new HttpStripePlanClient(fetch, env.stripe.secretKey) : undefined,
     saasBillingCustomerLookup: env.stripe.secretKey ? new StripeSaasBillingCustomerLookup(fetch, { secretKey: env.stripe.secretKey }) : undefined,
     saasBillingWebhookSecret: env.stripe.webhookSecret,
   };

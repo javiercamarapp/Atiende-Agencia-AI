@@ -13,6 +13,7 @@
 import type { Idioma, Mensaje, Traduccion } from "../tipos.ts";
 import type { comun } from "./comun.ts";
 import type { consola } from "./consola.ts";
+import type { consumo } from "./consumo.ts";
 import type { datos } from "./datos.ts";
 import type { nav } from "./nav.ts";
 import type { notif } from "./notif.ts";
@@ -41,6 +42,7 @@ interface ModulosDeArea {
   readonly notif: typeof notif;
   readonly datos: typeof datos;
   readonly waMeta: typeof waMeta;
+  readonly consumo: typeof consumo;
 }
 
 type Modulos = typeof MODULOS & ModulosDeArea;

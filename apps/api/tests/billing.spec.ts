@@ -434,12 +434,12 @@ describe("POST /billing/webhook", () => {
     expect((await deps.coreRepo.getOrganizationBillingForWebhook(base.organizationId))?.status).toBe("cancelada");
   });
 
-  it("un tipo de evento no manejado (p.ej. invoice.created) se responde 200 sin tocar la organización", async () => {
+  it("un tipo de evento no manejado (p.ej. invoice.upcoming) se responde 200 sin tocar la organización", async () => {
     const base = await buildTestDeps();
     const deps = { ...base.deps, saasBillingWebhookSecret: WEBHOOK_SECRET };
     const app = buildApp(deps);
     const now = Math.floor(Date.now() / 1000);
-    const payload = JSON.stringify({ id: "evt_no_manejado", object: "event", type: "invoice.created", created: now, data: { object: { customer: "cus_x", metadata: { tenant_id: base.organizationId } } } });
+    const payload = JSON.stringify({ id: "evt_no_manejado", object: "event", type: "invoice.upcoming", created: now, data: { object: { customer: "cus_x", metadata: { tenant_id: base.organizationId } } } });
     const header = firmarStripe(WEBHOOK_SECRET, now, payload);
 
     const res = await app.request("/billing/webhook", rawRequestInit(payload, { "stripe-signature": header }));
@@ -655,14 +655,14 @@ describe("POST /billing/webhook — bitácora (core.billing_webhook_log)", () =>
     const superId = await conSuperadmin(deps);
     const app = buildApp(deps);
     const now = Math.floor(Date.now() / 1000);
-    const payload = JSON.stringify({ id: "evt_no_manejado", object: "event", type: "invoice.created", created: now, data: { object: { customer: "cus_x", metadata: { tenant_id: base.organizationId } } } });
+    const payload = JSON.stringify({ id: "evt_no_manejado", object: "event", type: "invoice.upcoming", created: now, data: { object: { customer: "cus_x", metadata: { tenant_id: base.organizationId } } } });
     const header = firmarStripe(WEBHOOK_SECRET, now, payload);
 
     const res = await app.request("/billing/webhook", rawRequestInit(payload, { "stripe-signature": header }));
     expect(res.status).toBe(200);
 
     const fila = await ultimaFilaDeBitacora(deps, superId);
-    expect(fila).toMatchObject({ result: "ignorado", reason: "evento_no_reconocido", providerEventId: "evt_no_manejado", eventType: "invoice.created", organizationId: null });
+    expect(fila).toMatchObject({ result: "ignorado", reason: "evento_no_reconocido", providerEventId: "evt_no_manejado", eventType: "invoice.upcoming", organizationId: null });
   });
 
   it("un tenant_id falseado (customer no coincide) queda 'rechazado' con el motivo real y la organización SÍ resuelta (el tenant existe, solo el customer no cruzó)", async () => {
