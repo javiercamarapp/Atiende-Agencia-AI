@@ -1,8 +1,20 @@
 // Contrato de `vercel.json::headers` (cabeceras de la SPA estática). Solo lee el
 // archivo: no despliega nada. Ver docs/SEGURIDAD-CABECERAS.md.
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+
+// jsdom (devDependency de la raíz) no trae tipos y el tsconfig de la API no carga la lib DOM: se declara solo lo que usa esta prueba.
+interface ElementoScript {
+  readonly outerHTML: string;
+  readonly textContent: string | null;
+  getAttribute(nombre: string): string | null;
+}
+interface ModuloJsdom {
+  readonly JSDOM: new (html: string) => { readonly window: { readonly document: { querySelectorAll(selector: "script"): Iterable<ElementoScript> } } };
+}
+const { JSDOM } = createRequire(resolve(__dirname, "vercel-headers.spec.ts"))("jsdom") as ModuloJsdom;
 
 interface Regla {
   readonly source: string;
@@ -84,12 +96,15 @@ describe("vercel.json headers", () => {
   });
 
   it("el index.html no tiene scripts inline (la CSP enforcing los bloquearia)", () => {
+    // Parseo real del HTML con jsdom (no una regex): ve scripts con mayúsculas, atributos sin comillas, comentarios y cierres raros
+    // igual que el navegador que aplica la CSP.
     const html = readFileSync(resolve(__dirname, "../../web/index.html"), "utf8");
-    const scripts = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/giu)];
+    const { document } = new JSDOM(html).window;
+    const scripts = [...document.querySelectorAll("script")];
     expect(scripts.length).toBeGreaterThan(0);
-    for (const [, atributos, cuerpo] of scripts) {
-      expect(atributos).toMatch(/\bsrc="\//u);
-      expect((cuerpo ?? "").trim()).toBe("");
+    for (const script of scripts) {
+      expect(script.getAttribute("src") ?? "", script.outerHTML).toMatch(/^\/(?!\/)/u);
+      expect((script.textContent ?? "").trim(), script.outerHTML).toBe("");
     }
   });
 });
