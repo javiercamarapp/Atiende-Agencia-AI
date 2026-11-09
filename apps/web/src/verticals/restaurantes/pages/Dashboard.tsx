@@ -30,6 +30,8 @@ import {
   RadioSegmentado,
   ResumenLayout,
   ResumenSeccion,
+  type ResumenAtencionItem,
+  type ResumenEstadoDato,
   SectionLabel,
   StatCard,
   TileLink,
@@ -379,9 +381,36 @@ export function RestaurantesDashboardPage({
     ? cuandoEnZona(extras.ultimaVoz, extras.zona)
     : null;
 
+  const etiquetaPeriodo = PERIOD_OPTIONS.find((o) => o.id === period)?.label ?? period;
+  // ds3: franja de estado de los datos (Rovaq «Fuentes con datos · Datos hasta»). Solo lo que la API ya devolvio; lo que no se pudo leer no
+  // se pinta (nunca un valor inventado).
+  const estadoDatos: ResumenEstadoDato[] = [
+    { etiqueta: "Periodo", valor: etiquetaPeriodo },
+    ...(ultimaWa ? [{ etiqueta: "Último WhatsApp", valor: ultimaWa }] : []),
+    ...(ultimaVz ? [{ etiqueta: "Última llamada", valor: ultimaVz }] : []),
+    ...(extras.zona ? [{ etiqueta: "Zona horaria", valor: extras.zona }] : []),
+  ];
+  // ds3: «Requiere tu atención». Sin la bandeja (null) la pagina no sabe y el bloque no se pinta; con ella, 0 pendientes = «nada pendiente».
+  const atencion: ResumenAtencionItem[] | undefined =
+    extras.pendientes === null
+      ? undefined
+      : extras.pendientes === 0
+        ? []
+        : [
+            {
+              id: "toma-humana",
+              titulo: `${plural(extras.pendientes, "conversación espera", "conversaciones esperan")} a una persona`,
+              detalle: "Toma humana · WhatsApp y voz",
+              to: `${base}/conversaciones`,
+              tono: "alto",
+            },
+          ];
+
   return (
     <PageContainer padding="none" size="xl" className="[&>*]:min-w-0">
       <ResumenLayout
+        estadoDatos={estadoDatos}
+        atencion={atencion}
         saludo={saludo}
         eyebrow={t("restaurantes.resumen.eyebrow")}
         nombre={nombre}

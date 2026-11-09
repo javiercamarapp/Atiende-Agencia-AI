@@ -1,5 +1,5 @@
 /* Inicio de sesion ds3 = el de Rovaq AI (rovaq app/(app)/login/login.css + globals.css), con la paleta de Atiende.
-   Todo cuelga de .login-ds3 (VerticalLoginDs3, el login de las 6 verticales por omision; VITE_LOGIN_LEGADO=1 vuelve al anterior).
+   Todo cuelga de .login-ds3 (VerticalLoginDs3, el login de las 6 verticales por omision; VITE_DISENO_LEGADO=1 vuelve al anterior).
    Medidas 1:1 con Rovaq (medidas en vivo, AUDITORIA-VEXA-4 §8): titular Fraunces 36/1.13, cuerpo Instrument Sans, kicker IBM Plex
    Mono 11 px .14em, campo de 44 px radio 12, botones en pildora de 48 px, columna de 470 px, panel oscuro de radio 24.
    Colores SOLO por tokens: tinta = --foreground (el panel oscuro y el boton negro de Rovaq), filetes = --border, acento y foco =
