@@ -42,6 +42,7 @@ export function ChatDatosShell({
   conversacionInicial,
   onConversacionCambia,
   zonaHoraria,
+  preguntaInicial,
   ahora = () => new Date(),
 }: ChatDatosShellProps) {
   const copiloto = useCopiloto({
@@ -137,6 +138,16 @@ export function ChatDatosShell({
   };
   // Chips, tarjetas y sugerencias alternas: si el servidor puede resolverlos sin modelo (consulta directa), van por esa ruta.
   const preguntarChip = (pregunta: string) => preguntar(pregunta, directas?.[pregunta.trim()]);
+
+  // Pregunta que llega desde otra pantalla (p. ej. el Resumen general): se envia UNA vez al montar, como si se escribiera, y solo en un
+  // chat nuevo (abrir una conversacion guardada nunca le agrega un turno). Pasa por el mismo `preguntar` (tope de caracteres y directas).
+  const preguntaInicialEnviada = useRef(false);
+  useEffect(() => {
+    if (preguntaInicialEnviada.current || !preguntaInicial || conversacionInicial) return;
+    preguntaInicialEnviada.current = true;
+    preguntarChip(preguntaInicial);
+    // Solo al montar: la pregunta inicial no se reenvia si el padre vuelve a pintar.
+  }, []);
 
   const hilo = useRef<HTMLDivElement>(null);
   useEffect(() => {

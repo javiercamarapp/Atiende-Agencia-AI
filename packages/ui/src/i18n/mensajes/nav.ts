@@ -8,6 +8,7 @@ import type { ModuloEs } from "../tipos.ts";
 export const nav = {
   // Comunes
   "nav.resumen": "Resumen",
+  "nav.resumenGeneral": "Resumen general",
   "nav.copiloto": "Copiloto",
   "nav.cfo": "CFO",
   "nav.operacion": "Operación",

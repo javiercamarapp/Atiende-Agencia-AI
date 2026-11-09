@@ -240,6 +240,8 @@ export interface ChatDatosShellProps {
   readonly onConversacionCambia?: (id?: string) => void;
   /** Zona horaria IANA de la organizacion para agrupar el historial por dia. Por defecto, la del navegador. */
   readonly zonaHoraria?: string;
+  /** Pregunta que se envia sola al montar un chat nuevo (llega de otra pantalla, p. ej. `?q=`). Se ignora si se abre una conversacion. */
+  readonly preguntaInicial?: string;
   /** Reloj inyectable (pruebas). */
   readonly ahora?: () => Date;
 }

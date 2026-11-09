@@ -89,6 +89,7 @@ const ReservarPage = cargaPerezosa(() => import("./verticals/citas/reserva/Reser
 const RestaurantesPrimerosPasosPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/PrimerosPasos.tsx"), "RestaurantesPrimerosPasosPage");
 const RestaurantesCopilotoPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Copiloto.tsx"), "RestaurantesCopilotoPage");
 const RestaurantesCfoPage = cargaPerezosa(() => import("./verticals/restaurantes/cfo/CfoLayout.tsx"), "CfoLayout");
+const RestaurantesResumenGeneralPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/ResumenGeneral.tsx"), "ResumenGeneralPage");
 const RentasCopilotoPage = cargaPerezosa(() => import("./verticals/rentas/pages/Copiloto.tsx"), "RentasCopilotoPage");
 const DemoWhatsAppPage = cargaPerezosa(() => import("./verticals/restaurantes/demo/DemoWhatsAppPage.tsx"), "DemoWhatsAppPage");
 const HotelesLoginPage = cargaPerezosa(() => import("./verticals/hoteles/pages/Login.tsx"), "HotelesLoginPage");
@@ -352,6 +353,8 @@ const RestaurantesAvisosRoute = shellRoute(RestaurantesShell, "/restaurantes/log
 const RestaurantesCopilotoRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesCopilotoPage {...ctx} />);
 // CFO-07 -- apartado CFO (Resumen, Ventas, Sucursales, Estado de resultados); owner/admin (el marco también lo exige: fail-closed).
 const RestaurantesCfoRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesCfoPage {...ctx} />);
+// Resumen general: todas las sucursales de la organizacion en una vista (dueño/admin, mismas cifras y alcance que el CFO).
+const RestaurantesResumenGeneralRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesResumenGeneralPage {...ctx} />);
 
 // Demo de WhatsApp (R-19): chat publico contra el agente real, solo para organizaciones marcadas como demo.
 function DemoWhatsAppRoute() {
@@ -1107,6 +1110,7 @@ export function App() {
         <Route path="/restaurantes/:orgSlug/avisos" element={<RestaurantesAvisosRoute />} />
         <Route path="/restaurantes/:orgSlug/copiloto" element={<RestaurantesCopilotoRoute />} />
         <Route path="/restaurantes/:orgSlug/cfo/*" element={<RestaurantesCfoRoute />} />
+        <Route path="/restaurantes/:orgSlug/general" element={<RestaurantesResumenGeneralRoute />} />
         <Route path="/restaurantes/:orgSlug/primeros-pasos" element={<RestaurantesPrimerosPasosRoute />} />
         <Route path="/restaurantes/:orgSlug/notificaciones" element={<RestaurantesNotificacionesRoute />} />
         <Route path="/restaurantes/:orgSlug/plan" element={<RestaurantesPlanRoute />} />
