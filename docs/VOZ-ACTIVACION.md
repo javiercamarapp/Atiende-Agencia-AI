@@ -45,7 +45,7 @@ Los comandos que escriben secretos los corres TÚ en tu terminal (anteponiendo `
 | 10 | `VOICE_DNIS_MAP` | Tú lo armas (sección 3, paso 5) | Fly (script) | `export VOICE_DNIS_MAP='{...}'` |
 | 11 | `FLY_API_TOKEN` | Cuenta de Fly: `fly auth token` | Solo tu shell | `! fly auth login` y `export FLY_API_TOKEN=$(fly auth token)` |
 | 12 | `VOICE_REQUIRE_CALL_TOKEN=true` | No es una llave: cierra el camino heredado | Vercel (API) | `! vercel env add VOICE_REQUIRE_CALL_TOKEN production` (valor `true`; **después** de la llamada de prueba del paso 8) |
-| 13 | `VOICE_TOPE_MENSUAL_USD` (y `topeMensualUsd` por organización) | Decisión tuya (sección 6); sin valor el worker usa 50 USD por organización y mes | Fly (script) / `VOICE_DNIS_MAP` | `export VOICE_TOPE_MENSUAL_USD=100` |
+| 13 | `VOICE_TOPE_MENSUAL_USD` (y `topeMensualUsd` por organización) | Decisión tuya (sección 6); sin valor no hay tope (el worker lo avisa en `/salud`); para poner uno: `export VOICE_TOPE_MENSUAL_USD=100` | Fly (script) / `VOICE_DNIS_MAP` | `export VOICE_TOPE_MENSUAL_USD=100` |
 
 Variables opcionales del worker (todas con un valor por omisión razonable): `VOICE_COSTO_MAX_LLAMADA_USD` (tope por llamada, por omisión **US$0.50**),
 `VOICE_VAD_SILENCIO_MS` y `VOICE_VAD_SENSIBILIDAD_FIN` (`alta|baja|omitir`; por omisión 500 ms y `alta`), `GEMINI_BACKEND=vertex` con `VERTEX_PROJECT`, `VERTEX_LOCATION` y
