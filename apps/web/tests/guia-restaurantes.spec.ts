@@ -1,7 +1,8 @@
 // ds3 «Guía» de restaurantes: el recorrido de cada rol sale de SU menu real (buildSections), toda pantalla del menu tiene contenido propio
 // en ES y EN, ninguna entrada de contenido apunta a una pantalla que no existe, el corto mide 7 pasos y el repartidor tiene su guia.
 import { describe, expect, it } from "vitest";
-import { construirTour, contarPasos, pantallasDelMenu, rutaRelativa, TIPOS_ILUSTRACION } from "@atiende/ui";
+import { construirTour, contarPasos, crearTraductor, pantallasDelMenu, registrarModuloEs, rutaRelativa, TIPOS_ILUSTRACION } from "@atiende/ui";
+import { nav } from "@atiende/ui/i18n/nav";
 import { buildSections } from "../src/verticals/restaurantes/RestaurantesShell.tsx";
 import { puedeEn } from "../src/verticals/restaurantes/lib/permisos.ts";
 import { esencialesRestaurantes, GUIA_REPARTIDOR, GUIA_RESTAURANTES, menuRepartidor } from "../src/verticals/restaurantes/guia-restaurantes.ts";
@@ -9,9 +10,11 @@ import { esencialesRestaurantes, GUIA_REPARTIDOR, GUIA_RESTAURANTES, menuReparti
 const ORG = "taqueria";
 const BASE = `/restaurantes/${ORG}`;
 const GESTION = new Set(["owner", "admin"]);
+registrarModuloEs(nav);
+const t = crearTraductor("es");
 /** Mismo armado que RestaurantesShell (con el panel movil del operador encendido, para cubrir tambien sus pantallas). */
 const menuDe = (rol: string, operacion = false) =>
-  buildSections(ORG, GESTION.has(rol), ["owner", "admin", "staff"].includes(rol), puedeEn(rol, "promociones.ver"), puedeEn(rol, "cfo.ver"), operacion && puedeEn(rol, "pedidos.capturar"), puedeEn(rol, "pedidos.agregados"));
+  buildSections(t, ORG, GESTION.has(rol), ["owner", "admin", "staff"].includes(rol), puedeEn(rol, "promociones.ver"), puedeEn(rol, "cfo.ver"), operacion && puedeEn(rol, "pedidos.capturar"), puedeEn(rol, "pedidos.agregados"));
 
 describe("guia de restaurantes", () => {
   for (const rol of ["owner", "admin", "staff"]) {

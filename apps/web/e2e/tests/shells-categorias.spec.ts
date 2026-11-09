@@ -69,9 +69,10 @@ for (const [objetivo, esperado] of Object.entries(CONSOLAS) as [ObjetivoLogin, E
       await iniciarSesion(objetivo, objetivo === "superadmin" ? undefined : "owner");
       await afirmarPantallaSana(page, `${objetivo}: aterrizaje`);
       const barra = barraMovil(page);
-      await expect(barra.locator("a span")).toHaveText([...esperado.barra]);
+      // «Preguntar» (decision de Omar 7-nov-2026) es solo-ds3: sin la bandera su <li hidden> no cuenta como lugar de la barra.
+      await expect(barra.locator("li:not([hidden]) a span")).toHaveText([...esperado.barra]);
       // Ninguna etiqueta de la barra queda recortada con puntos suspensivos a 375 px.
-      const recortadas = await barra.locator("a span").evaluateAll((spans) => spans.filter((s) => s.scrollWidth > s.clientWidth + 1).map((s) => s.textContent));
+      const recortadas = await barra.locator("li:not([hidden]) a span").evaluateAll((spans) => spans.filter((s) => s.scrollWidth > s.clientWidth + 1).map((s) => s.textContent));
       expect(recortadas, `${objetivo}: etiquetas recortadas en la barra`).toEqual([]);
       await expect(barra.getByRole("button", { name: "Más" })).toBeVisible();
 
@@ -82,7 +83,7 @@ for (const [objetivo, esperado] of Object.entries(CONSOLAS) as [ObjetivoLogin, E
       await expect(hoja.getByRole("link").first()).toContainText("Resumen");
       // Cada destino de la barra tambien esta en la hoja.
       const hrefsHoja = await hoja.getByRole("link").evaluateAll((as) => as.map((a) => a.getAttribute("href") ?? ""));
-      for (const href of await barra.locator("a").evaluateAll((as) => as.map((a) => a.getAttribute("href") ?? ""))) expect(hrefsHoja).toContain(href);
+      for (const href of await barra.locator("li:not([hidden]) a").evaluateAll((as) => as.map((a) => a.getAttribute("href") ?? ""))) expect(hrefsHoja).toContain(href);
       // Solo los destinos declarados en `repetidos` se repiten: "Costos de IA" (superadmin, repite "Costos y facturación") y la pildora
       // "Pregúntale a tus datos" (restaurantes, repite "Copiloto"); en el resto no se repite nada.
       const duplicados = hrefsHoja.filter((h, i) => hrefsHoja.indexOf(h) !== i);

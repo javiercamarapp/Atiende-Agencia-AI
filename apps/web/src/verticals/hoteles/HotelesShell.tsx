@@ -38,8 +38,8 @@ import {
   UtensilsCrossed,
   Wrench,
 } from "lucide-react";
-import { SelectorSucursal, VerticalShellEstado } from "@atiende/ui";
-import type { BottomNavItem, SidebarSection } from "@atiende/ui";
+import { SelectorSucursal, useT, VerticalShellEstado } from "@atiende/ui";
+import type { BottomNavItem, SidebarSection, Traductor } from "@atiende/ui";
 import { VerticalShellConectado } from "../../components/VerticalShellConectado.tsx";
 import { etiquetaRol } from "../../lib/roles.ts";
 import { useVerticalSession } from "../../lib/useVerticalSession.ts";
@@ -51,6 +51,9 @@ import { COPILOTO_HOTELES_ROLES } from "./pages/Copiloto.tsx";
 import { fetchProperties, resolveActivePropertyId } from "./lib/discovery-client.ts";
 import type { PropertyOption } from "./lib/discovery-client.ts";
 import { persistPropertyId, readPersistedPropertyId } from "./lib/property-selection.ts";
+import { nav } from "@atiende/ui/i18n/nav";
+import { shell } from "@atiende/ui/i18n/shell";
+import { consola } from "@atiende/ui/i18n/consola";
 
 /** Hotel (property) con el `name` que exige `useVerticalSession`; `nombre` sigue siendo el campo del API. */
 type HotelOption = PropertyOption & { readonly name: string };
@@ -160,7 +163,7 @@ const MENSAJERIA_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "gm"]);
 const HOUSEKEEPING_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "gm", "frontdesk", "housekeeping", "maintenance"]);
 
 /** Menu lateral de hoteles por rol (exportado para la guia y sus pruebas; mismo resultado que antes, solo se saco del componente). */
-export function buildSections(orgSlug: string, role: string): SidebarSection[] {
+export function buildSections(t: Traductor, orgSlug: string, role: string): SidebarSection[] {
   const base = `/hoteles/${orgSlug}`;
 
   // UNI-6: categorías en el orden de Likida (Operación, Huéspedes, Finanzas, Agentes, Configuración) con "Resumen" como raíz
@@ -168,57 +171,57 @@ export function buildSections(orgSlug: string, role: string): SidebarSection[] {
   // cuyo rol activo no ve ningún destino se omite por completo (un acordeón vacío confunde).
   return [
     {
-      title: "Resumen",
+      title: t("nav.resumen"),
       siempreAbierto: true,
       // CHAT-09: el Copiloto ("Pregúntale a tus datos") va justo debajo de Resumen, solo para owner/gm (los unicos que el servidor deja usarlo).
       items: [
-        { to: base, label: "Resumen", icon: LayoutDashboard, end: true },
-        ...(COPILOTO_HOTELES_ROLES.has(role) ? [{ to: `${base}/copiloto`, label: "Copiloto", icon: Sparkles }] : []),
+        { to: base, label: t("nav.resumen"), icon: LayoutDashboard, end: true },
+        ...(COPILOTO_HOTELES_ROLES.has(role) ? [{ to: `${base}/copiloto`, label: t("nav.copiloto"), icon: Sparkles }] : []),
       ],
     },
     {
-      title: "Operación",
+      title: t("nav.operacion"),
       items: [
-        ...(RECEPCION_NAV_ROLES.has(role) ? [{ to: `${base}/recepcion`, label: "Recepción", icon: ConciergeBell }] : []),
-        { to: `${base}/reservas`, label: "Reservas", icon: CalendarCheck },
-        ...(CONVERSACIONES_NAV_ROLES.has(role) ? [{ to: `${base}/conversaciones`, label: "Conversaciones", icon: MessagesSquare }] : []),
-        ...(HOUSEKEEPING_NAV_ROLES.has(role) ? [{ to: `${base}/housekeeping`, label: "Housekeeping", icon: BedDouble }] : []),
-        { to: `${base}/mantenimiento`, label: "Mantenimiento", icon: Wrench },
-        { to: `${base}/tickets`, label: "Tickets", icon: LifeBuoy },
-        { to: `${base}/asistencia`, label: "Asistencia", icon: ClipboardCheck },
+        ...(RECEPCION_NAV_ROLES.has(role) ? [{ to: `${base}/recepcion`, label: t("nav.recepcion"), icon: ConciergeBell }] : []),
+        { to: `${base}/reservas`, label: t("nav.reservas"), icon: CalendarCheck },
+        ...(CONVERSACIONES_NAV_ROLES.has(role) ? [{ to: `${base}/conversaciones`, label: t("nav.conversaciones"), icon: MessagesSquare }] : []),
+        ...(HOUSEKEEPING_NAV_ROLES.has(role) ? [{ to: `${base}/housekeeping`, label: t("nav.housekeeping"), icon: BedDouble }] : []),
+        { to: `${base}/mantenimiento`, label: t("nav.mantenimiento"), icon: Wrench },
+        { to: `${base}/tickets`, label: t("nav.tickets"), icon: LifeBuoy },
+        { to: `${base}/asistencia`, label: t("nav.asistencia"), icon: ClipboardCheck },
       ],
     },
     {
-      title: "Huéspedes",
+      title: t("nav.huespedes"),
       items: [
-        ...(RECEPCION_NAV_ROLES.has(role) ? [{ to: `${base}/huespedes`, label: "Huéspedes", icon: UserRound }] : []),
-        ...(PEDIDOS_FNB_NAV_ROLES.has(role) ? [{ to: `${base}/pedidos-fnb`, label: "Pedidos F&B", icon: UtensilsCrossed }] : []),
-        ...(REPUTACION_NAV_ROLES.has(role) ? [{ to: `${base}/reputacion`, label: "Reputación", icon: Star }] : []),
-        ...(IDENTIDAD_NAV_ROLES.has(role) ? [{ to: `${base}/identidad`, label: "Identidad", icon: Fingerprint }] : []),
-        ...(GRUPOS_NAV_ROLES.has(role) ? [{ to: `${base}/grupos`, label: "Grupos", icon: UsersRound }] : []),
+        ...(RECEPCION_NAV_ROLES.has(role) ? [{ to: `${base}/huespedes`, label: t("nav.huespedes"), icon: UserRound }] : []),
+        ...(PEDIDOS_FNB_NAV_ROLES.has(role) ? [{ to: `${base}/pedidos-fnb`, label: t("nav.pedidosFnb"), icon: UtensilsCrossed }] : []),
+        ...(REPUTACION_NAV_ROLES.has(role) ? [{ to: `${base}/reputacion`, label: t("nav.reputacion"), icon: Star }] : []),
+        ...(IDENTIDAD_NAV_ROLES.has(role) ? [{ to: `${base}/identidad`, label: t("nav.identidad"), icon: Fingerprint }] : []),
+        ...(GRUPOS_NAV_ROLES.has(role) ? [{ to: `${base}/grupos`, label: t("nav.grupos"), icon: UsersRound }] : []),
       ],
     },
     {
-      title: "Finanzas",
+      title: t("nav.finanzas"),
       items: [
-        ...(PL_NAV_ROLES.has(role) ? [{ to: `${base}/pl`, label: "P&L", icon: TrendingUp }] : []),
-        ...(REVENUE_NAV_ROLES.has(role) ? [{ to: `${base}/revenue`, label: "Revenue", icon: Gauge }] : []),
-        { to: `${base}/cfdi`, label: "CFDI", icon: Receipt },
-        { to: `${base}/fraude`, label: "Fraude", icon: ShieldAlert },
+        ...(PL_NAV_ROLES.has(role) ? [{ to: `${base}/pl`, label: t("nav.pl"), icon: TrendingUp }] : []),
+        ...(REVENUE_NAV_ROLES.has(role) ? [{ to: `${base}/revenue`, label: t("nav.revenue"), icon: Gauge }] : []),
+        { to: `${base}/cfdi`, label: t("nav.cfdi"), icon: Receipt },
+        { to: `${base}/fraude`, label: t("nav.fraude"), icon: ShieldAlert },
       ],
     },
     {
-      title: "Agentes",
+      title: t("nav.agentes"),
       items: [
-        ...(AGENTES_NAV_ROLES.has(role) ? [{ to: `${base}/agentes`, label: "Agentes", icon: Bot }] : []),
-        ...(AGENTES_NAV_ROLES.has(role) ? [{ to: `${base}/aprobaciones`, label: "Aprobaciones", icon: ClipboardList }] : []),
+        ...(AGENTES_NAV_ROLES.has(role) ? [{ to: `${base}/agentes`, label: t("nav.agentes"), icon: Bot }] : []),
+        ...(AGENTES_NAV_ROLES.has(role) ? [{ to: `${base}/aprobaciones`, label: t("nav.aprobaciones"), icon: ClipboardList }] : []),
       ],
     },
     {
-      title: "Configuración",
+      title: t("nav.configuracion"),
       items: [
-        ...(CATALOGO_NAV_ROLES.has(role) ? [{ to: `${base}/catalogo`, label: "Catálogo", icon: Tags }] : []),
-        ...(MENSAJERIA_NAV_ROLES.has(role) ? [{ to: `${base}/mensajeria`, label: "Mensajería", icon: MessageCircle }] : []),
+        ...(CATALOGO_NAV_ROLES.has(role) ? [{ to: `${base}/catalogo`, label: t("nav.catalogo"), icon: Tags }] : []),
+        ...(MENSAJERIA_NAV_ROLES.has(role) ? [{ to: `${base}/mensajeria`, label: t("nav.mensajeria"), icon: MessageCircle }] : []),
       ],
     },
   ].filter((sec) => sec.items.length > 0);
@@ -226,16 +229,17 @@ export function buildSections(orgSlug: string, role: string): SidebarSection[] {
 
 export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: HotelesShellProps) {
   // Título de pestaña por vertical/organización. El hook va ANTES de los returns condicionales.
-  useDocumentTitle("Hoteles", orgSlug);
+  const t = useT(nav, shell, consola);
+  useDocumentTitle(t("consola.vertical.hoteles"), orgSlug);
   // Fail-closed: si la organización activa no aparece en la sesión (no debería pasar, ver decideHotelesLandingPath),
   // cae al rol operativo MÁS bajo de HOTEL_ROLES (nunca uno que active gates administrativos/de F&B de más).
   const s = useVerticalSession({ adapter: HOTELES_SESSION, apiBaseUrl, orgSlug, onRequireLogin, defaultRole: "housekeeping" });
 
-  if (s.fase === "resolviendo") return <VerticalShellEstado estado="cargando" mensaje="Cargando…" />;
+  if (s.fase === "resolviendo") return <VerticalShellEstado estado="cargando" mensaje={t("shell.cargando")} />;
   if (s.fase === "sin-sesion") return null; // onRequireLogin ya disparó la redirección
   if (s.fase === "error") return <VerticalShellEstado estado="error" mensaje={s.error ?? undefined} onReintentar={s.reintentar} />;
-  if (s.fase === "cargando") return <VerticalShellEstado estado="cargando" mensaje="Cargando propiedades…" />;
-  if (s.fase === "vacio") return <VerticalShellEstado estado="vacio" mensaje="Esta organización todavía no tiene ningún hotel (property) configurado." />;
+  if (s.fase === "cargando") return <VerticalShellEstado estado="cargando" mensaje={t("consola.cargandoPropiedades")} />;
+  if (s.fase === "vacio") return <VerticalShellEstado estado="vacio" mensaje={t("consola.vacio.sinHotel")} />;
 
   const { session, branches, activeBranch, propertyId, role } = s;
 
@@ -245,21 +249,21 @@ export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: 
 
   const base = `/hoteles/${orgSlug}`;
 
-  const sections = buildSections(orgSlug, role);
+  const sections = buildSections(t, orgSlug, role);
 
   // Hoteles tiene hasta 16 destinos: la barra trae 4 de uso diario (visibles para todos los roles, con etiqueta completa) y
   // "Más" (lo agrega `VerticalShell`) abre TODAS las secciones del mismo árbol que el Sidebar de escritorio, ya filtradas por rol.
   const mobileItems: BottomNavItem[] = [
-    { to: base, label: "Resumen", icon: LayoutDashboard, end: true },
-    { to: `${base}/reservas`, label: "Reservas", icon: CalendarCheck },
-    { to: `${base}/tickets`, label: "Tickets", icon: LifeBuoy },
-    { to: `${base}/asistencia`, label: "Asistencia", icon: ClipboardCheck },
+    { to: base, label: t("nav.resumen"), icon: LayoutDashboard, end: true },
+    { to: `${base}/reservas`, label: t("nav.reservas"), icon: CalendarCheck },
+    { to: `${base}/tickets`, label: t("nav.tickets"), icon: LifeBuoy },
+    { to: `${base}/asistencia`, label: t("nav.asistencia"), icon: ClipboardCheck },
   ];
 
   // Selector real, visible solo con más de un hotel (si no, solo el nombre). Va en el bloque de cuenta del Sidebar
   // (escritorio) y en el MobileHeader, para no perder la función en viewport angosto.
   const hotelSelector = (idSelect: string) =>
-    <SelectorSucursal id={idSelect} etiqueta="Hotel activo" valor={propertyId} onCambia={s.selectBranch} opciones={branches.map((b) => ({ valor: b.propertyId, etiqueta: b.nombre }))} />;
+    <SelectorSucursal id={idSelect} etiqueta={t("consola.selector.hotel")} valor={propertyId} onCambia={s.selectBranch} opciones={branches.map((b) => ({ valor: b.propertyId, etiqueta: b.nombre }))} />;
 
   return (
     <VerticalShellConectado
@@ -272,10 +276,10 @@ export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: 
       vertical="hoteles"
       sections={sections}
       mobileItems={mobileItems}
-      user={{ email: session.email, rol: role, nombre: session.fullName, rolEtiqueta: etiquetaRol(role) }}
+      user={{ email: session.email, rol: role, nombre: session.fullName, rolEtiqueta: etiquetaRol(role, t) }}
       onLogout={() => void s.logout()}
       loggingOut={s.loggingOut}
-      header={{ icon: <BedDouble className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: `Hoteles · ${orgSlug}`, resumenTo: `/hoteles/${orgSlug}` }}
+      header={{ icon: <BedDouble className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: t("consola.titulo", { vertical: t("consola.vertical.hoteles"), nombre: orgSlug }), resumenTo: `/hoteles/${orgSlug}` }}
       branchSelector={hotelSelector("hoteles-hotel-activo")}
       mobileSelector={branches.length > 1 ? hotelSelector("hoteles-hotel-activo-movil") : null}
       contentKey={propertyId}

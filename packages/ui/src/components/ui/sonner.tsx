@@ -2,6 +2,11 @@ import * as React from "react";
 import { AlertTriangle, CheckCircle2, Info, OctagonAlert, X } from "lucide-react";
 import { Toaster as Sonner, toast } from "sonner";
 import { IconoDeCarga } from "../CargandoDelegado";
+import { leerDisenoDs3 } from "../../lib/diseno";
+import { leerIdioma } from "../../lib/idioma";
+import { traducir } from "../../i18n/traducir.ts";
+import { comun } from "../../i18n/mensajes/comun.ts";
+import { registrarModuloEs } from "../../i18n/mensajes/index.ts";
 
 type ToasterProps = React.ComponentProps<typeof Sonner>;
 
@@ -108,6 +113,7 @@ export const DURACION_NOTIFY_MS = { success: 4000, info: 4000, warning: 6000, er
 type TipoNotify = keyof typeof DURACION_NOTIFY_MS;
 
 function opcionesSonner(tipo: TipoNotify, o: NotifyOpciones | undefined) {
+  registrarModuloEs(comun);
   const accion = o?.deshacer ?? o?.accion;
   const duration = o?.duracion ?? (accion ? Infinity : DURACION_NOTIFY_MS[tipo]);
   return {
@@ -117,7 +123,7 @@ function opcionesSonner(tipo: TipoNotify, o: NotifyOpciones | undefined) {
     // Barra de autocierre (index.css .toast-progreso): dura lo mismo que el toast; con
     // duracion infinita (accion pendiente) no hay barra (--toast-ms: 0).
     style: { "--toast-ms": Number.isFinite(duration) ? `${duration}ms` : "0ms" } as React.CSSProperties,
-    action: accion ? { label: accion.etiqueta ?? (o?.deshacer ? "Deshacer" : "Ver"), onClick: accion.onClick } : undefined,
+    action: accion ? { label: accion.etiqueta ?? traducir(leerDisenoDs3() ? leerIdioma() : "es", o?.deshacer ? "comun.deshacer" : "comun.ver"), onClick: accion.onClick } : undefined,
   };
 }
 
