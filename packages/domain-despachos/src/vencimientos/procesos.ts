@@ -6,7 +6,8 @@ import type { TenantDbSession } from "@atiende/core-tenancy";
 import type { DespachosRepository } from "../repository.ts";
 import type { DeadlineEscalationRecord, FiscalDeadlineRecord } from "../types.ts";
 import { tryEnqueueEscalationEmail } from "./email-notifications.ts";
-import { TIPOS_VENCIMIENTO_BASE, decidirEscalamiento, diasHasta } from "./engine.ts";
+import { diasHabilesHasta } from "./calendario-fiscal.ts";
+import { TIPOS_VENCIMIENTO_BASE, decidirEscalamientoHabil } from "./engine.ts";
 import type { DecisionEscalamiento, NivelEscalamiento, NuevoVencimiento, TipoVencimiento } from "./engine.ts";
 
 /** Orden de severidad de los niveles de escalamiento (nivel_4 = vencido). */
@@ -19,7 +20,7 @@ export function esCheckViolation(err: unknown): boolean {
 
 export interface ResultadoCrearVencimientos {
   readonly creados: readonly FiscalDeadlineRecord[];
-  /** Tipos que la base aún no admite (falta la migración 019): no se crearon, no se finge lo contrario. */
+  /** Tipos que la base aún no admite (falta la migración 019 o 024 según el tipo): no se crearon, no se finge lo contrario. */
   readonly omitidos: readonly TipoVencimiento[];
 }
 
@@ -63,11 +64,11 @@ export async function crearVencimientosDelPeriodo(
 
 /** Inserta el escalamiento, marca el vencimiento 'escalado' y encola el aviso por correo (best-effort: un fallo
  * al notificar nunca revierte el escalamiento ya registrado). Compartido por el escalamiento manual y el barrido. */
-export async function registrarEscalamiento(repo: DespachosRepository, deadline: FiscalDeadlineRecord, decision: DecisionEscalamiento, dias: number) {
+export async function registrarEscalamiento(repo: DespachosRepository, deadline: FiscalDeadlineRecord, decision: DecisionEscalamiento, dias: number, opciones: { readonly habiles?: boolean } = {}) {
   const escalation: DeadlineEscalationRecord = await repo.insertEscalation(deadline.id, decision.level, new Date().toISOString(), decision.notes);
   await repo.updateDeadlineEstado(deadline.id, "escalado");
   const organization = await repo.findOrganizationById(deadline.organizationId);
-  const notificacion = await tryEnqueueEscalationEmail(repo, deadline, decision, organization?.name ?? "tu despacho", dias);
+  const notificacion = await tryEnqueueEscalationEmail(repo, deadline, decision, organization?.name ?? "tu despacho", dias, opciones);
   return { escalation, notificacion };
 }
 
@@ -79,8 +80,8 @@ export interface ResultadoBarridoVencimientos {
   readonly fallidos: readonly { readonly id: string; readonly tipo: TipoVencimiento; readonly periodo: string }[];
 }
 
-/** Escala los vencimientos no completados de la property que vencen hoy o mañana, o ya vencieron, y que aún no
- * tienen un escalamiento de ese nivel o mayor (idempotente). Cada vencimiento corre en su propio SAVEPOINT: uno con
+/** Escala los vencimientos no completados de la property que vencen en 7, 3 o 1 día(s) HÁBIL(ES) (o hoy, o ya vencieron) y que aún no
+ * tienen un escalamiento de ese nivel o mayor (idempotente; D-P3-33: antes avisaba por días naturales, solo hoy o mañana). Cada vencimiento corre en su propio SAVEPOINT: uno con
  * datos raros no revierte los ya escalados de la misma transacción. */
 export async function barrerEscalamientosVencimientos(
   repo: DespachosRepository,
@@ -95,12 +96,12 @@ export async function barrerEscalamientosVencimientos(
   let aunNoToca = 0;
 
   for (const deadline of pendientes) {
-    const dias = diasHasta(deadline.fechaLimite, hoy);
-    if (dias > 1) {
+    const dias = diasHabilesHasta(hoy, deadline.fechaLimite);
+    const decision = decidirEscalamientoHabil(deadline.tipo, deadline.fechaLimite, dias);
+    if (decision === null) {
       aunNoToca += 1;
       continue;
     }
-    const decision = decidirEscalamiento(deadline.tipo, deadline.fechaLimite, dias);
     const previos = await repo.listEscalations(deadline.id);
     const mayorPrevio = previos.reduce((max, e) => Math.max(max, RANGO_NIVEL[e.level]), 0);
     if (mayorPrevio >= RANGO_NIVEL[decision.level]) {
@@ -111,7 +112,7 @@ export async function barrerEscalamientosVencimientos(
       const r = await runWithSavepointFallback<Awaited<ReturnType<typeof registrarEscalamiento>>>({
         session,
         savepointName: "sp_barrido_vencimiento",
-        primary: () => registrarEscalamiento(repo, deadline, decision, dias),
+        primary: () => registrarEscalamiento(repo, deadline, decision, dias, { habiles: true }),
         isRecoverable: () => true,
         fallback: async (err) => {
           throw err;
@@ -124,11 +125,11 @@ export async function barrerEscalamientosVencimientos(
   }
 
   // Aviso in-app (campana) a los contadores/owner/admin: UNA por property por dia y por clase, con la cantidad
-  // de vencimientos recien escalados (nivel_2/nivel_3 = vencen hoy o manana; nivel_4 = ya vencieron). Dentro de un
+  // de vencimientos recien escalados (nivel_1..nivel_3 = por vencer en 7/3/1 dias habiles; nivel_4 = ya vencieron). Dentro de un
   // SAVEPOINT (emitirNotificacion): contra la base sin migrar no revierte los escalamientos ya registrados.
   // Mismo `organizationId` que el del vencimiento (nunca el del request): el barrido es de UNA property.
   const organizationId = pendientes[0]?.organizationId;
-  const porVencer = escalados.filter((e) => e.nivel === "nivel_2" || e.nivel === "nivel_3").length;
+  const porVencer = escalados.filter((e) => e.nivel !== "nivel_4").length;
   const vencidos = escalados.filter((e) => e.nivel === "nivel_4").length;
   if (organizationId && porVencer > 0) {
     await emitirNotificacion(session, { evento: "despachos.fiscal.vencimiento_proximo", organizationId, propertyId, clave: `${propertyId}:${hoy}`, parametros: { cantidad: porVencer } });

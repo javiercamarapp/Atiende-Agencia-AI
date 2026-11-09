@@ -78,7 +78,9 @@ Hallazgos del revisor del PR #322.
 
 ### 8. Devolución de IVA
 - **Duda:** plazo de 40 días hábiles (20 con dictamen o garantía), días inhábiles fijos de 2026 en el cómputo, umbral de
-  congruencia de 10,001 pesos con tolerancia de 1 peso y la advertencia de la presunción del artículo 59-III.
+  congruencia de 10,001 pesos con tolerancia de 1 peso y la advertencia de la presunción del artículo 59-III. (D-P3-34: el
+  cómputo ya no usa los días inhábiles fijos de 2026 para cualquier año; usa el calendario fiscal del año real, con Jueves y
+  Viernes Santo "por validar" -- ver la pregunta 10c.)
 - **Dónde:** `packages/domain-despachos/src/devolucion-iva/calculo.ts:313`, `:317`, `:455`, `:456`, `:463`;
   `src/devolucion-iva/workpaper.ts:27`.
 - **Fichas:** `cff-22`, `cff-59`, `cff-12`.
@@ -91,6 +93,44 @@ Hallazgos del revisor del PR #322.
 - **9c. Plazo de timbrado:** `reglas-fiscales-avanzadas.ts:22` y `:239` citan RMF 2.7.1.35 (72 horas) y el motor trunca a días
   completos. Ficha: `rmf-2.7.1.35`.
 - **9d. Retenciones y acreditamiento:** el código cita LIVA 1-B y 5; la tarea pide 1-A y 5. Fichas: `liva-1-a-5`, `liva-1-b`.
+
+### 10. Paridad 3 fiscal: proporción de IVA, calendario ampliado y DIOT (paridad3-despachos-fiscal-correcciones)
+Este PR NO se fusiona sin el visto bueno del fiscalista sobre estas preguntas (tasas y DIOT).
+- **10a. Proporción de acreditamiento del IVA (LIVA 5-V) cuando faltan datos.** El papel acredita al 100 % salvo que el contador
+  capture `actosExentosCentavos` (y, si difieren de los CFDI emitidos del mes, `actosGravadosCentavos`). Sin ese dato el papel
+  advierte "Proporción no aplicada: sin actos exentos registrados". Dudas: (i) ¿basta la proporción del MES aplicada a todo el IVA
+  acreditable, o hay que separar gasto de uso exclusivo gravado, exclusivo exento y mixto (art. 5 RLIVA)? (ii) ¿la proporción es
+  mensual o acumulada del ejercicio en el pago provisional? (iii) los actos a tasa 0 % cuentan como gravados; ¿se capturan aparte
+  de los exentos? (iv) la alerta "IVA acreditable mayor a 3 veces el IVA trasladado" viene del sistema suelto: ¿el factor 3 y la
+  referencia al art. 22 CFF son los correctos? Dónde: `packages/domain-despachos/src/pagos-provisionales/engine.ts` (`calcularIva`,
+  `FACTOR_ALERTA_ACREDITABLE`). Fichas: `liva-1-a-5`.
+- **10b. Obligaciones por régimen nuevas (migración 024).** Se agregan al calendario: retenciones de ISR/IVA (día 17), IMSS mensual
+  (día 17), IMSS bimestral RCV/Infonavit (día 17 del mes siguiente al bimestre), ISN estatal (se asume día 17: varía por entidad) e
+  informativa anual de retenciones (15 de febrero). Dudas: (i) la ficha de cartera no captura qué obligaciones tiene cada cliente
+  (trabajadores, honorarios, arrendamiento), así que se generan para todo régimen con obligaciones periódicas, con nota "aplica
+  si..."; ¿cuáles NO aplican por régimen (p. ej. 603, 626, 606)? (ii) plazo y tasa del ISN por entidad federativa; (iii) fundamento y
+  fecha de la informativa anual (LISR 76-X y 99-VII); (iv) ¿el barrido avisa a 7/3/1 días hábiles o hay otro calendario de avisos
+  que prefiera el despacho? Dónde: `src/vencimientos/calendario-fiscal.ts` (`calcularCalendarioFiscal`), `src/vencimientos/engine.ts`
+  (`decidirEscalamientoHabil`). Fichas: `cff-12`, `lisr-106`.
+- **10c. Días inhábiles del plazo de devolución.** Ahora usa `feriadosDelAnio` del año real. Jueves y Viernes Santo se tratan como
+  inhábiles "por validar" (resolución del SAT de días inhábiles). ¿Hay otros días inhábiles que el SAT declare cada año (periodos
+  vacacionales) que deban entrar al cómputo del plazo de 40 días hábiles? Dónde: `src/devolucion-iva/calculo.ts` (`esDiaHabil`),
+  `src/vencimientos/calendario-fiscal.ts` (`feriadosDelAnio`). Ficha: `cff-12`, `cff-22`.
+- **10d. Layout DIOT 2025 de 54 campos (D-P3-04, NO se construye aquí).** El layout vigente es el de 24 campos sin cotejar
+  (pregunta 1). Se necesita el layout 2025 oficial y un archivo de ejemplo validado por el SAT antes de cambiarlo. Dónde:
+  `src/declaraciones/diot-layout.ts`.
+- **10e. DIOT: qué entra.** Desde este PR la DIOT solo toma compras del cliente: CFDI recibidos, vigentes (ni cancelados ni "no
+  encontrados" ante el SAT), válidos y con RFC del contribuyente tomado de la ficha de cartera. Un CFDI de dirección desconocida
+  solo entra si el receptor es el RFC de la ficha. Dudas: (i) ¿un CFDI con revisión rechazada debe excluirse (hoy no se excluye;
+  `TODO(D-P3-23)`)? (ii) ¿un CFDI de estado SAT "pendiente" (nunca verificado) debe entrar? (hoy sí). (iii) el IEPS y los impuestos
+  locales ya integran el total del CFDI pero no el IVA reportado en la DIOT. Dónde: `src/declaraciones/diot-desde-invoices.ts`.
+  Fichas: `rmf-4.5.1`, `liva-32-viii`.
+- **10f. Avisos nuevos de CFDI y REP (D-P3-31).** Son avisos, no errores: PPD con FormaPago distinta de 99 y PUE con 99; UsoCFDI contra
+  RegimenFiscalReceptor (la tabla `REGIMENES_RECEPTOR_POR_USO` es una transcripción del catálogo c_UsoCFDI sin validar); IVA por
+  concepto contra Base x Tasa; retención de ISR del 1.25 % para emisores RESICO PF; y en el REP FormaDePagoP (sin 99), MonedaP,
+  TipoCambioP y TipoCadPago. ¿Alguno debe ser error (rechazo) en vez de aviso, con qué fundamento? Dónde:
+  `src/cfdi/avisos-cfdi.ts`, `src/cfdi/rep.ts` (`avisosPagoRep`), `src/cfdi/reglas-fiscales-avanzadas.ts`. Fichas: `anexo-20`,
+  `cff-29-29-a`.
 
 ## Resueltas
 

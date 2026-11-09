@@ -201,9 +201,8 @@ export function despachosNominaRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const raw = await readJsonCapped<ProcesarNominaBody>(c.req.raw, 64 * 1024);
     const period = parsePeriod(raw.period);
     const employees = parseEmployees(raw.employees);
-    const tenantId = optionalNumber(raw.tenantId, "tenantId") ?? null;
-
-    const resultado = procesarNomina(period, employees, tenantId);
+    // D-P3-50: el tenant sale de la RUTA (propertyId, ya validado por `requirePropertyMembership`); un `tenantId` del cuerpo se ignora.
+    const resultado = procesarNomina(period, employees, null, c.req.param("propertyId"));
     return c.json(resultado);
   });
 
@@ -214,13 +213,12 @@ export function despachosNominaRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const tipoNomina = parseTipoNomina(raw.period?.tipoNomina);
     const serie = optionalString(raw.period?.serie, "period.serie");
     const { payrollInputs, datosXml } = parseEmployeesXml(raw.employees);
-    const tenantId = optionalNumber(raw.tenantId, "tenantId") ?? null;
     const emisor = parseEmisorXml(raw.emisor);
 
     // Reusa el MISMO motor que /calcular — nunca se recalculan ISR/IMSS aquí
     // ni se acepta un `taxes` ya calculado desde el cliente (evitaría que un
     // XML fiscal se genere con cifras que este backend nunca verificó).
-    const periodo = procesarNomina(period, payrollInputs, tenantId);
+    const periodo = procesarNomina(period, payrollInputs, null, c.req.param("propertyId"));
     if (periodo.employees.length !== datosXml.length) {
       // No debería poder pasar (misma longitud de `employees` de entrada),
       // pero se verifica explícitamente antes de indexar en paralelo abajo.

@@ -191,7 +191,7 @@ function hojaResumen(reporte: ReporteTabular): string {
   filas.push(fila(n, [celdaTexto(`A${n}`, reporte.titulo, ESTILO.titulo)]));
   n += 2;
   par("Contribuyente", reporte.contribuyente.nombre);
-  par("RFC", reporte.contribuyente.rfc ?? "Sin datos (sin CFDI ingeridos)");
+  par("RFC", reporte.contribuyente.rfc ?? "Sin datos (sin ficha de cartera)");
   par("Período", reporte.periodo);
   par("Generado el", reporte.generadoEn);
   if (reporte.sinDatos) par("Estado", "Sin datos para el período");

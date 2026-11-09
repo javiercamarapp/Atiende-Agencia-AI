@@ -2,6 +2,7 @@ export {
   validarCfdiDespachos,
   TOLERANCIA,
 } from "./cfdi/reglas-fiscales-avanzadas.ts";
+export { avisosCfdi, REGIMENES_RECEPTOR_POR_USO } from "./cfdi/avisos-cfdi.ts";
 export type { DatosCfdiDespachos, ResultadoValidacionCfdiDespachos, DiotResult, ProveedorReportableDiot, NominaCfdi } from "./cfdi/reglas-fiscales-avanzadas.ts";
 
 // ---- Declaraciones ISR/IVA/RESICO + DIOT (Fase 2) ----
@@ -74,6 +75,10 @@ export {
 export {
   TIPOS_VENCIMIENTO,
   TIPOS_VENCIMIENTO_BASE,
+  TIPOS_VENCIMIENTO_MIGRACION_019,
+  TIPOS_VENCIMIENTO_MIGRACION_024,
+  AVISOS_DIAS_HABILES,
+  decidirEscalamientoHabil,
   REGIMEN_FISCAL_POR_DEFECTO,
   fechaLimiteDia17MesSiguiente,
   diasHasta,
@@ -90,7 +95,7 @@ export type {
   NuevoVencimiento,
 } from "./vencimientos/engine.ts";
 
-export { RepRfcAjenoError, analizarComplementoPago, proporcionCentavos } from "./cfdi/rep.ts";
+export { RepRfcAjenoError, analizarComplementoPago, avisosPagoRep, proporcionCentavos } from "./cfdi/rep.ts";
 export type { AnalisisDocumentoRep, AnalisisRep, FacturaLigable, FlujoRep, FuenteIvaRep } from "./cfdi/rep.ts";
 
 export {
@@ -98,6 +103,7 @@ export {
   RegimenNoSoportadoError,
   calcularCalendarioFiscal,
   diaDeLaSemana,
+  diasHabilesHasta,
   feriadosDelAnio,
   infoDiaInhabil,
   metadatosVencimiento,
@@ -106,6 +112,7 @@ export {
   sumarDias,
   tipoPersonaDeRegimen,
 } from "./vencimientos/calendario-fiscal.ts";
+export { encolarCorreoEscalamientoSistema } from "./vencimientos/email-notifications.ts";
 export { barrerEscalamientosVencimientos, crearVencimientosDelPeriodo, esCheckViolation, registrarEscalamiento } from "./vencimientos/procesos.ts";
 export type { ResultadoBarridoVencimientos, ResultadoCrearVencimientos } from "./vencimientos/procesos.ts";
 export type { FeriadoFiscal, FechaLimiteHabil, ObligacionFiscalPeriodo, TipoPersona } from "./vencimientos/calendario-fiscal.ts";
@@ -553,12 +560,12 @@ export type {
   NivelAtencion,
   SeveridadAnomalia,
 } from "./dashboard/kpis.ts";
-export { construirDiotDesdeInvoices, candidatosDiotDesdeInvoices } from "./declaraciones/diot-desde-invoices.ts";
+export { construirDiotDesdeInvoices, candidatosDiotDesdeInvoices, esCompraReportableDiot } from "./declaraciones/diot-desde-invoices.ts";
 export type { DiotDesdeInvoices } from "./declaraciones/diot-desde-invoices.ts";
 export { TIPOS_REPORTE_CLIENTE, ETIQUETA_TIPO_REPORTE } from "./reportes/types.ts";
 export type { CeldaReporte, ColumnaReporte, ReporteCliente, ReporteTabular, SeccionReporte, TipoColumnaReporte, TipoReporteCliente } from "./reportes/types.ts";
 export { construirReporteBalanza, construirReporteCliente, construirReporteDiot, construirReporteImpuestos, construirReporteNomina } from "./reportes/builders.ts";
-export type { EntradaReporte } from "./reportes/builders.ts";
+export type { EntradaReporte, PapelesReporte } from "./reportes/builders.ts";
 export { crc32, crearZipStored, nombreHojaSeguro, reporteAXlsx, XLSX_CONTENT_TYPE } from "./reportes/xlsx.ts";
 export { leerKpisCliente, leerFuenteOpcional, MAX_PERIODOS_CIERRE_ABIERTOS } from "./dashboard/lectura.ts";
 export type { ClienteDashboardRef } from "./dashboard/lectura.ts";

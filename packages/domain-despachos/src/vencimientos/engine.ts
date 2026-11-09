@@ -17,9 +17,11 @@ export type EstadoVencimiento = "pendiente" | "en_proceso" | "completado" | "ven
 export type NivelEscalamiento = "nivel_1" | "nivel_2" | "nivel_3" | "nivel_4";
 export type TipoVencimiento = TipoVencimientoFiscal;
 
-/** Los 4 tipos originales (migración 001) y los 2 que agrega la migración 019 (Balanza, Anual). */
+/** Los 4 tipos originales (migración 001), los 2 que agrega la migración 019 (Balanza, Anual) y los 5 de la 024 (Retenciones, IMSS, IMSS-bimestral, ISN, Informativa). */
 export const TIPOS_VENCIMIENTO_BASE: readonly TipoVencimiento[] = ["ISR", "IVA", "DIOT", "Nómina"];
-export const TIPOS_VENCIMIENTO: readonly TipoVencimiento[] = ["ISR", "IVA", "DIOT", "Nómina", "Balanza", "Anual"];
+export const TIPOS_VENCIMIENTO_MIGRACION_019: readonly TipoVencimiento[] = ["Balanza", "Anual"];
+export const TIPOS_VENCIMIENTO_MIGRACION_024: readonly TipoVencimiento[] = ["Retenciones", "IMSS", "IMSS-bimestral", "ISN", "Informativa"];
+export const TIPOS_VENCIMIENTO: readonly TipoVencimiento[] = ["ISR", "IVA", "DIOT", "Nómina", "Balanza", "Anual", "Retenciones", "IMSS", "IMSS-bimestral", "ISN", "Informativa"];
 
 /** YYYY-MM-DD NOMINAL del día 17 del mes SIGUIENTE a (year, month), SIN ajuste por día hábil (art. 12 CFF). Solo
  * referencia; las fechas límite reales salen de `calcularCalendarioFiscal`. `month` es 1-12. */
@@ -74,6 +76,33 @@ export function decidirEscalamiento(tipo: TipoVencimiento, fechaLimite: string, 
     requiresHumanReview: true,
     humanReviewReason: `Escalamiento nivel ${level} para vencimiento ${tipo}`,
     notes: `Escalamiento automático para '${tipo}'. Fecha límite: ${fechaLimite}. Días restantes: ${diasRestantes}.`,
+  };
+}
+
+/** Días hábiles de anticipación a los que el barrido empieza a avisar: 7, 3 y 1 (como el sistema suelto, `deadline_engine.py`). */
+export const AVISOS_DIAS_HABILES: readonly number[] = [7, 3, 1];
+
+/**
+ * D-P3-33: decisión de escalamiento por DÍAS HÁBILES (el barrido avisaba por días naturales: un vencimiento a 7 hábiles quedaba sin aviso
+ * y el viernes anterior a un 17 en lunes tampoco). `null` = aún falta más de 7 días hábiles: no toca avisar.
+ *   <= 7 hábiles -> nivel_1 (primer aviso)   <= 3 -> nivel_2   <= 1 (o vence hoy) -> nivel_3   ya venció -> nivel_4
+ * Cada nivel se registra una sola vez por vencimiento (el barrido no repite un nivel igual o mayor), así que un cron que se salte un día
+ * no pierde el aviso: al volver a correr avisa del nivel que corresponda. Todo escalamiento exige revisión humana (CFF art. 89).
+ */
+export function decidirEscalamientoHabil(tipo: TipoVencimiento, fechaLimite: string, diasHabiles: number): DecisionEscalamiento | null {
+  const maximo = Math.max(...AVISOS_DIAS_HABILES);
+  if (diasHabiles > maximo) return null;
+  let level: NivelEscalamiento;
+  if (diasHabiles < 0) level = "nivel_4";
+  else if (diasHabiles <= 1) level = "nivel_3";
+  else if (diasHabiles <= 3) level = "nivel_2";
+  else level = "nivel_1";
+  const cuando = diasHabiles < 0 ? "ya venció" : diasHabiles === 0 ? "vence hoy" : `faltan ${diasHabiles} día(s) hábil(es)`;
+  return {
+    level,
+    requiresHumanReview: true,
+    humanReviewReason: `Escalamiento nivel ${level} para vencimiento ${tipo}`,
+    notes: `Aviso automático para '${tipo}'. Fecha límite: ${fechaLimite}; ${cuando}.`,
   };
 }
 

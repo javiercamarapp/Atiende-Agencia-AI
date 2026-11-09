@@ -347,21 +347,49 @@ function calcularIsr(e: EntradaPapel, c: Clasificacion, params: ParametrosPapelI
   return resultado("ISR", lineas, Math.max(0, ingresoMes), isr, retencionMes);
 }
 
-function calcularIva(e: EntradaPapel, c: Clasificacion): ResultadoImpuesto {
+/** Umbral de la advertencia "acreditable > 3x trasladado" (riesgo de revisión del SAT; el sistema suelto avisaba igual). */
+const FACTOR_ALERTA_ACREDITABLE = 3;
+
+function calcularIva(e: EntradaPapel, c: Clasificacion): { readonly resultado: ResultadoImpuesto; readonly advertencias: string[] } {
   const delMes = (xs: readonly Normalizado[]): Normalizado[] => xs.filter((x) => x.mes === e.mes);
   const trasladado = suma(delMes(c.emitidos).map((x) => x.ivaCentavos));
-  const acreditable = suma(delMes(c.recibidos).map((x) => x.ivaCentavos));
+  const acreditableBruto = suma(delMes(c.recibidos).map((x) => x.ivaCentavos));
   const retenido = suma(delMes(c.emitidos).map((x) => x.ivaRetenidoCentavos));
+  const advertencias: string[] = [];
+
+  // D-P3-06 (LIVA 5-V y art. 5 RLIVA): cuando el contribuyente realiza ademas actos EXENTOS, el IVA de gastos de uso mixto solo se
+  // acredita en la proporcion actos gravados / (gravados + exentos). PENDIENTE DE VALIDAR CON EL FISCALISTA: se aplica la proporcion del
+  // MES a todo el IVA acreditable (no se separa gasto de uso exclusivo gravado, exclusivo exento y mixto) -- ver PREGUNTAS-AL-FISCALISTA.
+  const exentos = parametroCentavos(e.iva.actosExentosCentavos);
+  let acreditable = acreditableBruto;
+  let detalleAcreditable: string | undefined;
+  if (exentos > 0) {
+    const gravadosCapturados = parametroCentavos(e.iva.actosGravadosCentavos);
+    const gravados = gravadosCapturados > 0 ? gravadosCapturados : suma(delMes(c.emitidos).map((x) => x.baseCentavos));
+    const total = gravados + exentos;
+    if (gravadosCapturados === 0) advertencias.push("IVA proporcional: los actos gravados se tomaron de la base de los CFDI emitidos del mes (captura los actos gravados si difieren).");
+    if (total > 0) {
+      acreditable = porFraccion(acreditableBruto, BigInt(gravados), BigInt(total));
+      const pct = (Number((BigInt(gravados) * 1_000_000n) / BigInt(total)) / 10_000).toFixed(2);
+      detalleAcreditable = `Proporcion de acreditamiento ${pct} % (actos gravados ${gravados} / gravados + exentos ${total}, centavos); IVA acreditable antes de la proporcion: ${acreditableBruto}.`;
+    }
+  } else {
+    advertencias.push("Proporción no aplicada: sin actos exentos registrados. El IVA acreditable se tomó al 100 %; si el cliente realiza actos exentos captura actosExentosCentavos (LIVA 5-V).");
+  }
+  if (trasladado > 0 && acreditable > trasladado * FACTOR_ALERTA_ACREDITABLE) {
+    advertencias.push(`IVA acreditable (${acreditable} centavos) mayor a ${FACTOR_ALERTA_ACREDITABLE} veces el IVA trasladado (${trasladado} centavos): revisa el origen del acreditable antes de presentar (un saldo a favor así suele ser revisado por el SAT).`);
+  }
+
   // PENDIENTE DE VALIDAR CON EL FISCALISTA: el saldo a favor de IVA del mes anterior (del papel presentado) se arrastra y acredita solo
   // contra el IVA del mes; no se modela compensación contra otros impuestos ni solicitud de devolución.
   const saldoAnterior = e.saldoFavorIvaMesAnteriorCentavos ?? parametroCentavos(e.iva.saldoFavorAnteriorCentavos);
   const lineas: LineaPapel[] = [
     { clave: "trasladado", concepto: "IVA trasladado efectivamente cobrado", centavos: trasladado },
-    { clave: "acreditable", concepto: "IVA acreditable efectivamente pagado", centavos: acreditable },
+    { clave: "acreditable", concepto: "IVA acreditable efectivamente pagado", centavos: acreditable, ...(detalleAcreditable ? { detalle: detalleAcreditable } : {}) },
     { clave: "retenido", concepto: "IVA retenido por clientes", centavos: retenido },
     { clave: "saldo_anterior", concepto: "Saldo a favor de meses anteriores", centavos: saldoAnterior },
   ];
-  return resultado("IVA", lineas, Math.max(0, trasladado), Math.max(0, trasladado), acreditable + retenido + saldoAnterior);
+  return { resultado: resultado("IVA", lineas, Math.max(0, trasladado), Math.max(0, trasladado), acreditable + retenido + saldoAnterior), advertencias };
 }
 
 export function calcularPapelProvisional(e: EntradaPapel): PapelProvisional {
@@ -376,6 +404,8 @@ export function calcularPapelProvisional(e: EntradaPapel): PapelProvisional {
     const acumulado = suma(c.emitidos.map((x) => x.baseCentavos));
     if (acumulado > TOPE_RESICO_CENTAVOS) advertencias.push("Los ingresos acumulados del ejercicio rebasan $3,500,000.00: el contribuyente deja RESICO; revisa con el fiscalista.");
   }
-  const iva = calcularIva(e, c);
+  const calculoIva = calcularIva(e, c);
+  const iva = calculoIva.resultado;
+  advertencias.push(...calculoIva.advertencias);
   return { ejercicio: e.ejercicio, mes: e.mes, regimen: e.regimen, isr, iva, documentosIncluidos: c.incluidos, exclusiones: c.exclusiones, pendientesPpd: { cantidad: c.pendientesPpd.cantidad, importeCentavos: c.pendientesPpd.importeCentavos }, advertencias };
 }
