@@ -75,3 +75,69 @@ describe("POST /hoteles/:propertyId/folios/:folioId/pagos (tarjeta) -> Stripe: u
     expect((await ctx.hotelesRepo.findFolio(ctx.propertyId, ctx.folioId))!.payments).toHaveLength(0);
   });
 });
+
+describe("POST .../pagos (tarjeta): PaymentIntent pendiente (3DS / requires_action / processing)", () => {
+  for (const stripeStatus of ["requires_action", "processing"] as const) {
+    it(`'${stripeStatus}' responde 202 (aceptado, no cobrado), queda 'pendiente' y NO baja el saldo`, async () => {
+      const ctx = await buildHotelesTestContext(buildApp);
+      const stripe = fakeStripe({ id: `pi_${stripeStatus}`, status: stripeStatus });
+      const app = buildApp({ ...ctx.deps, hotelesPaymentsPort: stripe.port });
+
+      const cargo = await app.request(
+        `/hoteles/${ctx.propertyId}/folios/${ctx.folioId}/cargos`,
+        authedJson(ctx.staff.owner.token, { descripcion: "Propina", monto: 500, concepto: "propina" }, { "idempotency-key": `k-cargo-${stripeStatus}` }),
+      );
+      expect(cargo.status).toBe(201);
+      const saldoAntes = ((await (await app.request(`/hoteles/${ctx.propertyId}/folios/${ctx.folioId}`, authedJson(ctx.staff.owner.token))).json()) as { saldo: number }).saldo;
+
+      const res = await app.request(
+        `/hoteles/${ctx.propertyId}/folios/${ctx.folioId}/pagos`,
+        authedJson(ctx.staff.owner.token, { monto: saldoAntes, metodo: "tarjeta", tokenPago: "pm_3ds" }, { "idempotency-key": `k-pend-${stripeStatus}` }),
+      );
+      expect(res.status).toBe(202);
+      const body = (await res.json()) as { estado: string; requiereAccion: boolean; referenciaExterna: string | null };
+      expect(body.estado).toBe("pendiente");
+      expect(body.requiereAccion).toBe(true);
+      expect(body.referenciaExterna).toBe(`pi_${stripeStatus}`);
+
+      const folio = (await (await app.request(`/hoteles/${ctx.propertyId}/folios/${ctx.folioId}`, authedJson(ctx.staff.owner.token))).json()) as {
+        saldo: number;
+        pagos: { estado: string }[];
+      };
+      expect(folio.pagos.map((p) => p.estado)).toEqual(["pendiente"]);
+      expect(folio.saldo).toBe(saldoAntes);
+
+      // Con el saldo intacto, el folio NO puede cerrarse como saldo_cero apoyado en un cobro sin confirmar.
+      const cierre = await app.request(`/hoteles/${ctx.propertyId}/folios/${ctx.folioId}/cerrar`, authedJson(ctx.staff.owner.token, { motivo: "saldo_cero" }));
+      expect(cierre.status).toBe(409);
+    });
+  }
+
+  it("el reintento con la misma Idempotency-Key devuelve el MISMO 202 pendiente sin volver a llamar a Stripe", async () => {
+    const ctx = await buildHotelesTestContext(buildApp);
+    const stripe = fakeStripe({ id: "pi_retry", status: "requires_action" });
+    const app = buildApp({ ...ctx.deps, hotelesPaymentsPort: stripe.port });
+    const req = () =>
+      app.request(
+        `/hoteles/${ctx.propertyId}/folios/${ctx.folioId}/pagos`,
+        authedJson(ctx.staff.owner.token, { monto: 100, metodo: "tarjeta", tokenPago: "pm_retry" }, { "idempotency-key": "k-pend-retry" }),
+      );
+    const first = await req();
+    const second = await req();
+    expect(first.status).toBe(202);
+    expect(second.status).toBe(202);
+    expect(stripe.calls).toHaveLength(1);
+  });
+
+  it("un cobro 'succeeded' sigue respondiendo 201 con requiereAccion=false", async () => {
+    const ctx = await buildHotelesTestContext(buildApp);
+    const stripe = fakeStripe({ id: "pi_ok", status: "succeeded" });
+    const app = buildApp({ ...ctx.deps, hotelesPaymentsPort: stripe.port });
+    const res = await app.request(
+      `/hoteles/${ctx.propertyId}/folios/${ctx.folioId}/pagos`,
+      authedJson(ctx.staff.owner.token, { monto: 100, metodo: "tarjeta", tokenPago: "pm_ok" }, { "idempotency-key": "k-ok" }),
+    );
+    expect(res.status).toBe(201);
+    expect(((await res.json()) as { estado: string; requiereAccion: boolean }).requiereAccion).toBe(false);
+  });
+});
