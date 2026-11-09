@@ -259,7 +259,15 @@ function directDefaultArgs(tool: DataChatTool): Record<string, string> {
 }
 
 function answer(status: DataChatAnswer["status"], text: string, extra: Partial<Omit<DataChatAnswer, "status" | "text">> = {}): DataChatAnswer {
-  return { status, text, blocks: extra.blocks ?? [], sources: extra.sources ?? [], toolsUsed: extra.toolsUsed ?? [], ...(extra.noAi ? { noAi: extra.noAi } : {}) };
+  return {
+    status,
+    text,
+    blocks: extra.blocks ?? [],
+    sources: extra.sources ?? [],
+    toolsUsed: extra.toolsUsed ?? [],
+    ...(extra.noAi ? { noAi: extra.noAi } : {}),
+    ...(extra.coverage ? { coverage: extra.coverage } : {}),
+  };
 }
 
 /** Respuesta del MODO SIN IA: dice con claridad que la IA no esta disponible y por que, y devuelve el
@@ -665,11 +673,14 @@ export async function runDataChatTurn(opts: RunDataChatTurnOptions): Promise<Dat
     scopeLabel: r.result.scopeLabel,
   }));
 
+  // «x de y fuentes»: lo que el motor SABE de este turno (consultas distintas que corrieron y cuantas trajeron filas), nunca una estimacion.
+  const coverage = { consulted: new Set(runs.map((r) => r.tool.name)).size, withData: new Set(withRows.map((r) => r.tool.name)).size };
+
   if (withRows.length === 0) {
     await reportUso(baseRoute);
     const first = usable[0]!.result;
     const when = first.periodLabel ? ` en ${first.periodLabel}` : "";
-    return answer("no_data", `No encontré datos de ${first.source}${when}. No tengo cifras que mostrar para eso.`, { sources, toolsUsed });
+    return answer("no_data", `No encontré datos de ${first.source}${when}. No tengo cifras que mostrar para eso.`, { sources, toolsUsed, coverage });
   }
 
   const blocks: DataChatBlock[] = withRows.map((r) => ({
@@ -746,7 +757,7 @@ export async function runDataChatTurn(opts: RunDataChatTurnOptions): Promise<Dat
   }
 
   await reportUso(direct ? baseRoute : narrativeOk ? (usedEscalated || (routedEscalated && !routedFellBack) ? "escalado" : "barato") : "determinista");
-  return answer("ok", narrativeOk ? narrative : deterministic, { blocks, sources, toolsUsed });
+  return answer("ok", narrativeOk ? narrative : deterministic, { blocks, sources, toolsUsed, coverage });
 }
 
 // eslint-disable-next-line no-control-regex
