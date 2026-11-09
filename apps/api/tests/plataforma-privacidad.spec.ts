@@ -428,8 +428,9 @@ describe("/internal/plataforma/privacidad-retencion", () => {
     expect(body).toMatchObject({ unidades: 4, errores: 1 });
     expect(body.resultados.find((r: Json) => r.estado === "error")).toMatchObject({ organizationId: o1, claseDato: "restaurantes_voz_transcripciones", error: "fallo_inesperado" });
     expect(body.resultados.filter((r: Json) => r.estado === "ok")).toHaveLength(3);
-    // 1 lectura de objetivos + 1 transaccion por unidad + 1 de la bitacora de corrida (withHeartbeat, PL-35), todas de sistema.
-    expect(sesiones).toEqual([null, null, null, null, null, null]);
+    // 1 lote de la purga de datos de salud de citas (QA R1 citas 07) + 1 lectura de objetivos + 1 transaccion por unidad + 1 de la
+    // bitacora de corrida (withHeartbeat, PL-35), todas de sistema.
+    expect(sesiones).toEqual([null, null, null, null, null, null, null]);
     expect(JSON.stringify(body)).not.toMatch(/fallo simulado/);
   });
 

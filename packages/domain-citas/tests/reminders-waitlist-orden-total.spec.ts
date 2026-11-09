@@ -10,7 +10,7 @@
 // Esta prueba fija dos candidatos con el MISMO `createdAt` (mismo milisegundo,
 // plausible bajo carga real) y confirma que el ganador es SIEMPRE el de `id`
 // menor, sin importar en qué orden el repositorio los devuelva.
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { InMemoryCitasRepository } from "../src/in-memory-repository.ts";
 import { runOptimizadorCore } from "../src/reminders.ts";
 
@@ -29,6 +29,15 @@ function seedTiedCandidates(repo: InMemoryCitasRepository, idLower: string, idHi
 }
 
 describe("runOptimizadorCore — orden TOTAL con createdAt empatado (regla dura #5)", () => {
+  // El optimizador ya no ofrece huecos pasados: el reloj se fija ANTES de los horarios del escenario (el hueco es del 2-ene-2026).
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-01-01T12:00:00.000Z"));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("dos candidatos con el MISMO createdAt: gana el de id menor, sin importar el orden de almacenamiento", async () => {
     const idLower = "00000000-0000-0000-0000-0000000000a1";
     const idHigher = "00000000-0000-0000-0000-0000000000a2";

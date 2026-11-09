@@ -75,6 +75,7 @@ import type {
   EscalacionSeguimientoEstado,
   EscalacionVista,
   MessagingOutboxRow,
+  RetentionPurgeBatch,
   NewAppointmentFromPanelInput,
   NewAppointmentInput,
   NoShowResult,
@@ -235,6 +236,7 @@ export class InMemoryCitasRepository implements CitasRepository {
   // vía `setSystemWaitlistFunctionsAvailable` -- ver
   // `repository.ts::areSystemWaitlistFunctionsAvailable` para el diseño real. ----
   private systemWaitlistFunctionsAvailableFlag = true;
+  private retentionPurgeBatches: RetentionPurgeBatch[] | null = [];
 
   /** Contadores de llamadas a los métodos BATCH de enriquecimiento de agenda --
    * expuestos para que los tests de rendimiento (ver
@@ -330,6 +332,22 @@ export class InMemoryCitasRepository implements CitasRepository {
    * default) para el probe de `areSystemWaitlistFunctionsAvailable`. */
   setSystemWaitlistFunctionsAvailable(available: boolean): void {
     this.systemWaitlistFunctionsAvailableFlag = available;
+  }
+
+  /** Simula el resultado de la purga por retencion (`citas.system_purge_retencion`): una cola de lotes (el ultimo se repite) o
+   * `null` para "base sin migrar" (disponible:false). Por omision: disponible, sin nada vencido. */
+  setRetentionPurgeBatches(batches: readonly RetentionPurgeBatch[] | null): void {
+    this.retentionPurgeBatches = batches === null ? null : [...batches];
+  }
+
+  /** Llamadas hechas a `purgeRetentionBatch` (limite y simulacion), para aserciones. */
+  readonly retentionPurgeCalls: { limit: number; dry: boolean }[] = [];
+
+  async purgeRetentionBatch(limit: number, dry: boolean): Promise<RetentionPurgeBatch> {
+    this.retentionPurgeCalls.push({ limit, dry });
+    if (this.retentionPurgeBatches === null) return { disponible: false, conversacionesVaciadas: 0, escalacionesBorradas: 0, notasBorradas: 0, protegidas: 0 };
+    const siguiente = this.retentionPurgeBatches.length > 1 ? this.retentionPurgeBatches.shift() : this.retentionPurgeBatches[0];
+    return siguiente ?? { disponible: true, conversacionesVaciadas: 0, escalacionesBorradas: 0, notasBorradas: 0, protegidas: 0 };
   }
 
   seedWaitlistEntry(row: Omit<StoredWaitlistRow, "id" | "status" | "notifiedCount" | "createdAt" | "expiresAt"> & { id?: string; expiresAt?: string; createdAt?: string }): string {

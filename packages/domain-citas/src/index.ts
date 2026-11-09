@@ -88,6 +88,7 @@ export type {
   EmergencyEscalationInput,
   EmergencyEscalationRecord,
   MessagingOutboxRow,
+  RetentionPurgeBatch,
   NewAppointmentFromPanelInput,
   NewAppointmentInput,
   NoShowResult,
