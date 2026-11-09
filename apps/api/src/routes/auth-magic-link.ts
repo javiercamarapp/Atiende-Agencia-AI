@@ -21,7 +21,7 @@
 import { Hono, type Context } from "hono";
 import { generateInviteToken, hashInviteToken } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
-import { botonPildoraHtml, escapeHtml, renderCorreo } from "@atiende/core-email";
+import { botonPildoraHtml, escapeHtml, renderCorreo, resumirErrorResend } from "@atiende/core-email";
 import { rateLimit } from "@atiende/core-ratelimit";
 import { Errors } from "../errors.ts";
 import { requestActor } from "../http-security.ts";
@@ -95,8 +95,8 @@ async function enviarCorreoMagicLink(deps: AppDeps, c: Context<CoreAuthHonoEnv>,
       }),
     });
     if (!res.ok) {
-      const bodyText = await res.text().catch(() => "");
-      logEvent(c, "error", "magic_link_resend_fallo", { status: res.status, body: bodyText.slice(0, 300) });
+      // Solo estado y código de Resend: el cuerpo crudo puede repetir el destinatario o el enlace (ver resumirErrorResend).
+      logEvent(c, "error", "magic_link_resend_fallo", { ...resumirErrorResend(res.status, await res.text().catch(() => "")) });
     }
   } catch (err) {
     logEvent(c, "error", "magic_link_resend_error_red", { message: err instanceof Error ? err.message : String(err) });
