@@ -302,8 +302,8 @@ export function DashboardPage({ apiBaseUrl, token, orgSlug, propertyId, role, st
             icon={Bot}
             compacto
             className="col-span-full"
-            titulo="Sin registro de corridas"
-            mensaje="Falta un endpoint de lectura que exponga los latidos de los procesos automáticos del despacho; hasta entonces no se muestra ninguna corrida."
+            titulo="Aún no disponible"
+            mensaje="Aquí verás cuándo corrieron por última vez los procesos automáticos de tu despacho. Esta sección todavía no está disponible."
           />
         </ResumenSeccion>
 
