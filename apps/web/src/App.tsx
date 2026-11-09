@@ -87,6 +87,7 @@ const NotificacionesPagina = cargaPerezosa(() => import("./components/Notificaci
 const PlanYUsoPagina = cargaPerezosa(() => import("./components/PlanYUsoPagina.tsx"), "PlanYUsoPagina");
 const ReservarPage = cargaPerezosa(() => import("./verticals/citas/reserva/ReservarPage.tsx"), "ReservarPage");
 const RestaurantesPrimerosPasosPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/PrimerosPasos.tsx"), "RestaurantesPrimerosPasosPage");
+const RestaurantesPrimerValorPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/PrimerValor.tsx"), "RestaurantesPrimerValorPage");
 const RestaurantesCopilotoPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Copiloto.tsx"), "RestaurantesCopilotoPage");
 const RestaurantesCfoPage = cargaPerezosa(() => import("./verticals/restaurantes/cfo/CfoLayout.tsx"), "CfoLayout");
 const RentasCopilotoPage = cargaPerezosa(() => import("./verticals/rentas/pages/Copiloto.tsx"), "RentasCopilotoPage");
@@ -347,6 +348,7 @@ const RestaurantesPrivacidadOrganizacionRoute = shellRoute(RestaurantesShell, "/
 // R-21: bandeja de conversaciones con handoff a humano y turnos de personal por sucursal.
 const RestaurantesConversacionesRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesConversacionesPage {...ctx} />);
 const RestaurantesPrimerosPasosRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesPrimerosPasosPage {...ctx} />);
+const RestaurantesPrimerValorRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesPrimerValorPage {...ctx} />);
 const RestaurantesTurnosRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesTurnosPage {...ctx} />);
 // R-16: avisos del staff (Mis avisos para todos; matriz del equipo y umbral de entrega tardia para owner/admin).
 const RestaurantesAvisosRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <RestaurantesAvisosPage {...ctx} />);
@@ -1112,6 +1114,7 @@ export function App() {
         <Route path="/restaurantes/:orgSlug/copiloto" element={<RestaurantesCopilotoRoute />} />
         <Route path="/restaurantes/:orgSlug/cfo/*" element={<RestaurantesCfoRoute />} />
         <Route path="/restaurantes/:orgSlug/primeros-pasos" element={<RestaurantesPrimerosPasosRoute />} />
+        <Route path="/restaurantes/:orgSlug/primer-valor" element={<RestaurantesPrimerValorRoute />} />
         <Route path="/restaurantes/:orgSlug/notificaciones" element={<RestaurantesNotificacionesRoute />} />
         <Route path="/restaurantes/:orgSlug/plan" element={<RestaurantesPlanRoute />} />
         <Route path="/restaurantes/:orgSlug/seguridad" element={<RestaurantesSeguridadRoute />} />
