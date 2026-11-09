@@ -6,7 +6,7 @@ import { Link } from "react-router-dom";
 import { ClipboardPaste, FileUp, Settings2, ReceiptText, Store } from "lucide-react";
 import type { CuadreSrVista, FilaCuadreApi, LotesSrVista, OperacionVista, SemaforoCuadre } from "@atiende/domain-restaurantes/cfo";
 import type { LoteSr } from "@atiende/domain-restaurantes/cfo";
-import { BarrasAgrupadas, Button, Callout, ChartCard, DataTable, EstadoVacio, PageContainer, Semaforo, StatCard, TablaDatosGrafica, useT } from "@atiende/ui";
+import { BarrasAgrupadas, Button, Callout, Card, ChartCard, DataTable, EstadoVacio, PageContainer, Semaforo, StatCard, TablaDatosGrafica, useT } from "@atiende/ui";
 import type { Clave, EstadoSemaforo } from "@atiende/ui";
 import { restaurantesCfoSr } from "@atiende/ui/i18n/restaurantes/cfoSr";
 import { puedeEn } from "../lib/permisos.ts";
@@ -96,21 +96,23 @@ function Comandas({ d, base, abrir }: { readonly d: OperacionVista; readonly bas
         </Link>
       </div>
       {c.porSucursal.length > 1 && (
-        <DataTable<(typeof c.porSucursal)[number]>
-          etiqueta={t("restaurantes.cfoSr.comandasSucursal")}
-          filas={c.porSucursal}
-          obtenerId={(f) => f.propertyId}
-          paginacion={false}
-          vista="tabla"
-          columnas={[
-            { id: "n", encabezado: t("restaurantes.cfoSr.col.sucursal"), principal: true, celda: (f) => f.nombre },
-            { id: "m", encabezado: t("restaurantes.cfoSr.col.envio"), celda: (f) => modo(f.modo) },
-            { id: "e", encabezado: t("restaurantes.cfoSr.encoladas"), alinear: "right", className: "tabular-nums", celda: (f) => entero(f.sumas.encoladas) },
-            { id: "c", encabezado: t("restaurantes.cfoSr.confirmadas"), alinear: "right", className: "tabular-nums", celda: (f) => entero(f.sumas.confirmadas) },
-            { id: "a", encabezado: t("restaurantes.cfoSr.col.aMano"), alinear: "right", className: "tabular-nums", celda: (f) => entero(f.sumas.capturadasManual) },
-            { id: "f", encabezado: t("restaurantes.cfoSr.fallidas"), alinear: "right", className: "tabular-nums", celda: (f) => entero(f.sumas.fallidas) },
-          ]}
-        />
+        <Card className="overflow-hidden">
+          <DataTable<(typeof c.porSucursal)[number]>
+            etiqueta={t("restaurantes.cfoSr.comandasSucursal")}
+            filas={c.porSucursal}
+            obtenerId={(f) => f.propertyId}
+            paginacion={false}
+            vista="tabla"
+            columnas={[
+              { id: "n", encabezado: t("restaurantes.cfoSr.col.sucursal"), principal: true, celda: (f) => f.nombre },
+              { id: "m", encabezado: t("restaurantes.cfoSr.col.envio"), celda: (f) => modo(f.modo) },
+              { id: "e", encabezado: t("restaurantes.cfoSr.encoladas"), alinear: "right", className: "tabular-nums", celda: (f) => entero(f.sumas.encoladas) },
+              { id: "c", encabezado: t("restaurantes.cfoSr.confirmadas"), alinear: "right", className: "tabular-nums", celda: (f) => entero(f.sumas.confirmadas) },
+              { id: "a", encabezado: t("restaurantes.cfoSr.col.aMano"), alinear: "right", className: "tabular-nums", celda: (f) => entero(f.sumas.capturadasManual) },
+              { id: "f", encabezado: t("restaurantes.cfoSr.fallidas"), alinear: "right", className: "tabular-nums", celda: (f) => entero(f.sumas.fallidas) },
+            ]}
+          />
+        </Card>
       )}
     </div>
   );
@@ -133,23 +135,25 @@ function Lotes({ d, nombres }: { readonly d: LotesSrVista; readonly nombres: Rea
           ))}
         </ul>
       )}
-      <DataTable<LoteSr>
-        etiqueta={t("restaurantes.cfoSr.lotes")}
-        filas={d.lotes}
-        obtenerId={(f) => f.id}
-        paginacion={{ tamano: 8 }}
-        vista="tabla"
-        vacio={{ titulo: t("restaurantes.cfoSr.sinLotes"), mensaje: t("restaurantes.cfoSr.sinLotesMensaje") }}
-        columnas={[
-          { id: "a", encabezado: t("restaurantes.cfoSr.col.archivo"), principal: true, celda: (f) => f.nombreArchivo },
-          { id: "s", encabezado: t("restaurantes.cfoSr.col.sucursal"), celda: (f) => nombres.get(f.propertyId) ?? SIN_DATO },
-          { id: "t", encabezado: t("restaurantes.cfoSr.col.tipo"), celda: (f) => (ETIQUETA_TIPO[f.tipo] ? t(ETIQUETA_TIPO[f.tipo] as Clave) : f.tipo) },
-          { id: "c", encabezado: t("restaurantes.cfoSr.col.cubre"), celda: (f) => (f.fechaMin && f.fechaMax ? t("restaurantes.cfoSr.rango", { desde: diaCorto(f.fechaMin), hasta: diaCorto(f.fechaMax) }) : SIN_DATO) },
-          { id: "ac", encabezado: t("restaurantes.cfoSr.col.aceptados"), alinear: "right", className: "tabular-nums", celda: (f) => entero(f.aceptados) },
-          { id: "re", encabezado: t("restaurantes.cfoSr.col.rechazados"), alinear: "right", className: "tabular-nums", celda: (f) => entero(f.rechazados) },
-          { id: "e", encabezado: t("restaurantes.cfoSr.col.estado"), celda: (f) => t(f.estado === "aplicado" ? "restaurantes.cfoSr.aplicado" : "restaurantes.cfoSr.reemplazado") },
-        ]}
-      />
+      <Card className="overflow-hidden">
+        <DataTable<LoteSr>
+          etiqueta={t("restaurantes.cfoSr.lotes")}
+          filas={d.lotes}
+          obtenerId={(f) => f.id}
+          paginacion={{ tamano: 8 }}
+          vista="tabla"
+          vacio={{ titulo: t("restaurantes.cfoSr.sinLotes"), mensaje: t("restaurantes.cfoSr.sinLotesMensaje") }}
+          columnas={[
+            { id: "a", encabezado: t("restaurantes.cfoSr.col.archivo"), principal: true, celda: (f) => f.nombreArchivo },
+            { id: "s", encabezado: t("restaurantes.cfoSr.col.sucursal"), celda: (f) => nombres.get(f.propertyId) ?? SIN_DATO },
+            { id: "t", encabezado: t("restaurantes.cfoSr.col.tipo"), celda: (f) => (ETIQUETA_TIPO[f.tipo] ? t(ETIQUETA_TIPO[f.tipo] as Clave) : f.tipo) },
+            { id: "c", encabezado: t("restaurantes.cfoSr.col.cubre"), celda: (f) => (f.fechaMin && f.fechaMax ? t("restaurantes.cfoSr.rango", { desde: diaCorto(f.fechaMin), hasta: diaCorto(f.fechaMax) }) : SIN_DATO) },
+            { id: "ac", encabezado: t("restaurantes.cfoSr.col.aceptados"), alinear: "right", className: "tabular-nums", celda: (f) => entero(f.aceptados) },
+            { id: "re", encabezado: t("restaurantes.cfoSr.col.rechazados"), alinear: "right", className: "tabular-nums", celda: (f) => entero(f.rechazados) },
+            { id: "e", encabezado: t("restaurantes.cfoSr.col.estado"), celda: (f) => t(f.estado === "aplicado" ? "restaurantes.cfoSr.aplicado" : "restaurantes.cfoSr.reemplazado") },
+          ]}
+        />
+      </Card>
     </div>
   );
 }
