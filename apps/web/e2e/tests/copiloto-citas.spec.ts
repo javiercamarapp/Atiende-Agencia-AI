@@ -48,8 +48,8 @@ test.describe("copiloto de citas @copiloto", () => {
     await page.getByRole("button", { name: "Historial de chats" }).click();
     const panel = page.getByRole("dialog", { name: "Historial de chats" });
     await expect(panel.getByRole("button", { name: PREGUNTA, exact: true })).toBeVisible();
-    // Chat nuevo: vuelve la portada (sin conversacion).
-    await panel.getByRole("button", { name: "Nuevo chat" }).click();
+    // Chat nuevo: vuelve la portada (sin conversacion) y el historial se cierra.
+    await panel.getByRole("button", { name: "Chat nuevo", exact: true }).click();
     await expect(page.getByText(TEXTO_RESPUESTA)).toHaveCount(0);
 
     // Reabrir desde el historial trae la conversacion guardada desde el servidor.

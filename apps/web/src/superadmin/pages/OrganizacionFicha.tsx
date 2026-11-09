@@ -4,9 +4,10 @@
 // Honesto: un dato que no se pudo medir es "—" con su razon; un paso de onboarding "No se pudo medir" NO es "Pendiente". Una organizacion
 // inexistente da un 404 honesto (estado vacio con enlace de regreso), no una pantalla en blanco. Un solo <h1> (PageHeader).
 import { useCallback, useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
-import { Activity, Boxes, CircleDollarSign, DoorOpen, Gauge, MessageSquare, Mic, ShieldAlert, TrendingUp, Users } from "lucide-react";
+import { useNavigate, useParams } from "react-router-dom";
+import { Activity, Boxes, CircleDollarSign, DoorOpen, Gauge, KeyRound, MessageSquare, Mic, ShieldAlert, TrendingUp, Users } from "lucide-react";
 import { Button, Callout, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, PageContainer, PageHeader, StatCard, StatusBadge, etiquetasTraducidas, statusTone, traductorActivo, useT } from "@atiende/ui";
+import { waMeta } from "@atiende/ui/i18n/waMeta";
 import type { StatusTone } from "@atiende/ui";
 import { comun } from "@atiende/ui/i18n/comun";
 import { superadminComun } from "@atiende/ui/i18n/superadmin/comun";
@@ -36,11 +37,12 @@ function datoCard<T>(campo: CampoOrg<T> | undefined, formato: (v: T) => string, 
 }
 
 export function SuperAdminOrganizacionFichaPage({ apiBaseUrl, token }: { readonly apiBaseUrl: string; readonly token: string }) {
-  const t = useT(comun, superadminComun, superadminFicha);
+  const t = useT(comun, superadminComun, superadminFicha, waMeta);
   const { id = "" } = useParams<{ id: string }>();
   const [carga, setCarga] = useState<Carga>({ estado: "cargando" });
   const [margen, setMargen] = useState<{ readonly estado: "cargando" } | { readonly estado: "listo"; readonly campo: CampoOrg<MargenOrg> }>({ estado: "cargando" });
   const { entrar, dialogo } = useEntrarOrganizacion(apiBaseUrl, token);
+  const navigate = useNavigate();
 
   const cargar = useCallback(async () => {
     setCarga({ estado: "cargando" });
@@ -80,11 +82,18 @@ export function SuperAdminOrganizacionFichaPage({ apiBaseUrl, token }: { readonl
       atras={{ to: "/superadmin/organizaciones", etiqueta: t("superadmin.comun.organizaciones") }}
       meta={<StatusBadge tone={statusTone(ORG_STATUS_TONES, org.estado)}>{NOMBRE_ESTADO_ORG[org.estado] ?? org.estado}</StatusBadge>}
       acciones={
-        <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => entrar({ id: org.id, nombre: org.nombre })}>
-          <DoorOpen className="size-3.5" strokeWidth={1.75} aria-hidden="true" />
-          {t("superadmin.comun.entrar")}
-          <span className="sr-only"> {t("superadmin.comun.srA", { nombre: org.nombre })}</span>
-        </Button>
+        <>
+          {/* Credenciales de Meta por organizacion (migracion 0090). */}
+          <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => navigate(`/superadmin/organizaciones/${encodeURIComponent(org.id)}/whatsapp`)}>
+            <KeyRound className="size-3.5" strokeWidth={1.75} aria-hidden="true" />
+            {t("waMeta.boton.ficha")}
+          </Button>
+          <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => entrar({ id: org.id, nombre: org.nombre })}>
+            <DoorOpen className="size-3.5" strokeWidth={1.75} aria-hidden="true" />
+            {t("superadmin.comun.entrar")}
+            <span className="sr-only"> {t("superadmin.comun.srA", { nombre: org.nombre })}</span>
+          </Button>
+        </>
       }
     />
   );
