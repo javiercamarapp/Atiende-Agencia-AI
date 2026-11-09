@@ -25,7 +25,7 @@ afterEach(() => {
 });
 
 function stubEstado(estado: unknown, ok = true) {
-  const fetchMock = vi.fn(async () => new Response(JSON.stringify(estado), { status: ok ? 200 : 500, headers: { "content-type": "application/json" } }));
+  const fetchMock = vi.fn(async (_url: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify(estado), { status: ok ? 200 : 500, headers: { "content-type": "application/json" } }));
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
 }
