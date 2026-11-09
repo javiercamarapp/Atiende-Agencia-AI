@@ -29,6 +29,8 @@ export interface EntradaDnis {
 export interface ConfigWorker {
   /** `configurado` = puede contestar llamadas. */
   readonly estado: "configurado" | "no_configurado";
+  /** Avisos informativos que NO impiden atender (p. ej. sin tope mensual de voz). Sin valores ni PII. */
+  readonly avisos: readonly string[];
   /** Por que no esta configurado (nombres de variables y problemas, nunca valores). */
   readonly motivos: readonly string[];
   readonly livekit: { readonly url: string; readonly apiKey: string; readonly apiSecret: string; readonly prefijoSala: string } | null;
@@ -226,17 +228,24 @@ export function cargarConfig(env: Readonly<Record<string, string | undefined>>, 
   }
   const { tabla, problemas } = parsearTablaDnis(env.VOICE_DNIS_MAP, env);
   motivos.push(...problemas);
+  // Tope de plataforma por organizacion y mes (Ola 4, H4; decision de Omar: no hay tope por omision, "es lo que necesite PM o el cliente").
+  // Vacio o `sin_tope` = sin tope: ninguna llamada se corta por gasto; queda un AVISO informativo (no un motivo de no configurado).
   let tope: number | null = null;
-  if (lleno(env.VOICE_TOPE_MENSUAL_USD)) {
-    const usd = Number(env.VOICE_TOPE_MENSUAL_USD);
-    if (!Number.isFinite(usd) || usd <= 0) motivos.push("VOICE_TOPE_MENSUAL_USD debe ser un numero mayor que 0.");
+  const avisos: string[] = [];
+  const crudoTope = (env.VOICE_TOPE_MENSUAL_USD ?? "").trim();
+  if (crudoTope !== "" && crudoTope.toLowerCase() !== "sin_tope") {
+    const usd = Number(crudoTope);
+    if (!Number.isFinite(usd) || usd <= 0) motivos.push("VOICE_TOPE_MENSUAL_USD debe ser un numero mayor que 0 (o vacio / sin_tope para no tener tope).");
     else tope = Math.round(usd * 1_000_000);
+  } else {
+    avisos.push("VOICE_TOPE_MENSUAL_USD vacio: sin tope mensual de voz por organizacion (ninguna llamada se corta por gasto; un topeMensualUsd en VOICE_DNIS_MAP lo fija por organizacion).");
   }
   if ((opts.pregrabadosFaltantes?.length ?? 0) > 0) motivos.push(`Faltan ${opts.pregrabadosFaltantes?.length} audios pregrabados en assets/ (corre scripts/voz-pregrabados.ts).`);
   const puerto = Number(env.PORT ?? env.VOICE_WORKER_PORT ?? 8080);
   return {
     estado: motivos.length === 0 ? "configurado" : "no_configurado",
     motivos,
+    avisos,
     livekit: livekitOk ? { url: env.LIVEKIT_URL!.trim(), apiKey: env.LIVEKIT_API_KEY!.trim(), apiSecret: env.LIVEKIT_API_SECRET!.trim(), prefijoSala: (env.VOICE_ROOM_PREFIX ?? "llamada-").trim() || "llamada-" } : null,
     apiBaseUrl,
     internalSecret,
