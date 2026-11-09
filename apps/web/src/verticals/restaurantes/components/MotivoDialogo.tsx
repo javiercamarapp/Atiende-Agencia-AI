@@ -2,7 +2,9 @@
 // aqui solo se ofrece lo valido y el boton queda deshabilitado hasta elegir. Por omision usa los motivos de cancelacion; `opciones` permite otra lista cerrada
 // (agregados) y `notaObligatoriaCon` pide una nota breve cuando el motivo es «otro».
 import { useEffect, useState } from "react";
-import { Button, Callout, FormDialog, FormField, Selector, Textarea } from "@atiende/ui";
+import { Button, Callout, FormDialog, FormField, Selector, Textarea, useT } from "@atiende/ui";
+import { restaurantesAutopiloto } from "@atiende/ui/i18n/restaurantes/autopiloto";
+import { restaurantesComun } from "@atiende/ui/i18n/restaurantes/comun";
 import { MOTIVOS_CANCELACION, MOTIVO_CANCELACION_ETIQUETAS } from "../lib/autopiloto-client.ts";
 import type { MotivoCancelacion } from "../lib/autopiloto-client.ts";
 
@@ -11,7 +13,8 @@ export interface OpcionMotivo<M extends string> {
   readonly etiqueta: string;
 }
 
-const OPCIONES_CANCELACION: readonly OpcionMotivo<MotivoCancelacion>[] = MOTIVOS_CANCELACION.map((m) => ({ valor: m, etiqueta: MOTIVO_CANCELACION_ETIQUETAS[m] }));
+// Se arma en cada render: las etiquetas siguen al idioma activo.
+const opcionesCancelacion = (): readonly OpcionMotivo<MotivoCancelacion>[] => MOTIVOS_CANCELACION.map((m) => ({ valor: m, etiqueta: MOTIVO_CANCELACION_ETIQUETAS[m] }));
 
 export function MotivoDialogo<M extends string = MotivoCancelacion>({
   open,
@@ -43,7 +46,8 @@ export function MotivoDialogo<M extends string = MotivoCancelacion>({
   readonly notaMax?: number;
   readonly onConfirmar: (motivo: M, nota: string) => void;
 }) {
-  const lista = (opciones ?? OPCIONES_CANCELACION) as readonly OpcionMotivo<M>[];
+  const t = useT(restaurantesComun, restaurantesAutopiloto);
+  const lista = (opciones ?? opcionesCancelacion()) as readonly OpcionMotivo<M>[];
   const [motivo, setMotivo] = useState<M | "">("");
   const [nota, setNota] = useState("");
   useEffect(() => {
@@ -65,7 +69,7 @@ export function MotivoDialogo<M extends string = MotivoCancelacion>({
       footer={
         <>
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={enCurso}>
-            Volver
+            {t("restaurantes.volver")}
           </Button>
           <Button type="button" variant={tonoPeligro ? "danger" : "default"} loading={enCurso} disabled={enCurso || motivo === "" || faltaNota} onClick={() => motivo !== "" && onConfirmar(motivo, nota.trim())}>
             {textoConfirmar}
@@ -75,8 +79,8 @@ export function MotivoDialogo<M extends string = MotivoCancelacion>({
     >
       <div className="grid gap-3">
         {error && <Callout tone="danger">{error}</Callout>}
-        <FormField label="Motivo" required hint="Queda en el historial del pedido y alimenta la precisión del agente.">
-          <Selector value={motivo} placeholder="Elige un motivo…" onValueChange={(v) => setMotivo(v as M | "")}>
+        <FormField label={t("restaurantes.autopiloto.motivoDialogo.campo")} required hint={t("restaurantes.autopiloto.motivoDialogo.ayuda")}>
+          <Selector value={motivo} placeholder={t("restaurantes.autopiloto.motivoDialogo.elige")} onValueChange={(v) => setMotivo(v as M | "")}>
             {lista.map((m) => (
               <option key={m.valor} value={m.valor}>
                 {m.etiqueta}
@@ -85,7 +89,8 @@ export function MotivoDialogo<M extends string = MotivoCancelacion>({
           </Selector>
         </FormField>
         {pideNota && (
-          <FormField label="Nota" required hint={`Una frase breve para quien devuelve la llamada (máx. ${notaMax} caracteres).`}>
+          <FormField label={t("restaurantes.autopiloto.motivoDialogo.nota")} required hint={t("restaurantes.autopiloto.motivoDialogo.notaAyuda", { max: notaMax })}>
+
             <Textarea value={nota} maxLength={notaMax} rows={3} onChange={(e) => setNota(e.target.value)} />
           </FormField>
         )}

@@ -5,13 +5,24 @@
 // Cada boton llama al endpoint real (idempotente: un doble clic no repite ningun efecto) y maneja carga, error y vacio. Nunca se autoaprueba: sin
 // respuesta el sistema solo escala el aviso. El dinero (devolucion) solo se registra, nunca se ejecuta.
 import { useState } from "react";
-import { Button, Callout, Card, CardContent, Checkbox, EstadoCargando, EstadoVacio, FormDialog, FormField, Selector, StatusBadge, formatMoney, notify } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, Checkbox, EstadoCargando, EstadoVacio, FormDialog, FormField, Selector, StatusBadge, formatMoney, notify, useI18n } from "@atiende/ui";
+import type { Clave } from "@atiende/ui";
+import { restaurantesAutopiloto } from "@atiende/ui/i18n/restaurantes/autopiloto";
+import { restaurantesComun } from "@atiende/ui/i18n/restaurantes/comun";
+import { ORDER_STATUS_LABELS } from "../lib/orders-client.ts";
 import { Clock } from "lucide-react";
 import { SOLICITUD_TIPO_ETIQUETAS, mensajeResultadoSolicitud, minutosEsperando, resolverSolicitud } from "../lib/autopiloto-client.ts";
 import type { MotivoCancelacion, ResolverEntrada, Solicitud, SolicitudesRespuesta } from "../lib/autopiloto-client.ts";
 import { MotivoDialogo } from "../components/MotivoDialogo.tsx";
 
-const QUEJA_ETIQUETAS: Readonly<Record<string, string>> = { faltante: "Faltante", equivocado: "Producto equivocado", frio: "Llegó frío", tarde: "Llegó tarde", trato: "Trato", otro: "Otro" };
+const QUEJA_ETIQUETAS: Readonly<Record<string, Clave>> = {
+  faltante: "restaurantes.autopiloto.queja.faltante",
+  equivocado: "restaurantes.autopiloto.queja.equivocado",
+  frio: "restaurantes.autopiloto.queja.frio",
+  tarde: "restaurantes.autopiloto.queja.tarde",
+  trato: "restaurantes.autopiloto.queja.trato",
+  otro: "restaurantes.autopiloto.queja.otro",
+};
 
 type Dialogo =
   | { readonly tipo: "motivo"; readonly solicitud: Solicitud; readonly decision: "rechazar" | "cancelar" }
@@ -37,6 +48,7 @@ export function AprobacionesPanel({
   /** Recarga lista y pedidos tras resolver. */
   readonly onResuelta: () => Promise<void>;
 }) {
+  const { t, idioma } = useI18n(restaurantesComun, restaurantesAutopiloto);
   const [procesandoId, setProcesandoId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dialogo, setDialogo] = useState<Dialogo | null>(null);
@@ -44,11 +56,11 @@ export function AprobacionesPanel({
   const [indices, setIndices] = useState<ReadonlySet<number>>(new Set());
   const [pct, setPct] = useState<number>(10);
 
-  if (datos === null) return <EstadoCargando etiqueta="Cargando aprobaciones…" />;
+  if (datos === null) return <EstadoCargando etiqueta={t("restaurantes.autopiloto.aprob.cargando")} />;
   if (!datos.disponible) {
-    return <EstadoVacio mensaje="Las aprobaciones todavía no están disponibles en esta cuenta (falta aplicar la actualización de base de datos)." />;
+    return <EstadoVacio mensaje={t("restaurantes.autopiloto.aprob.noDisponible")} />;
   }
-  if (datos.solicitudes.length === 0) return <EstadoVacio mensaje="No hay nada por aprobar." />;
+  if (datos.solicitudes.length === 0) return <EstadoVacio mensaje={t("restaurantes.autopiloto.aprob.vacio")} />;
 
   async function enviar(s: Solicitud, entrada: ResolverEntrada): Promise<boolean> {
     setProcesandoId(s.id);
@@ -61,7 +73,7 @@ export function AprobacionesPanel({
       await onResuelta();
       return true;
     } catch (err) {
-      const mensaje = err instanceof Error ? err.message : "No se pudo aplicar la decisión.";
+      const mensaje = err instanceof Error ? err.message : t("restaurantes.autopiloto.aprob.errorDecision");
       setError(mensaje);
       setErrorDialogo(mensaje);
       return false;
@@ -93,7 +105,7 @@ export function AprobacionesPanel({
                 <div>
                   <p className="m-0 font-semibold text-foreground">
                     {s.pedido ? `${s.pedido.clienteNombre} · $${formatMoney(s.pedido.total)}` : SOLICITUD_TIPO_ETIQUETAS[s.tipo]}
-                    {s.pedido?.numero != null ? <span className="ml-1.5 text-xs font-normal text-muted-foreground">Pedido #{s.pedido.numero}</span> : null}
+                    {s.pedido?.numero != null ? <span className="ml-1.5 text-xs font-normal text-muted-foreground">{t("restaurantes.autopiloto.aprob.pedidoNum", { numero: s.pedido.numero })}</span> : null}
                   </p>
                   {s.pedido && <p className="mt-0.5 text-sm text-foreground">{s.pedido.renglones.map((r) => `${r.cantidad}× ${r.nombre}`).join(", ")}</p>}
                 </div>
@@ -101,53 +113,54 @@ export function AprobacionesPanel({
                   <StatusBadge tone="warning">{SOLICITUD_TIPO_ETIQUETAS[s.tipo]}</StatusBadge>
                   {s.pedido?.canal && (
                     <StatusBadge tone="neutral" dot={false}>
-                      {s.pedido.canal === "recoger" ? "Recoger" : "Domicilio"}
+                      {t(s.pedido.canal === "recoger" ? "restaurantes.canal.recoger" : "restaurantes.canal.domicilio")}
                     </StatusBadge>
                   )}
                 </div>
               </div>
               <p className="mt-1.5 inline-flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
                 <Clock className="h-3 w-3" strokeWidth={1.75} aria-hidden="true" />
-                Espera hace {espera < 1 ? "menos de 1 minuto" : `${espera} min`}
-                {s.escaladaAt ? " · ya se avisó al dueño" : ""}
-                {s.tipo === "compensacion" && typeof s.detalle.subtipo === "string" ? ` · ${QUEJA_ETIQUETAS[s.detalle.subtipo] ?? s.detalle.subtipo}` : ""}
-                {s.pedido && s.tipo !== "pedido_grande" ? ` · pedido ${s.pedido.status.replace(/_/g, " ")}` : ""}
+                {t("restaurantes.autopiloto.aprob.espera", { tiempo: espera < 1 ? t("restaurantes.autopiloto.aprob.menosDeUnMinuto") : t("restaurantes.autopiloto.aprob.minutos", { min: espera }) })}
+                {s.escaladaAt ? t("restaurantes.autopiloto.aprob.yaSeAviso") : ""}
+                {s.tipo === "compensacion" && typeof s.detalle.subtipo === "string" ? ` · ${QUEJA_ETIQUETAS[s.detalle.subtipo] ? t(QUEJA_ETIQUETAS[s.detalle.subtipo] as Clave) : s.detalle.subtipo}` : ""}
+                {/* En espanol, el estado crudo de siempre («listo para recoger»); en ingles, su etiqueta traducida. */}
+                {s.pedido && s.tipo !== "pedido_grande" ? t("restaurantes.autopiloto.aprob.pedidoEstado", { estado: idioma === "es" ? s.pedido.status.replace(/_/g, " ") : ORDER_STATUS_LABELS[s.pedido.status].toLowerCase() }) : ""}
               </p>
 
               <div className="mt-2.5 flex flex-wrap gap-1.5">
                 {s.tipo === "pedido_grande" && (
                   <>
                     <Button type="button" size="sm" loading={ocupada} disabled={ocupada} onClick={() => void enviar(s, { decision: "aprobar" })}>
-                      Aprobar
+                      {t("restaurantes.autopiloto.aprob.aprobar")}
                     </Button>
                     <Button type="button" size="sm" variant="danger" disabled={ocupada} onClick={() => abrir({ tipo: "motivo", solicitud: s, decision: "rechazar" })}>
-                      Rechazar
+                      {t("restaurantes.autopiloto.aprob.rechazar")}
                     </Button>
                   </>
                 )}
                 {s.tipo === "cancelacion" && (
                   <>
                     <Button type="button" size="sm" variant="danger" disabled={ocupada} onClick={() => abrir({ tipo: "motivo", solicitud: s, decision: "cancelar" })}>
-                      Cancelar el pedido
+                      {t("restaurantes.autopiloto.aprob.cancelarPedido")}
                     </Button>
                     <Button type="button" size="sm" variant="outline" loading={ocupada} disabled={ocupada} onClick={() => void enviar(s, { decision: "mantener" })}>
-                      Mantener el pedido
+                      {t("restaurantes.autopiloto.aprob.mantener")}
                     </Button>
                   </>
                 )}
                 {s.tipo === "compensacion" && (
                   <>
                     <Button type="button" size="sm" variant="outline" loading={ocupada} disabled={ocupada} onClick={() => void enviar(s, { decision: "sin_compensacion" })}>
-                      Sin compensación
+                      {t("restaurantes.autopiloto.aprob.sinCompensacion")}
                     </Button>
                     {s.decisionesPosibles.includes("reponer_producto") && (
                       <Button type="button" size="sm" variant="outline" disabled={ocupada || !s.pedido || s.pedido.renglones.length === 0} onClick={() => abrir({ tipo: "reponer", solicitud: s })}>
-                        Reponer producto
+                        {t("restaurantes.autopiloto.aprob.reponer")}
                       </Button>
                     )}
                     {s.decisionesPosibles.includes("descuento_proximo") && (
                       <Button type="button" size="sm" variant="outline" disabled={ocupada} onClick={() => abrir({ tipo: "descuento", solicitud: s })}>
-                        Descuento en el próximo pedido
+                        {t("restaurantes.autopiloto.aprob.descuento")}
                       </Button>
                     )}
                   </>
@@ -155,8 +168,8 @@ export function AprobacionesPanel({
               </div>
               {s.tipo === "compensacion" && (
                 <p className="mt-2 text-xs text-muted-foreground">
-                  La devolución de dinero (efectivo o tarjeta) no se ejecuta desde aquí: se acuerda con el cliente y se registra aparte.
-                  {!s.decisionesPosibles.includes("reponer_producto") ? " Reponer producto o dar un descuento lo decide un dueño o administrador." : ""}
+                  {t("restaurantes.autopiloto.aprob.devolucion")}
+                  {!s.decisionesPosibles.includes("reponer_producto") ? t("restaurantes.autopiloto.aprob.soloDueno") : ""}
                 </p>
               )}
             </CardContent>
@@ -167,9 +180,9 @@ export function AprobacionesPanel({
       <MotivoDialogo
         open={dialogo?.tipo === "motivo"}
         onOpenChange={(o) => !o && setDialogo(null)}
-        titulo={dialogo?.tipo === "motivo" && dialogo.decision === "rechazar" ? "Rechazar el pedido grande" : "Cancelar el pedido"}
-        subtitulo={dialogo?.tipo === "motivo" && dialogo.decision === "rechazar" ? "Se avisa al cliente con un texto honesto y queda un aviso para que una persona le llame." : "Se avisa al cliente por WhatsApp. Esta acción no se puede deshacer."}
-        textoConfirmar={dialogo?.tipo === "motivo" && dialogo.decision === "rechazar" ? "Rechazar pedido" : "Cancelar pedido"}
+        titulo={t(dialogo?.tipo === "motivo" && dialogo.decision === "rechazar" ? "restaurantes.autopiloto.aprob.rechazarTitulo" : "restaurantes.autopiloto.aprob.cancelarPedido")}
+        subtitulo={t(dialogo?.tipo === "motivo" && dialogo.decision === "rechazar" ? "restaurantes.autopiloto.aprob.rechazarSub" : "restaurantes.autopiloto.aprob.cancelarSub")}
+        textoConfirmar={t(dialogo?.tipo === "motivo" && dialogo.decision === "rechazar" ? "restaurantes.autopiloto.aprob.rechazarConfirmar" : "restaurantes.autopiloto.aprob.cancelarConfirmar")}
         tonoPeligro
         error={errorDialogo}
         enCurso={procesandoId !== null}
@@ -183,8 +196,8 @@ export function AprobacionesPanel({
       <FormDialog
         open={dialogo?.tipo === "reponer"}
         onOpenChange={(o) => !o && setDialogo(null)}
-        titulo="Reponer producto"
-        subtitulo="Se crea un pedido de $0 que va a cocina con los renglones que elijas, y se avisa al cliente."
+        titulo={t("restaurantes.autopiloto.aprob.reponer")}
+        subtitulo={t("restaurantes.autopiloto.aprob.reponerSub")}
         anchoClase="max-w-2xl"
         bloquearCierre={procesandoId !== null}
         onGuardar={() => {
@@ -192,7 +205,7 @@ export function AprobacionesPanel({
           void enviar(dialogo.solicitud, { decision: "reponer_producto", indices: [...indices].sort((a, b) => a - b) }).then((ok) => ok && setDialogo(null));
         }}
         guardando={procesandoId !== null}
-        textoBotonGuardar="Reponer sin costo"
+        textoBotonGuardar={t("restaurantes.autopiloto.aprob.reponerConfirmar")}
         guardarDeshabilitado={indices.size === 0}
       >
         <div className="grid gap-2">
@@ -219,8 +232,8 @@ export function AprobacionesPanel({
       <FormDialog
         open={dialogo?.tipo === "descuento"}
         onOpenChange={(o) => !o && setDialogo(null)}
-        titulo="Descuento en el próximo pedido"
-        subtitulo={`Se crea un código de un solo uso (vigente 30 días) y se manda al cliente. Tope de esta sucursal: ${topeDescuentoPct} %.`}
+        titulo={t("restaurantes.autopiloto.aprob.descuento")}
+        subtitulo={t("restaurantes.autopiloto.aprob.descuentoSub", { tope: topeDescuentoPct })}
         anchoClase="max-w-2xl"
         bloquearCierre={procesandoId !== null}
         onGuardar={() => {
@@ -228,15 +241,16 @@ export function AprobacionesPanel({
           void enviar(dialogo.solicitud, { decision: "descuento_proximo", valor: pct }).then((ok) => ok && setDialogo(null));
         }}
         guardando={procesandoId !== null}
-        textoBotonGuardar="Enviar código"
+        textoBotonGuardar={t("restaurantes.autopiloto.aprob.enviarCodigo")}
       >
         <div className="grid gap-3">
           {errorDialogo && <Callout tone="danger">{errorDialogo}</Callout>}
-          <FormField label="Descuento">
+          <FormField label={t("restaurantes.autopiloto.aprob.descuentoCampo")}>
             <Selector value={String(pct)} onValueChange={(v) => setPct(Number(v))}>
               {opcionesPct.map((n) => (
                 <option key={n} value={n}>
-                  {n} %
+                  {t("restaurantes.autopiloto.aprob.pct", { n })}
+
                 </option>
               ))}
             </Selector>

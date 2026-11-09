@@ -2,7 +2,8 @@
 // automatica APAGADAS (las decide el dueno). Tambien muestra, sin fingir, lo que todavia no esta disponible: plantillas de WhatsApp sin aprobar en
 // Meta (los avisos fuera de la ventana de 24 h no saldran) y el avance desde el POS (requiere la API de SoftRestaurant).
 import { useEffect, useState } from "react";
-import { Button, Callout, Checkbox, EstadoError, FormDialog, FormField, Input, notify } from "@atiende/ui";
+import { Button, Callout, Checkbox, EstadoError, FormDialog, FormField, Input, notify, useT } from "@atiende/ui";
+import { restaurantesAutopiloto } from "@atiende/ui/i18n/restaurantes/autopiloto";
 import { guardarAutopilotoConfig } from "../lib/autopiloto-client.ts";
 import type { AutopilotoConfigRespuesta } from "../lib/autopiloto-client.ts";
 
@@ -66,6 +67,7 @@ export function AutopilotoReglasDialogo({
   readonly propertyId: string;
   readonly onGuardado: () => Promise<void>;
 }) {
+  const t = useT(restaurantesAutopiloto);
   const [form, setForm] = useState<Form | null>(null);
   const [errores, setErrores] = useState<Partial<Record<keyof Form, string>>>({});
   const [errorServidor, setErrorServidor] = useState<string | null>(null);
@@ -81,8 +83,8 @@ export function AutopilotoReglasDialogo({
 
   if (!datos || !form) {
     return (
-      <FormDialog open={open} onOpenChange={onOpenChange} titulo="Reglas del autopiloto" anchoClase="max-w-2xl" footer={<Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cerrar</Button>}>
-        {error ? <EstadoError mensaje={error} onReintentar={onReintentar ? () => void onReintentar() : undefined} /> : <p className="text-sm text-muted-foreground">Cargando reglas…</p>}
+      <FormDialog open={open} onOpenChange={onOpenChange} titulo={t("restaurantes.autopiloto.reglas.titulo")} anchoClase="max-w-2xl" footer={<Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t("restaurantes.autopiloto.reglas.cerrar")}</Button>}>
+        {error ? <EstadoError mensaje={error} onReintentar={onReintentar ? () => void onReintentar() : undefined} /> : <p className="text-sm text-muted-foreground">{t("restaurantes.autopiloto.reglas.cargando")}</p>}
       </FormDialog>
     );
   }
@@ -100,14 +102,14 @@ export function AutopilotoReglasDialogo({
     const extra = entero(form.saturacionExtraMinutos, 5, 120);
     const u1 = form.saturacionUmbral1.trim() === "" ? null : entero(form.saturacionUmbral1, 1, 500);
     const u2 = form.saturacionUmbral2.trim() === "" ? null : entero(form.saturacionUmbral2, 1, 500);
-    if (aprobacion === null) e.aprobacionMinutos = "De 1 a 240 minutos.";
-    if (handoff === null) e.handoffRegresoMinutos = "De 1 a 240 minutos.";
-    if (noRecogido === null) e.noRecogidoMinutos = "De 5 a 720 minutos.";
-    if (completado === null) e.completadoHoras = "De 1 a 72 horas.";
-    if (tope === null) e.compensacionTopePct = "De 1 a 100.";
-    if (extra === null) e.saturacionExtraMinutos = "De 5 a 120 minutos.";
-    if (form.saturacionUmbral1.trim() !== "" && u1 === null) e.saturacionUmbral1 = "De 1 a 500 pedidos, o vacío para apagar.";
-    if (form.saturacionUmbral2.trim() !== "" && (u2 === null || u1 === null || u2 <= u1)) e.saturacionUmbral2 = "Debe ser mayor que el primer umbral (y éste debe existir).";
+    if (aprobacion === null) e.aprobacionMinutos = t("restaurantes.autopiloto.reglas.rango.1a240min");
+    if (handoff === null) e.handoffRegresoMinutos = t("restaurantes.autopiloto.reglas.rango.1a240min");
+    if (noRecogido === null) e.noRecogidoMinutos = t("restaurantes.autopiloto.reglas.rango.5a720min");
+    if (completado === null) e.completadoHoras = t("restaurantes.autopiloto.reglas.rango.1a72h");
+    if (tope === null) e.compensacionTopePct = t("restaurantes.autopiloto.reglas.rango.1a100");
+    if (extra === null) e.saturacionExtraMinutos = t("restaurantes.autopiloto.reglas.rango.5a120min");
+    if (form.saturacionUmbral1.trim() !== "" && u1 === null) e.saturacionUmbral1 = t("restaurantes.autopiloto.reglas.rango.umbral1");
+    if (form.saturacionUmbral2.trim() !== "" && (u2 === null || u1 === null || u2 <= u1)) e.saturacionUmbral2 = t("restaurantes.autopiloto.reglas.rango.umbral2");
     setErrores(e);
     if (Object.keys(e).length > 0) return;
     setGuardando(true);
@@ -126,11 +128,11 @@ export function AutopilotoReglasDialogo({
         saturacionUmbral2: u2,
         saturacionExtraMinutos: extra!,
       });
-      notify.success("Reglas del autopiloto guardadas.");
+      notify.success(t("restaurantes.autopiloto.reglas.guardadas"));
       await onGuardado();
       onOpenChange(false);
     } catch (err) {
-      setErrorServidor(err instanceof Error ? err.message : "No se pudieron guardar las reglas.");
+      setErrorServidor(err instanceof Error ? err.message : t("restaurantes.autopiloto.reglas.errorGuardar"));
     } finally {
       setGuardando(false);
     }
@@ -142,68 +144,69 @@ export function AutopilotoReglasDialogo({
     <FormDialog
       open={open}
       onOpenChange={onOpenChange}
-      titulo="Reglas del autopiloto"
-      subtitulo="Aplican a esta sucursal. Lo que mueve dinero, cancela algo ya en cocina o es un pedido grande siempre pide una aprobación con un clic."
+      titulo={t("restaurantes.autopiloto.reglas.titulo")}
+      subtitulo={t("restaurantes.autopiloto.reglas.subtitulo")}
       anchoClase="max-w-2xl"
       onGuardar={() => void guardar()}
       guardando={guardando}
-      textoBotonGuardar="Guardar reglas"
+      textoBotonGuardar={t("restaurantes.autopiloto.reglas.guardar")}
       bloquearCierre={guardando}
     >
       <div className="grid gap-3">
         {errorServidor && <Callout tone="danger">{errorServidor}</Callout>}
-        {!datos.disponible && <Callout tone="warning">Las reglas todavía no están disponibles en esta cuenta (falta aplicar la actualización de base de datos). Se muestran los valores seguros por omisión.</Callout>}
+        {!datos.disponible && <Callout tone="warning">{t("restaurantes.autopiloto.reglas.noDisponible")}</Callout>}
         <Checkbox
-          label="Que el agente de WhatsApp gestione las cancelaciones que pide el cliente: avisa a la sucursal y, si el pedido aún no está en cocina y la regla de abajo lo permite, lo cancela (toda la organización; apagado por omisión)"
+          label={t("restaurantes.autopiloto.reglas.cancelacionAgente")}
           checked={form.cancelacionAgente}
           onChange={(e) => set("cancelacionAgente", e.target.checked)}
         />
         <Checkbox
-          label="Cancelar solo, sin pedir aprobación, un pedido que el cliente cancela antes de que llegue a cocina (apagado por omisión)"
+          label={t("restaurantes.autopiloto.reglas.cancelacionAuto")}
           checked={form.cancelacionAuto}
           onChange={(e) => set("cancelacionAuto", e.target.checked)}
         />
-        <Callout tone="info">Los pedidos grandes de WhatsApp y de voz llegan a «Por aprobar» (el umbral suma lo que el mismo número pidió en las últimas 6 horas). Las cancelaciones y las quejas de WhatsApp también llegan ahí; las cancelaciones por voz todavía no: la voz no las gestiona.</Callout>
+        <Callout tone="info">{t("restaurantes.autopiloto.reglas.porAprobarInfo")}</Callout>
         <Checkbox
-          label="Aceptar solo el pedido (de Recibido a Preparando) en cuanto la comanda se imprime o se captura, sin POS (apagado por omisión)"
+          label={t("restaurantes.autopiloto.reglas.aceptacionAuto")}
           checked={form.aceptacionAuto}
           onChange={(e) => set("aceptacionAuto", e.target.checked)}
         />
         <div className="grid gap-3 sm:grid-cols-2">
-          <FormField label="Minutos sin respuesta antes de avisar al dueño" error={errores.aprobacionMinutos} hint="Nunca se aprueba solo.">
+          <FormField label={t("restaurantes.autopiloto.reglas.aprobacionMinutos")} error={errores.aprobacionMinutos} hint={t("restaurantes.autopiloto.reglas.aprobacionAyuda")}>
             <Input inputMode="numeric" value={form.aprobacionMinutos} onChange={(e) => set("aprobacionMinutos", e.target.value)} />
           </FormField>
-          <FormField label="Minutos para devolver una conversación al agente" error={errores.handoffRegresoMinutos} hint="Sin respuesta humana.">
+          <FormField label={t("restaurantes.autopiloto.reglas.handoffMinutos")} error={errores.handoffRegresoMinutos} hint={t("restaurantes.autopiloto.reglas.handoffAyuda")}>
             <Input inputMode="numeric" value={form.handoffRegresoMinutos} onChange={(e) => set("handoffRegresoMinutos", e.target.value)} />
           </FormField>
-          <FormField label="Minutos para marcar «No recogido»" error={errores.noRecogidoMinutos} hint="Después de la hora de recogida.">
+          <FormField label={t("restaurantes.autopiloto.reglas.noRecogidoMinutos")} error={errores.noRecogidoMinutos} hint={t("restaurantes.autopiloto.reglas.noRecogidoAyuda")}>
             <Input inputMode="numeric" value={form.noRecogidoMinutos} onChange={(e) => set("noRecogidoMinutos", e.target.value)} />
           </FormField>
-          <FormField label="Horas para pasar Entregado a Completado" error={errores.completadoHoras}>
+          <FormField label={t("restaurantes.autopiloto.reglas.completadoHoras")} error={errores.completadoHoras}>
             <Input inputMode="numeric" value={form.completadoHoras} onChange={(e) => set("completadoHoras", e.target.value)} />
           </FormField>
-          <FormField label="Tope del descuento por queja (%)" error={errores.compensacionTopePct}>
+          <FormField label={t("restaurantes.autopiloto.reglas.topeDescuento")} error={errores.compensacionTopePct}>
             <Input inputMode="numeric" value={form.compensacionTopePct} onChange={(e) => set("compensacionTopePct", e.target.value)} />
           </FormField>
-          <FormField label="Minutos extra al prometer por saturación" error={errores.saturacionExtraMinutos}>
+          <FormField label={t("restaurantes.autopiloto.reglas.extraMinutos")} error={errores.saturacionExtraMinutos}>
             <Input inputMode="numeric" value={form.saturacionExtraMinutos} onChange={(e) => set("saturacionExtraMinutos", e.target.value)} />
           </FormField>
-          <FormField label="Pedidos abiertos para alargar el tiempo prometido" error={errores.saturacionUmbral1} hint="Vacío = apagado.">
+          <FormField label={t("restaurantes.autopiloto.reglas.umbral1")} error={errores.saturacionUmbral1} hint={t("restaurantes.autopiloto.reglas.vacioApagado")}>
             <Input inputMode="numeric" value={form.saturacionUmbral1} onChange={(e) => set("saturacionUmbral1", e.target.value)} />
           </FormField>
-          <FormField label="Pedidos abiertos para proponer pausar la sucursal" error={errores.saturacionUmbral2} hint="Vacío = apagado.">
+          <FormField label={t("restaurantes.autopiloto.reglas.umbral2")} error={errores.saturacionUmbral2} hint={t("restaurantes.autopiloto.reglas.vacioApagado")}>
             <Input inputMode="numeric" value={form.saturacionUmbral2} onChange={(e) => set("saturacionUmbral2", e.target.value)} />
           </FormField>
         </div>
         {form.saturacionUmbral2.trim() !== "" && (
-          <Callout tone="info">Pausar la sucursal desde el sistema todavía no está disponible: el segundo umbral se guarda, pero hoy no genera ninguna acción.</Callout>
+          <Callout tone="info">{t("restaurantes.autopiloto.reglas.pausaNoDisponible")}</Callout>
         )}
         {sinAprobar.length > 0 && (
           <Callout tone="warning">
-            Plantillas de WhatsApp sin aprobar en Meta: {sinAprobar.map((p) => p.nombre).join(", ")}. Sus avisos solo salen dentro de la ventana de 24 h del cliente; fuera de ella no se envían.
+            {t("restaurantes.autopiloto.reglas.plantillasSinAprobar", { lista: sinAprobar.map((p) => p.nombre).join(", ") })}
           </Callout>
         )}
-        {!datos.posReal && <Callout tone="info">El avance de estados desde el POS no está disponible aún: requiere la API de SoftRestaurant.</Callout>}
+        {!datos.posReal && <Callout tone="info">{t("restaurantes.autopiloto.reglas.posNoDisponible")}</Callout>}
+
       </div>
     </FormDialog>
   );
