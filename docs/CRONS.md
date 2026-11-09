@@ -82,6 +82,48 @@ Cuatro señales, de la más barata a la más detallada. Ninguna corre un cron ni
 3. **Alerta en la campana de superadmin.** El cron diario de resumen emite `superadmin.salud.cron_sin_latido` (una por día) si algún cron de cadencia de 15 min o menos no tiene ningún latido.
 4. **Panel `/superadmin/salud/crons`:** estado, último latido y error de cada cron, con el kill switch.
 
+## Plan: un solo despachador de correo (libera 5 de los 40 cupos)
+
+Estado: **plan, sin implementar** (auditoría de plataforma, 7-nov-2026). Los 6 `*/email-dispatch` ocupan 6 de los 40 crons del
+plan Pro, todos cada 15 min. Juntarlos en uno libera 5 cupos, pero hoy no es un cambio de bajo riesgo porque la ruta del cron
+está acoplada a varias piezas:
+
+- **Salud y panel.** `salud/cadencia.ts` deriva la cadencia esperada de `vercel.json`. Si un path sale de `vercel.json`, su
+  latido deja de vigilarse (`/health` → `crons` y `/superadmin/salud`), y un vertical podría dejar de enviar correo sin que
+  ninguna señal lo marque.
+- **Interruptores.** `SWITCHABLE_CRONS` debe ser igual a `vercel.json` (contrato PL-35). Quitar los 6 paths quita el
+  interruptor por vertical; solo quedaría «todo el correo» o nada.
+- **Consola.** `consola/agentes-cron.ts` nombra cada cron por vertical. Además, `vercel-crons-contrato.spec.ts` (PL-15) exige
+  los 6 drenadores cada 15 min.
+- **Tiempo.** `api/index.js` tiene `maxDuration: 30`. Seis drenados en serie con Resend (un envío por job) pueden pasar de
+  30 s con volumen real. En paralelo usarían 6 sesiones de un pool de 10 por instancia, que comparten con los drenados inline.
+
+### Diseño propuesto
+
+1. **Ruta nueva `/internal/email-dispatch`** con su propio `withHeartbeat`. Corre los 6 `run<Vertical>EmailDispatch(deps)`
+   ya existentes, cada uno en su sesión de sistema y con aislamiento de fallos (uno que falla no detiene a los demás):
+   - concurrencia 2;
+   - plazo de 22 s: lo que no alcance queda para el siguiente tick. El claim con `skip locked` lo hace seguro;
+   - orden rotado por tick, para que ningún vertical quede siempre al final.
+2. **Las 6 rutas actuales se conservan** (corrida manual y compatibilidad) pero salen de `vercel.json`, que pasa de 40 a 35.
+3. **Sub-crons como catálogo explícito.** `SUB_CRONS_CORREO = [los 6 paths]`, con la cadencia del padre:
+   - `SWITCHABLE_CRONS` pasa a ser `vercel.json` ∪ `SUB_CRONS_CORREO`, y el despachador consulta el interruptor de cada
+     vertical antes de drenarlo, así que el interruptor por vertical se conserva;
+   - el despachador deja un latido por sub-path;
+   - `cadencia.ts` incluye los sub-crons, así `/health` y el panel siguen vigilando cada vertical.
+4. **Pruebas:**
+   - contrato de 35 crons;
+   - PL-15 reescrito para el despachador;
+   - interruptor por vertical respetado;
+   - plazo y rotación;
+   - fallo aislado;
+   - latido por sub-path;
+   - `cadencia` con sub-crons.
+5. **Despliegue:**
+   1. Fusionar: `vercel.json` se despliega al instante, sin migraciones.
+   2. En 15 min, comprobar el latido `ok` de `/internal/email-dispatch` y de los 6 sub-paths en `/superadmin/salud/crons`.
+   3. Rollback: revertir el PR. Vuelven los 6 crons; las rutas nunca se borraron.
+
 ## No agendados a propósito
 
 - `/internal/despachos/efos-69b/ingestar`: POST con el listado en el cuerpo y `?periodo=` (tope de 4 MB); no es agendable por Vercel. La descarga automática la hace `/internal/despachos/efos-69b/descarga` (agendada), sin ese tope.
