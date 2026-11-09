@@ -64,6 +64,8 @@ export const SENSITIVE_ROUTES: readonly SensitiveRoute[] = [
   // Zona CFO (SA-41): exportar datos financieros, asignar o retirar el rol `finanzas` y leer la bitacora de consultas.
   { method: "GET", pattern: /^\/superadmin\/pyl\/export\.csv$/, label: "exportar el P&L en CSV" },
   { method: "GET", pattern: /^\/superadmin\/cfo\/cockpit\/export\.csv$/, label: "exportar la economia por cliente del CFO en CSV" },
+  { method: "GET", pattern: /^\/superadmin\/cfo\/cockpit\/export\.xlsx$/, label: "exportar el CFO de la plataforma en Excel" },
+  { method: "GET", pattern: /^\/superadmin\/cfo\/cockpit\/informe\.pdf$/, label: "descargar el resumen mensual de inversionistas" },
   { method: "PUT", pattern: /^\/superadmin\/zona-cfo\/roles\/[^/]+$/, label: "asignar o retirar el rol finanzas" },
   { method: "GET", pattern: /^\/superadmin\/zona-cfo\/bitacora$/, label: "leer la bitacora de consultas financieras" },
   { method: "GET", pattern: /^\/superadmin\/zona-cfo\/roles$/, label: "listar los roles de la zona CFO" },
