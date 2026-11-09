@@ -1,17 +1,66 @@
-# Voz de PM: activación, paso a paso (solo falta pegar las llaves)
+# Voz de PM: activación, paso a paso
 
 Este es el runbook ÚNICO para encender la voz de Los Taquitos de PM con su **número propio**: la sucursal conserva su línea (Telmex, Telcel o conmutador) y, cuando
 no contesta o está ocupada, un **desvío condicional** manda la llamada a un número puente de Twilio que llega al agente de voz.
 
 ```
 Línea de la sucursal -> desvío condicional (no contesta / ocupado) -> número puente en Twilio (Elastic SIP Trunk)
-  -> LiveKit Cloud (inbound trunk + regla de despacho: una sala por llamada) -> apps/voice-worker en Fly.io (dfw) -> Gemini 3.8 Live
+  -> LiveKit Cloud (inbound trunk + regla de despacho: una sala por llamada) -> apps/voice-worker en Fly.io (dfw)
+  -> cascada v2 (PM: VOZ_ESCALERA=cascada-v2,cascada-openrouter; ver «Estado vigente»)
 ```
+
+## Estado vigente (9-nov-2026, `main` = `cd4eeadc3`)
+
+> Las secciones 1 a 8 se escribieron el 4-oct para **Gemini 3.8 Live**. El motor de PM cambió; lo de abajo es lo que dice el código de `main` hoy.
+> Resultados de las mediciones: `docs/evals/agente-pm/voz.md`.
+
+### Motor de voz en `main` (verificado en `packages/voice-core/src/config-plataforma.ts` y `apps/voice-worker/src/config.ts`)
+
+| Etapa | Principal | Respaldo | Cómo se elige |
+|---|---|---|---|
+| STT | ElevenLabs **Scribe v2 Realtime** (`scribe_v2_realtime`) | Deepgram **Nova-3** (`es-419`) | ElevenLabs si existe `ELEVENLABS_API_KEY`; si no, solo Deepgram (#719) |
+| TTS | ElevenLabs **`eleven_v4_turbo`** (voz «Regina - Contact Center») | Deepgram **Aura-2** `aura-2-estrella-es` | igual; el respaldo entra por etapa dentro de la misma sesión |
+| LLM (por omisión) | **Claude Sonnet 5.5, esfuerzo `low`**, solo endpoints **ZDR** de OpenRouter | Haiku 5.5 para turnos fáciles (configurable) | `llm.modelo` de la plataforma |
+| LLM de PM (opt-in) | GPT-6 Luna (preciso) + Gemini 3.5 Flash-Lite (rápido) | Haiku 5.5 si el primero no da token en 2.5 s | `VOZ_CEREBRO_DOS_NIVELES=1`; es el que se midió en el E2E |
+| Escalera | plataforma: `gemini-3.8-live`, `cascada-v2`, `cascada-openrouter` | — | PM: `VOZ_ESCALERA=cascada-v2,cascada-openrouter` (cascada, no voz a voz) |
+
+**Discrepancia con lo que se dijo a Javier.** La descripción «Deepgram + Sonnet 5.5 esfuerzo bajo + Aura-2 con ZDR» corresponde a la decisión del 13/14-oct. En `main`,
+desde #719 (7-nov), **ElevenLabs es el STT y el TTS principal** cuando su llave está puesta y Deepgram (Nova-3 + Aura-2) queda de respaldo. Sonnet 5.5 `low` con ZDR
+sigue siendo el LLM **por omisión**, pero todas las mediciones E2E de PM usaron el cerebro de dos niveles (Luna + Flash-Lite, también ZDR). ZDR aplica solo al LLM
+(OpenRouter); ElevenLabs y Deepgram no tienen esa bandera en este código. La calidad r3 (#813) **no** está en `main`: #752 y #813 siguen abiertos.
+
+### Infraestructura (nada desplegado)
+
+| Pieza | Estado |
+|---|---|
+| Fly.io | la app `atiende-voice-worker` **no existe**: el worker no está desplegado |
+| LiveKit Cloud | el proyecto existe; **sin inbound trunk ni regla de despacho** registrados |
+| Twilio | solo credenciales de cuenta; **sin número puente, sin SIP trunk, sin Regulatory Bundle MX** |
+| Desvío condicional de PM | **no contratado** |
+| Llamadas telefónicas reales | **0**. Lo medido es E2E sintético (LiveKit + worker local + API local, sin PSTN) |
+
+### Valores por omisión que hay que decidir antes de encender (solo nombres)
+
+| Variable | Por omisión en el código | Efecto |
+|---|---|---|
+| `VOZ_CASCADA_V2_HABILITADA` | **apagada** | sin ella el escalón `cascada-v2` se salta aunque existan las llaves |
+| `VOICE_TOPE_MENSUAL_USD` | **vacía = sin tope mensual de plataforma** | ponerla antes de abrir tráfico (sección 6 da la propuesta) |
+| `VOICE_COSTO_MAX_LLAMADA_USD` | **0.50 USD** por llamada | — |
+| `VOICE_REQUIRE_CALL_TOKEN` (API) | **false** | se pone en `true` después de las llamadas de prueba |
+| `VOZ_RUIDO` | `ninguno` | **no** usar `krisp-telefonia`: en la medición se comió la voz del cliente con ruido de fondo |
+| `VOZ_CEREBRO_DOS_NIVELES` | apagado | el cerebro medido de PM es con `1` |
+
+Llaves que pide la cascada (nombres): `ELEVENLABS_API_KEY`, `DEEPGRAM_API_KEY`, `OPENROUTER_API_KEY`, además de las de LiveKit, Twilio, Fly y la API de la tabla de la sección 1
+(`GEMINI_API_KEY` solo aplica si se usa el escalón de Gemini Live). La sección 6 calcula el tope con precios de Gemini: el costo medido de la cascada es ~0.044 USD/min
+(~0.12 USD por llamada de 2.8 min), ver `docs/evals/agente-pm/voz.md`. ElevenLabs y Deepgram no reciben parámetros de retención en este código
+(el control ZDR de la cascada es solo el del LLM): si se exige retención cero también en STT/TTS, es una decisión pendiente.
+
+## Runbook original (4-oct-2026, escrito para Gemini Live)
 
 Decisiones de fondo, costos y fuentes: la investigación del 4-oct-2026 (`work/voz/investigacion-voz-gemini-pm.md`). Diseño del código: `docs/VOZ-PM.md` y
 `apps/voice-worker/README.md`. Aquí solo está lo que hay que **hacer y pegar**.
 
-> Honestidad primero. Nada de esto se ha ejecutado contra cuentas reales (no existen todavía): los scripts de Twilio, LiveKit y Fly están probados contra dobles,
+> Honestidad primero (texto del 4-oct; sigue vigente al 9-nov). Nada de esto se ha ejecutado contra cuentas reales: los scripts de Twilio, LiveKit y Fly están probados contra dobles,
 > el worker contra telefonía falsa y Gemini no se ha probado con la API real. Lo que **no está verificado** va marcado como tal; la primera llamada real lo confirma.
 
 ## 0. Qué queda hecho y qué falta pegar

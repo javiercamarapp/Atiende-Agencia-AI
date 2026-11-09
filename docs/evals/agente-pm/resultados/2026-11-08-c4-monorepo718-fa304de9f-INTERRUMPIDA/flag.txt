@@ -1,0 +1,1 @@
+etq=c4-fa304de-x5 banco=c3 cerebro_v2=1 (cerebro_v2=1: escalera ZDR de produccion (Luna -> Haiku); QA_WA_MODEL='' NO aplica al agente) modelo='<default>' esfuerzo='' modo=default reps=5 conc=2 filtro='' tope=10 seco=0 cliente='anthropic/claude-haiku-5.5' sha=fa304de9f7f733f14a96176877332752c1857047
