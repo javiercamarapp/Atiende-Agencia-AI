@@ -56,6 +56,9 @@ export interface OpcionesMaquinaLlamada {
   readonly saludoInterrumpible?: boolean;
 }
 
+/** Con una respuesta del agente pendiente, el silencio se ignora hasta este tope (un agente que no contesta en 20 s no deja la llamada abierta para siempre). */
+export const SILENCIO_AGENTE_PENDIENTE_MAX_MS = 20_000;
+
 export const LIMITES_POR_DEFECTO: LimitesLlamada = {
   duracionMaxS: 8 * 60,
   avisoDuracionS: 7 * 60,
@@ -123,6 +126,8 @@ export class CallStateMachine<R extends string = string> {
   private estado: EstadoLlamada = "iniciando";
   private agenteHablando = false;
   private silencios = 0;
+  /** El cliente dijo algo y el agente aun no termina su respuesta (ver `SILENCIO_AGENTE_PENDIENTE_MAX_MS`). */
+  private respuestaPendiente = false;
   private malentendidos = 0;
   private ruidos = 0;
   private timeouts = 0;
@@ -179,6 +184,7 @@ export class CallStateMachine<R extends string = string> {
         return [];
       case "agente_termina":
         this.agenteHablando = false;
+        this.respuestaPendiente = false;
         this.saludoProtegido = false;
         return this.cerrarAlTerminar ? this.cerrar([]) : [];
       case "usuario_habla":
@@ -191,6 +197,7 @@ export class CallStateMachine<R extends string = string> {
         return [];
       case "usuario_dijo":
         if (ev.inteligible === false) return this.ruido();
+        this.respuestaPendiente = true;
         this.silencios = 0;
         this.malentendidos = 0;
         this.ruidos = 0;
@@ -200,6 +207,9 @@ export class CallStateMachine<R extends string = string> {
       case "no_entendido":
         return this.malentendido();
       case "silencio":
+        // Mientras el agente debe una respuesta (LLM y herramientas) el silencio no es del cliente: ni reprompt ni despedida encima del trabajo del agente
+        // (E2E r3 7-nov-2026: colgaba al terminar de leer el resumen). Tope: con `SILENCIO_AGENTE_PENDIENTE_MAX_MS` sin nada, vuelve a valer.
+        if (this.respuestaPendiente && ev.ms < SILENCIO_AGENTE_PENDIENTE_MAX_MS) return [];
         return ev.ms >= this.limites.silencioMs ? this.silencio() : [];
       case "dtmf":
         return this.dtmf(ev.digito);

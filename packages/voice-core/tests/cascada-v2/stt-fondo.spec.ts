@@ -6,8 +6,8 @@ import { COMPUERTA_FONDO_ELEVENLABS, VOZ_PLATAFORMA, crearSttElevenLabs, urlSttE
 import type { EventosStt } from "../../src/index.ts";
 import { fabricaSockets, turnoMicrotareas } from "./dobles.ts";
 
-// La compuerta va APAGADA por omision (revision #752 P1-4: sin E2E que la respalde); estas pruebas la encienden explicitamente.
-const C = { ...VOZ_PLATAFORMA.cascadaV2.elevenlabs, stt: { ...VOZ_PLATAFORMA.cascadaV2.elevenlabs.stt, compuertaFondo: COMPUERTA_FONDO_ELEVENLABS } };
+// La compuerta va APAGADA por omision (revision #752 P1-4: sin E2E que la respalde); estas pruebas la encienden explicitamente y apagan la de nivel (se prueba en stt-nivel.spec.ts).
+const C = { ...VOZ_PLATAFORMA.cascadaV2.elevenlabs, stt: { ...VOZ_PLATAFORMA.cascadaV2.elevenlabs.stt, compuertaFondo: COMPUERTA_FONDO_ELEVENLABS, compuertaNivel: null } };
 const HZ = 16_000;
 
 function reloj() {

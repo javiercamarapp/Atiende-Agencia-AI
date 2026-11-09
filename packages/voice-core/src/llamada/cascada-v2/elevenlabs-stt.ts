@@ -210,6 +210,97 @@ class SesionElevenLabsStt implements SesionStt {
   /** Nivel (dB) de los ultimos segmentos aceptados del cliente. */
   private readonly nivelesCliente: number[] = [];
 
+  // ---- compuerta por NIVEL (`compuertaNivel`): sin timestamps, sobre el audio que se envia ----
+  /** dB por trama de 20 ms (ultimos 300 ms bastan para la ventana). */
+  private readonly tramasDb: number[] = [];
+  /** Nivel de ventana (p80 de 300 ms) por trama (ultimos 10 s): el piso es su p20 (las pausas del cliente y los silencios entre turnos). */
+  private readonly ventanasDb: number[] = [];
+  private nivE = 0;
+  private nivN = 0;
+  /** Nivel maximo de ventana desde el ultimo segmento confirmado. */
+  private picoSegmento = -Infinity;
+  private tramasEnSegmento = 0;
+  /** Hubo un parcial de VOZ (no fondo) desde el ultimo segmento confirmado. */
+  private vozEnSegmento = false;
+  private fondoAvisadoEnSegmento = false;
+  /** Pico (dB) de los ultimos segmentos aceptados del cliente: su mediana es la voz del cliente. */
+  private readonly picosCliente: number[] = [];
+  private descartesSeguidos = 0;
+  private nivelApagada = false;
+
+  private medirNivel(pcm16: Uint8Array): void {
+    if (!this.o.config.compuertaNivel || this.nivelApagada) return;
+    const v = new DataView(pcm16.buffer, pcm16.byteOffset, pcm16.byteLength);
+    const porTrama = this.hz / 50;
+    for (let i = 0; i + 1 < pcm16.byteLength; i += 2) {
+      const x = v.getInt16(i, true);
+      this.nivE += x * x;
+      this.nivN += 1;
+      if (this.nivN >= porTrama) {
+        this.tramasDb.push(20 * Math.log10(Math.max(1, Math.sqrt(this.nivE / this.nivN))));
+        this.nivE = 0;
+        this.nivN = 0;
+        if (this.tramasDb.length > 15) this.tramasDb.shift();
+        const ult = this.tramasDb.slice(-15).sort((a, b) => a - b);
+        const ventana = ult[Math.floor(0.8 * (ult.length - 1))]!;
+        this.ventanasDb.push(ventana);
+        if (this.ventanasDb.length > 500) this.ventanasDb.shift();
+        // El pico del segmento solo cuenta ventanas enteras posteriores al segmento anterior (no arrastra la voz ya confirmada).
+        this.tramasEnSegmento += 1;
+        if (this.tramasEnSegmento >= 15 && ventana > this.picoSegmento) this.picoSegmento = ventana;
+      }
+    }
+  }
+
+  /** `nivel` (dB) es platica de fondo: cerca del piso de ruido y, con referencia, por debajo de la voz del cliente. Sin 1 s de audio medido no decide (false). */
+  private esFondo(nivel: number): boolean {
+    const g = this.o.config.compuertaNivel;
+    if (!g || this.nivelApagada || this.ventanasDb.length < 50) return false;
+    const orden = [...this.ventanasDb].sort((a, b) => a - b);
+    const piso = orden[Math.floor(0.2 * (orden.length - 1))]!;
+    if (nivel >= piso + g.dbSobrePiso) return false;
+    if (this.picosCliente.length === 0) return true;
+    const refs = [...this.picosCliente].sort((a, b) => a - b);
+    return nivel < refs[Math.floor(refs.length / 2)]! - g.dbBajoCliente;
+  }
+
+  /** Nivel del audio que origino el parcial: el MAXIMO de ventana de los ultimos 500 ms (los parciales llegan con retraso; E2E r3: un parcial tardio en linea
+   * limpia caia sobre el silencio posterior y se tomaba como fondo). */
+  private nivelReciente(): number {
+    const ult = this.ventanasDb.slice(-25);
+    return ult.length ? Math.max(...ult) : -Infinity;
+  }
+
+  /** Un segmento confirmado: `true` = era fondo (se descarta). Reinicia la medicion del segmento. */
+  private segmentoEsFondo(): boolean {
+    const g = this.o.config.compuertaNivel;
+    const pico = this.picoSegmento;
+    const voz = this.vozEnSegmento;
+    this.picoSegmento = -Infinity;
+    this.tramasEnSegmento = 0;
+    this.vozEnSegmento = false;
+    this.fondoAvisadoEnSegmento = false;
+    if (!g || this.nivelApagada) return false;
+    // Sin referencia de la voz del cliente (ningun segmento aceptado aun) nunca se descarta un segmento: solo se frenan los parciales.
+    // Sin audio medido desde el segmento anterior no hay evidencia: no se descarta.
+    if (!voz && this.picosCliente.length > 0 && Number.isFinite(pico) && this.esFondo(pico)) {
+      this.descartesSeguidos += 1;
+      this.eventos.descartado?.("nivel_fondo");
+      if (this.descartesSeguidos >= g.descartesMax) {
+        // Nunca sorda: demasiados descartes seguidos (el cliente habla bajito con mucho ruido) apagan la compuerta en esta llamada.
+        this.nivelApagada = true;
+        this.eventos.descartado?.("compuerta_nivel_apagada");
+      }
+      return true;
+    }
+    this.descartesSeguidos = 0;
+    if (Number.isFinite(pico)) {
+      this.picosCliente.push(pico);
+      if (this.picosCliente.length > 5) this.picosCliente.shift();
+    }
+    return false;
+  }
+
   private medirAudio(pcm16: Uint8Array): void {
     if (!this.o.config.compuertaFondo) return;
     const v = new DataView(pcm16.buffer, pcm16.byteOffset, pcm16.byteLength);
@@ -284,6 +375,14 @@ class SesionElevenLabsStt implements SesionStt {
 
   private alParcial(texto: string): void {
     if (texto === "" || texto === this.parcial) return;
+    if (!this.vozEnSegmento && this.esFondo(this.nivelReciente())) {
+      // Platica de fondo: no corta al agente ni reprograma el cierre del turno (el turno del cliente cierra con lo suyo).
+      if (!this.fondoAvisadoEnSegmento) this.eventos.descartado?.("parcial_fondo");
+      this.fondoAvisadoEnSegmento = true;
+      return;
+    }
+    if (this.o.config.compuertaNivel && !this.nivelApagada && this.esFondo(this.nivelReciente())) return;
+    this.vozEnSegmento = true;
     if (this.confirmado === "" && this.parcial === "") this.eventos.hablaIniciada();
     this.parcial = texto;
     // El cliente sigue hablando: el cierre pendiente (ventana minima) se cancela y el turno continua.
@@ -293,6 +392,11 @@ class SesionElevenLabsStt implements SesionStt {
   }
 
   private alConfirmado(texto: string): void {
+    if (texto !== "" && this.segmentoEsFondo()) {
+      // Segmento de platica de fondo sin un solo parcial de voz: no entra al turno. Si el cliente ya tenia algo, su turno sigue su cierre normal.
+      if (this.confirmado === "" && this.parcial === "") this.quitarFinMax();
+      return;
+    }
     this.parcial = "";
     this.quitarFinMax();
     if (texto !== "") this.confirmado = this.unir(this.confirmado, texto);
@@ -356,6 +460,7 @@ class SesionElevenLabsStt implements SesionStt {
 
   private enviar(pcm16: Uint8Array, commit: boolean): void {
     this.medirAudio(pcm16);
+    this.medirNivel(pcm16);
     try {
       this.socket.send(JSON.stringify({ message_type: "input_audio_chunk", audio_base_64: aBase64(pcm16), commit, sample_rate: this.hz }));
     } catch {

@@ -17,7 +17,7 @@
 import { VOZ_PLATAFORMA, costoDeepgramAura2MicroUsd, costoDeepgramMicroUsd, costoElevenLabsSttMicroUsd, costoElevenLabsTtsMicroUsd } from "../../config-plataforma.ts";
 import type { ConfigPlataformaVoz } from "../../config-plataforma.ts";
 import { VozNoConfiguradaError, VozProveedorError } from "../../provider.ts";
-import type { MensajeLlmVoz, PuertoLlmVoz, RespuestaLlmVoz } from "../cascada-openrouter.ts";
+import type { MensajeLlmVoz, PuertoLlmVoz, RespuestaLlmVoz, ToolCallLlmVoz } from "../cascada-openrouter.ts";
 import { eventoSinPII } from "../log-sin-pii.ts";
 import type { SumideroLog } from "../log-sin-pii.ts";
 import type { AbrirSesionLlamada, AperturaLlamada, ManejadoresSesion, VozSesionLlamada } from "../sesion.ts";
@@ -255,8 +255,10 @@ class SesionCascadaV2 implements VozSesionLlamada {
     if (!enCurso && !this.reproduciendo()) return;
     // Lo que ya sono se fija AHORA: despues el reloj sigue avanzando.
     this.oidasAlInterrumpir = this.oidasAhora();
-    // Interrumpir una lectura que aun suena: el cliente puede no haber oido el resumen completo; el siguiente «si» no cuenta como respuesta al resumen (se lee de nuevo).
-    this.esperandoAlCliente.huellaOida = null;
+    // Interrumpir una lectura que aun suena: el resumen cuenta como leido SOLO si la frase con el TOTAL ya termino de sonar (el cliente contesta «si» en cuanto oye el
+    // total, encima del «¿es correcto?» final: E2E r2 7-nov-2026). Si el total no alcanzo a sonar completo, el siguiente «si» no responde al resumen (se lee de nuevo).
+    this.resumenOidoAlInterrumpir();
+    this.log("v2_interrupcion", { motivo: enCurso ? "generando" : "sonando", ok: (this.esperandoAlCliente.huellaOida ?? null) !== null });
     if (enCurso) {
       this.generacion += 1;
       this.control?.abort();
@@ -567,6 +569,7 @@ class SesionCascadaV2 implements VozSesionLlamada {
         }, ACUSE_ESPERA_MS)
       : null;
     let errorLlm: unknown = null;
+    await this.precargarLecturas(texto, vigente);
     try {
       let vuelta = 0;
       let vacios = 0;
@@ -753,6 +756,34 @@ class SesionCascadaV2 implements VozSesionLlamada {
     }
   }
 
+  /** Corre las lecturas que precarga la vertical (ver `ManejadoresSesion.precargar`) y entrega al modelo las que trajeron resultado, como un intercambio
+   * assistant(tool_calls) + tool. Hasta `PRECARGA_MAX` lecturas en paralelo y `PRECARGA_MAX_CHARS` por resultado; una con error o vacia no entra (el modelo la pide). */
+  private async precargarLecturas(texto: string, vigente: () => boolean): Promise<void> {
+    const pedidas = this.h.precargar?.(texto, this.turnosCliente) ?? [];
+    if (pedidas.length === 0 || !vigente()) return;
+    const t0 = this.ahora();
+    const llamadas: ToolCallLlmVoz[] = pedidas.slice(0, PRECARGA_MAX).map((p, i) => ({ id: `precarga_${this.turnosCliente}_${i}`, nombre: p.nombre, argsJson: JSON.stringify(p.args) }));
+    const resultados = await Promise.all(
+      llamadas.map(async (tc) => {
+        try {
+          // Plazo propio corto: una lectura lenta no retrasa el turno (el modelo la pide si la necesita).
+          const plazo = new Promise<null>((r) => {
+            const t = setTimeout(() => r(null), PRECARGA_PLAZO_MS);
+            (t as { unref?: () => void }).unref?.();
+          });
+          return { tc, salida: await Promise.race([this.h.ejecutarTool({ id: tc.id, nombre: tc.nombre, args: JSON.parse(tc.argsJson) as Record<string, unknown>, precarga: true }), plazo]) };
+        } catch {
+          return { tc, salida: null };
+        }
+      }),
+    );
+    const utiles = resultados.filter((r) => resultadoUtil(r.salida));
+    this.log("v2_precarga", { intento: llamadas.length, invalidos: llamadas.length - utiles.length, ms: Math.round(this.ahora() - t0) });
+    if (utiles.length === 0 || !vigente()) return;
+    this.mensajes.push({ role: "assistant", content: "", toolCalls: utiles.map((u) => u.tc) });
+    for (const u of utiles) this.mensajes.push({ role: "tool", toolCallId: u.tc.id, content: JSON.stringify(u.salida).slice(0, PRECARGA_MAX_CHARS) });
+  }
+
   /** Hay un pedido en juego (cotizado, resumen leido o esperando el «si»): «ya quedó» / «ya está» se refieren a el. */
   private pedidoEnJuego(): boolean {
     const e = this.esperandoAlCliente;
@@ -811,6 +842,39 @@ class SesionCascadaV2 implements VozSesionLlamada {
       });
     }
     return oidas;
+  }
+
+  /** Frases del turno (todas sus vueltas, sin rellenos) cuyo audio ya TERMINO de sonar: la siguiente frase de su ola ya empezo o la ola entera ya sono. */
+  private oidasCompletas(): string[] {
+    const a = this.audio;
+    if (!a || a.t0 === null) return [];
+    const transcurrido = this.ahora() - a.t0;
+    const oidas: string[] = [];
+    for (const ola of a.olas) {
+      const total = ola.chars.reduce((n, c) => n + c, 0) || 1;
+      let antes = 0;
+      ola.frases.forEach((f, i) => {
+        antes += ola.chars[i] ?? 0;
+        const fin = ola.inicioMs + ola.ms * (antes / total);
+        if (fin <= transcurrido && ola.esperas[i] !== true) oidas.push(f);
+      });
+    }
+    return oidas;
+  }
+
+  /** Al interrumpir: el resumen vigente (el cotizado en este turno o el ya leido antes) queda como oido solo si su total ya sono completo en este turno. */
+  private resumenOidoAlInterrumpir(): void {
+    const e = this.esperandoAlCliente;
+    const enTurno = e.cotizoEnTurno === true;
+    const huella = enTurno ? (e.huellaCotizada ?? null) : (e.huellaOida ?? null);
+    const total = enTurno ? (e.totalCotizado ?? null) : (e.totalOido ?? null);
+    if (huella !== null && total !== null && contieneTotal(this.oidasCompletas().join(" "), total)) {
+      e.huellaOida = huella;
+      e.totalOido = total;
+      this.log("v2_resumen_oido_al_interrumpir", { ok: true });
+      return;
+    }
+    e.huellaOida = null;
   }
 
   /** El turno se interrumpio: el historial debe reflejar lo que el cliente SI oyo, no lo que el modelo alcanzo a escribir ni lo que el TTS alcanzo a generar. */
@@ -949,8 +1013,24 @@ function armarPilaStt(opts: CascadaV2Opciones, config: ConfigPlataformaVoz, aper
   };
 }
 
+/** Lecturas precargadas por turno y caracteres por resultado (el contexto precargado no debe encarecer el prompt mas de lo que ahorra). */
+export const PRECARGA_MAX = 4;
+export const PRECARGA_MAX_CHARS = 3_000;
+/** Plazo de cada lectura precargada: pasado, se descarta y el turno sigue (E2E r4: la API local tardo 4 s y retraso 6 s el turno). */
+export const PRECARGA_PLAZO_MS = 1_200;
+
+/** Resultado de lectura que vale la pena entregar: sin error y con contenido (una lista vacia o `null` no). */
+function resultadoUtil(salida: unknown): boolean {
+  if (salida === null || salida === undefined || typeof salida !== "object") return false;
+  const o = salida as Record<string, unknown>;
+  if (("error" in o && o["error"] !== undefined && o["error"] !== null && o["error"] !== false) || o["ok"] === false) return false;
+  if (Array.isArray(salida)) return salida.length > 0;
+  return Object.values(o).some((v) => (Array.isArray(v) ? v.length > 0 : v !== null && v !== undefined && v !== ""));
+}
+
 /** Acuses NEUTROS del acuse rapido (revision #752 P1-2): no afirman nada del pedido, del menu ni de la cuenta; ningun modelo los escribe. */
-export const ACUSES_NEUTROS: readonly string[] = Object.freeze(["Claro.", "Un momento.", "Entendido, lo reviso.", "Con gusto, déjeme ver."]);
+/** Todos piden esperar (E2E r2 7-nov-2026: tras un «Claro.» suelto el agente callaba 2-3 s y el cliente lo tomaba como fin de turno y hablaba encima). */
+export const ACUSES_NEUTROS: readonly string[] = Object.freeze(["Claro, un momento.", "Déjeme ver.", "Entendido, lo reviso.", "Con gusto, déjeme ver."]);
 
 /** Silencio del agente (ms) antes del acuse: pasado este plazo ya no suena (el temporizador corre una sola vez por turno). */
 export const ACUSE_ESPERA_MS = 700;

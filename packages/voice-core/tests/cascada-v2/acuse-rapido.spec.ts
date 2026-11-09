@@ -92,6 +92,12 @@ describe("acuse rapido: lista fija y neutra, sin modelo", () => {
     }
   });
 
+  // E2E r2 (7-nov-2026): tras un «Claro.» suelto el agente callaba 2-3 s mientras el preciso pensaba y el cliente lo tomaba como fin de turno: hablaba encima y
+  // cortaba la respuesta. Cada acuse debe sonar a «espere» (un momento, déjeme ver, lo reviso), nunca a respuesta terminada.
+  it("cada acuse pide esperar: ninguno es un «Claro.» o «Entendido.» suelto", () => {
+    for (const a of ACUSES_NEUTROS) expect(a.toLowerCase()).toMatch(/\b(momento|d[eé]jeme|lo reviso|perm[ií]tame|reviso)\b/);
+  });
+
   it("en un turno lento del preciso suena un acuse de la lista, ANTES de la respuesta, sin pedirselo a ningun modelo y sin entrar al historial", async () => {
     const t = await abrir();
     await t.decir("quiero tres tacos de pastor y una coca para recoger");

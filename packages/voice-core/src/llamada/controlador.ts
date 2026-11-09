@@ -298,6 +298,8 @@ export class ControladorLlamada<R extends string = string> {
     // La maquina puede ordenar acciones (aviso por tool lenta, escalar tras dos timeouts) ANTES de contestar al modelo.
     const res = (typeof salida.resultado === "object" && salida.resultado !== null ? salida.resultado : {}) as { pedido_grande?: unknown; escalado?: unknown; incierto?: unknown };
     if (res.incierto === true) this.notaIncierto = "El registro del pedido expiró y PUDO quedar registrado: verifique en la sucursal antes de contactar al cliente.";
+    // Lectura precargada por la sesion (optimizacion de latencia): su timeout o error no cuenta para la maquina (ni escala ni dice «un momento»; E2E r4 P14).
+    if (llamada.precarga === true) return salida.resultado;
     await this.encolar(() =>
       this.eventoInterno({
         tipo: "tool_resultado",
