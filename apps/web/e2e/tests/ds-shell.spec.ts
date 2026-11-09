@@ -9,14 +9,17 @@ import { citas } from "../mock-api/fixtures/citas.ts";
 const RESUMEN = `/citas/${citas.orgSlug}/resumen`;
 
 test.describe("DS del shell @ds", () => {
-  test("la bandera ?ds=v2 se retiro: el parametro no cambia nada y <html> no lleva data-theme", async ({ page, iniciarSesion }) => {
+  test("la bandera ?ds=v2 se retiro: el parametro no cambia nada; <html> lleva el diseno nuevo y data-theme sigue al tema", async ({ page, iniciarSesion }) => {
     await iniciarSesion("citas", "owner");
     await page.goto(`${RESUMEN}?ds=v2`);
     await afirmarPantallaSana(page, "resumen con ?ds=v2");
-    await expect(page.locator("html")).not.toHaveAttribute("data-theme", /.*/);
-    // Nada se recuerda en localStorage: la siguiente navegacion sin parametro tampoco la enciende.
+    const html = page.locator("html");
+    await expect(html).toHaveAttribute("data-diseno", "ds3");
+    // Puente data-theme del diseno nuevo: siempre igual a la clase .dark (claro en este proyecto).
+    await expect(html).toHaveAttribute("data-theme", (await html.evaluate((h) => h.classList.contains("dark"))) ? "dark" : "light");
+    // Nada se recuerda en localStorage: la siguiente navegacion sin parametro tampoco cambia nada.
     await page.goto(RESUMEN);
-    await expect(page.locator("html")).not.toHaveAttribute("data-theme", /.*/);
+    await expect(html).toHaveAttribute("data-diseno", "ds3");
     expect(await page.evaluate(() => window.localStorage.getItem("atiende-ds"))).toBeNull();
   });
 

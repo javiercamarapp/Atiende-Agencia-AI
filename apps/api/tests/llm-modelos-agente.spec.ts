@@ -4,8 +4,9 @@ import { randomBytes } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { LlmGateway, lookupModelPrice } from "@atiende/agent-core";
 import { InMemoryTenancyEngine } from "@atiende/db";
+import { VOZ_PLATAFORMA } from "@atiende/voice-core";
 import { MODELOS_AGENTE, costoEstimadoModelo, modeloAlternoParaTope } from "@atiende/domain-restaurantes";
-import { ALLOWED_PROVIDER_HOSTS, DEFAULT_ROUTE, routingForModel, rungParaModeloAgente, rungsDeModelosAgente } from "../src/production/llm-models.ts";
+import { ALLOWED_PROVIDER_HOSTS, DEFAULT_ROUTE, VERIFIED_MODEL_HOSTS, routingForModel, rungParaModeloAgente, rungsDeModelosAgente } from "../src/production/llm-models.ts";
 import { RESTAURANTES_WHATSAPP_AGENT_ROLE, buildAgentModelAlternatives, buildProductionLlmGateway, buildRoleLadder } from "../src/production/llm-gateway.ts";
 import { TEST_ENV } from "./fixtures.ts";
 import type { ApiEnv } from "../src/env.ts";
@@ -26,6 +27,15 @@ describe("lista permitida de modelos del agente vs politica de la plataforma", (
       expect(routing.requireParameters).toBe(true);
       expect(routing.only?.length, `proveedores de ${m.id}`).toBeGreaterThan(0);
       for (const host of routing.only ?? []) expect(ALLOWED_PROVIDER_HOSTS, `${m.id} via ${host}`).toContain(host);
+    }
+  });
+
+  it("vozZdr de cada fila = tiene endpoint ZDR verificado en algun proveedor de la cascada de voz (Vertex/Bedrock/Azure); si no, cada turno da 404", () => {
+    const proveedoresVoz = VOZ_PLATAFORMA.cascadaV2.llm.proveedoresZdr;
+    for (const m of MODELOS_AGENTE) {
+      const v = VERIFIED_MODEL_HOSTS[m.id];
+      const sirveVoz = Boolean(v?.zdr) && (v?.hosts ?? []).some((h) => proveedoresVoz.includes(h));
+      expect(m.vozZdr, m.id).toBe(sirveVoz);
     }
   });
 
@@ -57,9 +67,7 @@ describe("registro en el gateway de produccion", () => {
     const e = env({ openai: null, openrouter: OPENROUTER });
     expect(buildRoleLadder(e, RESTAURANTES_WHATSAPP_AGENT_ROLE, { roles: {} })!.map((p) => p.id)).toEqual([
       "openrouter:openai/gpt-6-luna",
-      "openrouter:deepseek/deepseek-v4.1-flash",
-      "openrouter:google/gemini-2.5-flash-lite",
-      "openrouter:meta/muse-spark-1.3",
+      "openrouter:anthropic/claude-haiku-5.5",
     ]);
     expect(buildProductionLlmGateway(e, new InMemoryTenancyEngine())).toBeInstanceOf(LlmGateway);
   });
