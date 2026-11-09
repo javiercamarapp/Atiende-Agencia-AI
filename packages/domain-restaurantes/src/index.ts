@@ -171,6 +171,18 @@ export {
   tryNotifyCustomerOrderConfirmationEmail,
 } from "./order-notifications.ts";
 export type { CustomerOrderNotificationResult, CustomerOrderConfirmationEmailResult } from "./order-notifications.ts";
+export {
+  ESTADOS_AVISO_EN_CAMINO,
+  EVENTO_PLANTILLA_EN_CAMINO,
+  PLANTILLA_EN_CAMINO_SUGERIDA,
+  TIEMPO_SIN_DATO,
+  VARIABLES_AVISO_EN_CAMINO,
+  avisarPedidoEnCamino,
+  mapearContextoAvisoEnCamino,
+  parametrosPlantillaEnCamino,
+  textoAvisoEnCamino,
+} from "./aviso-en-camino.ts";
+export type { ContextoAvisoEnCamino, EstadoAvisoEnCamino, LecturaContextoAvisoEnCamino, MotivoAvisoEnCaminoOmitido, PlantillaAvisoEnCamino, ResultadoAvisoEnCamino } from "./aviso-en-camino.ts";
 
 // Fase de correo — ver emails/layout.ts, emails/order-templates.ts,
 // emails/staff-invite-template.ts, email-dispatch.ts.

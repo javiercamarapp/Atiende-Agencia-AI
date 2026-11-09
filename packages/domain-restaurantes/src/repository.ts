@@ -9,6 +9,7 @@
 // en producción.
 import type { LecturaResumenConfig, ResumenConfig, VoiceSecretMatch, VoiceToolAuditInput } from "./types.ts";
 import type { ClaveContadorAgente } from "./whatsapp/contadores-agente.ts";
+import type { EstadoAvisoEnCamino, LecturaContextoAvisoEnCamino } from "./aviso-en-camino.ts";
 import type { ConocimientoEntrada, ConocimientoLectura, ConocimientoPatch, NuevaConocimientoEntrada } from "./conocimiento/types.ts";
 import type { OrderFlowContext, OrderFlowSnapshot, OrderFlowState, OrderFlowWriteResult } from "./agent-tools/order-flow.ts";
 import type {
@@ -408,6 +409,15 @@ export interface RestaurantesRepository {
    * nunca lanzar. Modelo PM: con `propertyId`, el numero de ESA sucursal tiene prioridad
    * sobre el numero por defecto de la organizacion (migracion 023). */
   resolveActiveWhatsAppPhoneNumberId(organizationId: string, propertyId?: string | null): Promise<string | null>;
+
+  // ---- Aviso «va en camino» (migracion 107, aviso-en-camino.ts). OPCIONALES a proposito: un doble de prueba sin ellos (o la base sin la 107,
+  // que responde `disponible: false`) conserva el aviso anterior. Las tres corren con SAVEPOINT propio dentro de la transaccion del cambio de estado.
+  /** Interruptor, ventana de 24 h, consentimiento y plantilla aprobada del pedido (sin PII). */
+  leerContextoAvisoEnCamino?(organizationId: string, orderId: string): Promise<LecturaContextoAvisoEnCamino>;
+  /** Registra como termino el aviso de ESE pedido; un aviso ya encolado (texto/plantilla) no se pisa. */
+  marcarAvisoEnCamino?(organizationId: string, orderId: string, estado: EstadoAvisoEnCamino): Promise<void>;
+  /** Notificacion in-app al dueno: falta la plantilla `order.en_camino` (UNA por organizacion: clave de dedupe fija). */
+  notificarFaltaPlantillaEnCamino?(organizationId: string, propertyId: string): Promise<void>;
 
   // ---- Fase 9 — bandeja de notificaciones internas al staff (ver
   // order-notifications.ts, migrations/009_order_notifications.sql): sin push real
