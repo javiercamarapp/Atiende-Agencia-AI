@@ -322,6 +322,9 @@ export const OPERATIONAL_ENV_VARS: readonly string[] = [
   // prefija las claves del circuit breaker compartido (`cb:<entorno>:<modelo>`) para que preview no abra el
   // breaker de produccion. No es una credencial; sin el, cae a NODE_ENV y luego a `development`.
   "VERCEL_ENV",
+  // `production/deps.ts` (reportador de errores a Sentry) y `salud/health.ts` -- sha del commit que Vercel inyecta; se usa como
+  // `release` del evento de Sentry y en /health. No es una credencial; sin el, el evento sale sin release.
+  "VERCEL_GIT_COMMIT_SHA",
   // `env.ts::voiceRequireCallToken` -- opt-in ("true") para que las tools de voz de restaurantes
   // exijan el token por llamada. Apagado por defecto; nunca bloquea el arranque.
   "VOICE_REQUIRE_CALL_TOKEN",

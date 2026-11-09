@@ -111,7 +111,7 @@ export function buildApp(deps: AppDeps): Hono {
     logEvent(c, "error", "apps_api_error_interno", { message: err instanceof Error ? err.message : String(err) });
     // Sentry (solo con SENTRY_DSN): evento redactado, sin cuerpo/cabeceras/query/usuario; nunca lanza y tiene timeout corto.
     if (deps.reportadorErrores) {
-      await deps.reportadorErrores.reportar(err, { requestId: (c.get("requestId") as string | undefined) ?? null, method: c.req.method, path: c.req.path });
+      await deps.reportadorErrores.reportar(err, { requestId: ((c as unknown as { get(key: "requestId"): unknown }).get("requestId") as string | undefined) ?? null, method: c.req.method, path: c.req.path });
     }
     return c.json({ code: "internal_error", message: "Error interno" }, 500);
   });
