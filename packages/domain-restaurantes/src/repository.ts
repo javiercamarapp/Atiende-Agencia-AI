@@ -9,7 +9,7 @@
 // en producción.
 import type { LecturaResumenConfig, ResumenConfig, VoiceSecretMatch, VoiceToolAuditInput } from "./types.ts";
 import type { ClaveContadorAgente } from "./whatsapp/contadores-agente.ts";
-import type { EstadoAvisoEnCamino, LecturaContextoAvisoEnCamino } from "./aviso-en-camino.ts";
+import type { EstadoAvisoEnCamino, LecturaConfigAvisoEnCamino, LecturaContextoAvisoEnCamino } from "./aviso-en-camino.ts";
 import type { ConocimientoEntrada, ConocimientoLectura, ConocimientoPatch, NuevaConocimientoEntrada } from "./conocimiento/types.ts";
 import type { OrderFlowContext, OrderFlowSnapshot, OrderFlowState, OrderFlowWriteResult } from "./agent-tools/order-flow.ts";
 import type {
@@ -418,6 +418,10 @@ export interface RestaurantesRepository {
   marcarAvisoEnCamino?(organizationId: string, orderId: string, estado: EstadoAvisoEnCamino): Promise<void>;
   /** Notificacion in-app al dueno: falta la plantilla `order.en_camino` (UNA por organizacion: clave de dedupe fija). */
   notificarFaltaPlantillaEnCamino?(organizationId: string, propertyId: string): Promise<void>;
+  /** Interruptor de la organizacion (sin fila = encendido). */
+  leerConfigAvisoEnCamino?(organizationId: string): Promise<LecturaConfigAvisoEnCamino>;
+  /** Cambia el interruptor (la base exige owner/admin de toda la organizacion: `AvisoEnCaminoConfigRechazadaError`). */
+  guardarConfigAvisoEnCamino?(organizationId: string, activo: boolean): Promise<LecturaConfigAvisoEnCamino>;
 
   // ---- Fase 9 — bandeja de notificaciones internas al staff (ver
   // order-notifications.ts, migrations/009_order_notifications.sql): sin push real

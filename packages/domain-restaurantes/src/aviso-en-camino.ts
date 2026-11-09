@@ -55,6 +55,20 @@ export type LecturaContextoAvisoEnCamino =
   /** `contexto: null` = el pedido no existe en la organizacion. */
   | { readonly disponible: true; readonly contexto: (ContextoAvisoEnCamino & { readonly yaAvisado: boolean }) | null };
 
+/** Interruptor de la organizacion. `disponible: false` = base sin la 107 (se lee encendido; no se puede guardar). */
+export interface LecturaConfigAvisoEnCamino {
+  readonly disponible: boolean;
+  readonly activo: boolean;
+}
+
+/** La base rechazo el cambio del interruptor (42501: no es owner/admin de toda la organizacion). */
+export class AvisoEnCaminoConfigRechazadaError extends Error {
+  constructor() {
+    super("Solo el dueño o un administrador con acceso a toda la organización puede cambiar el aviso «va en camino».");
+    this.name = "AvisoEnCaminoConfigRechazadaError";
+  }
+}
+
 export const ESTADOS_AVISO_EN_CAMINO = ["texto", "plantilla", "omitido_falta_plantilla", "omitido_sin_consentimiento", "omitido_baja", "omitido_desactivado"] as const;
 export type EstadoAvisoEnCamino = (typeof ESTADOS_AVISO_EN_CAMINO)[number];
 

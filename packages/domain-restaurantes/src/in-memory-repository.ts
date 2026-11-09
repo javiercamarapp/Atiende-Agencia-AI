@@ -11,7 +11,7 @@ import type { VoiceSecretMatch, VoiceToolAuditInput } from "./types.ts";
 import type { OrderFlowContext, OrderFlowSnapshot, OrderFlowState, OrderFlowWriteResult } from "./agent-tools/order-flow.ts";
 import { randomUUID } from "node:crypto";
 import type { ClaveContadorAgente } from "./whatsapp/contadores-agente.ts";
-import type { ContextoAvisoEnCamino, EstadoAvisoEnCamino, LecturaContextoAvisoEnCamino } from "./aviso-en-camino.ts";
+import type { ContextoAvisoEnCamino, EstadoAvisoEnCamino, LecturaConfigAvisoEnCamino, LecturaContextoAvisoEnCamino } from "./aviso-en-camino.ts";
 import { ClienteMemoriaNoDisponibleError, OrderConflictError, OrderValidationError, WhatsAppAgentConfigConflictError, WhatsappNumberInUseError } from "./errors.ts";
 import { fotoConfigAgente } from "./whatsapp/agent-config-editor.ts";
 import { RestaurantesConfigUnavailableError } from "./repository.ts";
@@ -1334,7 +1334,23 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     if (!contexto) return { disponible: false };
     if (!this.orders.some((o) => o.id === orderId && o.organizationId === organizationId)) return { disponible: true, contexto: null };
     const marca = this.avisoEnCaminoMarcas.get(orderId);
-    return { disponible: true, contexto: { ...contexto, yaAvisado: marca === "texto" || marca === "plantilla" } };
+    const activo = this.avisoEnCaminoActivo.get(organizationId) ?? contexto.activo;
+    return { disponible: true, contexto: { ...contexto, activo, yaAvisado: marca === "texto" || marca === "plantilla" } };
+  }
+
+  /** `false` simula la base sin la 107 para el interruptor (lectura encendida y no disponible; guardado no disponible). */
+  avisoEnCaminoConfigDisponible = true;
+  private readonly avisoEnCaminoActivo = new Map<string, boolean>();
+
+  async leerConfigAvisoEnCamino(organizationId: string): Promise<LecturaConfigAvisoEnCamino> {
+    if (!this.avisoEnCaminoConfigDisponible) return { disponible: false, activo: true };
+    return { disponible: true, activo: this.avisoEnCaminoActivo.get(organizationId) ?? true };
+  }
+
+  async guardarConfigAvisoEnCamino(organizationId: string, activo: boolean): Promise<LecturaConfigAvisoEnCamino> {
+    if (!this.avisoEnCaminoConfigDisponible) return { disponible: false, activo: true };
+    this.avisoEnCaminoActivo.set(organizationId, activo);
+    return { disponible: true, activo };
   }
 
   async marcarAvisoEnCamino(organizationId: string, orderId: string, estado: EstadoAvisoEnCamino): Promise<void> {

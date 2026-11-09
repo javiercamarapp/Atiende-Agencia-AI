@@ -35,6 +35,7 @@ import { restaurantesWhatsappEmbeddedSignupRoutes } from "./whatsapp-embedded-si
 import { restaurantesAdminConocimientoRoutes } from "./admin-conocimiento.ts";
 import { restaurantesAdminOnboardingRoutes } from "./admin-onboarding.ts";
 import { restaurantesResumenConfigRoutes } from "./resumen-config.ts";
+import { restaurantesAvisoEnCaminoConfigRoutes } from "./aviso-en-camino-config.ts";
 import { restaurantesAdminAgregadosRoutes } from "./admin-agregados.ts";
 import { restaurantesAjustesAgenteRoutes, restaurantesAjustesLlamadaInternoRoutes } from "./ajustes-agente.ts";
 import { restaurantesVozAdminRoutes } from "./voz-admin.ts";
@@ -118,6 +119,7 @@ export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // Ajustes del agente por organizacion (migración 055: modelo, temperatura, voz, fondo) + conocimiento automatico + lado sistema del servicio de llamadas.
   // Configuracion del Resumen (migración 096): minutos por conversacion (horas ahorradas) y metas de IA.
   app.route("/", restaurantesResumenConfigRoutes(deps));
+  app.route("/", restaurantesAvisoEnCaminoConfigRoutes(deps));
   app.route("/", restaurantesAjustesAgenteRoutes(deps));
   app.route("/", restaurantesAjustesLlamadaInternoRoutes(deps));
   // Worker de telefonía (migración 067): contexto de la llamada, costo por escalón, modo de entrada y KPI de desborde/latencia.
