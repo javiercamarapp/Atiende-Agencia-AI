@@ -1,0 +1,59 @@
+{
+  "_doc": "Avisos high/critical de npm audit ya presentes el 9-nov-2026 (árbol completo). Todos son de herramientas de desarrollo; producción (--omit=dev) tiene 0. Un aviso nuevo fuera de esta lista rompe el CI; uno que desaparece se borra de aquí. Ver scripts/npm-audit-baseline/check.ts.",
+  "avisos": [
+    {
+      "ghsa": "GHSA-2m5v-pch6-74hx",
+      "paquete": "undici",
+      "severidad": "high",
+      "motivo": "Dev: transitiva de jsdom (entorno de tests de componentes); se retira al subir jsdom/undici >= 8.12.2."
+    },
+    {
+      "ghsa": "GHSA-4w7w-5xrc-9h26",
+      "paquete": "undici",
+      "severidad": "high",
+      "motivo": "Dev: transitiva de jsdom (entorno de tests de componentes); se retira al subir jsdom/undici >= 8.12.2."
+    },
+    {
+      "ghsa": "GHSA-587h-7wmj-h5pm",
+      "paquete": "vite",
+      "severidad": "high",
+      "motivo": "Dev: servidor de desarrollo/build de apps/web; se retira con vite >= 7.3.8 (minor, grupo de Dependabot)."
+    },
+    {
+      "ghsa": "GHSA-5gmw-xhrv-c9v3",
+      "paquete": "tinypool",
+      "severidad": "critical",
+      "motivo": "Dev: pool de workers de vitest 3.x; se retira con vitest 5 (major)."
+    },
+    {
+      "ghsa": "GHSA-6j4f-fj2g-mc7p",
+      "paquete": "brace-expansion",
+      "severidad": "high",
+      "motivo": "Dev: transitiva de eslint 9 (minimatch 3); se retira con npm audit fix / override a brace-expansion >= 1.1.21."
+    },
+    {
+      "ghsa": "GHSA-85c8-ppgw-ccpr",
+      "paquete": "tinypool",
+      "severidad": "critical",
+      "motivo": "Dev: pool de workers de vitest 3.x; se retira con vitest 5 (major)."
+    },
+    {
+      "ghsa": "GHSA-qhr7-859c-m2p7",
+      "paquete": "brace-expansion",
+      "severidad": "high",
+      "motivo": "Dev: transitiva de eslint 9 (minimatch 3); se retira con npm audit fix / override a brace-expansion >= 1.1.21."
+    },
+    {
+      "ghsa": "GHSA-qrxm-fqhp-jwvm",
+      "paquete": "undici",
+      "severidad": "high",
+      "motivo": "Dev: transitiva de jsdom (entorno de tests de componentes); se retira al subir jsdom/undici >= 8.12.2."
+    },
+    {
+      "ghsa": "GHSA-xjj6-f33q-929c",
+      "paquete": "undici",
+      "severidad": "high",
+      "motivo": "Dev: transitiva de jsdom (entorno de tests de componentes); se retira al subir jsdom/undici >= 8.12.2."
+    }
+  ]
+}
