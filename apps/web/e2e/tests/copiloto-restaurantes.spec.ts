@@ -7,7 +7,8 @@ import { abrirMasMovil, esMovil, sidebar } from "../helpers/navegacion.ts";
 import { restaurantes } from "../mock-api/fixtures/restaurantes.ts";
 
 const RUTA = `/restaurantes/${restaurantes.orgSlug}/copiloto`;
-const PREGUNTA = "¿Cuánto vendí esta semana?";
+// Primera pregunta del tema «Ventas» (el tema activo de la portada).
+const PREGUNTA = "¿Cuánto vendí por día en los últimos 7 días?";
 const TEXTO_RESPUESTA = "En los últimos 7 días vendiste $18,450 MXN en 96 pedidos.";
 
 test.describe("copiloto de restaurantes @copiloto", () => {
@@ -34,7 +35,7 @@ test.describe("copiloto de restaurantes @copiloto", () => {
     // El POST fue NDJSON, con SOLO pregunta + conversationId "new" (sin ids de negocio ni organizacion).
     const posts = await mock.buscar({ metodo: "POST", ruta: "/chat-datos" });
     expect(posts).toHaveLength(1);
-    expect(posts[0]?.cuerpo).toEqual({ tool: "ventas_por_dia", args: { periodo: "esta_semana" }, label: PREGUNTA, conversationId: "new" });
+    expect(posts[0]?.cuerpo).toEqual({ tool: "ventas_por_dia", args: { periodo: "ultimos_7_dias" }, label: PREGUNTA, conversationId: "new" });
     vigilante.verificar();
   });
 
@@ -48,8 +49,8 @@ test.describe("copiloto de restaurantes @copiloto", () => {
     await page.getByRole("button", { name: "Historial de chats" }).click();
     const panel = page.getByRole("dialog", { name: "Historial de chats" });
     await expect(panel.getByRole("button", { name: PREGUNTA, exact: true })).toBeVisible();
-    // Chat nuevo: vuelve la portada (sin conversacion).
-    await panel.getByRole("button", { name: "Nuevo chat" }).click();
+    // Chat nuevo: vuelve la portada (sin conversacion) y el historial se cierra.
+    await panel.getByRole("button", { name: "Chat nuevo", exact: true }).click();
     await expect(page.getByText(TEXTO_RESPUESTA)).toHaveCount(0);
 
     // Reabrir desde el historial trae la conversacion guardada desde el servidor.

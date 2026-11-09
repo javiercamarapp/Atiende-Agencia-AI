@@ -12,10 +12,12 @@
 //
 // A diferencia de `ProductionHotelesFraudeAuditSink` (sesión de sistema +
 // `security definer` porque su tabla SÍ tiene RLS property-scoped),
-// `mcp_cfdi.folio_stamp_reservation` NO tiene RLS (ver cabecera de
-// `packages/mcp-servers/cfdi/migrations/001_folio_stamp_reservation.sql`): SQL
-// directo basta, siempre bajo `engine.withAppSession({ userId: null }, ...)`
-// (sesión de SISTEMA, `auth.uid()` NULL) -- este store nunca se llama desde una
+// `mcp_cfdi.folio_stamp_reservation` tiene RLS de SOLO sesión de sistema
+// (`auth.uid() is null`, ver
+// `packages/mcp-servers/cfdi/migrations/002_folio_stamp_reservation_rls.sql`): SQL
+// directo basta, pero SIEMPRE bajo `engine.withAppSession({ userId: null }, ...)`
+// (sesión de SISTEMA, `auth.uid()` NULL) -- con un `userId` real la policy deja
+// 0 filas y rechaza el INSERT -- este store nunca se llama desde una
 // ruta HTTP directamente, solo desde `DualPacCfdiPort.timbrar`, que a su vez es un
 // singleton de proceso sin sesión de tenant propia (ver comentario de
 // `production/deps.ts` junto a `hotelesCfdiPort`).

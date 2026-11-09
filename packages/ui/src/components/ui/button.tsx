@@ -67,6 +67,9 @@ export function clasesAmbitoOverrides(className: string | undefined): string {
     hay(/^(p|px|pl|pr|ps|pe)-/) && "ambito-ov-px",
     hay(/^text-(xs|sm|base|lg|xl|2xl|2xs|ui|pill|eyebrow|widget|display|\[)/) && "ambito-ov-texto",
     hay(/^font-(thin|light|normal|medium|semibold|bold|extrabold|black)$/) && "ambito-ov-peso",
+    // Objetivos tactiles grandes de las pantallas de operacion (cocina, reparto: 56 px o mas, con guantes o en movimiento): el alto
+    // compacto por --control-* no los encoge. Solo 56 px o mas; los altos intermedios (h-8…h-12) siguen la escala de controles.
+    hay(/^(min-)?h-(14|16|20|24)$/) && "ambito-ov-alto",
   ]
     .filter(Boolean)
     .join(" ");
