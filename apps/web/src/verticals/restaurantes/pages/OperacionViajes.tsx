@@ -2,7 +2,9 @@
 // «Salió» con confirmacion que llama a `POST admin/orders/dispatch` (despacho atomico en el servidor: nunca dos PATCH). Lista de «en camino»
 // con tiempo transcurrido y rojo + alerta a los 90 min. Sin datos de ejemplo: lee `GET admin/operacion/viajes`.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, ConfirmDialog, EstadoCargando, EstadoError, EstadoVacio, FormField, Input, PageContainer, Selector, StatusBadge, formatMoney, notify } from "@atiende/ui";
+import { Button, ConfirmDialog, EstadoCargando, EstadoError, EstadoVacio, FormField, Input, PageContainer, Selector, StatusBadge, formatMoney, notify, useT } from "@atiende/ui";
+import { restaurantesOperacion } from "@atiende/ui/i18n/restaurantes/operacion";
+import { restaurantesViajes } from "@atiende/ui/i18n/restaurantes/viajes";
 import type { TarjetaPedido, ViajesSalida } from "@atiende/domain-restaurantes/operacion";
 import { AlertTriangle, Hourglass, MessageSquareOff, Square, SquareCheckBig, WifiOff } from "lucide-react";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
@@ -19,6 +21,7 @@ import { ETA_POR_OMISION_MIN, MAX_LOTE, alternarSeleccion, choferInicial, depura
 const SONDEO_VIAJES_MS = 15_000;
 
 export function OperacionViajesPage({ apiBaseUrl, token, propertyId, role }: RestaurantesShellContext) {
+  const t = useT(restaurantesOperacion, restaurantesViajes);
   const [datos, setDatos] = useState<ViajesSalida | null>(null);
   const [consultadoEnMs, setConsultadoEnMs] = useState<number>(() => Date.now());
   const [ultimaOk, setUltimaOk] = useState<number | null>(null);
@@ -55,8 +58,8 @@ export function OperacionViajesPage({ apiBaseUrl, token, propertyId, role }: Res
     } catch (e) {
       if (e instanceof TypeError) {
         setSinConexion(true);
-        setError(new Error("Sin conexión con el servidor. Revisa tu internet e inténtalo de nuevo."));
-      } else setError(e instanceof Error ? e : new Error("No se pudo cargar Viajes."));
+        setError(new Error(t("restaurantes.operacion.sinConexionServidor")));
+      } else setError(e instanceof Error ? e : new Error(t("restaurantes.viajes.errorCarga")));
       throw e;
     }
   }, [apiBaseUrl, fetchImpl, propertyId, token]);
@@ -89,7 +92,7 @@ export function OperacionViajesPage({ apiBaseUrl, token, propertyId, role }: Res
       setSeleccion((sel) => sel.filter((id) => !confirmados.has(id))); // lo que el servidor no confirmo sigue marcado
       const m = mensajesLote(resumirLote(elegidos, r.resultados), chofer.nombre);
       if (m.exito) notify.success(m.exito);
-      else notify.error("Ningún pedido salió.");
+      else notify.error(t("restaurantes.viajes.ningunoSalio"));
       for (const t of m.atencion) notify.warning(t);
     } catch (e) {
       if (e instanceof ErrorOperacion && e.code === "repartidor_no_disponible" && !forzar) {
@@ -99,7 +102,7 @@ export function OperacionViajesPage({ apiBaseUrl, token, propertyId, role }: Res
         notify.warning(textoEstadoCambio(elegidos, e.details));
       } else {
         if (e instanceof ErrorOperacion && e.status >= 400 && e.status < 500) intento.current = null;
-        notify.error(e instanceof ErrorOperacion ? e.message : "No hay conexión. Nada salió; vuelve a tocar Salió.");
+        notify.error(e instanceof ErrorOperacion ? e.message : t("restaurantes.viajes.errorSinRed"));
       }
     } finally {
       setEnviando(false);
@@ -110,8 +113,8 @@ export function OperacionViajesPage({ apiBaseUrl, token, propertyId, role }: Res
   if (datos === null && error === null) {
     return (
       <PageContainer padding="none">
-        <h1 className="sr-only">Viajes</h1>
-        <EstadoCargando variante="tarjeta" etiqueta="Cargando Viajes…" />
+        <h1 className="sr-only">{t("restaurantes.viajes.titulo")}</h1>
+        <EstadoCargando variante="tarjeta" etiqueta={t("restaurantes.viajes.cargando")} />
       </PageContainer>
     );
   }
@@ -119,9 +122,9 @@ export function OperacionViajesPage({ apiBaseUrl, token, propertyId, role }: Res
     const noDisponible = error instanceof ErrorOperacion && error.esNoDisponible;
     return (
       <PageContainer padding="none">
-        <h1 className="sr-only">Viajes</h1>
+        <h1 className="sr-only">{t("restaurantes.viajes.titulo")}</h1>
         {noDisponible ? (
-          <EstadoVacio icon={Hourglass} titulo="Viajes" mensaje="No disponible aún: el despacho de pedidos a choferes se activa cuando el servidor del panel del operador esté listo." />
+          <EstadoVacio icon={Hourglass} titulo={t("restaurantes.viajes.titulo")} mensaje={t("restaurantes.viajes.noDisponible")} />
         ) : (
           <EstadoError mensaje={error.message} onReintentar={() => void cargar().catch(() => undefined)} />
         )}
@@ -130,7 +133,7 @@ export function OperacionViajesPage({ apiBaseUrl, token, propertyId, role }: Res
   }
 
   const enCamino = datos?.enCamino ?? [];
-  const nombreChofer = (id: string | null) => datos?.repartidores.find((c) => c.id === id)?.nombre ?? "Chofer sin nombre";
+  const nombreChofer = (id: string | null) => datos?.repartidores.find((c) => c.id === id)?.nombre ?? t("restaurantes.viajes.choferSinNombre");
   const minutos = (p: TarjetaPedido) => minutosVivos(p, consultadoEnMs, ahoraMs);
   const largos = enCamino.filter((p) => minutos(p) >= EN_CAMINO_ROJO_MIN);
 
@@ -138,24 +141,24 @@ export function OperacionViajesPage({ apiBaseUrl, token, propertyId, role }: Res
     <PageContainer padding="none">
       <div className="mx-auto w-full max-w-3xl space-y-4 pb-6">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h1 className="sr-only">Viajes</h1>
+          <h1 className="sr-only">{t("restaurantes.viajes.titulo")}</h1>
           <span className="ml-auto text-sm text-muted-foreground">{etiquetaActualizado(ultimaOk, ahoraMs)}</span>
         </div>
         {sinConexion && (
           <div role="status" className="flex items-center gap-2 rounded-lg border-2 border-warning bg-warning-tint p-3 text-base text-warning">
             <WifiOff className="size-5 shrink-0" aria-hidden="true" />
-            Sin conexión — reintentando. Lo que ves puede estar desactualizado.
+            {t("restaurantes.operacion.sinConexionReintentando")}
           </div>
         )}
         {error && datos !== null && !sinConexion && <EstadoError compacto mensaje={error.message} onReintentar={() => void cargar().catch(() => undefined)} />}
 
-        <section aria-label="Por salir" className="space-y-3">
-          <h2 className="text-lg font-semibold text-foreground">Por salir ({porSalir.length})</h2>
-          {!puedeDespachar && <p role="status" className="rounded-lg border border-border bg-card p-3 text-base text-muted-foreground">Solo consulta: tu perfil no puede despachar pedidos.</p>}
+        <section aria-label={t("restaurantes.viajes.porSalirAria")} className="space-y-3">
+          <h2 className="text-lg font-semibold text-foreground">{t("restaurantes.viajes.porSalir", { n: porSalir.length })}</h2>
+          {!puedeDespachar && <p role="status" className="rounded-lg border border-border bg-card p-3 text-base text-muted-foreground">{t("restaurantes.viajes.soloConsulta")}</p>}
           {porSalir.length === 0 ? (
-            <EstadoVacio icon={Hourglass} titulo="Nada por salir" mensaje="No hay pedidos a domicilio esperando chofer." />
+            <EstadoVacio icon={Hourglass} titulo={t("restaurantes.viajes.nadaPorSalir")} mensaje={t("restaurantes.viajes.nadaPorSalirTexto")} />
           ) : (
-            <ul className="space-y-2" aria-label="Pedidos por salir">
+            <ul className="space-y-2" aria-label={t("restaurantes.viajes.listaPorSalir")}>
               {porSalir.map((p) => {
                 const marcado = seleccion.includes(p.id);
                 return (
@@ -181,12 +184,12 @@ export function OperacionViajesPage({ apiBaseUrl, token, propertyId, role }: Res
                         <span className="block truncate text-base text-muted-foreground">{p.resumenItems}</span>
                         <span className="mt-1 flex flex-wrap gap-2">
                           <StatusBadge tone="neutral" dot={false} className="text-sm">
-                            {p.listoAt ? "Listo" : "En preparación"}
+                            {t(p.listoAt ? "restaurantes.viajes.listo" : "restaurantes.viajes.enPreparacion")}
                           </StatusBadge>
                           {p.sinAviso && (
                             <StatusBadge tone="warning" dot={false} className="text-sm">
                               <MessageSquareOff className="size-4" aria-hidden="true" />
-                              Sin aviso al cliente
+                              {t("restaurantes.viajes.sinAvisoCliente")}
                             </StatusBadge>
                           )}
                         </span>
@@ -198,13 +201,13 @@ export function OperacionViajesPage({ apiBaseUrl, token, propertyId, role }: Res
               })}
             </ul>
           )}
-          {topeAvisado && <p role="status" className="text-sm text-muted-foreground">Un viaje lleva máximo {MAX_LOTE} pedidos. Quita uno para agregar otro.</p>}
+          {topeAvisado && <p role="status" className="text-sm text-muted-foreground">{t("restaurantes.viajes.tope", { max: MAX_LOTE })}</p>}
 
           {porSalir.length > 0 && puedeDespachar && (
             <div className="space-y-3 rounded-lg border border-border bg-card p-3">
-              <FormField label="Chofer" required>
+              <FormField label={t("restaurantes.viajes.choferCampo")} required>
                 <Selector value={choferId} onChange={(e) => setChoferId(e.target.value)} className="h-14 text-base">
-                  <option value="">Elige un chofer</option>
+                  <option value="">{t("restaurantes.viajes.eligeChofer")}</option>
                   {(datos?.repartidores ?? []).map((c) => (
                     <option key={c.id} value={c.id}>
                       {etiquetaChofer(c)}
@@ -212,31 +215,31 @@ export function OperacionViajesPage({ apiBaseUrl, token, propertyId, role }: Res
                   ))}
                 </Selector>
               </FormField>
-              <FormField label="Tiempo estimado de entrega (min)" error={etaValida ? undefined : "Escribe entre 5 y 240 minutos."}>
+              <FormField label={t("restaurantes.viajes.eta")} error={etaValida ? undefined : t("restaurantes.viajes.etaError")}>
                 <Input type="number" inputMode="numeric" min={5} max={240} className="h-14 text-lg" value={eta} onChange={(e) => setEta(e.target.value)} />
               </FormField>
               <Button type="button" className="h-14 w-full text-lg" disabled={!puedeSalir} loading={enviando} onClick={() => setConfirmando(true)}>
                 {textoBotonSalio(elegidos.length)}
               </Button>
               {!puedeSalir && !enviando && (
-                <p className="text-sm text-muted-foreground">{elegidos.length === 0 ? "Marca los pedidos que salen en este viaje." : chofer === null ? "Elige el chofer." : "Revisa el tiempo estimado."}</p>
+                <p className="text-sm text-muted-foreground">{t(elegidos.length === 0 ? "restaurantes.viajes.marcaPedidos" : chofer === null ? "restaurantes.viajes.eligeElChofer" : "restaurantes.viajes.revisaEta")}</p>
               )}
             </div>
           )}
         </section>
 
-        <section aria-label="En camino" className="space-y-3">
-          <h2 className="text-lg font-semibold text-foreground">En camino ({enCamino.length})</h2>
+        <section aria-label={t("restaurantes.viajes.enCaminoAria")} className="space-y-3">
+          <h2 className="text-lg font-semibold text-foreground">{t("restaurantes.viajes.enCamino", { n: enCamino.length })}</h2>
           {largos.length > 0 && (
             <div role="alert" className="flex items-center gap-2 rounded-lg border-2 border-destructive bg-destructive-tint p-3 text-base text-destructive">
               <AlertTriangle className="size-5 shrink-0" aria-hidden="true" />
-              {largos.length === 1 ? `El pedido #${largos[0]!.numero} lleva` : `${largos.length} pedidos llevan`} más de {EN_CAMINO_ROJO_MIN} minutos en camino. Llama al chofer.
+              {t("restaurantes.viajes.largos", { count: largos.length, numero: String(largos[0]!.numero), min: EN_CAMINO_ROJO_MIN })}
             </div>
           )}
           {enCamino.length === 0 ? (
-            <EstadoVacio icon={Hourglass} titulo="Nadie en camino" mensaje="No hay pedidos en reparto ahora." />
+            <EstadoVacio icon={Hourglass} titulo={t("restaurantes.viajes.nadieEnCamino")} mensaje={t("restaurantes.viajes.nadieEnCaminoTexto")} />
           ) : (
-            <ul className="space-y-2" aria-label="Pedidos en camino">
+            <ul className="space-y-2" aria-label={t("restaurantes.viajes.listaEnCamino")}>
               {enCamino.map((p) => {
                 const m = minutos(p);
                 return (
@@ -245,9 +248,9 @@ export function OperacionViajesPage({ apiBaseUrl, token, propertyId, role }: Res
                       #{p.numero} · {p.clienteNombre}
                     </p>
                     <p className="text-base text-muted-foreground">
-                      Chofer: {nombreChofer(p.repartidorId)} · ${formatMoney(p.total)}
+                      {t("restaurantes.viajes.choferLinea", { chofer: nombreChofer(p.repartidorId), total: formatMoney(p.total) })}
                     </p>
-                    <SemaforoMinutos semaforo={semaforoPedido("en_camino", p.canal, m)} minutos={m} prefijo="En camino" />
+                    <SemaforoMinutos semaforo={semaforoPedido("en_camino", p.canal, m)} minutos={m} prefijo={t("restaurantes.operacion.tarjeta.enCamino")} />
                   </li>
                 );
               })}
@@ -256,9 +259,9 @@ export function OperacionViajesPage({ apiBaseUrl, token, propertyId, role }: Res
         </section>
 
         {(datos?.recientes.length ?? 0) > 0 && (
-          <section aria-label="Entregados recientes" className="space-y-2">
-            <h2 className="text-lg font-semibold text-foreground">Entregados recientes</h2>
-            <ul className="space-y-1" aria-label="Pedidos entregados recientemente">
+          <section aria-label={t("restaurantes.viajes.recientesAria")} className="space-y-2">
+            <h2 className="text-lg font-semibold text-foreground">{t("restaurantes.viajes.recientes")}</h2>
+            <ul className="space-y-1" aria-label={t("restaurantes.viajes.listaRecientes")}>
               {datos!.recientes.map((p) => (
                 <li key={p.id} className="flex justify-between gap-2 text-base text-muted-foreground">
                   <span>
@@ -275,10 +278,10 @@ export function OperacionViajesPage({ apiBaseUrl, token, propertyId, role }: Res
       <ConfirmDialog
         open={confirmando}
         onOpenChange={setConfirmando}
-        titulo={`¿Salieron ${elegidos.length === 1 ? "el pedido" : "los pedidos"} con ${chofer?.nombre ?? "el chofer"}?`}
-        descripcion={`${elegidos.map((p) => `#${p.numero}`).join(", ")} · entrega estimada en ${etaNum} min. Se avisa al cliente que su pedido va en camino.`}
-        confirmar="Sí, salió"
-        cancelar="Volver"
+        titulo={t("restaurantes.viajes.confirmarTitulo", { count: elegidos.length, chofer: chofer?.nombre ?? t("restaurantes.viajes.elChofer") })}
+        descripcion={t("restaurantes.viajes.confirmarTexto", { lista: elegidos.map((p) => `#${p.numero}`).join(", "), min: etaNum })}
+        confirmar={t("restaurantes.viajes.confirmarSi")}
+        cancelar={t("restaurantes.viajes.volver")}
         onConfirm={async () => {
           setConfirmando(false);
           await despachar(false);
@@ -287,10 +290,11 @@ export function OperacionViajesPage({ apiBaseUrl, token, propertyId, role }: Res
       <ConfirmDialog
         open={fueraDeTurno !== null}
         onOpenChange={(abierto) => !abierto && setFueraDeTurno(null)}
-        titulo="Chofer fuera de turno"
-        descripcion={`${fueraDeTurno ?? "El chofer"} está marcado fuera de turno. ¿Despachar de todos modos?`}
-        confirmar="Sí, despachar"
-        cancelar="Elegir otro chofer"
+        titulo={t("restaurantes.viajes.fueraTitulo")}
+        descripcion={t("restaurantes.viajes.fueraTexto", { chofer: fueraDeTurno ?? t("restaurantes.viajes.elChoferMayus") })}
+        confirmar={t("restaurantes.viajes.fueraSi")}
+        cancelar={t("restaurantes.viajes.fueraOtro")}
+
         onConfirm={async () => {
           setFueraDeTurno(null);
           await despachar(true);

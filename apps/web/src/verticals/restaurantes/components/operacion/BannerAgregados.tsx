@@ -4,6 +4,8 @@
 import { useEffect, useMemo } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { ListPlus } from "lucide-react";
+import { useT } from "@atiende/ui";
+import { restaurantesAgregados } from "@atiende/ui/i18n/restaurantes/agregados";
 import { crearAlertaRepetida, vibrarAviso } from "../../lib/alerta-pedido-nuevo.ts";
 import { textoPendientes } from "../../lib/agregados-presentacion.ts";
 import { leerSonido, reproducirAviso } from "../../lib/sondeo-pedidos.ts";
@@ -14,6 +16,7 @@ export function rutaAgregados(orgSlug: string): string {
 }
 
 export function BannerAgregados({ apiBaseUrl, token, propertyId, orgSlug, activo }: { readonly apiBaseUrl: string; readonly token: string; readonly propertyId: string; readonly orgSlug: string; readonly activo: boolean }) {
+  const t = useT(restaurantesAgregados);
   const { pathname } = useLocation();
   const destino = rutaAgregados(orgSlug);
   const enLaPantalla = pathname.startsWith(destino);
@@ -41,7 +44,8 @@ export function BannerAgregados({ apiBaseUrl, token, propertyId, orgSlug, activo
         {textoPendientes(pendientes)}
       </p>
       <Link to={destino} className="inline-flex h-12 items-center rounded-full bg-primary px-5 text-base font-semibold text-primary-foreground">
-        Validar ahora
+        {t("restaurantes.agregados.validarAhora")}
+
       </Link>
     </div>
   );

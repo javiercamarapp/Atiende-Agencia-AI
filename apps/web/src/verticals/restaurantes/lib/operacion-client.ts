@@ -3,6 +3,8 @@
 // Los TIPOS salen del contrato unico `@atiende/domain-restaurantes/operacion` (solo `import type`: apps/web no empaqueta codigo de los
 // paquetes domain-*); las URLs, de `RUTAS_OPERACION`. `fetchImpl` se inyecta (como en el resto de lib/*-client.ts) para probar la red
 // real con vitest. Toda escritura lleva `Idempotency-Key`: el llamador genera UNA llave por intento de accion y la reutiliza si reintenta.
+import { traductorActivo } from "@atiende/ui";
+import { restaurantesOperacion } from "@atiende/ui/i18n/restaurantes/operacion";
 import { apiBaseUrlFromRequestUrl, withAuthRefresh } from "../../../lib/authed-fetch.ts";
 import type {
   ColaSalida,
@@ -53,7 +55,8 @@ function base(apiBaseUrl: string, propertyId: string): string {
 async function aErrorOperacion(res: Response): Promise<ErrorOperacion> {
   const e = (await res.json().catch(() => null)) as { code?: string; message?: string; error?: string | { code?: string; message?: string }; details?: Record<string, string> } | null;
   const anidado = e && typeof e.error === "object" && e.error !== null ? e.error : null;
-  const mensaje = e?.message ?? anidado?.message ?? (typeof e?.error === "string" ? e.error : null) ?? `No se pudo completar la solicitud (${res.status}).`;
+  const mensaje = e?.message ?? anidado?.message ?? (typeof e?.error === "string" ? e.error : null) ?? traductorActivo(restaurantesOperacion)("restaurantes.operacion.errorSolicitud", { status: String(res.status) });
+
   return new ErrorOperacion(mensaje, res.status, e?.code ?? anidado?.code ?? null, e?.details ?? null);
 }
 

@@ -1,43 +1,43 @@
 // Presentacion pura de «Agregados por validar»: cronometro, nivel del SLA con el reloj de ESTE telefono, etiquetas y enlaces de contacto. Sin DOM ni red.
 // El SLA (decision del dueno): la sucursal responde en <= 10 min; a los 10 el dueno y el cliente ya fueron avisados; a los 20 el sistema cierra la solicitud como vencida.
 import type { EstadoAgregadoWire, MotivoRechazoAgregadoWire, NivelSlaAgregadoWire, TarjetaAgregado } from "@atiende/domain-restaurantes/operacion";
+import { etiquetasTraducidas, traductorActivo } from "@atiende/ui";
+import { restaurantesAgregados } from "@atiende/ui/i18n/restaurantes/agregados";
+
+// Etiquetas en el idioma activo (i18n): los mapas traducen en cada lectura; en espanol dan los textos de siempre.
+const tr = traductorActivo(restaurantesAgregados);
 
 export const SLA_AVISO_SEG = 10 * 60;
 export const SLA_VENCIMIENTO_SEG = 20 * 60;
 /** Color del cronometro: verde hasta la mitad del plazo, ambar hasta el plazo, rojo despues. */
 export const SLA_AMBAR_SEG = 5 * 60;
 
-export const MENSAJE_AGREGADOS_NO_DISPONIBLES = "Agregados por validar todavía no está disponible en esta cuenta (falta aplicar la actualización de base de datos).";
+export function mensajeAgregadosNoDisponibles(): string {
+  return tr("restaurantes.agregados.noDisponible");
+}
 
-export const OPCIONES_RECHAZO: readonly { readonly valor: MotivoRechazoAgregadoWire; readonly etiqueta: string }[] = [
-  { valor: "ya_salio_de_cocina", etiqueta: "Ya salió de cocina" },
-  { valor: "producto_agotado", etiqueta: "Producto agotado" },
-  { valor: "pedido_en_reparto", etiqueta: "El pedido ya va en reparto" },
-  { valor: "fuera_de_horario", etiqueta: "Fuera de horario" },
-  { valor: "otro", etiqueta: "Otro motivo" },
-];
+const MOTIVOS_RECHAZO: readonly MotivoRechazoAgregadoWire[] = ["ya_salio_de_cocina", "producto_agotado", "pedido_en_reparto", "fuera_de_horario", "otro"];
 
-export const ETIQUETA_MOTIVO: Readonly<Record<MotivoRechazoAgregadoWire, string>> = Object.fromEntries(OPCIONES_RECHAZO.map((o) => [o.valor, o.etiqueta])) as Record<MotivoRechazoAgregadoWire, string>;
+export const ETIQUETA_MOTIVO: Readonly<Record<MotivoRechazoAgregadoWire, string>> = etiquetasTraducidas(MOTIVOS_RECHAZO, (m) => `restaurantes.agregados.motivo.${m}` as const, restaurantesAgregados);
 
-export const ETIQUETA_ESTADO: Readonly<Record<EstadoAgregadoWire, string>> = {
-  pendiente: "Por validar",
-  aceptado: "Aceptado",
-  rechazado: "Rechazado",
-  vencido: "Vencido sin respuesta",
-  cancelado_por_cliente: "El cliente lo retiró",
-  no_aplicable: "El pedido ya no admitía agregados",
-};
+export const OPCIONES_RECHAZO: readonly { readonly valor: MotivoRechazoAgregadoWire; readonly etiqueta: string }[] = MOTIVOS_RECHAZO.map((valor) => ({
+  valor,
+  get etiqueta() {
+    return ETIQUETA_MOTIVO[valor];
+  },
+}));
 
-export const ETIQUETA_ESTADO_PEDIDO: Readonly<Record<string, string>> = {
-  programado: "Programado",
-  pending: "Recibido",
-  preparando: "En preparación",
-  listo_para_recoger: "Listo para recoger",
-  en_camino: "En camino",
-  entregado: "Entregado",
-  completado: "Completado",
-  cancelado: "Cancelado",
-};
+export const ETIQUETA_ESTADO: Readonly<Record<EstadoAgregadoWire, string>> = etiquetasTraducidas<EstadoAgregadoWire>(
+  ["pendiente", "aceptado", "rechazado", "vencido", "cancelado_por_cliente", "no_aplicable"],
+  (e) => `restaurantes.agregados.estado.${e}` as const,
+  restaurantesAgregados,
+);
+
+export const ETIQUETA_ESTADO_PEDIDO: Readonly<Record<string, string>> = etiquetasTraducidas(
+  ["programado", "pending", "preparando", "listo_para_recoger", "en_camino", "entregado", "completado", "cancelado"] as const,
+  (e) => `restaurantes.agregados.estadoPedido.${e}` as const,
+  restaurantesAgregados,
+);
 
 /** Segundos de espera ahora: los que dijo el servidor al consultar mas lo transcurrido en ESTE telefono desde esa consulta (no mezcla relojes). */
 export function segundosVivos(t: Pick<TarjetaAgregado, "sla" | "estado">, consultadoEnMs: number, ahoraMs: number): number {
@@ -61,17 +61,17 @@ export function colorCronometro(segundos: number): ColorCronometro {
 /** «Hace 2 min 10 s» / «Hace 45 s» / «Hace 1 h 5 min». */
 export function textoCronometro(segundos: number): string {
   const s = Math.max(0, Math.floor(segundos));
-  if (s < 60) return `Hace ${s} s`;
+  if (s < 60) return tr("restaurantes.agregados.cronometro.s", { s });
   const min = Math.floor(s / 60);
-  if (min < 60) return `Hace ${min} min ${String(s % 60)} s`;
-  return `Hace ${Math.floor(min / 60)} h ${min % 60} min`;
+  if (min < 60) return tr("restaurantes.agregados.cronometro.min", { min, s: String(s % 60) });
+  return tr("restaurantes.agregados.cronometro.h", { h: Math.floor(min / 60), min: min % 60 });
 }
 
-export const TEXTO_NIVEL: Readonly<Record<NivelSlaAgregadoWire, string>> = {
-  en_tiempo: "En tiempo",
-  sin_respuesta: "Sin respuesta: el dueño y el cliente ya fueron avisados",
-  vencido: "Plazo vencido: se cierra sola, sin aceptar",
-};
+export const TEXTO_NIVEL: Readonly<Record<NivelSlaAgregadoWire, string>> = etiquetasTraducidas<NivelSlaAgregadoWire>(
+  ["en_tiempo", "sin_respuesta", "vencido"],
+  (n) => `restaurantes.agregados.nivel.${n}` as const,
+  restaurantesAgregados,
+);
 
 /** Pendientes primero y la mas antigua arriba (la que mas lleva esperando). */
 export function ordenarAgregados(lista: readonly TarjetaAgregado[]): readonly TarjetaAgregado[] {
@@ -101,9 +101,10 @@ export function enlaceWhatsapp(telefono: string | null): string | null {
 
 /** Titulo de la pestana: parpadea con «(N) Agregado por validar» mientras haya pendientes. */
 export function tituloConPendientes(tituloBase: string, pendientes: number, alterna: boolean): string {
-  return pendientes > 0 && alterna ? `(${pendientes}) Agregado por validar` : tituloBase;
+  return pendientes > 0 && alterna ? tr("restaurantes.agregados.tituloPestana", { n: pendientes }) : tituloBase;
 }
 
 export function textoPendientes(n: number): string {
-  return n === 1 ? "1 agregado por validar" : `${n} agregados por validar`;
+  return tr("restaurantes.agregados.pendientes", { count: n });
 }
+
