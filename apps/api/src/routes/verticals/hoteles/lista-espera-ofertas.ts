@@ -3,8 +3,8 @@
 // / 42883) o ante cualquier fallo la cancelacion/el cambio de fechas ya hecho sigue valido y la transaccion compartida queda sana.
 //
 // Notificacion in-app `hoteles.lista_espera.disponible` (catalogo de @atiende/db): una por entrada ofrecida, dedupe por id de la
-// entrada, sin PII (el texto no lleva nombre ni contacto). El envio real al huesped por WhatsApp NO esta conectado (depende de
-// Meta, H-23): la oferta solo avisa al staff, que contacta a la persona.
+// entrada, sin PII (el texto no lleva nombre ni contacto). H-P3-03: ademas, el huesped recibe su oferta (con la vigencia) por WhatsApp o
+// correo (`lista_espera.ofrecida`, ver mensajes-huesped.ts): se programa DESPUES del commit con la lista `tareasPostCommit` del request.
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { emitirNotificacion, runWithSavepointFallback } from "@atiende/db";
 import {
@@ -15,6 +15,7 @@ import {
   type CambioFechasRepository,
 } from "@atiende/domain-hoteles";
 import type { AppDeps } from "../../../deps.ts";
+import { programarMensajesHuespedEn } from "./mensajes-huesped.ts";
 
 export interface LiberacionDeNoches {
   readonly organizationId: string;
@@ -25,7 +26,7 @@ export interface LiberacionDeNoches {
 }
 
 /** Ofrece las noches liberadas a la lista de espera (FIFO) y avisa al staff. Devuelve cuantas ofertas hizo; nunca lanza. */
-export async function ofrecerListaEsperaTrasLiberacion(deps: AppDeps, db: TenantDbSession, lib: LiberacionDeNoches): Promise<number> {
+export async function ofrecerListaEsperaTrasLiberacion(deps: AppDeps, db: TenantDbSession, lib: LiberacionDeNoches, tareasPostCommit?: Array<() => Promise<void>>): Promise<number> {
   if (lib.noches.length === 0) return 0;
   const ordenadas = [...lib.noches].sort();
   const desde = ordenadas[0] as string;
@@ -49,6 +50,8 @@ export async function ofrecerListaEsperaTrasLiberacion(deps: AppDeps, db: Tenant
             entidadId: e.id,
           });
         }
+        // H-P3-03: aviso al huesped (WhatsApp o correo) despues del commit; el cron de mensajes-huesped es la red de seguridad.
+        if (ofrecidas.length > 0 && tareasPostCommit) programarMensajesHuespedEn(deps, tareasPostCommit, { propertyId: lib.propertyId });
         return ofrecidas.length;
       },
       isRecoverable: () => true,

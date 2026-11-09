@@ -266,6 +266,19 @@ entorno nuevas ni cron nuevo: las ofertas de la lista de espera vencen al consul
 al intentar aceptarla). Las ofertas solo AVISAN al staff con una notificación in-app; el envío al huésped por WhatsApp no está conectado
 (depende de la integración con Meta, H-23).
 
+**Hoteles H-P3-03 mensajes automáticos al huésped y retención de conversaciones (migración 046) — orden de despliegue.** Mergear NO aplica
+`20240101000339_046_hoteles_mensajes_huesped.sql` a la base real y SÍ despliega `vercel.json`: agrega UN cron, `/internal/hoteles/mensajes-huesped`
+(`*/15 * * * *`, 36 de 40 del plan Pro). Contra la base vieja todo degrada sin romper nada: el cron responde `disponible:false` y no toca nada, `GET
+/hoteles/:propertyId/mensajes-huesped` y su historial responden `disponible:false` ("no disponible aún" en Mensajería), las escrituras 503, decidir/confirmar un
+hold y crear una reserva siguen igual (el disparo post-commit falla en silencio), y el primer mensaje de WhatsApp sale con la línea de IA y sin enlace del aviso
+(el enlace sale de `hoteles.sistema_slug_aviso`). Orden: (1) despliega el código; (2) aplica la 046 (`supabase db push`; requiere 001, 004, 008, 030, 035, 037, 041
+de hoteles y core 0036 ya aplicadas; el catálogo de plantillas HSM usa core 0050: sin ella nada sale por WhatsApp, sale por correo); (3) en Mensajería, enciende los
+eventos que quieras (los de pre-llegada y post-estancia vienen APAGADOS) y registra la plantilla HSM que Meta ya aprobó; (4) verifica `GET /internal/hoteles/mensajes-huesped`
+con el secreto interno. El envío real por WhatsApp necesita `WHATSAPP_ACCESS_TOKEN` y plantillas aprobadas (H-23); el correo necesita Resend. Con la 046 aplicada y el código viejo
+en producción no se rompe nada: ningún código viejo usa los objetos nuevos. La clase de retención `hoteles_whatsapp_conversaciones` (180 días por omisión) entra al cron de
+privacidad de plataforma en cuanto se aplica la migración: vacía el texto de conversaciones y mensajes enviados con más de 180 días de antigüedad (ajustable por
+organización, 30 a 1095); si algún hotel necesita conservarlas más, súbele los días o pon una retención legal ANTES de aplicar la 046.
+
 **Migración `0026_staff_totp_stepup_reset.sql` (segundo factor TOTP, reset/cambio de
 contraseña, verificación de correo)** — cualquier orden de despliegue es seguro: el
 código de `apps/api` captura SQLSTATE 42883/42P01/42703 y degrada (sin migración, las
