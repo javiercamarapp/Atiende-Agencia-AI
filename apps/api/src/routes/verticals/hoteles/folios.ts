@@ -560,9 +560,17 @@ export function hotelesFoliosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
         }
 
         const created = await repo.insertPayment({ organizationId, propertyId, folioId, amount: monto, method: metodo, status, externalRef, tokenRef });
-        return { status: 201, body: { id: created.id, monto, metodo, estado: status } };
+        // Un PaymentIntent que quedó en requires_action (3DS) o processing NO es dinero cobrado: se
+        // registra como 'pendiente' (fuera del saldo, del corte nocturno y del complemento de pago,
+        // que solo cuentan 'capturado') y se responde 202, no 201, para que recepción no lo trate
+        // como pagado. `requiereAccion` + `referenciaExterna` dicen qué cobro hay que confirmar.
+        const pendiente = status === "pendiente";
+        return {
+          status: pendiente ? 202 : 201,
+          body: { id: created.id, monto, metodo, estado: status, requiereAccion: pendiente, referenciaExterna: metodo === "tarjeta" ? externalRef : referenciaExterna },
+        };
       });
-      return c.json(result.body as object, result.status as 201);
+      return c.json(result.body as object, result.status as 201 | 202);
     } catch (err) {
       if (err instanceof IdempotencyConflictError) throw Errors.idempotencyConflict();
       throw err;
