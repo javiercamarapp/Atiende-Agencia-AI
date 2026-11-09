@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
-import { SuperAdminCfoPlataformaPage } from "../src/superadmin/pages/CfoPlataforma.tsx";
+import { Recomendaciones, SuperAdminCfoPlataformaPage } from "../src/superadmin/pages/CfoPlataforma.tsx";
 import type { RespuestaCockpit } from "../src/superadmin/lib/cfo-cockpit-client.ts";
 import { NEGOCIO } from "../src/superadmin/rutas.ts";
 import { flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
@@ -155,5 +155,37 @@ describe("SuperAdminCfoPlataformaPage", () => {
   it("la ruta existe en el menú (Negocio) y en App.tsx", () => {
     expect(NEGOCIO.some((r) => r.to === "/superadmin/cfo-plataforma")).toBe(true);
     expect(appSrc).toContain('path="/superadmin/cfo-plataforma"');
+  });
+
+  it("recomendaciones: pide POST, muestra la fuente, los hechos que respaldan cada una y las descartadas", async () => {
+    const llamadas: Array<{ ruta: string; metodo: string }> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        llamadas.push({ ruta: new URL(url).pathname, metodo: init?.method ?? "GET" });
+        return json({
+          disponible: true,
+          fuente: "modelo",
+          modelo: "modelo-barato",
+          descartadas: 1,
+          recomendaciones: [{ titulo: "Acortar llamadas de PM", explicacion: "Promedian 3.2 min con margen de 50.8 %.", accion: "Revisar el guion.", prioridad: 1, hechos: ["h1"] }],
+          hechos: [{ id: "h1", texto: "Vertical restaurantes: 900 llamadas de 3.2 min en promedio; margen 50.8 %." }],
+        });
+      }),
+    );
+    rendered = renderComponent(
+      <MemoryRouter>
+        <Recomendaciones mes="2026-11" apiBaseUrl="https://api.test" token="tok" />
+      </MemoryRouter>,
+    );
+    const boton = [...rendered.container.querySelectorAll("button")].find((b) => b.textContent?.includes("Generar"))!;
+    await act(async () => {
+      boton.click();
+      for (let i = 0; i < 10; i++) await flushMicrotasks();
+    });
+    expect(llamadas).toEqual([{ ruta: "/superadmin/cfo/recomendaciones", metodo: "POST" }]);
+    expect(texto()).toContain("Redactadas por modelo-barato");
+    expect(texto()).toContain("1 descartadas");
+    expect(texto()).toContain("De dónde sale: Vertical restaurantes: 900 llamadas de 3.2 min");
   });
 });

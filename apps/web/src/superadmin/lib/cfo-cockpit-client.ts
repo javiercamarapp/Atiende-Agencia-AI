@@ -170,6 +170,21 @@ export async function guardarCaptura(apiBaseUrl: string, token: string, body: { 
   await json(await pedir(apiBaseUrl, token, "/superadmin/cfo/capturas", { method: "PUT", body: JSON.stringify(body) }));
 }
 
+export interface RespuestaRecomendaciones {
+  readonly disponible: boolean;
+  readonly mensaje?: string;
+  readonly fuente?: "modelo" | "reglas";
+  readonly modelo?: string | null;
+  readonly recomendaciones?: ReadonlyArray<{ readonly titulo: string; readonly explicacion: string; readonly accion: string; readonly prioridad: number; readonly hechos: readonly string[] }>;
+  readonly hechos?: ReadonlyArray<{ readonly id: string; readonly texto: string }>;
+  readonly descartadas?: number;
+}
+
+/** POST /superadmin/cfo/recomendaciones: las cifras salen del servidor; el modelo solo explica y prioriza. */
+export async function pedirRecomendaciones(apiBaseUrl: string, token: string, mes: string): Promise<RespuestaRecomendaciones> {
+  return json<RespuestaRecomendaciones>(await pedir(apiBaseUrl, token, `/superadmin/cfo/recomendaciones?mes=${encodeURIComponent(mes)}`, { method: "POST" }));
+}
+
 /** Descarga un archivo del CFO (pide step-up si hace falta). */
 export async function descargar(apiBaseUrl: string, token: string, path: string, nombre: string): Promise<void> {
   const res = await pedir(apiBaseUrl, token, path);
