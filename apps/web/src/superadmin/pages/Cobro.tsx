@@ -3,7 +3,7 @@
 // documento imprimible para el cliente. Backend real: apps/api/src/routes/cobro-consumo.ts. Crear el plan pide MFA (step-up).
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Receipt } from "lucide-react";
-import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, Label, PageContainer, StatusBadge, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Textarea, formatMoney, useTituloBarra } from "@atiende/ui";
+import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, Label, PageContainer, StatusBadge, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Textarea, formatMoney, resolverFormato, useTituloBarra } from "@atiende/ui";
 import { fetchConStepUp } from "../lib/stepup.ts";
 
 interface FilaOrg {
@@ -35,7 +35,9 @@ interface Evaluacion {
   readonly bajoMinimo: boolean;
 }
 
-const pct = (v: number | null | undefined) => (v === null || v === undefined ? "—" : `${v.toLocaleString("es-MX", { maximumFractionDigits: 1 })} %`);
+// Un decimal: se redondea antes y el formateador canonico (es-MX, hasta 2 decimales) no agrega ceros.
+const numeroEsMx = resolverFormato("numero");
+const pct = (v: number | null | undefined) => (v === null || v === undefined ? "—" : `${numeroEsMx(Math.round(v * 10) / 10)} %`);
 const num = (v: string): number | null => (v.trim() === "" ? null : Number(v));
 
 export function SuperAdminCobroPage({ apiBaseUrl, token }: { readonly apiBaseUrl: string; readonly token: string }) {
