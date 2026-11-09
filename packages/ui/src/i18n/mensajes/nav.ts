@@ -147,6 +147,7 @@ export const nav = {
   "nav.supresion": "Supresión de contactos",
   "nav.zonaCfo": "Zona CFO segura",
   "nav.planes": "Planes y precios",
+  "nav.cobroCotizador": "Cobro y cotizador",
   "nav.sistema": "Sistema",
   "nav.interruptores": "Interruptores",
   "nav.saludOperativa": "Salud operativa",
