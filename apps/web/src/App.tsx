@@ -72,6 +72,7 @@ const SuperAdminSeguridadPage = cargaPerezosa(() => import("./superadmin/pages/S
 const SuperAdminInterruptoresPage = cargaPerezosa(() => import("./superadmin/pages/Interruptores.tsx"), "SuperAdminInterruptoresPage");
 const SuperAdminPrivacidadPage = cargaPerezosa(() => import("./superadmin/pages/Privacidad.tsx"), "SuperAdminPrivacidadPage");
 const SuperAdminSupresionPage = cargaPerezosa(() => import("./superadmin/pages/Supresion.tsx"), "SuperAdminSupresionPage");
+const SuperAdminWhatsappMetaPage = cargaPerezosa(() => import("./superadmin/pages/WhatsappMeta.tsx"), "SuperAdminWhatsappMetaPage");
 const SuperAdminAgentesPage = cargaPerezosa(() => import("./superadmin/pages/Agentes.tsx"), "SuperAdminAgentesPage");
 const SuperAdminAgenteConciliacionPage = cargaPerezosa(() => import("./superadmin/pages/AgenteFicha.tsx"), "SuperAdminAgenteConciliacionPage");
 const SuperAdminAgenteExtractorPage = cargaPerezosa(() => import("./superadmin/pages/AgenteFicha.tsx"), "SuperAdminAgenteExtractorPage");
@@ -515,6 +516,12 @@ function SuperAdminTaxonomiaRoute() {
 function SuperAdminSupresionRoute() {
   const ctx = useSuperAdminCtx();
   return <SuperAdminSupresionPage {...ctx} />;
+}
+
+/** Credenciales de Meta por organizacion (migracion 0090): apps de WhatsApp propias de la organizacion y sus numeros. */
+function SuperAdminWhatsappMetaRoute() {
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminWhatsappMetaPage {...ctx} />;
 }
 
 function SuperAdminAgentesRoute() {
@@ -1130,6 +1137,7 @@ export function App() {
           <Route path="/superadmin/salud" element={<SuperAdminSaludRoute />} />
           <Route path="/superadmin/organizaciones" element={<SuperAdminOrganizacionesRoute />} />
           <Route path="/superadmin/organizaciones/:id" element={<SuperAdminOrganizacionFichaRoute />} />
+          <Route path="/superadmin/organizaciones/:id/whatsapp" element={<SuperAdminWhatsappMetaRoute />} />
           <Route path="/superadmin/acciones" element={<SuperAdminAccionesRoute />} />
           <Route path="/superadmin/seguridad" element={<SuperAdminSeguridadRoute />} />
           <Route path="/superadmin/interruptores" element={<SuperAdminInterruptoresRoute />} />
