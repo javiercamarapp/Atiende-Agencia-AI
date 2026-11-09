@@ -10,6 +10,31 @@ el detalle:** `postgres-real-gate.yml` dispara siempre; `ci-checks.yml` tiene
 `**/*.md`/`docs/**` fuera de `docs/DEPLOY.md` y
 `supabase/migrations/README.md`.
 
+## Desaturar Actions (nov-2026)
+
+Con ~35 PRs abiertos, cada push disparaba 6-8 workflows y la cola se saturaba. Reglas vigentes:
+
+- **Concurrencia:** todo workflow con `pull_request` usa el grupo
+  `${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}`. Un push nuevo
+  al mismo PR cancela la corrida anterior de ese PR; en `push` a `main` no se cancela nada
+  (cada commit de `main` conserva su veredicto).
+- **Borradores:** en un PR en borrador se omiten los jobs pesados (shards de `test:unit`,
+  gates de Postgres, E2E, clock-guard, CodeQL, drill de respaldo, capturas ds3). Sí corren
+  typecheck/lint/build (`estatico`) y gitleaks. Al marcar el PR como listo
+  (`ready_for_review`) todo vuelve a correr. Los agregadores (`test:unit`, `typecheck + lint
+  + test:unit + build de apps/web`, `Migraciones reales + assertions RLS/GRANT contra Postgres
+  real`) pasan en borrador con un aviso; un borrador no se puede fusionar.
+- **Filtro por rutas del gate de Postgres:** el job `cambios` de `postgres-real-gate.yml` lee
+  los archivos del PR y decide qué gates corren (tabla en el propio workflow). En `push` a
+  `main` y `workflow_dispatch` corren todos. El check `Migraciones reales + assertions
+  RLS/GRANT contra Postgres real` corre siempre y es el veredicto de todos los gates: se puede
+  pedir como requerido sin que se quede esperando.
+- **Cobertura:** `coverage.yml` ya no corre en PRs; corre en cada push a `main`, de noche
+  (07:23 UTC) y a mano. Timeout de 75 min.
+- **Cache de dependencias:** `.github/actions/node-deps` restaura `node_modules` del cache
+  (llave: lockfile + todos los `package.json` + versión de Node) y se salta `npm ci`; si no hay
+  cache, corre `npm ci`. Solo `main` guarda el cache; los PRs solo lo leen.
+
 ## Workflows de plataforma agregados en PL-11
 
 Todos son seguros ante forks: ninguno usa `pull_request_target`, ninguno usa secretos,
@@ -24,7 +49,8 @@ todos declaran `permissions: contents: read`, y ninguno despliega ni toca Vercel
 - `coverage.yml` — `npm run test:coverage` (la suite completa con v8) y falla si baja
   del umbral de `vitest.config.ts`; sube `coverage-summary.json`/`lcov.info` como
   artefacto y deja el resumen en el job. Es aparte de `ci-checks.yml` a propósito (duplica
-  el costo de la suite). Informativo mientras no se marque como check requerido.
+  el costo de la suite). Desde nov-2026 corre en push a `main`, de noche y a mano, no en PRs
+  (ver "Desaturar Actions" arriba).
 - `smoke-post-deploy.yml` — tras un despliegue a Producción (`deployment_status` con
   `state=success`) o a mano (`workflow_dispatch` con `base_url`), corre
   `scripts/smoke-post-deploy/smoke.ts` contra esa URL: `/health`, cabeceras, login con

@@ -1,56 +1,39 @@
 // @vitest-environment jsdom
 //
 // (.tsx a proposito: el tsconfig raiz no tiene DOM y excluye los .tsx de packages/ui; el typecheck de la UI no incluye tests.)
-// ds3 / 0.2: `DISENO_DS3` se lee UNA vez al cargar el modulo. Fuentes: `html.dataset.diseno` (lo pone /theme-boot.js) y el valor
-// de build VITE_DISENO_DEFAULT (vacio = diseno actual).
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+// `DISENO_DS3` es `true` para todos; el unico interruptor es de build y de emergencia: VITE_DISENO_LEGADO=1 (apagado por omision).
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 async function cargar() {
   vi.resetModules();
   return import("../src/lib/diseno.ts");
 }
 
-beforeEach(() => {
-  document.documentElement.removeAttribute("data-diseno");
-});
-
 afterEach(() => {
   document.documentElement.removeAttribute("data-diseno");
 });
 
 describe("DISENO_DS3", () => {
-  it("apagada por defecto: sin atributo y sin valor de build", async () => {
+  it("encendida por omision: sin atributo en <html> y sin valor de build", async () => {
+    document.documentElement.removeAttribute("data-diseno");
     const m = await cargar();
-    expect(m.DISENO_DS3).toBe(false);
-    expect(m.disenoPorDefecto()).toBe("");
+    expect(m.DISENO_DS3).toBe(true);
+    expect(m.leerDisenoDs3()).toBe(true);
+    expect(m.disenoLegadoActivo()).toBe(false);
   });
 
-  it("se enciende con html[data-diseno=ds3]", async () => {
-    document.documentElement.dataset.diseno = "ds3";
+  it("un atributo distinto en <html> no la apaga (el atributo ya no es fuente)", async () => {
+    document.documentElement.dataset.diseno = "off";
     const m = await cargar();
     expect(m.DISENO_DS3).toBe(true);
   });
 
-  it("un valor distinto de ds3 no la enciende", async () => {
-    document.documentElement.dataset.diseno = "otro";
+  it("regla pura del interruptor de emergencia VITE_DISENO_LEGADO: solo el valor exacto «1» (recortado) lo activa", async () => {
     const m = await cargar();
-    expect(m.DISENO_DS3).toBe(false);
-  });
-
-  it("regla pura: el atributo o el valor de build ds3 la encienden (con espacios sobrantes tambien); cualquier otro valor no", async () => {
-    const m = await cargar();
-    expect(m.resolverDisenoDs3(undefined, "")).toBe(false);
-    expect(m.resolverDisenoDs3("ds3", "")).toBe(true);
-    expect(m.resolverDisenoDs3(undefined, " ds3 ")).toBe(true);
-    expect(m.resolverDisenoDs3("otro", "otro")).toBe(false);
-    expect(m.resolverDisenoDs3("off", "")).toBe(false);
-  });
-
-  it("se lee una sola vez: cambiar el atributo despues no la mueve, leerDisenoDs3() si refleja el estado actual", async () => {
-    const m = await cargar();
-    expect(m.DISENO_DS3).toBe(false);
-    document.documentElement.dataset.diseno = "ds3";
-    expect(m.DISENO_DS3).toBe(false);
-    expect(m.leerDisenoDs3()).toBe(true);
+    expect(m.disenoLegadoActivo(undefined)).toBe(false);
+    expect(m.disenoLegadoActivo("")).toBe(false);
+    expect(m.disenoLegadoActivo("0")).toBe(false);
+    expect(m.disenoLegadoActivo("true")).toBe(false);
+    expect(m.disenoLegadoActivo(" 1 ")).toBe(true);
   });
 });

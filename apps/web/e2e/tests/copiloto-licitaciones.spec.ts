@@ -3,11 +3,13 @@
 // desde el historial. La respuesta sale de la fixture NDJSON de e2e/mock-api (jamas de la SPA).
 import { expect, test } from "../helpers/fixtures.ts";
 import { afirmarPantallaSana } from "../helpers/humo.ts";
+import { mostrarTema } from "../helpers/copiloto.ts";
 import { abrirMasMovil, esMovil, sidebar } from "../helpers/navegacion.ts";
 import { licitaciones } from "../mock-api/fixtures/licitaciones.ts";
 
 const RUTA = `/licitaciones/${licitaciones.orgSlug}/copiloto`;
 const PREGUNTA = "¿Cómo va el semáforo de mis plazos?";
+const TEMA = "Plazos y propuestas";
 const TEXTO_RESPUESTA = "Tienes 7 convocatorias abiertas: 1 en rojo, 2 en amarillo y 4 en verde.";
 
 test.describe("copiloto de licitaciones @copiloto", () => {
@@ -22,6 +24,7 @@ test.describe("copiloto de licitaciones @copiloto", () => {
     await expect(page).toHaveURL(new RegExp(`${RUTA}$`));
     await afirmarPantallaSana(page, "copiloto");
     await expect(page.getByRole("heading", { level: 1, name: "Pregúntale a tus datos" })).toBeVisible();
+    await mostrarTema(page, TEMA);
     await expect(page.getByRole("button", { name: PREGUNTA })).toBeVisible();
 
     await page.getByRole("button", { name: PREGUNTA }).click();
@@ -42,14 +45,15 @@ test.describe("copiloto de licitaciones @copiloto", () => {
     await iniciarSesion("licitaciones", "owner");
     await page.goto(RUTA);
     await afirmarPantallaSana(page, "copiloto");
+    await mostrarTema(page, TEMA);
     await page.getByRole("button", { name: PREGUNTA }).click();
     await expect(page.getByText(TEXTO_RESPUESTA)).toBeVisible();
 
     await page.getByRole("button", { name: "Historial de chats" }).click();
     const panel = page.getByRole("dialog", { name: "Historial de chats" });
     await expect(panel.getByRole("button", { name: PREGUNTA, exact: true })).toBeVisible();
-    // Chat nuevo: vuelve la portada (sin conversacion).
-    await panel.getByRole("button", { name: "Nuevo chat" }).click();
+    // Chat nuevo: vuelve la portada (sin conversacion) y el historial se cierra.
+    await panel.getByRole("button", { name: "Chat nuevo", exact: true }).click();
     await expect(page.getByText(TEXTO_RESPUESTA)).toHaveCount(0);
 
     // Reabrir desde el historial trae la conversacion guardada desde el servidor.
@@ -77,6 +81,7 @@ test.describe("copiloto de licitaciones @copiloto", () => {
     await iniciarSesion("licitaciones", "staff");
     await expect(sidebar(page).getByRole("link", { name: "Copiloto", exact: true })).toBeVisible();
     await page.goto(RUTA);
+    await mostrarTema(page, TEMA);
     await expect(page.getByRole("button", { name: PREGUNTA })).toBeVisible();
     vigilante.verificar();
   });

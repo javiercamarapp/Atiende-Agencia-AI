@@ -4,6 +4,8 @@ import { X } from "lucide-react";
 import * as React from "react";
 
 import { cn } from "../../lib/utils";
+import { useT } from "../../i18n/proveedor";
+import { comun } from "../../i18n/mensajes/comun.ts";
 
 const Sheet = SheetPrimitive.Root;
 const SheetTrigger = SheetPrimitive.Trigger;
@@ -57,7 +59,7 @@ const SheetContent = React.forwardRef<React.ElementRef<typeof SheetPrimitive.Con
         {!hideCloseButton && (
           <SheetPrimitive.Close className="absolute right-2 top-2 flex size-11 items-center justify-center rounded-lg text-muted-foreground transition-[color,background-color] duration-fast ease-brand hover:bg-canvas hover:text-foreground disabled:pointer-events-none">
             <X aria-hidden="true" className="size-4" strokeWidth={1.75} />
-            <span className="sr-only">Cerrar</span>
+            <TextoCerrar />
           </SheetPrimitive.Close>
         )}
       </SheetPrimitive.Content>
@@ -91,3 +93,8 @@ const SheetDescription = React.forwardRef<
 SheetDescription.displayName = SheetPrimitive.Description.displayName;
 
 export { Sheet, SheetClose, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetOverlay, SheetPortal, SheetTitle, SheetTrigger };
+
+/** Nombre accesible del boton de cierre, en el idioma de la consola. */
+function TextoCerrar() {
+  return <span className="sr-only">{useT(comun)("comun.cerrar")}</span>;
+}

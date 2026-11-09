@@ -28,19 +28,20 @@ function manifiestoFueraDeDist(): Plugin {
   };
 }
 
-// Rediseno ds3: interruptor del login (rutas previas a la organizacion). VITE_DISENO_LOGIN = lista de verticales separadas por
-// coma ("restaurantes,citas") o "*"; vacio (lo normal) = el login conserva el diseno actual. Se inyecta como <meta> ANTES de
-// /theme-boot.js para que el script lo lea antes del primer pintado. Solo letras, coma y "*": cualquier otro caracter se descarta.
-export function interruptorLogin(valor: string | undefined): Plugin {
-  const lista = (valor ?? "").replace(/[^a-z,*]/g, "");
+// Diseno: el nuevo (ds3) es el de todos. Interruptor de emergencia de build (apagado por omision): VITE_DISENO_LEGADO=1 inyecta
+// <meta name="atiende-diseno-legado"> ANTES de /theme-boot.js para que el script no ponga html[data-diseno="ds3"] desde el
+// primer pintado; el mismo valor apaga DISENO_DS3 en el JS (@atiende/ui, lib/diseno.ts). Solo el valor exacto «1» cuenta.
+export function interruptorDisenoLegado(valor: string | undefined): Plugin {
+  const legado = (valor ?? "").trim() === "1";
   return {
-    name: "interruptor-diseno-login",
-    transformIndexHtml: (html) => html.replace('<script src="/theme-boot.js"></script>', `<meta name="atiende-diseno-login" content="${lista}" />\n    <script src="/theme-boot.js"></script>`),
+    name: "interruptor-diseno-legado",
+    transformIndexHtml: (html) =>
+      legado ? html.replace('<script src="/theme-boot.js"></script>', '<meta name="atiende-diseno-legado" content="1" />\n    <script src="/theme-boot.js"></script>') : html,
   };
 }
 
 export default defineConfig(({ mode }) => ({
-  plugins: [react(), manifiestoFueraDeDist(), interruptorLogin(process.env.VITE_DISENO_LOGIN ?? loadEnv(mode, aqui, "VITE_").VITE_DISENO_LOGIN)],
+  plugins: [react(), manifiestoFueraDeDist(), interruptorDisenoLegado(process.env.VITE_DISENO_LEGADO ?? loadEnv(mode, aqui, "VITE_").VITE_DISENO_LEGADO)],
   server: { port: 5173 },
   build: { manifest: true },
 }));

@@ -171,11 +171,13 @@ function FilaItem({ item, colapsado }: { item: SidebarItem; colapsado: boolean }
   );
 }
 
-function PildoraPie({ pildora, colapsado }: { pildora: SidebarPiePildora; colapsado: boolean }) {
+function PildoraPie({ pildora, colapsado, rutaEnMenu = false }: { pildora: SidebarPiePildora; colapsado: boolean; rutaEnMenu?: boolean }) {
   const t = useT(shell);
   const { label, to, href, onClick, icon: Icono, indicador, contador } = pildora;
   const { pathname } = useLocation();
-  const activa = to !== undefined && rutaEnItem(pathname, to);
+  // Un solo item activo: si la ruta ya es de un item del menu (p. ej. «Copiloto» y la pildora «Pregúntale a tus datos» van al mismo
+  // destino), el activo es el del menu y la pildora no se marca.
+  const activa = to !== undefined && !rutaEnMenu && rutaEnItem(pathname, to);
   const conContador = typeof contador === "number" && contador > 0;
   const contenido = (
     <>
@@ -222,6 +224,8 @@ export function Sidebar({ sections, user, onLogout, hotelSelector, storageScope,
 
   const categorias = sections.filter((s) => !s.siempreAbierto && s.items.length > 0);
   const activa = categoriaDeRuta(sections, location.pathname);
+  // ¿Algun item del menu ya marca esta ruta como activa? (misma regla que NavLink: `end` exige coincidencia exacta).
+  const rutaEnMenu = sections.some((s) => s.items.some((it) => (it.end ? location.pathname === it.to : rutaEnItem(location.pathname, it.to))));
 
   const [grupoAbierto, setGrupoAbierto] = useState<string | null>(() => {
     if (activa) return activa;
@@ -343,7 +347,7 @@ export function Sidebar({ sections, user, onLogout, hotelSelector, storageScope,
       {(pildoras.length > 0 || !collapsed) && (
         <div className="ds3-sidebar-pie shrink-0 border-t border-border bg-canvas px-2 pt-2 pb-1.5 space-y-0.5">
           {pildoras.map((p) => (
-            <PildoraPie key={p.label} pildora={p} colapsado={collapsed} />
+            <PildoraPie key={p.label} pildora={p} colapsado={collapsed} rutaEnMenu={rutaEnMenu} />
           ))}
           {!collapsed && (
             <div className="ds3-sidebar-ajustes hidden lg:flex px-2.5 pt-1.5 justify-center">
