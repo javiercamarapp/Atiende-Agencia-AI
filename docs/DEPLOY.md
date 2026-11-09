@@ -670,3 +670,16 @@ sale a Vercel y es seguro contra la base sin migrar (rutas con `disponible: fals
    de purga no se agenda (decisión de costo). Ver `docs/PRIVACIDAD-PLATAFORMA.md`.
 6. ARCO (Rn-07): el admin de la gestora registra y atiende solicitudes en `/rentas/<org>/privacidad`; la vista de toda la organización
    está en `/rentas/<org>/privacidad-organizacion`.
+
+## Índices en tablas grandes sin bloquear escrituras (migración 0100, Ola 4 G2)
+
+Migración `packages/db/migrations/0100_indices_tablas_grandes.sql` (espejo `supabase/migrations/20240101000900_0100_indices_tablas_grandes.sql`):
+solo índices (outbox de correo de las 6 verticales, `rentas.mensaje`, `core.authz_audit_log`). Ningún código depende de ellos.
+Política completa y propuesta de retención/particionado: `docs/runbooks/TABLAS-GRANDES.md`.
+
+1. Mergear el código (independiente de la base).
+2. Respaldo lógico previo no es necesario (no hay datos que cambien); sí revisar que no haya un índice INVALID con esos nombres.
+3. En producción, ANTES de `supabase db push`: `psql "$URL" -v ON_ERROR_STOP=1 -f scripts/indices-concurrentes/0100_indices_tablas_grandes.sql`
+   (autocommit, nunca `-1`; `create index concurrently` no bloquea INSERT/UPDATE).
+4. `supabase db push`: con los índices ya creados, la 0100 es un no-op; si encuentra uno INVALID, aborta y dice cuál borrar.
+5. Rollback: `drop index concurrently if exists <esquema>.<nombre>;` por índice (lista en el runbook).
