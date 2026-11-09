@@ -4,7 +4,9 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { Settings2, SquarePen } from "lucide-react";
 import type { ColumnaPyl, ConceptoCosto, LineaId, LineaPyl, EstadoResultadosVista, Granularidad } from "@atiende/domain-restaurantes/cfo";
-import { Button, Callout, ChartCard, DataTable, Selector, PageContainer } from "@atiende/ui";
+import { Button, Callout, ChartCard, DataTable, Selector, PageContainer, etiquetasTraducidas, traductorActivo, useI18n, useT } from "@atiende/ui";
+import type { Clave } from "@atiende/ui";
+import { restaurantesCfoResultados } from "@atiende/ui/i18n/restaurantes/cfoResultados";
 import { fetchEstadoResultados } from "./cfo-client.ts";
 import { AjustesCfoDialogo } from "./AjustesCfoDialogo.tsx";
 import { CapturaCostosDialogo, ORGANIZACION } from "./CapturaCostosDialogo.tsx";
@@ -14,23 +16,13 @@ import { AvisosCfo, CargaCfoVista, ChipDeCifra } from "./piezas.tsx";
 import { useCargaCfo } from "./use-carga-cfo.ts";
 import { puedeEn } from "../lib/permisos.ts";
 
-const NOMBRE_LINEA: Readonly<Record<LineaId, string>> = {
-  ventas_brutas: "ventas brutas",
-  descuentos_promocion: "descuentos",
-  compensaciones: "compensaciones",
-  ventas_netas: "ventas netas",
-  iva_estimado: "IVA",
-  ventas_netas_sin_iva: "ventas sin IVA",
-  costo_ventas: "costo de ventas",
-  utilidad_bruta: "utilidad bruta",
-  costo_agente: "costo del agente",
-  comision_terminal: "comisión de terminal",
-  nomina: "nómina",
-  renta: "renta",
-  servicios: "servicios",
-  otros: "otros",
-  ebitda: "EBITDA",
-};
+const tr = traductorActivo(restaurantesCfoResultados);
+/** Nombre corto de cada linea en el idioma activo (cada lectura traduce). */
+const NOMBRE_LINEA: Readonly<Record<LineaId, string>> = etiquetasTraducidas<LineaId>(
+  ["ventas_brutas", "descuentos_promocion", "compensaciones", "ventas_netas", "iva_estimado", "ventas_netas_sin_iva", "costo_ventas", "utilidad_bruta", "costo_agente", "comision_terminal", "nomina", "renta", "servicios", "otros", "ebitda"],
+  (id) => `restaurantes.cfoResultados.linea.${id}` as const,
+  restaurantesCfoResultados,
+);
 
 /** Línea del P&L -> concepto que la alimenta (solo las capturables). */
 const CONCEPTO_DE_LINEA: Readonly<Partial<Record<LineaId, ConceptoCosto>>> = {
@@ -61,17 +53,17 @@ interface FilaPyl {
 function celdaLinea(c: ColumnaPyl, l: LineaPyl | undefined): ReactNode {
   if (!l) return SIN_DATO;
   if (DERIVADAS.has(l.id)) {
-    if (l.id === "ebitda" && c.incompleto.length > 0) return <span className="text-warning" data-testid="ebitda-incompleto">{`Incompleto: faltan ${lista(c.incompleto)}`}</span>;
-    if (l.cifra.valor === null) return <span className="text-muted-foreground">{l.faltaCaptura ? "Incompleto: falta el costo de ventas" : SIN_DATO}</span>;
+    if (l.id === "ebitda" && c.incompleto.length > 0) return <span className="text-warning" data-testid="ebitda-incompleto">{tr("restaurantes.cfoResultados.incompletoFaltan", { lista: lista(c.incompleto) })}</span>;
+    if (l.cifra.valor === null) return <span className="text-muted-foreground">{l.faltaCaptura ? tr("restaurantes.cfoResultados.incompletoCostoVentas") : SIN_DATO}</span>;
   } else if (l.faltaCaptura) {
-    return <span className="text-warning" data-testid="captura-pendiente">Captura pendiente</span>;
+    return <span className="text-warning" data-testid="captura-pendiente">{tr("restaurantes.cfoResultados.capturaPendiente")}</span>;
   }
   if (l.cifra.valor === null) return <span title={l.nota ?? undefined}>{SIN_DATO}</span>;
   return (
     <span className="inline-flex flex-wrap items-center justify-end gap-1" title={l.nota ?? undefined}>
       <span className="tabular-nums">{pesos(l.cifra.valor)}</span>
       <ChipDeCifra cifra={l.cifra} mostrarMedido />
-      {l.estimadoPorProrrateo && <span className="rounded-full border border-warning/30 bg-warning-tint px-1.5 text-2xs text-warning">Prorrateo</span>}
+      {l.estimadoPorProrrateo && <span className="rounded-full border border-warning/30 bg-warning-tint px-1.5 text-2xs text-warning">{tr("restaurantes.cfoResultados.prorrateo")}</span>}
     </span>
   );
 }
@@ -91,14 +83,14 @@ function construirFilas(d: EstadoResultadosVista, comparativo: EstadoResultadosV
   filas.push({
     id: "titular",
     tipo: "titular",
-    etiqueta: total?.titular.etiqueta ?? "Ventas",
+    etiqueta: total?.titular.etiqueta ?? tr("restaurantes.cfoResultados.ventas"),
     celda: (c) => (
       <span className="inline-flex flex-col items-end">
         <span className="inline-flex items-center gap-1">
           <span className="tabular-nums">{pesos(c.titular.cifra.valor)}</span>
           <ChipDeCifra cifra={c.titular.cifra} mostrarMedido={c.titular.origen === "softrestaurant"} />
         </span>
-        {c.titular.ventasAgenteMemo && c.titular.ventasAgenteMemo.valor !== null ? <span className="text-2xs text-muted-foreground">del cual el agente tomó {pesos(c.titular.ventasAgenteMemo.valor)}</span> : null}
+        {c.titular.ventasAgenteMemo && c.titular.ventasAgenteMemo.valor !== null ? <span className="text-2xs text-muted-foreground">{tr("restaurantes.cfoResultados.delAgente", { monto: pesos(c.titular.ventasAgenteMemo.valor) })}</span> : null}
       </span>
     ),
     variacion: null,
@@ -110,21 +102,21 @@ function construirFilas(d: EstadoResultadosVista, comparativo: EstadoResultadosV
   filas.push({
     id: "margen",
     tipo: "margen",
-    etiqueta: "Margen de contribución",
+    etiqueta: tr("restaurantes.cfoResultados.margenContribucion"),
     celda: (c) => (
-      <span className="inline-flex flex-wrap items-center justify-end gap-1" title={c.margenContribucion.parcial ? `Parcial: faltan ${c.margenContribucion.faltan.join(", ")}` : undefined}>
+      <span className="inline-flex flex-wrap items-center justify-end gap-1" title={c.margenContribucion.parcial ? tr("restaurantes.cfoResultados.parcialFaltan", { lista: c.margenContribucion.faltan.join(", ") }) : undefined}>
         <span className="tabular-nums">{pesos(c.margenContribucion.cifra.valor)}</span>
-        {c.margenContribucion.parcial && c.margenContribucion.cifra.valor !== null ? <span className="text-2xs text-warning">parcial</span> : null}
+        {c.margenContribucion.parcial && c.margenContribucion.cifra.valor !== null ? <span className="text-2xs text-warning">{tr("restaurantes.cfoResultados.parcial")}</span> : null}
         <ChipDeCifra cifra={c.margenContribucion.cifra} mostrarMedido />
       </span>
     ),
     variacion: variacionPct(total?.margenContribucion.cifra.valor ?? null, totalBase?.margenContribucion.cifra.valor ?? null),
   });
   const memo: Array<[string, (c: ColumnaPyl) => ColumnaPyl["memo"][keyof ColumnaPyl["memo"]]]> = [
-    ["Memo: cortesías a precio de lista (estimado)", (c) => c.memo.cortesias],
-    ["Memo: cancelaciones ($)", (c) => c.memo.cancelaciones],
-    ["Memo: no recogidos ($)", (c) => c.memo.noRecogidos],
-    ["Memo: propinas con tarjeta (fuera de ingresos)", (c) => c.memo.propinasTarjeta],
+    [tr("restaurantes.cfoResultados.memo.cortesias"), (c) => c.memo.cortesias],
+    [tr("restaurantes.cfoResultados.memo.cancelaciones"), (c) => c.memo.cancelaciones],
+    [tr("restaurantes.cfoResultados.memo.noRecogidos"), (c) => c.memo.noRecogidos],
+    [tr("restaurantes.cfoResultados.memo.propinas"), (c) => c.memo.propinasTarjeta],
   ];
   memo.forEach(([etiqueta, f], i) =>
     filas.push({
@@ -136,17 +128,17 @@ function construirFilas(d: EstadoResultadosVista, comparativo: EstadoResultadosV
       variacion: null,
     }),
   );
-  const ratios: Array<[string, (c: ColumnaPyl) => ColumnaPyl["ratios"][keyof ColumnaPyl["ratios"]], "pct" | "pesos"]> = [
-    ["Margen bruto", (c) => c.ratios.margenBrutoPct, "pct"],
-    ["Food cost", (c) => c.ratios.foodCostPct, "pct"],
-    ["Prime cost (food cost + nómina)", (c) => c.ratios.primeCostPct, "pct"],
-    ["Costo del agente sobre ventas", (c) => c.ratios.costoAgentePct, "pct"],
-    ["Margen de contribución", (c) => c.ratios.margenContribucionPct, "pct"],
-    ["Punto de equilibrio (ventas netas sin IVA)", (c) => c.ratios.puntoEquilibrio, "pesos"],
+  const ratios: Array<[Clave, (c: ColumnaPyl) => ColumnaPyl["ratios"][keyof ColumnaPyl["ratios"]], "pct" | "pesos"]> = [
+    ["restaurantes.cfoResultados.ratio.margenBruto", (c) => c.ratios.margenBrutoPct, "pct"],
+    ["restaurantes.cfoResultados.ratio.foodCost", (c) => c.ratios.foodCostPct, "pct"],
+    ["restaurantes.cfoResultados.ratio.primeCost", (c) => c.ratios.primeCostPct, "pct"],
+    ["restaurantes.cfoResultados.ratio.costoAgente", (c) => c.ratios.costoAgentePct, "pct"],
+    ["restaurantes.cfoResultados.margenContribucion", (c) => c.ratios.margenContribucionPct, "pct"],
+    ["restaurantes.cfoResultados.ratio.equilibrio", (c) => c.ratios.puntoEquilibrio, "pesos"],
   ];
-  ratios.forEach(([etiqueta, f, tipo], i) =>
+  ratios.forEach(([clave, f, tipo], i) =>
     filas.push({
-      id: `ratio-${i}`, tipo: "ratio", etiqueta: `Razón: ${etiqueta}`,
+      id: `ratio-${i}`, tipo: "ratio", etiqueta: tr("restaurantes.cfoResultados.razon", { etiqueta: tr(clave) }),
       celda: (c) => <span className="inline-flex items-center justify-end gap-1"><span className="tabular-nums">{tipo === "pct" ? porcentaje(f(c).valor) : pesos(f(c).valor)}</span><ChipDeCifra cifra={f(c)} /></span>,
       variacion: null,
     }),
@@ -168,6 +160,7 @@ async function cargarConComparativo(props: CfoPaginaProps, granularidad: Granula
 
 export function CfoEstadoResultados(props: CfoPaginaProps) {
   const { api, filtros, role, alcance } = props;
+  const t = useT(restaurantesCfoResultados);
   const [granularidad, setGranularidad] = useState<Granularidad>("mes");
   const [captura, setCaptura] = useState<{ readonly concepto?: ConceptoCosto; readonly ambito?: string } | null>(null);
   const [ajustes, setAjustes] = useState(false);
@@ -183,29 +176,29 @@ export function CfoEstadoResultados(props: CfoPaginaProps) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <label htmlFor="pyl-granularidad" className="text-xs text-muted-foreground">
-            Detalle por
+            {t("restaurantes.cfoResultados.detallePor")}
           </label>
           <Selector id="pyl-granularidad" size="sm" value={granularidad} onChange={(e) => setGranularidad(e.target.value as Granularidad)} wrapperClassName="w-32" data-testid="pyl-granularidad">
-            <option value="mes">Mes</option>
-            <option value="semana">Semana</option>
-            <option value="dia">Día</option>
+            <option value="mes">{t("restaurantes.cfoResultados.mes")}</option>
+            <option value="semana">{t("restaurantes.cfoResultados.semana")}</option>
+            <option value="dia">{t("restaurantes.cfoResultados.dia")}</option>
           </Selector>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
           {puedeCapturar && (
             <Button type="button" size="sm" className="gap-1.5" onClick={() => setCaptura({})} data-testid="capturar-costos">
               <SquarePen className="size-3.5" aria-hidden="true" />
-              Capturar costos
+              {t("restaurantes.cfoResultados.capturarCostos")}
             </Button>
           )}
           <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => setAjustes(true)} data-testid="abrir-ajustes">
             <Settings2 className="size-3.5" aria-hidden="true" />
-            Ajustes del CFO
+            {t("restaurantes.cfoResultados.ajustes")}
           </Button>
         </div>
       </div>
 
-      <CargaCfoVista carga={carga} onReintentar={recargar} etiqueta="Cargando el estado de resultados…">
+      <CargaCfoVista carga={carga} onReintentar={recargar} etiqueta={t("restaurantes.cfoResultados.cargando")}>
         {({ d, comparativo }) => <Contenido d={d} comparativo={comparativo} puedeCapturar={puedeCapturar} onCapturar={(c) => setCaptura(c)} />}
       </CargaCfoVista>
 
@@ -228,9 +221,11 @@ export function CfoEstadoResultados(props: CfoPaginaProps) {
 }
 
 function Contenido({ d, comparativo, puedeCapturar, onCapturar }: { readonly d: EstadoResultadosVista; readonly comparativo: EstadoResultadosVista | null; readonly puedeCapturar: boolean; readonly onCapturar: (c: { concepto: ConceptoCosto; ambito?: string }) => void }) {
+  const { t, idioma } = useI18n(restaurantesCfoResultados);
   const er = d.estadoResultados;
   const columnas = er.acumulado.columnas;
-  const filas = useMemo(() => construirFilas(d, comparativo), [d, comparativo]);
+  // `idioma` en las dependencias: las etiquetas de las filas se traducen al construirlas.
+  const filas = useMemo(() => construirFilas(d, comparativo), [d, comparativo, idioma]);
   const total = columnas.find((c) => c.clave === "total");
   const sinColumnas = columnas.length === 0;
 
@@ -249,8 +244,8 @@ function Contenido({ d, comparativo, puedeCapturar, onCapturar }: { readonly d: 
     <>
       <AvisosCfo vista={d} />
       {total && total.incompleto.length > 0 && (
-        <Callout tone="warning" titulo="EBITDA incompleto" data-testid="pyl-incompleto">
-          Faltan {lista(total.incompleto)}. Mientras tanto se muestra el margen de contribución, que no depende de esas líneas; no se inventa ningún monto.
+        <Callout tone="warning" titulo={t("restaurantes.cfoResultados.ebitdaIncompleto")} data-testid="pyl-incompleto">
+          {t("restaurantes.cfoResultados.ebitdaIncompletoMensaje", { lista: lista(total.incompleto) })}
         </Callout>
       )}
       {total && total.notas.length > 0 && (
@@ -260,14 +255,14 @@ function Contenido({ d, comparativo, puedeCapturar, onCapturar }: { readonly d: 
           ))}
         </ul>
       )}
-      <ChartCard titulo="Estado de resultados operativo" subtitulo={`${er.rango.desde} al ${er.rango.hasta} · pesos${variacionDisponible ? " · variación del Total contra el periodo comparado" : " · sin variación para esta comparación"}`} tamano="S">
+      <ChartCard titulo={t("restaurantes.cfoResultados.titulo")} subtitulo={t("restaurantes.cfoResultados.subtitulo", { desde: er.rango.desde, hasta: er.rango.hasta, variacion: t(variacionDisponible ? "restaurantes.cfoResultados.conVariacion" : "restaurantes.cfoResultados.sinVariacion") })} tamano="S">
         {sinColumnas ? (
           <p role="status" className="py-6 text-center text-xs text-faint">
-            Sin sucursales en el alcance elegido.
+            {t("restaurantes.cfoResultados.sinSucursales")}
           </p>
         ) : (
           <DataTable<FilaPyl>
-            etiqueta="Estado de resultados"
+            etiqueta={t("restaurantes.cfoResultados.tabla")}
             filas={filas}
             obtenerId={(f) => f.id}
             paginacion={false}
@@ -276,7 +271,7 @@ function Contenido({ d, comparativo, puedeCapturar, onCapturar }: { readonly d: 
             columnas={[
               {
                 id: "concepto",
-                encabezado: "Concepto",
+                encabezado: t("restaurantes.cfoResultados.concepto"),
                 principal: true,
                 celda: (f) => {
                   const concepto = f.lineaId ? CONCEPTO_DE_LINEA[f.lineaId] : undefined;
@@ -285,8 +280,8 @@ function Contenido({ d, comparativo, puedeCapturar, onCapturar }: { readonly d: 
                     <span className="inline-flex flex-wrap items-center gap-2">
                       <span className={f.lineaId && SUBTOTALES.has(f.lineaId) ? "font-semibold" : f.tipo === "memo" || f.tipo === "ratio" ? "text-muted-foreground" : undefined}>{f.etiqueta}</span>
                       {necesita && puedeCapturar && f.lineaId && concepto ? (
-                        <Button type="button" size="sm" variant="outline" aria-label={`Capturar costos: ${NOMBRE_LINEA[f.lineaId]}`} onClick={() => { const ambito = primerAmbitoPendiente(f.lineaId as LineaId); onCapturar({ concepto, ...(ambito ? { ambito } : {}) }); }}>
-                          Capturar costos
+                        <Button type="button" size="sm" variant="outline" aria-label={t("restaurantes.cfoResultados.capturarCostosDe", { linea: NOMBRE_LINEA[f.lineaId] })} onClick={() => { const ambito = primerAmbitoPendiente(f.lineaId as LineaId); onCapturar({ concepto, ...(ambito ? { ambito } : {}) }); }}>
+                          {t("restaurantes.cfoResultados.capturarCostos")}
                         </Button>
                       ) : null}
                     </span>
@@ -295,27 +290,27 @@ function Contenido({ d, comparativo, puedeCapturar, onCapturar }: { readonly d: 
               },
               ...columnas.map((c) => ({
                 id: claveColumna(c),
-                encabezado: c.clave === "no_asignado" ? "No asignado" : c.nombre,
+                encabezado: c.clave === "no_asignado" ? t("restaurantes.cfoResultados.noAsignado") : c.nombre,
                 alinear: "right" as const,
                 className: c.clave === "total" ? "font-semibold" : undefined,
                 celda: (f: FilaPyl) => f.celda(c),
               })),
-              { id: "variacion", encabezado: "Variación (Total)", alinear: "right" as const, className: "tabular-nums", celda: (f: FilaPyl) => (f.variacion === null ? SIN_DATO : f.variacion) },
+              { id: "variacion", encabezado: t("restaurantes.cfoResultados.variacionTotal"), alinear: "right" as const, className: "tabular-nums", celda: (f: FilaPyl) => (f.variacion === null ? SIN_DATO : f.variacion) },
             ]}
           />
         )}
       </ChartCard>
 
       {periodos.length > 1 && total && (
-        <ChartCard titulo={`Total por ${d.estadoResultados.granularidad === "mes" ? "mes" : d.estadoResultados.granularidad === "semana" ? "semana" : "día"}`} subtitulo={er.periodos.length > 24 ? `Últimos 24 de ${er.periodos.length} periodos` : undefined} tamano="S">
+        <ChartCard titulo={t(d.estadoResultados.granularidad === "mes" ? "restaurantes.cfoResultados.totalPorMes" : d.estadoResultados.granularidad === "semana" ? "restaurantes.cfoResultados.totalPorSemana" : "restaurantes.cfoResultados.totalPorDia")} subtitulo={er.periodos.length > 24 ? t("restaurantes.cfoResultados.ultimos24", { n: er.periodos.length }) : undefined} tamano="S">
           <DataTable<{ readonly id: LineaId; readonly etiqueta: string }>
-            etiqueta="Estado de resultados por periodo"
+            etiqueta={t("restaurantes.cfoResultados.porPeriodo")}
             filas={(periodos[0]?.columnas.find((c) => c.clave === "total")?.lineas ?? []).map((l) => ({ id: l.id, etiqueta: l.etiqueta }))}
             obtenerId={(f) => f.id}
             paginacion={false}
             vista="tabla"
             columnas={[
-              { id: "linea", encabezado: "Concepto", principal: true, celda: (f) => f.etiqueta },
+              { id: "linea", encabezado: t("restaurantes.cfoResultados.concepto"), principal: true, celda: (f) => f.etiqueta },
               ...periodos.map((p) => ({
                 id: p.clave,
                 encabezado: /^\d{4}-\d{2}$/.test(p.clave) ? etiquetaMes(p.clave) : p.clave,
@@ -330,7 +325,8 @@ function Contenido({ d, comparativo, puedeCapturar, onCapturar }: { readonly d: 
         </ChartCard>
       )}
       <p className="text-xs text-muted-foreground">
-        «{SIN_DATO}» = sin dato; «Captura pendiente» = falta que captures ese costo. El EBITDA se muestra solo con todas las líneas completas. Los costos mensuales de un periodo parcial se prorratean por días.
+        {t("restaurantes.cfoResultados.leyenda", { sinDato: SIN_DATO })}
+
       </p>
     </>
   );
