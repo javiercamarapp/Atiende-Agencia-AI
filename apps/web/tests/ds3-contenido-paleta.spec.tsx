@@ -38,7 +38,8 @@ describe("periodo segmentado (RadioSegmentado / GlobalFilter)", () => {
     const grupo = rendered.container.querySelector('[role="radiogroup"]')!;
     expect(grupo.classList.contains("ds3-segmentado")).toBe(true);
     expect(grupo.className).toContain("flex flex-wrap gap-2");
-    expect(rendered.container.querySelectorAll("label")[1]!.className).toContain("bg-primary text-primary-foreground");
+    // #819 (R2): la opcion activa es primario suave (tinte + tinta azul), ya no el azul solido de Likida.
+    expect(rendered.container.querySelectorAll("label")[1]!.className).toContain("bg-primary-soft text-primary-ink");
   });
 
   it("GlobalFilter marca cada opcion con data-ds3-segmento y la activa con aria-current", () => {
