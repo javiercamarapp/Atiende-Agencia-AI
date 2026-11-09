@@ -68,7 +68,7 @@ export interface UsoCfoRow {
   /** Del medidor de cobro (`restaurantes.uso_facturable_mes`, PR #771); `null` mientras no exista. */
   readonly conversacionesWa: number | null;
   readonly minutosFacturables: number | null;
-  /** Fila completa de `core.plan` vigente (incluye las columnas del plan medido si 0080 esta aplicada). */
+  /** Fila completa de `core.plan` vigente (incluye las columnas del plan medido si 0103 esta aplicada). */
   readonly plan: Readonly<Record<string, unknown>> | null;
 }
 
