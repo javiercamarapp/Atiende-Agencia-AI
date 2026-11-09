@@ -1,12 +1,12 @@
--- 0081: TABULADOR por sucursal, cuota de alta por sucursal, costos unitarios para el margen y reclamo de avisos de bolsa.
--- Requiere 0080 (tarifa medida en core.plan).
+-- 0104: TABULADOR por sucursal, cuota de alta por sucursal, costos unitarios para el margen y reclamo de avisos de bolsa.
+-- Requiere 0103 (tarifa medida en core.plan).
 --
 -- Que agrega:
 --   A) core.plan_tramo_sucursal: el precio por sucursal depende del TOTAL de sucursales activas de la cuenta (escalon por
 --      volumen, no tramos acumulados): con 7 sucursales y un tramo 6-9, las 7 pagan el precio del tramo 6-9. Un tramo con
 --      precio NULL es «a cotizar» (la factura no se calcula sola: se asigna un plan a la medida). Sin tramos, rige
---      core.plan.precio_sucursal_mxn_centavos (0080).
---   B) core.plan.cuota_alta_por_sucursal_mxn_centavos (alta por sucursal, una vez; ademas de la cuota de alta fija de 0080).
+--      core.plan.precio_sucursal_mxn_centavos (0103).
+--   B) core.plan.cuota_alta_por_sucursal_mxn_centavos (alta por sucursal, una vez; ademas de la cuota de alta fija de 0103).
 --   C) core.cobro_costo_unitario: costo por minuto de voz, por conversacion de WhatsApp, fijo mensual por sucursal, fijo
 --      mensual por organizacion y comision de tarjeta (porcentaje y fijo; el IVA de la comision se suma aparte), en MXN, capturado por el superadmin (el margen por organizacion sale de aqui; ningun costo vive en el codigo).
 --   D) core.cobro_aviso_bolsa: reclamo idempotente de los avisos de bolsa (80 %, 100 % y uso justo) por organizacion, mes,
@@ -32,7 +32,7 @@
 --   drop function if exists core.superadmin_set_plan_cuota_alta_sucursal(uuid, text, bigint);
 --   drop table if exists core.cobro_aviso_bolsa, core.cobro_costo_unitario, core.plan_tramo_sucursal;
 --   alter table core.plan drop column if exists cuota_alta_por_sucursal_mxn_centavos;
---   -- y volver a crear core.plan_tarifa_json con el cuerpo de 0080.
+--   -- y volver a crear core.plan_tarifa_json con el cuerpo de 0103.
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- A) Tabulador
@@ -44,7 +44,7 @@ create table core.plan_tramo_sucursal (
   hasta_sucursales integer check (hasta_sucursales is null or hasta_sucursales >= desde_sucursales),
   -- NULL = a cotizar.
   precio_sucursal_mxn_centavos bigint check (precio_sucursal_mxn_centavos is null or precio_sucursal_mxn_centavos >= 0),
-  -- Bolsa por sucursal PROPIA del tramo (para sostener el margen en tramos baratos). NULL = la del plan (0080).
+  -- Bolsa por sucursal PROPIA del tramo (para sostener el margen en tramos baratos). NULL = la del plan (0103).
   minutos_voz_incluidos_por_sucursal integer check (minutos_voz_incluidos_por_sucursal is null or minutos_voz_incluidos_por_sucursal between 0 and 1000000),
   conversaciones_wa_incluidas_por_sucursal integer check (conversaciones_wa_incluidas_por_sucursal is null or conversaciones_wa_incluidas_por_sucursal between 0 and 1000000),
   primary key (plan_id, desde_sucursales)
@@ -191,7 +191,7 @@ $$;
 revoke all on function core.superadmin_set_plan_tramos(uuid, text, jsonb) from public, anon;
 grant execute on function core.superadmin_set_plan_tramos(uuid, text, jsonb) to authenticated;
 
--- 0080 aceptaba solo sus claves; la cuota de alta por sucursal se fija con esta funcion (misma regla de superadmin).
+-- 0103 aceptaba solo sus claves; la cuota de alta por sucursal se fija con esta funcion (misma regla de superadmin).
 create or replace function core.superadmin_set_plan_cuota_alta_sucursal(p_caller_id uuid, p_plan_id text, p_centavos bigint)
 returns void language plpgsql security definer set search_path = core, pg_temp as $$
 begin

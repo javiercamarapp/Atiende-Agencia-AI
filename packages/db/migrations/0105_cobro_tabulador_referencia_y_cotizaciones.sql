@@ -1,5 +1,5 @@
--- 0082: tabulador de REFERENCIA INTERNA (piso de negociacion, no publico), costos unitarios medidos y cotizaciones
--- auditadas. Requiere 0080 y 0081.
+-- 0105: tabulador de REFERENCIA INTERNA (piso de negociacion, no publico), costos unitarios medidos y cotizaciones
+-- auditadas. Requiere 0103 y 0104.
 --
 -- Decision del dueño (7-nov-2026): no hay lista publica; cada cliente recibe un plan NEGOCIADO a la medida. El tabulador
 -- queda como piso/referencia del cotizador del superadmin y TODA opcion debe dejar >= 55 % de margen bruto en su peor punto
@@ -35,13 +35,13 @@
 --   drop function if exists core.superadmin_set_plan_bandas(uuid, text, text, jsonb);
 --   drop table if exists core.plan_banda_uso;
 --   drop function if exists core.superadmin_set_plan_margen_minimo(uuid, text, numeric);
---   -- y volver a crear core.plan_tarifa_json con el cuerpo de 0081.
+--   -- y volver a crear core.plan_tarifa_json con el cuerpo de 0104.
 --   drop function if exists core.superadmin_listar_cotizaciones(uuid, uuid, integer);
 --   drop function if exists core.superadmin_registrar_cotizacion(uuid, uuid, text, jsonb, numeric, numeric, text);
 --   drop table if exists core.cotizacion;
 --   drop function if exists core.cotizacion_block_mutation();
 --   delete from core.plan where id like 'restaurantes-referencia-%' and not exists (select 1 from core.organization_plan op where op.plan_id = core.plan.id);
---   delete from core.cobro_costo_unitario where fuente like 'Semilla 0082%';
+--   delete from core.cobro_costo_unitario where fuente like 'Semilla 0105%';
 --   delete from core.plan where id in ('restaurantes-basico', 'restaurantes-plus', 'restaurantes-pro') and not exists (select 1 from core.organization_plan op where op.plan_id = core.plan.id);
 --   alter table core.plan drop column if exists margen_minimo_pct;
 
@@ -102,13 +102,13 @@ on conflict do nothing;
 --   numero de voz por sucursal 116 = numero local de Twilio (6.25 USD), solo en planes con voz;
 --   fijo por organizacion 0 = ya repartido por sucursal.
 insert into core.cobro_costo_unitario (clave, costo_mxn, fuente) values
-  ('minuto_voz', 1.20, 'Semilla 0082: COSTO-MENSUAL-PM-NOV, marginal todo incluido (cota alta)'),
-  ('conversacion_wa', 0.35, 'Semilla 0082: LLM + comision OpenRouter, sin plantillas de Meta'),
-  ('fijo_mensual_sucursal', 150, 'Semilla 0082: parte de infraestructura fija por sucursal (cliente chico)'),
-  ('numero_voz_mensual_sucursal', 116, 'Semilla 0082: numero local de Twilio, solo planes con voz'),
-  ('fijo_mensual_organizacion', 0, 'Semilla 0082: repartido por sucursal'),
-  ('comision_tarjeta_pct', 3.6, 'Semilla 0082: tarifa publica de tarjeta de Stripe Mexico (mas IVA sobre la comision)'),
-  ('comision_tarjeta_fijo_mxn', 3, 'Semilla 0082: fijo por cobro con tarjeta de Stripe Mexico (mas IVA)')
+  ('minuto_voz', 1.20, 'Semilla 0105: COSTO-MENSUAL-PM-NOV, marginal todo incluido (cota alta)'),
+  ('conversacion_wa', 0.35, 'Semilla 0105: LLM + comision OpenRouter, sin plantillas de Meta'),
+  ('fijo_mensual_sucursal', 150, 'Semilla 0105: parte de infraestructura fija por sucursal (cliente chico)'),
+  ('numero_voz_mensual_sucursal', 116, 'Semilla 0105: numero local de Twilio, solo planes con voz'),
+  ('fijo_mensual_organizacion', 0, 'Semilla 0105: repartido por sucursal'),
+  ('comision_tarjeta_pct', 3.6, 'Semilla 0105: tarifa publica de tarjeta de Stripe Mexico (mas IVA sobre la comision)'),
+  ('comision_tarjeta_fijo_mxn', 3, 'Semilla 0105: fijo por cobro con tarjeta de Stripe Mexico (mas IVA)')
 on conflict (clave) do nothing;
 
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -198,7 +198,7 @@ grant execute on function core.superadmin_listar_cotizaciones(uuid, uuid, intege
 -- Precio GRADUADO por volumen mensual de la cuenta: cada unidad paga el precio de la banda en la que cae (como los tramos
 -- del ISR), asi no hay saltos. Cada banda trae su COSTO unitario (el costo tambien baja con el volumen: planes Business/Scale
 -- de ElevenLabs y LiveKit, volumen de Twilio), para que la revision de margen use el costo correcto. Si un plan tiene bandas
--- para una metrica, el excedente de esa metrica se cobra por bandas (en vez del precio plano de 0080). Banda con precio NULL
+-- para una metrica, el excedente de esa metrica se cobra por bandas (en vez del precio plano de 0103). Banda con precio NULL
 -- = a cotizar (arriba de ese volumen no se factura solo).
 create table core.plan_banda_uso (
   plan_id text not null references core.plan(id) on delete cascade,
@@ -280,7 +280,7 @@ on conflict do nothing;
 -- ═══════════════════════════════════════════════════════════════════════════
 -- D) Tarifa con margen minimo y su edicion
 -- ═══════════════════════════════════════════════════════════════════════════
--- Misma firma que 0080/0081; agrega 'margenMinimoPct'.
+-- Misma firma que 0103/0104; agrega 'margenMinimoPct'.
 create or replace function core.plan_tarifa_json(p_plan core.plan)
 returns jsonb language sql stable set search_path = core, pg_temp as $$
   select jsonb_build_object(

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Verificación manual, opt-in, contra un Postgres LOCAL efímero real (initdb/pg_ctl) de las
-# migraciones 0081 (tabulador, costos unitarios, avisos de bolsa) y restaurantes 201 (detalle de consumo). En CI la corre automáticamente
+# migraciones 0104 (tabulador, costos unitarios, avisos de bolsa) y restaurantes 204 (detalle de consumo). En CI la corre automáticamente
 # scripts/verify-real-postgres-ci/run-gate.mjs (descubre este directorio solo).
 # Uso:  scripts/verify-cobro-tabulador-consumo/run.sh
 set -euo pipefail

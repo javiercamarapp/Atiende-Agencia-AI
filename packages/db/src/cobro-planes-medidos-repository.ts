@@ -34,15 +34,15 @@ export interface TarifaPlanRow {
   readonly precioConversacionWaExcedenteCentavos: number | null;
   readonly usoJustoPct: number | null;
   readonly cuotaAltaCentavos: number | null;
-  /** 0081: alta por sucursal (una vez). */
+  /** 0104: alta por sucursal (una vez). */
   readonly cuotaAltaPorSucursalCentavos: number | null;
   readonly tasaIvaBp: number;
   readonly organizacionExclusivaId: string | null;
-  /** 0081: tabulador por sucursal (escalon por volumen). Vacio = rige `precioSucursalCentavos`. */
+  /** 0104: tabulador por sucursal (escalon por volumen). Vacio = rige `precioSucursalCentavos`. */
   readonly tramosSucursal: readonly TramoSucursalRow[];
-  /** 0082: bandas de volumen (precio graduado + costo por banda). */
+  /** 0105: bandas de volumen (precio graduado + costo por banda). */
   readonly bandasUso: readonly BandaUsoRow[];
-  /** 0082: margen bruto minimo del plan. */
+  /** 0105: margen bruto minimo del plan. */
   readonly margenMinimoPct: number | null;
 }
 
@@ -195,10 +195,10 @@ export interface CobroPlanesRepository {
   tarifaDeOrganizacion(callerId: string | null, organizationId: string): Promise<{ availability: CobroAvailability; tarifa: TarifaOrganizacionRow | null }>;
   /** `mes` = `YYYY-MM-DD` (cualquier dia del mes). `uso: null` = sin acceso o la organizacion no existe. */
   usoFacturableRestaurantes(callerId: string | null, organizationId: string, mes: string): Promise<{ availability: CobroAvailability; uso: UsoFacturableRow | null }>;
-  /** 0081. Reemplaza el tabulador completo (arreglo vacio = quitarlo). */
+  /** 0104. Reemplaza el tabulador completo (arreglo vacio = quitarlo). */
   setTramos(callerId: string, planId: string, tramos: readonly TramoSucursalRow[]): Promise<{ availability: CobroAvailability; tarifa: TarifaPlanRow | null }>;
   setCuotaAltaPorSucursal(callerId: string, planId: string, centavos: number | null): Promise<{ availability: CobroAvailability }>;
-  /** 0082. Reemplaza las bandas de una metrica ([] = quitarlas). */
+  /** 0105. Reemplaza las bandas de una metrica ([] = quitarlas). */
   setBandas(callerId: string, planId: string, metrica: BandaUsoRow["metrica"], bandas: readonly Omit<BandaUsoRow, "metrica">[]): Promise<{ availability: CobroAvailability }>;
   setMargenMinimo(callerId: string, planId: string, margenPct: number | null): Promise<{ availability: CobroAvailability }>;
   /** 201. `callerId = null` = sistema. `detalle: null` = sin acceso. */
@@ -209,7 +209,7 @@ export interface CobroPlanesRepository {
   organizacionesMedidas(callerId: string | null): Promise<{ availability: CobroAvailability; organizaciones: readonly OrganizacionMedidaRow[] }>;
   /** SOLO sistema. true = este llamador emite el aviso. */
   reclamarAvisoBolsa(organizationId: string, periodo: string, metrica: MetricaBolsa, umbral: 80 | 100 | 150): Promise<{ availability: CobroAvailability; reclamado: boolean }>;
-  /** 0082. Superadmin: registra la cotizacion convertida en plan (append-only). */
+  /** 0105. Superadmin: registra la cotizacion convertida en plan (append-only). */
   registrarCotizacion(callerId: string, input: RegistrarCotizacionInput): Promise<{ availability: CobroAvailability; cotizacion: { id: string; folio: number } | null }>;
   listarCotizaciones(callerId: string, organizationId: string | null, limit?: number): Promise<{ availability: CobroAvailability; cotizaciones: readonly CotizacionRow[] }>;
 }

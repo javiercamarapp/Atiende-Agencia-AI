@@ -1,5 +1,5 @@
--- 201: detalle del CONSUMO de un restaurante para la pantalla «Consumo y facturación» y la proyeccion de cierre de mes.
--- Requiere 200 (restaurantes.uso_facturable_mes) y 0080/0081.
+-- 204: detalle del CONSUMO de un restaurante para la pantalla «Consumo y facturación» y la proyeccion de cierre de mes.
+-- Requiere 203 (restaurantes.uso_facturable_mes) y 0103/0104.
 --
 -- restaurantes.consumo_detalle_mes(p_caller_id, p_organization_id, p_mes, p_meses_historial) devuelve, con las MISMAS
 -- unidades que 200 (llamadas reales sin previews ni llamadas en curso; conversacion = cliente distinto por dia del negocio):

@@ -1,5 +1,5 @@
--- Tabulador por sucursal, costos unitarios, reclamo de avisos de bolsa y detalle de consumo (packages/db/migrations/0081 +
--- packages/domain-restaurantes/migrations/201) contra Postgres REAL. Cada escenario en su propio `begin; ... rollback;`.
+-- Tabulador por sucursal, costos unitarios, reclamo de avisos de bolsa y detalle de consumo (packages/db/migrations/0104 +
+-- packages/domain-restaurantes/migrations/204) contra Postgres REAL. Cada escenario en su propio `begin; ... rollback;`.
 -- Alias `should_fail` = debe terminar en ERROR; `_deberia_ser_N` = valor esperado (scripts/verify-real-postgres-ci/run-gate.mjs).
 -- Sujetos: c301 owner de A, c302 owner de B, c303 superadmin. Organizaciones A y B (restaurantes, America/Merida).
 -- Cifras de PRUEBA, no precios del producto.
@@ -239,7 +239,7 @@ set local role anon;
 select restaurantes.consumo_detalle_mes(null, '00000000-0000-0000-0000-00000000b301', '2026-10-01') as should_fail;
 rollback;
 
-\echo '=== SEMILLA DE REFERENCIA (0082) ==='
+\echo '=== SEMILLA DE REFERENCIA (0105) ==='
 \echo '30. la semilla trae 11 tramos de referencia (anual 5, mensual 5, WhatsApp 1)'
 begin;
 select count(*)::int as tramos_semilla_deberia_ser_11 from core.plan_tramo_sucursal where plan_id like 'restaurantes-referencia-%';
@@ -267,7 +267,7 @@ begin;
 select count(*)::int as activos_deberia_ser_0 from core.plan where id like 'restaurantes-referencia-%' and activo;
 rollback;
 
-\echo '=== COTIZACIONES (0082) ==='
+\echo '=== COTIZACIONES (0105) ==='
 \echo '33. una cotizacion con margen sobre el minimo se registra sin motivo'
 begin;
 insert into core.plan (id, nombre, vertical, modelo_cobro, precio_base_mxn_centavos, organizacion_exclusiva_id) values ('cot-a', 'A la medida A', 'restaurantes', 'medido', 100000, '00000000-0000-0000-0000-00000000b301');
