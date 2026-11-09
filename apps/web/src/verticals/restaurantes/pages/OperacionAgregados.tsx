@@ -3,7 +3,7 @@
 // (plazo de 10 min), banner persistente + sonido de dos tonos cada 60 s mientras haya pendientes, titulo de la pestana parpadeante. Sondeo cada 15 s.
 // Sin datos de ejemplo: lee `GET admin/agregados`; sin la actualizacion de base de datos lo dice con claridad y no pinta nada falso.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, EstadoCargando, EstadoError, EstadoVacio, PageContainer, StatusBadge, Tabs, TabsList, TabsTrigger, notify, useConfirm } from "@atiende/ui";
+import { Button, EstadoCargando, EstadoError, EstadoVacio, PageContainer, PageHeader, StatusBadge, Tabs, TabsList, TabsTrigger, notify, useConfirm } from "@atiende/ui";
 import type { ListaAgregados, RechazarAgregadoEntrada, ResolverAgregadoSalida, TarjetaAgregado as TarjetaAgregadoDato } from "@atiende/domain-restaurantes/operacion";
 import { Hourglass, ListChecks, Volume2, VolumeX, WifiOff } from "lucide-react";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
@@ -185,7 +185,7 @@ export function OperacionAgregadosPage({ apiBaseUrl, token, propertyId, orgSlug 
   if (lista === null && error === null) {
     return (
       <PageContainer padding="none">
-        <h1 className="sr-only">Agregados por validar</h1>
+        <PageHeader titulo="Agregados por validar" />
         <EstadoCargando variante="tarjeta" etiqueta="Cargando los agregados por validar…" />
       </PageContainer>
     );
@@ -194,7 +194,7 @@ export function OperacionAgregadosPage({ apiBaseUrl, token, propertyId, orgSlug 
     const noDisponible = error instanceof ErrorOperacion && (error.esNoDisponible || error.status === 503);
     return (
       <PageContainer padding="none">
-        <h1 className="sr-only">Agregados por validar</h1>
+        <PageHeader titulo="Agregados por validar" />
         {noDisponible ? (
           <EstadoVacio icon={Hourglass} titulo="Agregados por validar" mensaje={MENSAJE_AGREGADOS_NO_DISPONIBLES} />
         ) : (
@@ -207,12 +207,7 @@ export function OperacionAgregadosPage({ apiBaseUrl, token, propertyId, orgSlug 
   return (
     <PageContainer padding="none">
       <div className="mx-auto w-full min-w-0 max-w-3xl space-y-3 pb-6">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h1 className="sr-only">Agregados por validar</h1>
-          <span className="ml-auto text-sm text-muted-foreground" aria-live="off">
-            {etiquetaActualizado(ultimaOk, ahoraMs)}
-          </span>
-        </div>
+        <PageHeader titulo="Agregados por validar" meta={<span aria-live="off">{etiquetaActualizado(ultimaOk, ahoraMs)}</span>} />
 
         {sinConexion && (
           <div role="status" className="flex items-center gap-2 rounded-lg border-2 border-warning bg-warning-tint p-3 text-base text-warning">
