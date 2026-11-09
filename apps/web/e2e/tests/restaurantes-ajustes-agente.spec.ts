@@ -18,8 +18,8 @@ test.describe("restaurantes: ajustes del agente", () => {
     // El predeterminado (Luna) no admite temperatura: lo dice en lugar de ofrecer un control que no hace nada.
     await expect(page.getByTestId("sin-temperatura-whatsapp")).toContainText("GPT-6 Luna no admite temperatura");
 
-    await elegirValor(modelo, "google/gemini-2.5-flash-lite");
-    await expect(page.getByTestId("costo-whatsapp")).toContainText("≈ US$0.76 por 1,000 mensajes");
+    await elegirValor(modelo, "deepseek/deepseek-v4.1-flash");
+    await expect(page.getByTestId("costo-whatsapp")).toContainText("≈ US$1.44 por 1,000 mensajes");
     await expect(page.getByTestId("sin-temperatura-whatsapp")).toHaveCount(0);
     await page.getByRole("radiogroup", { name: "Temperatura del agente de WhatsApp" }).locator("label", { hasText: /^0\.4$/ }).click();
 
@@ -27,10 +27,10 @@ test.describe("restaurantes: ajustes del agente", () => {
     await expect(page.getByText("Ajustes guardados")).toBeVisible();
     await expect.poll(async () => (await mock.buscar({ metodo: "PUT", ruta: "/admin/agente/ajustes" })).length).toBe(1);
     const [put] = await mock.buscar({ metodo: "PUT", ruta: "/admin/agente/ajustes" });
-    expect(put!.cuerpo).toMatchObject({ whatsappModelo: "google/gemini-2.5-flash-lite", whatsappTemperatura: 0.4, vozFondoActivo: false, vozRitmo: "normal" });
+    expect(put!.cuerpo).toMatchObject({ whatsappModelo: "deepseek/deepseek-v4.1-flash", whatsappTemperatura: 0.4, vozFondoActivo: false, vozRitmo: "normal" });
 
     await page.reload();
-    await esperarValor(page.locator("#ajustes-modelo-whatsapp"), "google/gemini-2.5-flash-lite");
+    await esperarValor(page.locator("#ajustes-modelo-whatsapp"), "deepseek/deepseek-v4.1-flash");
     await expect(page.getByRole("radiogroup", { name: "Temperatura del agente de WhatsApp" }).getByRole("radio", { name: "0.4" })).toBeChecked();
     vigilante.verificar();
   });
@@ -40,13 +40,13 @@ test.describe("restaurantes: ajustes del agente", () => {
     await page.goto(RUTA);
     await elegirValor(page.locator("#ajustes-modelo-whatsapp"), "deepseek/deepseek-v4.1-flash");
     await page.getByRole("radiogroup", { name: "Temperatura del agente de WhatsApp" }).locator("label", { hasText: /^0\.6$/ }).click();
-    await elegirValor(page.locator("#ajustes-modelo-whatsapp"), "anthropic/claude-sonnet-5.5");
-    await expect(page.getByTestId("sin-temperatura-whatsapp")).toContainText("Claude Sonnet 5.5 no admite temperatura");
-    await expect(page.getByTestId("costo-whatsapp")).toContainText("≈ US$16.00 por 1,000 mensajes");
+    await elegirValor(page.locator("#ajustes-modelo-whatsapp"), "anthropic/claude-haiku-5.5");
+    await expect(page.getByTestId("sin-temperatura-whatsapp")).toContainText("Claude Haiku 5.5 no admite temperatura");
+    await expect(page.getByTestId("costo-whatsapp")).toContainText("≈ US$0.80 por 1,000 mensajes");
     await page.getByRole("button", { name: "Guardar ajustes" }).click();
     await expect(page.getByText("Ajustes guardados")).toBeVisible();
     const [put] = await mock.buscar({ metodo: "PUT", ruta: "/admin/agente/ajustes" });
-    expect(put!.cuerpo).toMatchObject({ whatsappModelo: "anthropic/claude-sonnet-5.5", whatsappTemperatura: null });
+    expect(put!.cuerpo).toMatchObject({ whatsappModelo: "anthropic/claude-haiku-5.5", whatsappTemperatura: null });
   });
 
   test("voz y fondo: arranca apagado, al activarlo ofrece volumen acotado y todo viaja en el mismo PUT; declara de que depende", async ({ page, iniciarSesion, mock }) => {
@@ -65,12 +65,13 @@ test.describe("restaurantes: ajustes del agente", () => {
     await page.getByRole("radiogroup", { name: "Ritmo de habla" }).locator("label", { hasText: "Pausado" }).click();
     await page.getByRole("radiogroup", { name: "Estilo de habla" }).locator("label", { hasText: "Cálido" }).click();
     await page.getByRole("radiogroup", { name: "Temperatura de la voz" }).locator("label", { hasText: /^0\.2$/ }).click();
-    await elegirValor(page.locator("#ajustes-modelo-cascada"), "deepseek/deepseek-v4.1-flash");
-    await expect(page.getByTestId("costo-cascada")).toContainText("≈ US$2.64 por 1,000 minutos");
+    // La cascada de voz solo ofrece modelos con endpoint ZDR en Vertex/Bedrock/Azure (vozZdr): DeepSeek V4.1 Flash queda solo para WhatsApp.
+    await elegirValor(page.locator("#ajustes-modelo-cascada"), "anthropic/claude-haiku-5.5");
+    await expect(page.getByTestId("costo-cascada")).toContainText("≈ US$1.85 por 1,000 minutos");
     await page.getByRole("button", { name: "Guardar ajustes" }).click();
     await expect(page.getByText("Ajustes guardados")).toBeVisible();
     const [put] = await mock.buscar({ metodo: "PUT", ruta: "/admin/agente/ajustes" });
-    expect(put!.cuerpo).toMatchObject({ vozFondoActivo: true, vozFondoVolumen: 12, vozRitmo: "pausado", vozEstilo: "calido", vozTemperatura: 0.2, vozModeloCascada: "deepseek/deepseek-v4.1-flash" });
+    expect(put!.cuerpo).toMatchObject({ vozFondoActivo: true, vozFondoVolumen: 12, vozRitmo: "pausado", vozEstilo: "calido", vozTemperatura: 0.2, vozModeloCascada: "anthropic/claude-haiku-5.5" });
   });
 
   test("voz y saludo de la sucursal: guarda sobre la configuracion vigente y avisa si el saludo no dice 'asistente virtual'", async ({ page, iniciarSesion, mock }) => {

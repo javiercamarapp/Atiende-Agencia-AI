@@ -22,6 +22,8 @@ import { EstadoError } from "./EstadoError";
 import { EstadoVacio } from "./EstadoVacio";
 import { MobileAccountMenu } from "./MobileAccountMenu";
 import { Sidebar, type SidebarItem, type SidebarPiePildora, type SidebarSection, type SidebarUser } from "./Sidebar";
+import { I18nContexto, useT, type ContextoI18n } from "../i18n/proveedor";
+import { shell } from "../i18n/mensajes/shell.ts";
 import { GrupoNavContext } from "./PageHeader";
 
 export const VERTICAL_SHELL_MAIN_ID = "contenido-principal";
@@ -139,12 +141,13 @@ export interface VerticalShellEstadoProps {
 
 /** Centrado a pantalla completa para los estados que corren ANTES de que exista shell (sesion, sucursales). */
 export function VerticalShellEstado({ estado, mensaje, onReintentar }: VerticalShellEstadoProps) {
+  const t = useT(shell);
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-6">
       <div className="w-full max-w-sm">
-        {estado === "cargando" && <EstadoCargando variante="pantalla" etiqueta={mensaje ?? "Cargando…"} />}
+        {estado === "cargando" && <EstadoCargando variante="pantalla" etiqueta={mensaje ?? t("shell.cargando")} />}
         {estado === "error" && <EstadoError mensaje={mensaje} onReintentar={onReintentar} />}
-        {estado === "vacio" && <EstadoVacio mensaje={mensaje ?? "No hay nada que mostrar todavía."} />}
+        {estado === "vacio" && <EstadoVacio mensaje={mensaje ?? t("shell.vacio")} />}
       </div>
     </div>
   );
@@ -167,6 +170,8 @@ interface RutaBoundaryState {
  * errores de red: esos los maneja cada pagina con su propio estado.
  */
 export class RutaBoundary extends React.Component<RutaBoundaryProps, RutaBoundaryState> {
+  static override contextType = I18nContexto;
+  declare context: ContextoI18n;
   override state: RutaBoundaryState = { error: null, resetKey: this.props.resetKey };
 
   static getDerivedStateFromError(error: Error): Partial<RutaBoundaryState> {
@@ -181,13 +186,13 @@ export class RutaBoundary extends React.Component<RutaBoundaryProps, RutaBoundar
     if (this.state.error) {
       return (
         <EstadoError
-          titulo="Esta pantalla no pudo mostrarse"
-          mensaje="Ocurrió un problema al abrir esta sección. Inténtalo de nuevo; el resto del panel sigue disponible."
+          titulo={this.context.t("shell.errorRuta.titulo")}
+          mensaje={this.context.t("shell.errorRuta.mensaje")}
           onReintentar={() => this.setState({ error: null })}
         />
       );
     }
-    return <React.Suspense fallback={<EstadoCargando variante="tarjeta" etiqueta="Cargando pantalla…" />}>{this.props.children}</React.Suspense>;
+    return <React.Suspense fallback={<EstadoCargando variante="tarjeta" etiqueta={this.context.t("shell.cargandoPantalla")} />}>{this.props.children}</React.Suspense>;
   }
 }
 
@@ -280,8 +285,9 @@ export function VerticalShell({
   preguntarHref,
   children,
 }: VerticalShellProps) {
+  const t = useT(shell);
   const pie: SidebarPiePildora[] | undefined = adminHref
-    ? [...(sidebarPie ?? []), { label: "Administración de Atiende", to: adminHref, icon: ShieldCheck }]
+    ? [...(sidebarPie ?? []), { label: t("shell.administracionAtiende"), to: adminHref, icon: ShieldCheck }]
     : sidebarPie;
   const { pathname } = useLocation();
   const mainRef = React.useRef<HTMLElement>(null);
@@ -305,7 +311,7 @@ export function VerticalShell({
   // la barra les pone su nombre en vez del titulo de la consola. Van DESPUES de `sections`, asi un destino que ya es de una
   // categoria (p. ej. "Costos de IA" -> "Costos y margen") conserva el nombre de su categoria.
   const destinosPie: SidebarSection[] = (pie ?? []).some((p) => p.to)
-    ? [{ title: "Cuenta", items: (pie ?? []).filter((p) => p.to).map((p) => ({ to: p.to as string, label: p.label, icon: p.icon ?? Compass })) }]
+    ? [{ title: t("shell.cuenta"), items: (pie ?? []).filter((p) => p.to).map((p) => ({ to: p.to as string, label: p.label, icon: p.icon ?? Compass })) }]
     : [];
   const activo = itemActivo([...sections, ...destinosPie], pathname);
   const esResumen = header.resumenTo !== undefined && pathname === header.resumenTo;
@@ -333,7 +339,7 @@ export function VerticalShell({
         href={`#${VERTICAL_SHELL_MAIN_ID}`}
         className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[60] focus:rounded-lg focus:border focus:border-border focus:bg-card focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-foreground focus:shadow-elevated"
       >
-        Saltar al contenido
+        {t("shell.saltarAlContenido")}
       </a>
 
       <div className="ds3-shell-lateral hidden md:block md:p-4 md:pr-0">
@@ -353,7 +359,7 @@ export function VerticalShell({
             <button
               type="button"
               hidden
-              aria-label="Abrir más secciones"
+              aria-label={t("shell.abrirMasSecciones")}
               aria-haspopup="dialog"
               onClick={() => window.dispatchEvent(new Event(MAS_ABRIR_EVENTO))}
               className="ds3-solo ds3-movil-mas"
@@ -389,7 +395,7 @@ export function VerticalShell({
             className="ds3-solo ds3-guia"
           >
             <CircleHelp aria-hidden="true" strokeWidth={1.75} />
-            Guía
+            {t("shell.guia")}
           </button>
         </div>
         {/* `key` fuerza el remontaje de las paginas hijas cuando cambia la sucursal activa. */}
@@ -400,6 +406,13 @@ export function VerticalShell({
           key={contentKey}
           className="ds3-shell-contenido flex-1 min-h-0 overflow-y-auto focus:outline-none px-4 pt-[calc(5.5rem+var(--safe-area-top))] pb-[calc(7rem+var(--safe-area-bottom))] md:px-5 md:pt-3.5 md:pb-5"
         >
+          {/* ds3: antetitulo (= grupo del menu) de las pantallas sin PageHeader ni ResumenLayout, que traen el suyo; ds3/contenido.css lo apaga
+              cuando la pagina ya tiene uno y en el chat. Texto real: nunca un <p> vacio. Fuera de la pagina para no tocar su contenido. */}
+          {grupoNav ? (
+            <p hidden data-testid="eyebrow-pagina" className="ds3-solo ds3-eyebrow-pagina">
+              {grupoNav}
+            </p>
+          ) : null}
           {/* Transicion de navegacion: entrada breve (tokens de motion) al cambiar de ruta, solo con movimiento permitido. Sin `max-w`: ancho completo del marco. */}
           <div key={pathname} className="ds3-shell-pagina motion-safe:animate-page-in">
             <TituloBarraContext.Provider value={fijarTitulo}>

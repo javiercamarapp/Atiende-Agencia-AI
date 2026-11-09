@@ -3,6 +3,7 @@ import { expect, test } from "../helpers/fixtures.ts";
 import { afirmarPantallaSana, recorrerSecciones } from "../helpers/humo.ts";
 import { abrirMasMovil, esMovil, sidebar } from "../helpers/navegacion.ts";
 import { rentas } from "../mock-api/fixtures/rentas.ts";
+import { mostrarTema } from "../helpers/copiloto.ts";
 
 test.describe("rentas @humo", () => {
   test("owner: entra y recorre todo el menu sin errores de consola ni 5xx", async ({ page, iniciarSesion, vigilante }) => {
@@ -125,6 +126,7 @@ test.describe("rentas @humo", () => {
     await afirmarPantallaSana(page, "copiloto");
     await expect(page.getByRole("heading", { level: 1, name: "Pregúntale a tus datos" })).toBeVisible();
 
+    await mostrarTema(page, "Ingresos");
     await page.getByRole("button", { name: PREGUNTA }).click();
     const hilo = page.getByRole("log", { name: "Conversación con el Copiloto" });
     await expect(hilo.getByText(/Este mes ingresaste \$53,400 MXN/)).toBeVisible();
@@ -141,13 +143,14 @@ test.describe("rentas @humo", () => {
     await iniciarSesion("rentas", "finanzas");
     await page.goto(RUTA_COPILOTO);
     await afirmarPantallaSana(page, "copiloto");
+    await mostrarTema(page, "Ingresos");
     await page.getByRole("button", { name: PREGUNTA }).click();
     await expect(page.getByText(/Este mes ingresaste/)).toBeVisible();
 
     await page.getByRole("button", { name: "Historial de chats" }).click();
     const panel = page.getByRole("dialog", { name: "Historial de chats" });
     await expect(panel.getByRole("button", { name: PREGUNTA, exact: true })).toBeVisible();
-    await panel.getByRole("button", { name: "Nuevo chat" }).click();
+    await panel.getByRole("button", { name: "Chat nuevo", exact: true }).click();
     await expect(page.getByText(/Este mes ingresaste/)).toHaveCount(0);
 
     await page.getByRole("button", { name: "Historial de chats" }).click();
