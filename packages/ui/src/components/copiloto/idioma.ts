@@ -47,6 +47,17 @@ const ES = {
   notaCalculo: "Cifras leídas por consultas fijas del catálogo de Atiende: el modelo no inventa números.",
   coberturaUna: "{x} de 1 fuente con datos",
   coberturaVarias: "{x} de {y} fuentes con datos",
+  util: "Útil",
+  noUtil: "No fue útil",
+  utilAria: "Marcar la respuesta como útil",
+  noUtilAria: "Marcar la respuesta como no útil",
+  motivoPregunta: "¿Qué faltó? (opcional)",
+  motivo_dato_incorrecto: "Un dato está mal",
+  motivo_incompleta: "Le faltó información",
+  motivo_no_entendio: "No entendió la pregunta",
+  motivo_otro: "Otra cosa",
+  graciasValoracion: "Gracias, lo tomamos en cuenta.",
+  errorValoracion: "No se pudo guardar tu valoración; intenta de nuevo.",
 } as const;
 
 export type ClaveCopiloto = keyof typeof ES;
@@ -93,6 +104,17 @@ const EN: Readonly<Record<ClaveCopiloto, string>> = {
   notaCalculo: "Figures read by fixed queries from Atiende's catalog: the model never makes up numbers.",
   coberturaUna: "{x} of 1 source with data",
   coberturaVarias: "{x} of {y} sources with data",
+  util: "Helpful",
+  noUtil: "Not helpful",
+  utilAria: "Mark the answer as helpful",
+  noUtilAria: "Mark the answer as not helpful",
+  motivoPregunta: "What was missing? (optional)",
+  motivo_dato_incorrecto: "A figure is wrong",
+  motivo_incompleta: "It left something out",
+  motivo_no_entendio: "It misunderstood the question",
+  motivo_otro: "Something else",
+  graciasValoracion: "Thanks, we'll take it into account.",
+  errorValoracion: "Couldn't save your rating; please try again.",
 };
 
 const CATALOGOS: Readonly<Record<Idioma, Readonly<Record<ClaveCopiloto, string>>>> = { es: ES, en: EN };

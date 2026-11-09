@@ -148,6 +148,18 @@ export interface CopilotoTransporte {
   descargarPdf?(conversacionId: string, seq: number): Promise<void>;
   /** Fija el primer bloque del mensaje en el tablero. Sin ella, no se ofrece "Fijar". */
   fijar?(conversacionId: string, seq: number, bloque: number): Promise<void>;
+  /** «Útil / No fue útil» de un mensaje guardado (con motivo opcional de la lista cerrada). Rechaza con un `Error` legible. Sin ella,
+   *  no se ofrece valorar (nunca un boton sin backend). */
+  valorar?(conversacionId: string, seq: number, valoracion: CopilotoValoracion): Promise<void>;
+}
+
+/** Motivos cerrados de «No fue útil» (sin texto libre: nada de datos personales). Mismos valores que la migracion 0079. */
+export const MOTIVOS_VALORACION_COPILOTO = ["dato_incorrecto", "incompleta", "no_entendio", "otro"] as const;
+export type MotivoValoracionCopiloto = (typeof MOTIVOS_VALORACION_COPILOTO)[number];
+
+export interface CopilotoValoracion {
+  readonly util: boolean;
+  readonly motivo?: MotivoValoracionCopiloto | null;
 }
 
 /** Error que un transporte puede lanzar para que el shell muestre el aviso del `status` correcto. */

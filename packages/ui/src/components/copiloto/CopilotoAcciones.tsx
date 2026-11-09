@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, Copy, FileDown, Pin, RotateCcw, Sheet } from "lucide-react";
+import { Check, Copy, FileDown, Pin, RotateCcw, Sheet, ThumbsDown, ThumbsUp } from "lucide-react";
 import { bloqueACsv, bloqueATsv, nombreArchivoCsv } from "./formato";
-import type { CopilotoBloque, CopilotoMensaje, CopilotoTransporte } from "./tipos";
+import { useIdiomaCopiloto } from "./idioma";
+import { MOTIVOS_VALORACION_COPILOTO, type CopilotoBloque, type CopilotoMensaje, type CopilotoTransporte, type MotivoValoracionCopiloto } from "./tipos";
 
 const BOTON = "flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50";
 
@@ -104,6 +105,26 @@ export function CopilotoAcciones({
   const bloquesCsv = (mensaje.blocks ?? []).filter((b) => b.columns.length > 0 && b.rows.length > 0);
   const csv = (b: CopilotoBloque) => setErrorCsv(!descargarCsv(b, vertical));
 
+  // «Útil / No fue útil» (migracion 0079): solo con un mensaje GUARDADO (conversacion + seq) y un transporte que sepa valorar.
+  const { t } = useIdiomaCopiloto();
+  const puedeValorar = Boolean(transporte.valorar && conversacionId && mensaje.seq !== undefined);
+  const [valoracion, setValoracion] = useState<{ util: boolean; motivo: MotivoValoracionCopiloto | null } | null>(null);
+  const [valorando, setValorando] = useState(false);
+  const [errorValoracion, setErrorValoracion] = useState(false);
+  const valorar = async (util: boolean, motivo: MotivoValoracionCopiloto | null = null) => {
+    if (!transporte.valorar || !conversacionId || mensaje.seq === undefined || valorando) return;
+    setValorando(true);
+    setErrorValoracion(false);
+    try {
+      await transporte.valorar(conversacionId, mensaje.seq, { util, motivo });
+      setValoracion({ util, motivo });
+    } catch {
+      setErrorValoracion(true);
+    } finally {
+      setValorando(false);
+    }
+  };
+
   const urlPdf = transporte.urlPdf && conversacionId && mensaje.seq !== undefined ? transporte.urlPdf(conversacionId, mensaje.seq) : undefined;
 
   return (
@@ -149,6 +170,28 @@ export function CopilotoAcciones({
           Regenerar
         </button>
       ) : null}
+      {puedeValorar ? (
+        <span className="flex items-center gap-3" data-testid="copiloto-valoracion" data-valoracion={valoracion ? (valoracion.util ? "util" : "no_util") : ""}>
+          <button type="button" className={BOTON} onClick={() => void valorar(true)} disabled={valorando} aria-pressed={valoracion?.util === true} aria-label={t("utilAria")}>
+            <ThumbsUp className="w-3.5 h-3.5" aria-hidden />
+            {t("util")}
+          </button>
+          <button type="button" className={BOTON} onClick={() => void valorar(false)} disabled={valorando} aria-pressed={valoracion?.util === false} aria-label={t("noUtilAria")}>
+            <ThumbsDown className="w-3.5 h-3.5" aria-hidden />
+            {t("noUtil")}
+          </button>
+        </span>
+      ) : null}
+      {valoracion?.util === false ? (
+        <span role="group" aria-label={t("motivoPregunta")} className="flex basis-full flex-wrap items-center gap-2 text-xs text-muted-foreground" data-testid="copiloto-valoracion-motivos">
+          <span>{t("motivoPregunta")}</span>
+          {MOTIVOS_VALORACION_COPILOTO.map((m) => (
+            <button key={m} type="button" className={`${BOTON} rounded-full border border-border px-2 py-0.5`} aria-pressed={valoracion.motivo === m} disabled={valorando} onClick={() => void valorar(false, m)}>
+              {t(`motivo_${m}`)}
+            </button>
+          ))}
+        </span>
+      ) : null}
       {errorCsv ? (
         <span role="alert" className="text-xs text-destructive">
           No se pudo crear el archivo CSV.
@@ -164,8 +207,13 @@ export function CopilotoAcciones({
           No se pudo fijar; intenta de nuevo.
         </span>
       ) : null}
+      {errorValoracion ? (
+        <span role="alert" className="text-xs text-destructive">
+          {t("errorValoracion")}
+        </span>
+      ) : null}
       <span className="sr-only" role="status" aria-live="polite">
-        {copiado ? "Copiado" : ""}
+        {copiado ? "Copiado" : valoracion ? t("graciasValoracion") : ""}
       </span>
     </div>
   );

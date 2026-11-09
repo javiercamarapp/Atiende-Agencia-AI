@@ -38,6 +38,7 @@ import { superadminOrganizacionesEquipoRoutes } from "./routes/superadmin-organi
 import { altaSucursalRoutes } from "./routes/alta-sucursal.ts";
 import { superadminCostosRoutes } from "./routes/superadmin-costos.ts";
 import { superadminCfoRoutes } from "./routes/superadmin-cfo.ts";
+import { superadminCopilotoValoracionesRoutes } from "./routes/superadmin-copiloto-valoraciones.ts";
 import { superadminPylRoutes } from "./routes/superadmin-pyl.ts";
 import { superadminConsolaRoutes } from "./routes/superadmin-consola.ts";
 import { superadminAgentesFichasRoutes } from "./routes/superadmin-agentes-fichas.ts";
@@ -143,6 +144,7 @@ export function buildApp(deps: AppDeps): Hono {
   app.route("/", altaSucursalRoutes(deps));
   app.route("/", superadminCostosRoutes(deps));
   app.route("/", superadminCfoRoutes(deps));
+  app.route("/", superadminCopilotoValoracionesRoutes(deps));
   app.route("/", superadminPylRoutes(deps));
   app.route("/", superadminConsolaRoutes(deps));
   app.route("/", superadminAgentesRoutes(deps));
