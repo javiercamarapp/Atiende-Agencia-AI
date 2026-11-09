@@ -6,7 +6,9 @@
 // cero que nadie midio. Acento de Atiende: el avance hacia la `meta` (opcional) se pinta con el azul de marca (`bg-primary`).
 import { cn } from "../lib/utils";
 import { formatMoney } from "../lib/formatMoney";
+import { useT } from "../i18n/proveedor";
 import { Cifra, type CifraTamano } from "./Cifra";
+import { datos } from "../i18n/mensajes/datos.ts";
 
 export type OdometroTamano = "md" | "lg";
 
@@ -39,7 +41,9 @@ export function avanceHaciaMeta(valor: number, meta: number): number {
 
 const ROTULO = "whitespace-nowrap text-xs font-semibold uppercase tracking-wide text-muted-foreground";
 
-export function Odometro({ valor, prefijo, etiqueta, sinDato = "sin medir", tamano = "md", meta, className }: OdometroProps) {
+export function Odometro({ valor, prefijo, etiqueta, sinDato: sinDatoProp, tamano = "md", meta, className }: OdometroProps) {
+  const t = useT(datos);
+  const sinDato = sinDatoProp ?? t("datos.sinMedir");
   const contenedor = cn("hidden shrink-0 flex-col items-end gap-2 sm:flex", className);
   const medible = valor !== null && Number.isFinite(valor) && valor >= 0;
   const cifra = TAMANO_CIFRA[tamano];
@@ -74,10 +78,10 @@ export function Odometro({ valor, prefijo, etiqueta, sinDato = "sin medir", tama
       <span className={ROTULO}>{etiqueta}</span>
       {avance !== null && (
         <div className="flex w-full items-center gap-2">
-          <div role="progressbar" aria-label="Avance hacia la meta" aria-valuemin={0} aria-valuemax={100} aria-valuenow={avance} className="h-1 flex-1 overflow-hidden rounded-full bg-canvas">
+          <div role="progressbar" aria-label={t("datos.meta.avance")} aria-valuemin={0} aria-valuemax={100} aria-valuenow={avance} className="h-1 flex-1 overflow-hidden rounded-full bg-canvas">
             <div data-testid="odometro-avance" className="h-full rounded-full bg-primary" style={{ width: `${avance}%` }} />
           </div>
-          <span className="text-2xs font-medium tabular-nums text-muted-foreground">{avance}% de la meta</span>
+          <span className="text-2xs font-medium tabular-nums text-muted-foreground">{t("datos.meta.porcentaje", { avance })}</span>
         </div>
       )}
     </div>

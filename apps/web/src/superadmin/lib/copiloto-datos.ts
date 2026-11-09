@@ -83,7 +83,8 @@ export const DATOS_COPILOTO_SUPERADMIN = {
   },
   sugerencias: SUGERENCIAS_COPILOTO_SUPERADMIN,
   categorias: [
-    { titulo: "CFO y cobranza", preguntas: [P10, P11, P12, P13, P14] },
+    // La portada ds3 muestra solo las 3 primeras de cada tema: la de cobranza va 2.a para que «CFO y cobranza» la ofrezca.
+    { titulo: "CFO y cobranza", preguntas: [P10, P13, P11, P12, P14] },
     { titulo: "Ventas y costos de IA", preguntas: [P2, P3, P5, P4] },
     { titulo: "Clientes, agentes y salud", preguntas: [P1, P8, P6, P7, P15] },
     { titulo: "Varias organizaciones", preguntas: [P16, P17, P19, P18] },
