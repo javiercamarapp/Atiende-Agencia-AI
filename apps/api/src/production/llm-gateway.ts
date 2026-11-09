@@ -61,7 +61,7 @@ import { emitirNotificacion } from "@atiende/db";
 import { ProductionLlmUsageRecorder, ProductionOrgMonthlyBudgetStore, ProductionRoleDailyTurnStore } from "./llm-usage-gateway-adapters.ts";
 import { RESUMEN_DIARIO_LLM_ROLE } from "../resumen-diario/redaccion.ts";
 import type { ApiEnv } from "../env.ts";
-import { COMPACTACION_HISTORIAL_ROLE, COMPUERTA_ESCALAMIENTO_ROLE, DATA_CHAT_RETRY_SUFFIX, ENRUTADOR_TURNO_ROLE, NEW_PLATFORM_LLM_ROLES, REPORTE_ANALISIS_FINANCIERO_ROLE, REPORTE_ANALISIS_GENERAL_ROLE, REPORTE_REDACCION_FINANCIERO_ROLE, REPORTE_REDACCION_GENERAL_ROLE, RESTAURANTES_TRANSCRIPCION_ROLE, RESTAURANTES_WHATSAPP_CLASIFICADOR_ROLE, MODELOS_CON_ZDR_VERIFICADO, TITULOS_RESUMENES_ROLE, CEREBRO_V2_ALTERNATIVAS, CEREBRO_V2_WHATSAPP_ROUTE, CEREBRO_V2_ESCALADO_ROUTE, parseLlmModelsJson, resolveRoleRoute, routingForModel, rungsDeModelosAgente, SUPERADMIN_COPILOTO_ROLE, type LlmModelsConfig, type LlmRouteConfig, type LlmRungConfig } from "./llm-models.ts";
+import { COMPACTACION_HISTORIAL_ROLE, COMPUERTA_ESCALAMIENTO_ROLE, DATA_CHAT_RETRY_SUFFIX, ENRUTADOR_TURNO_ROLE, NEW_PLATFORM_LLM_ROLES, REPORTE_ANALISIS_FINANCIERO_ROLE, REPORTE_ANALISIS_GENERAL_ROLE, REPORTE_REDACCION_FINANCIERO_ROLE, REPORTE_REDACCION_GENERAL_ROLE, RESTAURANTES_EXTRACCION_MENU_ROLE, RESTAURANTES_TRANSCRIPCION_ROLE, RESTAURANTES_WHATSAPP_CLASIFICADOR_ROLE, MODELOS_CON_ZDR_VERIFICADO, TITULOS_RESUMENES_ROLE, CEREBRO_V2_ALTERNATIVAS, CEREBRO_V2_WHATSAPP_ROUTE, CEREBRO_V2_ESCALADO_ROUTE, parseLlmModelsJson, resolveRoleRoute, routingForModel, rungsDeModelosAgente, SUPERADMIN_COPILOTO_ROLE, type LlmModelsConfig, type LlmRouteConfig, type LlmRungConfig } from "./llm-models.ts";
 
 export const RESTAURANTES_WHATSAPP_AGENT_ROLE = "restaurantes:whatsapp_agent";
 export const RESTAURANTES_WHATSAPP_AGENT_ESCALATED_ROLE = "restaurantes:whatsapp_agent_escalated";
@@ -129,6 +129,8 @@ export const ALL_PRODUCTION_ROLES: readonly string[] = [
   RESTAURANTES_TRANSCRIPCION_ROLE,
   // Cerebro v2: clasificadores del suelto («¿aparte?», alergia semantica) del turno de WhatsApp de restaurantes. Solo con zdrEstricto.
   RESTAURANTES_WHATSAPP_CLASIFICADOR_ROLE,
+  // Alta autoservicio: extraccion del menu (PDF/foto) a borrador (llamador: routes/verticals/restaurantes/admin-menu-importar.ts).
+  RESTAURANTES_EXTRACCION_MENU_ROLE,
   HOTELES_DATA_CHAT_ROLE,
   RENTAS_DATA_CHAT_ROLE,
   DESPACHOS_DATA_CHAT_ROLE,

@@ -23,6 +23,8 @@ import type { AppDeps } from "../../../deps.ts";
 import { silencioRafagaAsincronaMs, waitUntilDeVercel } from "../../../en-segundo-plano.ts";
 import { barrerTurnosHuerfanosWhatsApp } from "./whatsapp-turnos-huerfanos.ts";
 import { ALTA_CONFIRMADA_TEXTO, BAJA_CONFIRMADA_TEXTO, esPalabraBaja, procesarBajaOAlta } from "../../../supresion/index.ts";
+import { autorizarWebhookMeta, numeroAutorizado } from "../../../whatsapp-credenciales/index.ts";
+import type { PuertoNotasDeVoz } from "@atiende/domain-restaurantes";
 
 const MAX_BODY_BYTES = 256 * 1024;
 /** El webhook solo barre un turno huerfano si a su funcion le quedan al menos esto (un turno del agente + cierre). */
@@ -54,11 +56,16 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
 
   // Handshake de verificación real de Meta: GET con
   // hub.mode/hub.verify_token/hub.challenge.
-  app.get("/v1/restaurantes/whatsapp/webhook", (c) => {
+  app.get("/v1/restaurantes/whatsapp/webhook", async (c) => {
     const mode = c.req.query("hub.mode");
     const token = c.req.query("hub.verify_token");
     const challenge = c.req.query("hub.challenge");
     if (mode === "subscribe" && constantTimeEqual(token ?? null, deps.env.whatsappVerifyToken)) {
+      return c.text(challenge ?? "");
+    }
+    // Varias apps de Meta suscritas a la MISMA URL (credenciales por organizacion, migracion 0090): cada app puede traer su propio
+    // verify token. Solo se consulta si el de plataforma no coincidio y la funcion esta configurada; sin ella, 403 como siempre.
+    if (mode === "subscribe" && token && deps.whatsappMeta && (await deps.whatsappMeta.resolutor.verifyTokenValido(token))) {
       return c.text(challenge ?? "");
     }
     return c.text("Forbidden", 403);
@@ -75,16 +82,35 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
     if (rawBody.byteLength > MAX_BODY_BYTES) return c.text("Payload too large", 413);
 
     if (!deps.env.whatsappAppSecret) return c.text("Webhook not configured", 503);
-    if (!(await verifyMetaSignature(rawBody, c.req.header("x-hub-signature-256") ?? null, deps.env.whatsappAppSecret))) {
-      return c.text("Invalid signature", 401);
-    }
-
-    let payload: unknown;
+    const firma = c.req.header("x-hub-signature-256") ?? null;
+    // Credenciales por organizacion (migracion 0090): la firma puede ser de la app de plataforma o de la app propia de una
+    // organizacion. Sin `whatsappMeta` solo vale la de plataforma (exactamente como antes). El JSON se lee antes de saber quien firmo
+    // SOLO para conocer los `phone_number_id` candidatos; nada del payload se usa hasta que la firma este verificada.
+    let payloadSinVerificar: unknown;
+    let jsonValido = true;
     try {
-      payload = JSON.parse(new TextDecoder().decode(rawBody));
+      payloadSinVerificar = JSON.parse(new TextDecoder().decode(rawBody));
     } catch {
-      return c.text("Invalid JSON", 400);
+      jsonValido = false;
     }
+    let autorizacion: Awaited<ReturnType<typeof autorizarWebhookMeta>>;
+    if (!deps.whatsappMeta) {
+      if (!(await verifyMetaSignature(rawBody, firma, deps.env.whatsappAppSecret))) return c.text("Invalid signature", 401);
+      autorizacion = { ok: true, autorizacion: { tipo: "plataforma", excluidos: new Set<string>() } };
+    } else {
+      autorizacion = await autorizarWebhookMeta({
+        rawBody,
+        firma,
+        secretoPlataforma: deps.env.whatsappAppSecret,
+        resolutor: deps.whatsappMeta.resolutor,
+        numerosDelPayload: () => (jsonValido ? splitMetaPayloadByChannel(payloadSinVerificar).flatMap((b) => (b.phoneNumberId ? [b.phoneNumberId] : [])) : []),
+      });
+      if (!autorizacion.ok) return autorizacion.status === 503 ? c.text("Credentials temporarily unavailable", 503) : c.text("Invalid signature", 401);
+    }
+    const quienFirmo = autorizacion.autorizacion;
+
+    if (!jsonValido) return c.text("Invalid JSON", 400);
+    const payload: unknown = payloadSinVerificar;
 
     const phoneNumberId = extractMetaPhoneNumberId(payload);
 
@@ -112,6 +138,24 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
 
     // Webhook público/de sistema, sin authMiddleware/dbSession -- abre su propia
     // sesión de sistema (`userId: null`), igual que public.ts/voice-tools.ts.
+    // Notas de voz: un numero de una app propia descarga su media con el token de ESA app (la media de Meta es por app); sin credencial
+    // propia, el puerto de plataforma de siempre. Si la credencial no se puede leer, ese numero no transcribe (pide escribir).
+    const puertosNotas = new Map<string, PuertoNotasDeVoz | undefined>();
+    const puertoNotasDeVozDe = async (phoneNumberId: string): Promise<PuertoNotasDeVoz | undefined> => {
+      if (puertosNotas.has(phoneNumberId)) return puertosNotas.get(phoneNumberId);
+      let puerto: PuertoNotasDeVoz | undefined = deps.notasDeVoz;
+      if (deps.whatsappMeta) {
+        try {
+          const credencial = await deps.whatsappMeta.resolutor.credencialDeNumero(phoneNumberId);
+          if (credencial) puerto = deps.notasDeVozConToken?.(credencial.accessToken);
+        } catch {
+          puerto = quienFirmo.tipo === "credencial" ? undefined : deps.notasDeVoz;
+        }
+      }
+      puertosNotas.set(phoneNumberId, puerto);
+      return puerto;
+    };
+
     const fase1 = await deps.engine.withAppSession({ userId: null }, async (db) => {
       const repo = deps.restaurantesRepo(db);
       // Modelo PM: un numero de WhatsApp por sucursal. `resolveWhatsAppChannel` devuelve la
@@ -141,6 +185,10 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
       };
       for (const batch of splitMetaPayloadByChannel(payload)) {
         if (!batch.phoneNumberId) continue;
+        // Una app solo habla por sus numeros: la de plataforma por los que no tienen app propia y la de una organizacion por los suyos.
+        // Un change ajeno se acusa en silencio, igual que un numero desconocido.
+        if (!numeroAutorizado(quienFirmo, batch.phoneNumberId)) continue;
+        const puertoNotas = await puertoNotasDeVozDe(batch.phoneNumberId);
         const incomingMessages = extractMetaInboundMessages(batch.payload);
         // Estados de entrega de mensajes SALIENTES (delivered/read/failed): no son mensajes del cliente.
         const estadosEntrega = extractMetaStatuses(batch.payload);
@@ -180,13 +228,13 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
         for (const message of incomingMessages) {
           // R-32: nota de voz. Con el puerto (token de Meta + gateway LLM) se transcribe DESPUES de reclamar el mensaje (ver domain-restaurantes
           // whatsapp/nota-de-voz.ts); sin puerto se conserva la nota que pide escribir y se registra el motivo (sin PII).
-          if (message.audio && !deps.notasDeVoz) registrarMotivoNotaDeVoz("no_configurado", organizationId);
+          if (message.audio && !puertoNotas) registrarMotivoNotaDeVoz("no_configurado", organizationId);
           // Tope diario de la organizacion alcanzado -> notificacion in-app (catalogo `restaurantes.voz.tope_notas_alcanzado`): una por dia, sin PII.
           // `emitirNotificacion` corre en SAVEPOINT: nunca aborta la transaccion del webhook ni cambia la respuesta a Meta.
-          const transcripcion = message.audio && deps.notasDeVoz
+          const transcripcion = message.audio && puertoNotas
             ? {
                 audio: message.audio,
-                puerto: deps.notasDeVoz,
+                puerto: puertoNotas,
                 alTopeDeOrganizacion: async () => {
                   await emitirNotificacion(db, { evento: "restaurantes.voz.tope_notas_alcanzado", organizationId, clave: diaMerida(), parametros: { cantidad: LIMITE_NOTAS_POR_ORGANIZACION_DIA } });
                 },

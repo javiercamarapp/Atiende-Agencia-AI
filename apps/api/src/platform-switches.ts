@@ -15,6 +15,8 @@ export const SWITCHABLE_AGENT_ROLES: readonly string[] = [
   "restaurantes:data_chat",
   "restaurantes:transcripcion",
   "restaurantes:whatsapp_clasificador",
+  // Alta autoservicio: extraccion del menu (PDF/foto). Apagado: el importador responde 503 y el CSV sigue funcionando.
+  "restaurantes:extraccion_menu",
   "hoteles:data_chat",
   "rentas:data_chat",
   "despachos:data_chat",
