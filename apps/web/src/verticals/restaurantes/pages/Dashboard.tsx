@@ -385,10 +385,10 @@ export function RestaurantesDashboardPage({
   // ds3: franja de estado de los datos (Rovaq «Fuentes con datos · Datos hasta»). Solo lo que la API ya devolvio; lo que no se pudo leer no
   // se pinta (nunca un valor inventado).
   const estadoDatos: ResumenEstadoDato[] = [
-    { etiqueta: "Periodo", valor: etiquetaPeriodo },
-    ...(ultimaWa ? [{ etiqueta: "Último WhatsApp", valor: ultimaWa }] : []),
-    ...(ultimaVz ? [{ etiqueta: "Última llamada", valor: ultimaVz }] : []),
-    ...(extras.zona ? [{ etiqueta: "Zona horaria", valor: extras.zona }] : []),
+    { etiqueta: t("restaurantes.resumen.periodo"), valor: etiquetaPeriodo },
+    ...(ultimaWa ? [{ etiqueta: t("restaurantes.resumen.estado.ultimoWhatsapp"), valor: ultimaWa }] : []),
+    ...(ultimaVz ? [{ etiqueta: t("restaurantes.resumen.estado.ultimaLlamada"), valor: ultimaVz }] : []),
+    ...(extras.zona ? [{ etiqueta: t("restaurantes.resumen.estado.zona"), valor: extras.zona }] : []),
   ];
   // ds3: «Requiere tu atención». Sin la bandeja (null) la pagina no sabe y el bloque no se pinta; con ella, 0 pendientes = «nada pendiente».
   const atencion: ResumenAtencionItem[] | undefined =
@@ -399,8 +399,8 @@ export function RestaurantesDashboardPage({
         : [
             {
               id: "toma-humana",
-              titulo: `${plural(extras.pendientes, "conversación espera", "conversaciones esperan")} a una persona`,
-              detalle: "Toma humana · WhatsApp y voz",
+              titulo: t("restaurantes.resumen.tomaHumanaEsperan", { count: extras.pendientes, n: formatInt(extras.pendientes) }),
+              detalle: t("restaurantes.resumen.atencion.tomaHumanaDetalle"),
               to: `${base}/conversaciones`,
               tono: "alto",
             },
