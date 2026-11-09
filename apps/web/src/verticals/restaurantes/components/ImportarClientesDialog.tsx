@@ -3,18 +3,11 @@
 // telefonos, tope de 5,000 renglones, huella del archivo para no duplicar, bitacora). No crea pedidos ni manda mensajes a nadie.
 import { useRef, useState } from "react";
 import { Upload } from "lucide-react";
-import { Button, Callout, Checkbox, FormDialog, FormField, Label, Selector, notify } from "@atiende/ui";
-import {
-  ArchivoImportacionError,
-  CAMPOS_IMPORTACION,
-  ETIQUETA_CAMPO,
-  IMPORTACION_MAX_FILAS,
-  construirFilas,
-  huellaConMapeo,
-  leerArchivoClientes,
-  sugerirMapeo,
-} from "../lib/clientes-importacion.ts";
+import { Button, Callout, Checkbox, FormDialog, Label, notify } from "@atiende/ui";
+import { ArchivoImportacionError, IMPORTACION_MAX_FILAS, construirFilas, huellaConMapeo, leerArchivoClientes } from "../lib/clientes-importacion.ts";
 import type { ArchivoLeido, CampoImportacion, MapeoColumnas } from "../lib/clientes-importacion.ts";
+import { sugerirMapeoCompleto } from "../lib/mapeo-columnas-clientes.ts";
+import { MapeoColumnasClientes } from "./MapeoColumnasClientes.tsx";
 import { importarClientes, vistaPreviaImportacionClientes } from "../lib/customers-client.ts";
 import type { ResultadoImportacionWire, VistaPreviaImportacionWire } from "../lib/customers-client.ts";
 
@@ -57,7 +50,6 @@ export function ImportarClientesDialog({ open, onOpenChange, apiBaseUrl, token, 
 
   const columnas = archivo ? Math.max(0, ...archivo.filas.map((f) => f.length)) : 0;
   const encabezados = archivo ? (conEncabezado ? archivo.filas[0] ?? [] : []) : [];
-  const nombreColumna = (i: number) => (conEncabezado && encabezados[i]?.trim() ? `Columna ${i + 1}: ${encabezados[i]!.trim()}` : `Columna ${i + 1}`);
   const filasDatos = archivo ? (conEncabezado ? archivo.filas.slice(1) : archivo.filas) : [];
   const excedeTope = filasDatos.length > IMPORTACION_MAX_FILAS;
 
@@ -68,7 +60,7 @@ export function ImportarClientesDialog({ open, onOpenChange, apiBaseUrl, token, 
     try {
       const leido = await leerArchivoClientes(file);
       setArchivo(leido);
-      setMapeo(sugerirMapeo(leido.filas[0] ?? []));
+      setMapeo(sugerirMapeoCompleto(leido.filas, conEncabezado));
     } catch (err) {
       setArchivo(null);
       setError(err instanceof ArchivoImportacionError ? err.message : mensaje(err, "No se pudo leer el archivo."));
@@ -86,12 +78,12 @@ export function ImportarClientesDialog({ open, onOpenChange, apiBaseUrl, token, 
   function cambiarEncabezado(valor: boolean) {
     setConEncabezado(valor);
     setVista(null);
-    if (archivo) setMapeo(valor ? sugerirMapeo(archivo.filas[0] ?? []) : SIN_MAPEO);
+    if (archivo) setMapeo(sugerirMapeoCompleto(archivo.filas, valor));
   }
 
-  function cambiarMapeo(campo: CampoImportacion, valor: string) {
+  function cambiarMapeo(campo: CampoImportacion, indice: number | null) {
     setVista(null);
-    setMapeo((m) => ({ ...m, [campo]: valor === "" ? null : Number(valor) }));
+    setMapeo((m) => ({ ...m, [campo]: indice }));
   }
 
   async function revisar() {
@@ -200,20 +192,7 @@ export function ImportarClientesDialog({ open, onOpenChange, apiBaseUrl, token, 
               </p>
             )}
             <Checkbox checked={conEncabezado} onChange={(e) => cambiarEncabezado(e.target.checked)} label="La primera fila trae los nombres de las columnas" wrapperClassName="text-sm" />
-            <div className="grid gap-3 sm:grid-cols-2">
-              {CAMPOS_IMPORTACION.map((campo) => (
-                <FormField key={campo} label={ETIQUETA_CAMPO[campo]} required={campo === "telefono"} hint={campo === "telefono" ? "10 dígitos; +52 y 521 se aceptan." : undefined}>
-                  <Selector id={`clientes-import-${campo}`} size="sm" value={mapeo[campo] === null ? "" : String(mapeo[campo])} onChange={(e) => cambiarMapeo(campo, e.target.value)}>
-                    <option value="">{campo === "telefono" ? "Elige la columna…" : "No importar"}</option>
-                    {Array.from({ length: columnas }, (_, i) => (
-                      <option key={i} value={i}>
-                        {nombreColumna(i)}
-                      </option>
-                    ))}
-                  </Selector>
-                </FormField>
-              ))}
-            </div>
+            <MapeoColumnasClientes encabezados={encabezados} filasDatos={filasDatos} columnas={columnas} mapeo={mapeo} onCambiar={cambiarMapeo} />
           </div>
         )}
 

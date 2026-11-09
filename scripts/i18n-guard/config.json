@@ -45,7 +45,8 @@
     "packages/ui/src/components/ui/form-field.tsx",
     "packages/ui/src/components/ui/drawer.tsx",
     "packages/ui/src/components/VerticalNoEncontrado.tsx",
-    "apps/web/src/superadmin/pages/WhatsappMeta.tsx"
+    "apps/web/src/superadmin/pages/WhatsappMeta.tsx",
+    "apps/web/src/verticals/restaurantes/components/MapeoColumnasClientes.tsx"
   ],
   "excluir": [
     "packages/ui/src/i18n/mensajes"

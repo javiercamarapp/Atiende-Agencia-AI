@@ -11,6 +11,7 @@ import { notifEn } from "./notif.ts";
 import { rolEn } from "./rol.ts";
 import { shellEn } from "./shell.ts";
 import { waMetaEn } from "./waMeta.ts";
+import { mapeoClientesEn } from "./mapeoClientes.ts";
 
 export const MODULOS_EN = {
   comun: comunEn,
@@ -21,4 +22,5 @@ export const MODULOS_EN = {
   notif: notifEn,
   datos: datosEn,
   waMeta: waMetaEn,
+  mapeoClientes: mapeoClientesEn,
 } as const satisfies ModulosTraducidos;
