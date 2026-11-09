@@ -106,7 +106,6 @@ Pruebas del ambito (no son parte del guard de `apps/web`):
 |---|---|
 | `packages/ui/tests/tokens-restaurantes.spec.ts` | Valores exactos del original (claro y oscuro), contraste WCAG AA con los valores reales de `index.css`, que `[data-ambito-base]` repone Likida token a token, que toda regla `rest:` compilada lleva el prefijo del ambito, que ninguna clase `rest:` usa paleta cruda/hex/`text-[Npx]` (con casos negativos) y que el CSS de toasts esta acotado al atributo. |
 | `packages/ui/tests/ambito-restaurantes.spec.tsx` | `useAmbitoVertical`, y las recetas de Button (variantes y tamanos del original), campos y overlays. |
-| `apps/web/e2e/tests/restaurantes/uni-r0b-ambito.spec.ts` | Estilos computados en un navegador real (claro, oscuro, 375 px): paleta, sidebar en Likida, pildora, velo, titulos, campos y que citas no cambia. |
 
 Los specs de Likida (`tokens-likida`, `ui-ds-v2-button`, `ui-primitivos-accion-likida`) siguen con sus aserciones originales: por eso el
 Button y los campos reciben el repo suelto por clases `ambito-*` de `index.css` y no por utilidades en el `className`, y la variante

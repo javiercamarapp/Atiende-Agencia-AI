@@ -9,12 +9,12 @@
 // "Pregúntale a tus datos" del pie y el atajo; las notificaciones, con la pildora "Notificaciones" del pie). El shell es un LAYOUT (App.tsx lo monta una
 // sola vez para todas las rutas /superadmin/*), asi que el panel no se desmonta al navegar y conserva su
 // conversacion.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useLocation } from "react-router-dom";
 import { Bell, LayoutGrid, MessageCircle } from "lucide-react";
-import { VerticalShell, VerticalShellEstado } from "@atiende/ui";
-import type { BottomNavItem, SidebarPiePildora, SidebarSection } from "@atiende/ui";
+import { useT, VerticalShell, VerticalShellEstado } from "@atiende/ui";
+import type { BottomNavItem, SidebarPiePildora, SidebarSection, Traductor } from "@atiende/ui";
 import { logout } from "../lib/auth-client.ts";
 import { useNotifications } from "../lib/useNotifications.ts";
 import { clearSuperadminSession, readPersistedSuperadminSession } from "./lib/auth-client.ts";
@@ -24,7 +24,11 @@ import { ImpersonacionBanner } from "./components/ImpersonacionBanner.tsx";
 import { StepUpDialog } from "./components/StepUpDialog.tsx";
 import { RUTA_COPILOTO } from "./lib/copiloto-cliente.ts";
 import { COPILOTO, MOVIL_SUPERADMIN, PIE_SUPERADMIN, RESUMEN, SECCIONES } from "./rutas.ts";
+import { CLAVE_SECCION_SUPERADMIN, claveRutaSuperadmin } from "./rutas-i18n.ts";
 import { limpiarStepUp } from "./lib/stepup.ts";
+import { nav } from "@atiende/ui/i18n/nav";
+import { shell } from "@atiende/ui/i18n/shell";
+import { consola } from "@atiende/ui/i18n/consola";
 
 export interface SuperAdminShellProps {
   readonly apiBaseUrl: string;
@@ -33,15 +37,26 @@ export interface SuperAdminShellProps {
 }
 
 // Resumen arriba (raiz, sin cabecera) + las secciones de Likida con paginas reales (rutas.ts, fuente unica).
-const SECTIONS: SidebarSection[] = [
-  { title: "Resumen", siempreAbierto: true, items: [{ ...RESUMEN }, { ...COPILOTO }] },
-  ...SECCIONES.map((s) => ({ title: s.title, items: s.items.map((i) => ({ ...i })) })),
-];
+// i18n ES/EN: rutas.ts guarda el nombre canonico en espanol; rutas-i18n.ts le asocia su clave y aqui se pinta `t(clave)`.
+const etiqueta = (t: Traductor, r: { readonly to: string; readonly label: string }) => {
+  const clave = claveRutaSuperadmin(r.to, r.label);
+  return clave ? t(clave) : r.label;
+};
 
-const PIE_BASE: SidebarPiePildora[] = PIE_SUPERADMIN.map((p) => ({ ...p }));
+function construirSecciones(t: Traductor): SidebarSection[] {
+  return [
+    { title: t("nav.resumen"), siempreAbierto: true, items: [{ ...RESUMEN, label: etiqueta(t, RESUMEN) }, { ...COPILOTO, label: etiqueta(t, COPILOTO) }] },
+    ...SECCIONES.map((s) => {
+      const clave = CLAVE_SECCION_SUPERADMIN[s.title];
+      return { title: clave ? t(clave) : s.title, items: s.items.map((i) => ({ ...i, label: etiqueta(t, i) })) };
+    }),
+  ];
+}
+
+const construirPie = (t: Traductor): SidebarPiePildora[] => PIE_SUPERADMIN.map((p) => ({ ...p, label: etiqueta(t, p) }));
 
 /** Barra inferior móvil: los 4 destinos de uso diario; el 5.º lugar es "Más" (lo agrega `VerticalShell`) y lista TODAS las secciones. */
-const MOBILE_ITEMS: BottomNavItem[] = MOVIL_SUPERADMIN.map((i) => ({ ...i }));
+const construirMovil = (t: Traductor): BottomNavItem[] => MOVIL_SUPERADMIN.map((i) => ({ ...i, label: etiqueta(t, i) }));
 
 export function SuperAdminShell({ apiBaseUrl, onRequireLogin, children }: SuperAdminShellProps) {
   const [session, setSession] = useState<LoginSession | null>(null);
@@ -49,6 +64,10 @@ export function SuperAdminShell({ apiBaseUrl, onRequireLogin, children }: SuperA
   const [resuelto, setResuelto] = useState(false);
   const [copilotoAbierto, setCopilotoAbierto] = useState(false);
   const { pathname } = useLocation();
+  const t = useT(nav, shell, consola);
+  const SECTIONS = useMemo(() => construirSecciones(t), [t]);
+  const PIE_BASE = useMemo(() => construirPie(t), [t]);
+  const MOBILE_ITEMS = useMemo(() => construirMovil(t), [t]);
   // En la pagina completa del Copiloto el panel sobra (seria el mismo chat dos veces): ni boton, ni atajo, ni panel.
   const enPaginaCopiloto = pathname === RUTA_COPILOTO;
   const alternarCopiloto = useCallback(() => setCopilotoAbierto((v) => !v), []);
@@ -93,16 +112,17 @@ export function SuperAdminShell({ apiBaseUrl, onRequireLogin, children }: SuperA
   // existe; useNotifications ya tolera un token vacío (ver su cabecera).
   const notif = useNotifications(apiBaseUrl, session?.token ?? "");
 
-  if (!resuelto) return <VerticalShellEstado estado="cargando" mensaje="Cargando…" />;
+  if (!resuelto) return <VerticalShellEstado estado="cargando" mensaje={t("shell.cargando")} />;
   if (!session) return null; // onRequireLogin ya disparó la redirección
 
-  const user = { email: session.email, rol: loggingOut ? "Saliendo…" : "Superadmin", nombre: session.fullName, rolEtiqueta: loggingOut ? "Saliendo…" : "Superadmin" };
+  const rotuloRol = loggingOut ? t("shell.saliendo") : t("consola.superadmin");
+  const user = { email: session.email, rol: rotuloRol, nombre: session.fullName, rolEtiqueta: rotuloRol };
   // La campana del encabezado se quito: la pildora "Notificaciones" del pie (escritorio y "Mas" > "Cuenta" en movil) lleva el punto de sin leer.
   // El panel lateral del Copiloto (antes el boton "Pregúntale a tus datos" de la barra) se abre desde la pildora del pie (y con Cmd+J).
   const pie: SidebarPiePildora[] = [
     ...PIE_BASE,
-    { label: "Notificaciones", to: "/superadmin/notificaciones", icon: Bell, indicador: notif.hayNoLeidas },
-    ...(enPaginaCopiloto ? [] : [{ label: "Pregúntale a tus datos", onClick: alternarCopiloto, icon: MessageCircle, ariaControls: ID_PANEL_COPILOTO, ariaPressed: copilotoAbierto }]),
+    { label: t("nav.notificaciones"), to: "/superadmin/notificaciones", icon: Bell, indicador: notif.hayNoLeidas },
+    ...(enPaginaCopiloto ? [] : [{ label: t("nav.preguntaleATusDatos"), onClick: alternarCopiloto, icon: MessageCircle, ariaControls: ID_PANEL_COPILOTO, ariaPressed: copilotoAbierto }]),
   ];
 
   return (
@@ -114,7 +134,7 @@ export function SuperAdminShell({ apiBaseUrl, onRequireLogin, children }: SuperA
       user={user}
       onLogout={() => void handleLogout()}
       loggingOut={loggingOut}
-      header={{ icon: <LayoutGrid className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: "Consola de Atiende", resumenTo: "/superadmin" }}
+      header={{ icon: <LayoutGrid className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: t("consola.consolaAtiende"), resumenTo: "/superadmin" }}
       // ds3 (decision de Omar 7-nov-2026): campana con contador en la cabecera movil y «Preguntar» (el Copiloto de plataforma) como
       // destino fijo de la barra inferior. Sin la bandera existen ocultos.
       notificaciones={{ to: "/superadmin/notificaciones", contador: notif.unreadCount, hayNoLeidas: notif.hayNoLeidas }}

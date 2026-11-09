@@ -1,13 +1,13 @@
 // Repositorio del cobro por plan MEDIDO -- puerto contra las funciones `security definer` de
-// packages/db/migrations/0080_cobro_planes_medidos.sql (tarifa del plan) y
-// packages/domain-restaurantes/migrations/200_uso_facturable.sql (uso del mes).
+// packages/db/migrations/0103_cobro_planes_medidos.sql (tarifa del plan) y
+// packages/domain-restaurantes/migrations/203_uso_facturable.sql (uso del mes).
 //
 // SESIONES: `tarifaDeOrganizacion` y `usoFacturableRestaurantes` aceptan `callerId = null` para la sesion de SISTEMA
 // (`withAppSession({ userId: null })`, el webhook de cobro); con usuario son caller-bound. Las de superadmin siempre
 // son caller-bound. Estas clases no eligen la sesion: reciben el `TenantDbSession` ya abierto.
 //
 // COMPATIBILIDAD CON LA BASE SIN MIGRAR: cada metodo corre bajo `runWithSavepointFallback`; un SQLSTATE
-// 42883/42P01/42703 (0080/200 sin aplicar) devuelve `availability: "not_migrated"` sin datos -- nunca 500 ni exito
+// 42883/42P01/42703 (0103/203 sin aplicar) devuelve `availability: "not_migrated"` sin datos -- nunca 500 ni exito
 // simulado. Los errores de negocio de la base (42501/22023/P0002/55006/23514) se traducen a `SuperadminSeguridadError`.
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { isMigrationPendingError } from "./sql-errors.ts";
@@ -247,7 +247,7 @@ async function guarded<TOk, TMissing>(db: TenantDbSession, run: () => Promise<TO
       fallback: async () => {
         if (!warned) {
           warned = true;
-          console.warn("cobro-planes-medidos-repository: faltan 0080_cobro_planes_medidos y/o restaurantes 200_uso_facturable -- degradando a 'no disponible aun'.");
+          console.warn("cobro-planes-medidos-repository: faltan 0103_cobro_planes_medidos y/o restaurantes 203_uso_facturable -- degradando a 'no disponible aun'.");
         }
         return onMissing();
       },

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Verificación manual, opt-in, contra un Postgres LOCAL efímero real (initdb/pg_ctl) de las
-# migraciones 0080 (planes medidos) y restaurantes 200 (uso facturable). En CI la corre automáticamente
+# migraciones 0103 (planes medidos) y restaurantes 203 (uso facturable). En CI la corre automáticamente
 # scripts/verify-real-postgres-ci/run-gate.mjs (descubre este directorio solo).
 # Uso:  scripts/verify-cobro-planes-medidos/run.sh
 set -euo pipefail
