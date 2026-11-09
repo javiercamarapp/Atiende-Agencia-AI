@@ -1,4 +1,4 @@
--- 0080: planes MEDIDOS (cobro) -- cuota fija o precio por sucursal, minutos de voz y conversaciones de WhatsApp
+-- 0103: planes MEDIDOS (cobro) -- cuota fija o precio por sucursal, minutos de voz y conversaciones de WhatsApp
 -- incluidos, excedente por unidad, tope de uso justo, cuota de alta, IVA y plan A LA MEDIDA de una sola organizacion.
 --
 -- Por que: el plan sembrado de restaurantes (0028: 799 MXN por agente de voz) no cubre el costo medido (voz ~85 % del

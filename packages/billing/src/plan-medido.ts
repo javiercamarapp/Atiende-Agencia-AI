@@ -1,6 +1,6 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // PLAN MEDIDO — factura de un periodo a partir de la tarifa del plan y del uso
-// medido (packages/db/migrations/0080_cobro_planes_medidos.sql).
+// medido (packages/db/migrations/0103_cobro_planes_medidos.sql).
 //
 // Ningún precio vive aquí: la tarifa entra como datos (`TarifaPlanMedido`, la
 // misma forma que devuelve `core.plan_tarifa_json`). Todo va en CENTAVOS

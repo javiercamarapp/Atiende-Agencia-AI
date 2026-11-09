@@ -1,4 +1,4 @@
--- 200: uso FACTURABLE de un restaurante en un mes (cobro por plan medido, packages/db/migrations/0080).
+-- 203: uso FACTURABLE de un restaurante en un mes (cobro por plan medido, packages/db/migrations/0103).
 --
 -- Las dos unidades que cobra el plan medido, medidas con las tablas que ya existen (ninguna tabla nueva):
 --   * minutos de voz: suma de `duration_s` de las llamadas REALES (`canal = 'llamada'`; los previews del panel no se

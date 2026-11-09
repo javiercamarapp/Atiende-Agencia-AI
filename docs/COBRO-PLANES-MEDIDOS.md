@@ -1,7 +1,7 @@
 # Cobro por plan medido (restaurantes primero)
 
-Migraciones: `packages/db/migrations/0080_cobro_planes_medidos.sql` (tarifa del plan) y
-`packages/domain-restaurantes/migrations/200_uso_facturable.sql` (uso del mes). Espejos en `supabase/migrations/20240101000700_*` y `..._701_*`.
+Migraciones: `packages/db/migrations/0103_cobro_planes_medidos.sql` (tarifa del plan) y
+`packages/domain-restaurantes/migrations/203_uso_facturable.sql` (uso del mes). Espejos en `supabase/migrations/20240101000910_*` y `..._911_*`.
 Verificación contra Postgres real: `scripts/verify-cobro-planes-medidos/` (la corre el gate de CI).
 
 ## Por qué
@@ -58,7 +58,7 @@ Base sin migrar: las lecturas responden `disponible: false` y la escritura 503; 
 ## Orden de despliegue
 
 1. Desplegar el código: contra la base vieja todo responde «no disponible» y nada cambia.
-2. Aplicar `20240101000700_0080_cobro_planes_medidos.sql` y después `20240101000701_200_uso_facturable.sql` (solo aditivas).
+2. Aplicar `20240101000910_0103_cobro_planes_medidos.sql` y después `20240101000911_203_uso_facturable.sql` (solo aditivas).
 3. Capturar los planes y tarifas desde el superadmin.
 
 ## Rollback

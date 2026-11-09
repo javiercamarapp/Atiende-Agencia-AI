@@ -684,7 +684,7 @@ export interface AppDeps {
    *  `recordEvent` es SOLO-SISTEMA (`withAppSession({ userId: null })`); lo demas, la
    *  sesion del caller. OPCIONAL: ausente -> las rutas responden `disponible: false`/503. */
   readonly costosPlanesRepo?: (db: TenantDbSession) => CostosPlanesRepository;
-  /** Cobro por plan MEDIDO: tarifa del plan (0080) y uso facturable del mes (restaurantes 200). Fabrica por sesion:
+  /** Cobro por plan MEDIDO: tarifa del plan (0103) y uso facturable del mes (restaurantes 203). Fabrica por sesion:
    *  superadmin y organizacion con la sesion del caller; el webhook de cobro con `withAppSession({ userId: null })`.
    *  OPCIONAL: ausente -> las rutas responden `disponible: false`/503 (ver routes/cobro-planes.ts). */
   readonly cobroPlanesRepo?: (db: TenantDbSession) => CobroPlanesRepository;
