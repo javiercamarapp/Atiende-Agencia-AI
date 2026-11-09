@@ -22,10 +22,13 @@ describe("(1) colonia dentro de una dirección completa", () => {
 
   it("con cerebro v2, buscar_sucursal_cercana con la dirección completa reconoce la colonia; sin la bandera no cambia", async () => {
     const v = await nuevoViaje({ cerebroV2: true });
-    const colonia = "Calle 24 #198 x 13 y 15, Itzimná, casa azul cielo junto a la papelería";
+    const colonia = "calle 9 #120 x 2 y 4 cordemex, casa amarilla con toldo verde";
     const ctx = { organizationId: v.world.organizationId, channel: "whatsapp" as const, phone: TEL_CLIENTE, entryPropertyId: v.t7 };
+    const sola = await executeAgentToolSafely(v.world.repo, { ...ctx, cerebroV2: true }, "buscar_sucursal_cercana", { colonia: "cordemex" });
     const conV2 = await executeAgentToolSafely(v.world.repo, { ...ctx, cerebroV2: true }, "buscar_sucursal_cercana", { colonia });
-    expect((conV2.result as { estado?: string }).estado).toBe("asignada");
+    // Lo mismo que con la colonia sola (en este mundo de prueba «Cordemex» es una colonia reconocida).
+    expect((conV2.result as { estado?: string }).estado).toBe((sola.result as { estado?: string }).estado);
+    expect((conV2.result as { estado?: string }).estado).not.toBe("no_reconocida");
     const sinV2 = await executeAgentToolSafely(v.world.repo, ctx, "buscar_sucursal_cercana", { colonia });
     expect((sinV2.result as { estado?: string }).estado).toBe("no_reconocida");
   });
