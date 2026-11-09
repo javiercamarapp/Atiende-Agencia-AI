@@ -4,6 +4,7 @@
 // `.connect()`/query real, así que esto no intenta una conexión de red) y llama al
 // `default export` exactamente como Vercel lo invoca: `(req: Request) => Response`.
 import { beforeAll, describe, expect, it } from "vitest";
+import { centavos } from "@atiende/domain-hoteles";
 
 const REQUIRED_ENV = {
   JWT_SECRET: "test-jwt-secret",
@@ -78,7 +79,7 @@ describe("apps/api/src/vercel.ts — handler exportado para Vercel", () => {
   it("hotelesPaymentsPort SÍ sigue notProductionReady (gap distinto: sin credenciales de Stripe/Conekta, ver production/not-ready.ts)", async () => {
     const { buildProductionDeps } = await import("../src/production/deps.ts");
     const deps = buildProductionDeps();
-    expect(() => deps.hotelesPaymentsPort.charge({ idempotencyKey: "test", amount: 100, currency: "MXN", paymentMethodToken: "tok_test" })).toThrow(/sin adaptador de producción todavía/);
+    expect(() => deps.hotelesPaymentsPort.charge({ idempotencyKey: "test", amountCentavos: centavos(100), currency: "MXN", paymentMethodToken: "tok_test" })).toThrow(/sin adaptador de producción todavía/);
   });
 
   // Rama feat/fusion-produccion-gateway-llm: turnHandler/hotelesTurnHandler/

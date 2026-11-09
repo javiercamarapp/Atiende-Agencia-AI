@@ -10,8 +10,13 @@
 // (la nota del diseño queda satisfecha: no se duplica nada, se documenta la
 // diferencia). Este puerto es nuevo y propio de domain-hoteles porque ningún paquete
 // de fusión expone hoy un gateway de cobro a huésped final.
+import type { Centavos } from "./money.ts";
+
 export interface PaymentChargeInput {
-  readonly amount: number;
+  /** Monto en la unidad MENOR de la moneda (centavos), entero. El folio guarda pesos con
+   *  2 decimales: conviértelos SIEMPRE con `pesosACentavos()` antes de cobrar. El tipo
+   *  marcado impide pasar pesos crudos por error. */
+  readonly amountCentavos: Centavos;
   readonly currency: string;
   readonly paymentMethodToken: string;
   readonly idempotencyKey: string;

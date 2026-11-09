@@ -46,16 +46,18 @@ export class StripeHotelesPaymentsPort implements PaymentsPort {
 
   async charge(input: PaymentChargeInput): Promise<PaymentChargeResult> {
     if (!this.config.secretKey) throw new Error("Stripe secret key unavailable");
-    if (!(input.amount > 0)) throw new Error("PaymentChargeInput.amount debe ser mayor a 0");
+    if (!Number.isSafeInteger(input.amountCentavos) || !(input.amountCentavos > 0)) {
+      throw new Error("PaymentChargeInput.amountCentavos debe ser un entero de centavos mayor a 0");
+    }
     if (!input.currency) throw new Error("PaymentChargeInput.currency requerida");
     if (!input.paymentMethodToken) throw new Error("PaymentChargeInput.paymentMethodToken requerido");
     if (!input.idempotencyKey) throw new Error("PaymentChargeInput.idempotencyKey requerida");
 
     const body = new URLSearchParams({
-      // Stripe cobra en la unidad más pequeña de la moneda (centavos para MXN/USD)
-      // — `PaymentChargeInput.amount` ya llega en esa unidad (mismo contrato que
-      // `domain-hoteles/src/money.ts` usa en todo el paquete, nunca un decimal).
-      amount: String(Math.round(input.amount)),
+      // Stripe cobra en la unidad más pequeña de la moneda (centavos para MXN/USD).
+      // `amountCentavos` ya es un entero en esa unidad (tipo `Centavos`, producido por
+      // `pesosACentavos()` en la ruta de folios): aquí NO se redondea ni se escala.
+      amount: String(input.amountCentavos),
       currency: input.currency.toLowerCase(),
       payment_method: input.paymentMethodToken,
       confirm: "true",

@@ -27,6 +27,9 @@ import {
   FolioCerradoError,
   FolioCierreSaldoError,
   tryEnqueueGuestEmail,
+  pesosACentavos,
+  MontoInvalidoError,
+  type Centavos,
   type ChargeConcept,
   type ChargeRecord,
   type PaymentRecord,
@@ -492,6 +495,16 @@ export function hotelesFoliosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const folioId = c.req.param("folioId");
     const raw = await readJsonCapped<PaymentBody>(c.req.raw, 4 * 1024);
     const monto = requirePositiveNumber(raw.monto, "monto");
+    // `monto` llega en PESOS (2 decimales, lo mismo que guarda hoteles.payment.amount). Se
+    // convierte a centavos aquí, una sola vez y validado: un tercer decimal es un 400, nunca un
+    // redondeo silencioso entre lo cobrado y lo registrado.
+    let montoCentavos: Centavos;
+    try {
+      montoCentavos = pesosACentavos(monto);
+    } catch (err) {
+      if (err instanceof MontoInvalidoError) throw Errors.validation("monto: se esperaban pesos con máximo 2 decimales.");
+      throw err;
+    }
     if (raw.metodo !== "efectivo" && raw.metodo !== "transferencia" && raw.metodo !== "tarjeta") {
       throw Errors.validation("metodo: se esperaba efectivo|transferencia|tarjeta.");
     }
@@ -536,7 +549,7 @@ export function hotelesFoliosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
           if (lockedStatus === null) throw Errors.notFound("Folio no encontrado.");
           if (lockedStatus !== "abierto") throw Errors.conflict("El folio está cerrado: no admite nuevos pagos.");
           const paymentResult = await deps.hotelesPaymentsPort.charge({
-            amount: monto,
+            amountCentavos: montoCentavos,
             currency: "MXN",
             paymentMethodToken: tokenPago!,
             idempotencyKey: `${organizationId}:${folioId}:${idempotencyKey}`,

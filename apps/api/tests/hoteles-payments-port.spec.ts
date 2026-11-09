@@ -3,10 +3,10 @@
 // `fetchImpl` inyectado, nunca toca la red real, nunca un mock global.
 import { describe, expect, it } from "vitest";
 import { StripeHotelesPaymentsPort } from "../src/production/hoteles-payments-port.ts";
-import type { PaymentChargeInput } from "@atiende/domain-hoteles";
+import { centavos, type PaymentChargeInput } from "@atiende/domain-hoteles";
 
 function input(overrides: Partial<PaymentChargeInput> = {}): PaymentChargeInput {
-  return { amount: 150000, currency: "MXN", paymentMethodToken: "pm_test_123", idempotencyKey: "folio-1/cargo-1", ...overrides };
+  return { amountCentavos: centavos(150000), currency: "MXN", paymentMethodToken: "pm_test_123", idempotencyKey: "folio-1/cargo-1", ...overrides };
 }
 
 describe("StripeHotelesPaymentsPort", () => {
@@ -32,7 +32,7 @@ describe("StripeHotelesPaymentsPort", () => {
     }) as typeof fetch;
     const port = new StripeHotelesPaymentsPort(fetchImpl, { secretKey: "sk_test_real" });
 
-    const result = await port.charge(input({ amount: 250000, currency: "MXN" }));
+    const result = await port.charge(input({ amountCentavos: centavos(250000), currency: "MXN" }));
 
     expect(capturedUrl).toBe("https://api.stripe.com/v1/payment_intents");
     const headers = capturedInit!.headers as Record<string, string>;
@@ -76,7 +76,7 @@ describe("StripeHotelesPaymentsPort", () => {
     }) as typeof fetch;
     const port = new StripeHotelesPaymentsPort(fetchImpl, { secretKey: "sk_test_real" });
 
-    await expect(port.charge(input({ amount: 0 }))).rejects.toThrow(/amount/);
+    await expect(port.charge(input({ amountCentavos: centavos(0) }))).rejects.toThrow(/amountCentavos/);
     await expect(port.charge(input({ currency: "" }))).rejects.toThrow(/currency/);
     await expect(port.charge(input({ paymentMethodToken: "" }))).rejects.toThrow(/paymentMethodToken/);
     await expect(port.charge(input({ idempotencyKey: "" }))).rejects.toThrow(/idempotencyKey/);

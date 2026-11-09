@@ -45,7 +45,8 @@ export type {
 export { applyTaxes, assertValidTaxConfig } from "./taxes.ts";
 export type { TaxConfig, TaxBreakdown } from "./taxes.ts";
 
-export { roundCurrency } from "./money.ts";
+export { roundCurrency, centavos, pesosACentavos, MontoInvalidoError } from "./money.ts";
+export type { Centavos } from "./money.ts";
 
 export {
   looksLikeAllergyDeclaration,
