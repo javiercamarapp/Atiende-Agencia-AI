@@ -3,6 +3,9 @@
 // campos: la ficha es exactamente el mismo shape que
 // `@atiende/domain-restaurantes::CustomerLookupResult` (tier real, "lo de siempre"
 // real, direcciones guardadas).
+import { etiquetasTraducidas, traductorActivo } from "@atiende/ui";
+import { restaurantesClienteFicha } from "@atiende/ui/i18n/restaurantes/clienteFicha";
+import { restaurantesClientes } from "@atiende/ui/i18n/restaurantes/clientes";
 import { deleteJson, fetchJson, sendJson } from "./admin-client.ts";
 
 export interface CustomerSummary {
@@ -78,16 +81,13 @@ export async function fetchCustomerDetail(fetchImpl: typeof fetch, apiBaseUrl: s
 
 export type TipoGusto = "tortilla" | "salsa" | "omision" | "nota" | "pago" | "propina" | "canal" | "sucursal";
 
-export const ETIQUETA_TIPO_GUSTO: Readonly<Record<TipoGusto, string>> = {
-  tortilla: "Tortilla",
-  salsa: "Salsa",
-  omision: "Sin (omite)",
-  nota: "Nota recurrente",
-  pago: "Forma de pago",
-  propina: "Propina habitual",
-  canal: "Canal",
-  sucursal: "Sucursal",
-};
+/** Etiqueta en el idioma activo (i18n): cada lectura traduce; en espanol, los textos de siempre. El orden de las claves es el de siempre. */
+export const ETIQUETA_TIPO_GUSTO: Readonly<Record<TipoGusto, string>> = etiquetasTraducidas<TipoGusto>(
+  ["tortilla", "salsa", "omision", "nota", "pago", "propina", "canal", "sucursal"],
+  (g) => `restaurantes.clienteFicha.gusto.${g}` as const,
+  restaurantesClienteFicha,
+);
+
 
 export interface DomicilioFicha {
   readonly id: string;
@@ -270,7 +270,8 @@ export interface DistribucionTierWire {
 export async function fetchDistribucionTier(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string): Promise<DistribucionTierWire> {
   const k = await fetchJson<{ tierDistribution: DistribucionTierWire }>(fetchImpl, `${apiBaseUrl}/v1/restaurantes/${propertyId}/admin/kpis/customers`, token);
   // Una respuesta sin la distribucion (servidor viejo) es «no disponible», no un cruce de datos: la pagina lo trata como error.
-  if (!k || typeof k.tierDistribution !== "object" || k.tierDistribution === null) throw new Error("La distribución por nivel no está disponible.");
+  if (!k || typeof k.tierDistribution !== "object" || k.tierDistribution === null) throw new Error(traductorActivo(restaurantesClientes)("restaurantes.clientes.errorDistribucion"));
+
   return k.tierDistribution;
 }
 
