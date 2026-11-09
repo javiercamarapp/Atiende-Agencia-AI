@@ -4,7 +4,7 @@
 // inventadas. Textos en el modulo de area `@atiende/ui/i18n/consumo` (carga perezosa).
 import { useCallback, useEffect, useState } from "react";
 import { Receipt } from "lucide-react";
-import { Card, EstadoCargando, EstadoError, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, useT, useTituloBarra } from "@atiende/ui";
+import { Card, DataTable, EstadoCargando, EstadoError, useT, useTituloBarra } from "@atiende/ui";
 import { consumo } from "@atiende/ui/i18n/consumo";
 import { useFormatos } from "@atiende/ui/i18n/formato";
 import { BarraProgreso } from "../../../components/BarraProgreso.tsx";
@@ -127,54 +127,41 @@ export function ConsumoFacturacion({ apiBaseUrl, token }: { readonly apiBaseUrl:
 
       <Card className="p-4" data-testid="consumo-sucursales">
         <p className="text-ui font-medium">{t("consumo.sucursales")}</p>
-        <Table className="mt-2">
-          <TableHeader>
-            <TableRow>
-              <TableHead>{t("consumo.sucursal")}</TableHead>
-              <TableHead className="text-right">{t("consumo.llamadas")}</TableHead>
-              <TableHead className="text-right">{t("consumo.minutos")}</TableHead>
-              <TableHead className="text-right">{t("consumo.duracion")}</TableHead>
-              <TableHead className="text-right">{t("consumo.pedidos")}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {d.sucursales.map((s) => (
-              <TableRow key={s.propertyId}>
-                <TableCell>{s.nombre}</TableCell>
-                <TableCell className="text-right">{f.numero(s.llamadas)}</TableCell>
-                <TableCell className="text-right">{f.numero(s.minutosVoz)}</TableCell>
-                <TableCell className="text-right">{s.duracionPromedioS === null ? "—" : f.numero(s.duracionPromedioS / 60, { maximumFractionDigits: 1 })}</TableCell>
-                <TableCell className="text-right">{f.numero(s.pedidosAgentes)}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+        <div className="mt-2">
+          <DataTable<Consumo["sucursales"][number]>
+            etiqueta={t("consumo.sucursales")}
+            filas={d.sucursales}
+            obtenerId={(s) => s.propertyId}
+            paginacion={false}
+            columnas={[
+              { id: "sucursal", encabezado: t("consumo.sucursal"), principal: true, celda: (s) => s.nombre },
+              { id: "llamadas", encabezado: t("consumo.llamadas"), alinear: "right", celda: (s) => f.numero(s.llamadas) },
+              { id: "minutos", encabezado: t("consumo.minutos"), alinear: "right", celda: (s) => f.numero(s.minutosVoz) },
+              { id: "duracion", encabezado: t("consumo.duracion"), alinear: "right", celda: (s) => (s.duracionPromedioS === null ? "—" : f.numero(s.duracionPromedioS / 60, { maximumFractionDigits: 1 })) },
+              { id: "pedidos", encabezado: t("consumo.pedidos"), alinear: "right", celda: (s) => f.numero(s.pedidosAgentes) },
+            ]}
+          />
+        </div>
         <p className="mt-2 text-eyebrow text-faint">{t("consumo.waNoDesglosa")}</p>
       </Card>
 
       {d.historial.length > 0 && (
         <Card className="p-4" data-testid="consumo-historial">
           <p className="text-ui font-medium">{t("consumo.historial")}</p>
-          <Table className="mt-2">
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t("consumo.mes")}</TableHead>
-                <TableHead className="text-right">{t("consumo.llamadas")}</TableHead>
-                <TableHead className="text-right">{t("consumo.minutos")}</TableHead>
-                <TableHead className="text-right">{t("consumo.conversaciones")}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {d.historial.map((h) => (
-                <TableRow key={h.mes}>
-                  <TableCell>{f.fecha(`${h.mes}T12:00:00`, "mesAnio")}</TableCell>
-                  <TableCell className="text-right">{f.numero(h.llamadas)}</TableCell>
-                  <TableCell className="text-right">{f.numero(h.minutosVoz)}</TableCell>
-                  <TableCell className="text-right">{f.numero(h.conversacionesWa)}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <div className="mt-2">
+            <DataTable<Consumo["historial"][number]>
+              etiqueta={t("consumo.historial")}
+              filas={d.historial}
+              obtenerId={(h) => h.mes}
+              paginacion={false}
+              columnas={[
+                { id: "mes", encabezado: t("consumo.mes"), principal: true, celda: (h) => f.fecha(`${h.mes}T12:00:00`, "mesAnio") },
+                { id: "llamadas", encabezado: t("consumo.llamadas"), alinear: "right", celda: (h) => f.numero(h.llamadas) },
+                { id: "minutos", encabezado: t("consumo.minutos"), alinear: "right", celda: (h) => f.numero(h.minutosVoz) },
+                { id: "conversaciones", encabezado: t("consumo.conversaciones"), alinear: "right", celda: (h) => f.numero(h.conversacionesWa) },
+              ]}
+            />
+          </div>
         </Card>
       )}
     </div>
