@@ -5,12 +5,14 @@
 // href, un solo h1, aviso de fuentes no disponibles, ranking con anomalías y detalle del cliente activo.
 import { act } from "react";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactElement } from "react";
 import { cfdiDelMes, DashboardPage } from "../src/verticals/despachos/pages/Dashboard.tsx";
 import type { DespachosShellContext } from "../src/verticals/despachos/DespachosShell.tsx";
 import type { DashboardDespacho, KpisCliente } from "../src/verticals/despachos/lib/dashboard-client.ts";
 import { flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+import { IdiomaProvider, cargarIdioma } from "@atiende/ui";
+import { fijarIdiomaActivo } from "../../../packages/ui/src/i18n/activo.ts";
 
 let rendered: RenderedComponent | undefined;
 
@@ -229,5 +231,34 @@ describe("DashboardPage (despachos)", () => {
     expect(cfdiDelMes([CLIENTE_CRITICO, CLIENTE_SIN_DATOS])).toEqual({ total: 4, periodo: "2026-09", clientes: 1 });
     expect(cfdiDelMes([CLIENTE_SIN_DATOS])).toBeNull();
     expect(cfdiDelMes([])).toBeNull();
+  });
+});
+
+describe("Resumen de despachos en ingles (i18n ES/EN)", () => {
+  beforeAll(() => cargarIdioma("en"));
+  beforeEach(() => {
+    document.documentElement.dataset.diseno = "ds3";
+  });
+  afterEach(() => {
+    fijarIdiomaActivo("es");
+    delete document.documentElement.dataset.diseno;
+  });
+
+  it("KPIs y textos en ingles con las mismas cifras", async () => {
+    stub(() => new Response(JSON.stringify(DASHBOARD), { status: 200 }));
+    rendered = renderComponent(
+      <IdiomaProvider idiomaInicial="en">
+        <MemoryRouter>
+          <DashboardPage {...CTX} />
+        </MemoryRouter>
+      </IdiomaProvider>,
+    );
+    await esperar();
+    const text = rendered.container.textContent!;
+    expect(text).toContain("$11,600.00");
+    expect(text).toContain("Pending work");
+    expect(text).toContain("Collection rate");
+    expect(rendered.container.querySelector("h1")?.textContent).toMatch(/^(Good morning|Good afternoon|Good evening), Ana$/);
+    for (const es of ["Pendientes de trabajo", "Tasa de cobranza", "con el mes anterior abierto"]) expect(text).not.toContain(es);
   });
 });
