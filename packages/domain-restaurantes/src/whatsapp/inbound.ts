@@ -211,6 +211,10 @@ export async function handleInboundWhatsAppMessage(
     readonly botonId?: string;
     /** Instante (ms) en que el cliente envio el mensaje: con mas de ~23 h ya no se encolan botones (ventana de 24 h de WhatsApp). Ausente = acaba de escribir. */
     readonly recibidoEnMs?: number;
+    /** Ola 4 (H2): instante absoluto (ms) en que muere la funcion del webhook (`inicio + FUNCION_MAX_MS`). El turno recibe
+     * `finTurnoMs = finFuncionMs - MARGEN_CIERRE_TURNO_MS` para terminar con tiempo de confirmar la transaccion del lote. Ausente = solo
+     * el presupuesto propio del handler (que empieza a contar al iniciar el turno, no al iniciar la funcion). */
+    readonly finFuncionMs?: number;
   },
 ): Promise<InboundMessageOutcome> {
   const { organizationId, messageId, phone, phoneNumberId, propertyId, handoffGate, privacy } = args;
@@ -322,6 +326,7 @@ export async function handleInboundWhatsAppMessage(
                 customer: await lookupCustomerConPedidoReciente(repo, organizationId, phone),
                 propertyId: propertyId ?? null,
                 messageId,
+                ...(args.finFuncionMs !== undefined ? { finTurnoMs: args.finFuncionMs - MARGEN_CIERRE_TURNO_MS } : {}),
               });
 
       // PM PR-2 (carrera): el personal pudo contestar desde la app MIENTRAS el modelo pensaba (la toma por eco se abrio en otra transaccion). Se vuelve a mirar justo antes de enviar:
