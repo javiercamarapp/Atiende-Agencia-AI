@@ -16,6 +16,7 @@ import type { consola } from "./consola.ts";
 import type { datos } from "./datos.ts";
 import type { nav } from "./nav.ts";
 import type { notif } from "./notif.ts";
+import type { ModulosRestaurantes } from "./restaurantes/index.ts";
 import type { rol } from "./rol.ts";
 import type { shell } from "./shell.ts";
 import type { waMeta } from "./waMeta.ts";
@@ -32,7 +33,7 @@ export const MODULOS = {} as const;
  * (`readonly <area>: typeof <area>` con `import type`). Quien lo usa lo pasa a `useT(<area>)` / `useI18n(<area>)`, que registra su
  * espanol en el render (fuera de React: `registrarModuloEs(<area>)`). El archivo del modulo NO tiene efectos al importarse.
  */
-interface ModulosDeArea {
+interface ModulosDeArea extends ModulosRestaurantes {
   readonly comun: typeof comun;
   readonly nav: typeof nav;
   readonly shell: typeof shell;

@@ -10,8 +10,11 @@
 // compactan en el boton «Herramientas».
 import { useEffect, useRef, useState } from "react";
 import { Package, Truck, CalendarClock } from "lucide-react";
-import { EstadoError, PageContainer, RegionCargando, StatusBadge, TicketCocinaDialog, cn, construirTicketCocina, imprimirTicketsCocina, notify, pedidosPorImprimir } from "@atiende/ui";
-import type { TicketCocina } from "@atiende/ui";
+import { EstadoError, PageContainer, RegionCargando, StatusBadge, TicketCocinaDialog, cn, construirTicketCocina, imprimirTicketsCocina, notify, pedidosPorImprimir, useT } from "@atiende/ui";
+import type { Clave, TicketCocina } from "@atiende/ui";
+
+import { restaurantesComun } from "@atiende/ui/i18n/restaurantes/comun";
+import { restaurantesPedidos } from "@atiende/ui/i18n/restaurantes/pedidos";
 import { fetchAvisos, sonidoPedidoNuevoPermitido } from "../lib/avisos-client.ts";
 import { fetchAdminBranches } from "../lib/branches-client.ts";
 import type { BranchDetail } from "../lib/branches-client.ts";
@@ -50,20 +53,21 @@ type PestanaPedidos = OrderStatus | "todos" | "programados";
 /** Estados que siguen «en el restaurante» (todas las recibidas). */
 const RECIBIDAS_STATUSES: readonly OrderStatus[] = ["pending", "preparando", "listo_para_recoger", "no_recogido", "problema"];
 
-const VISTAS: readonly { readonly id: Vista; readonly etiqueta: string; readonly icono: typeof Package }[] = [
-  { id: "recibidas", etiqueta: "Órdenes recibidas", icono: Package },
-  { id: "enviadas", etiqueta: "Órdenes enviadas", icono: Truck },
-  { id: "programadas", etiqueta: "Órdenes programadas", icono: CalendarClock },
+const VISTAS: readonly { readonly id: Vista; readonly clave: Clave; readonly icono: typeof Package }[] = [
+  { id: "recibidas", clave: "restaurantes.pedidos.vista.recibidas", icono: Package },
+  { id: "enviadas", clave: "restaurantes.pedidos.vista.enviadas", icono: Truck },
+  { id: "programadas", clave: "restaurantes.pedidos.vista.programadas", icono: CalendarClock },
 ];
 
-const CHIPS_RECIBIDAS: readonly { readonly id: FiltroRecibidas; readonly etiqueta: string }[] = [
-  { id: "todos", etiqueta: "Todos" },
-  { id: "por_aprobar", etiqueta: "Por aprobar" },
-  { id: "pending", etiqueta: "Recibido" },
-  { id: "preparando", etiqueta: "Preparando" },
-  { id: "listo_para_recoger", etiqueta: "Listo para recoger" },
-  { id: "no_recogido", etiqueta: "No recogido" },
-  { id: "problema", etiqueta: "Incidencia" },
+// Los chips de estado dicen lo mismo que la etiqueta del estado (restaurantes.estado.*).
+const CHIPS_RECIBIDAS: readonly { readonly id: FiltroRecibidas; readonly clave: Clave }[] = [
+  { id: "todos", clave: "restaurantes.pedidos.filtro.todos" },
+  { id: "por_aprobar", clave: "restaurantes.estado.por_aprobar" },
+  { id: "pending", clave: "restaurantes.estado.pending" },
+  { id: "preparando", clave: "restaurantes.estado.preparando" },
+  { id: "listo_para_recoger", clave: "restaurantes.estado.listo_para_recoger" },
+  { id: "no_recogido", clave: "restaurantes.estado.no_recogido" },
+  { id: "problema", clave: "restaurantes.estado.problema" },
 ];
 
 /** Minutos que se le dan a una entrega al confirmar el envio (igual que el original). */
@@ -83,6 +87,7 @@ function storageLocal(): Storage | null {
 }
 
 export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: RestaurantesShellContext) {
+  const t = useT(restaurantesComun, restaurantesPedidos);
   const [vista, setVista] = useState<Vista>("recibidas");
   const [filtro, setFiltro] = useState<FiltroRecibidas>("todos");
   // Lo que se consulta segun la pildora y el chip activos.
@@ -216,7 +221,7 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
     const pendientes = pedidos.filter((o) => o.status === "pending");
     const resultados = await Promise.allSettled(pendientes.map((o) => registrarTicketImpreso(fetch, apiBaseUrl, token, propertyId, o.id)));
     if (resultados.some((r) => r.status === "rejected")) {
-      setAvisoImpresion("El ticket salió, pero no se pudo avisar al sistema: la aceptación automática no se activará para ese pedido; acéptelo a mano.");
+      setAvisoImpresion(t("restaurantes.pedidos.aviso.ticketSinSistema"));
     }
   }
 
@@ -226,7 +231,7 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
     const reimpresion = yaImpreso ? (base.reimpresiones[order.id] ?? 0) + 1 : 0;
     const ok = imprimirTicketsCocina([construirTicketCocina(order, { reimpresion })]);
     if (!ok) {
-      setAvisoImpresion("Este navegador no pudo abrir la impresión.");
+      setAvisoImpresion(t("restaurantes.pedidos.aviso.impresionNoAbrio"));
       return;
     }
     setAvisoImpresion(null);
@@ -237,7 +242,7 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
   async function activarAutoImpresion(): Promise<void> {
     const st = storageLocal();
     if (!st || !storageDisponible(st)) {
-      setAvisoImpresion("La auto-impresión necesita guardar datos en este navegador y no está disponible.");
+      setAvisoImpresion(t("restaurantes.pedidos.aviso.autoSinAlmacenamiento"));
       return;
     }
     try {
@@ -247,7 +252,7 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
       actualizarPrefs({ ...marcarImpresos(prefsActuales(), page.orders.map((o) => o.id)), autoImprimir: true });
       setAvisoImpresion(null);
     } catch (err) {
-      setAvisoImpresion(err instanceof Error ? err.message : "No se pudo activar la auto-impresión.");
+      setAvisoImpresion(err instanceof Error ? err.message : t("restaurantes.pedidos.aviso.autoNoActivo"));
     }
   }
 
@@ -296,10 +301,10 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
             prefsRef.current = frescas;
             setPrefs(frescas);
           }
-          setAvisoImpresion("Este navegador no pudo abrir la impresión automática.");
+          setAvisoImpresion(t("restaurantes.pedidos.aviso.autoNoAbrio"));
         }
       } catch (err) {
-        if (!cancelado) setAvisoImpresion(`Auto-impresión sin conexión: ${err instanceof Error ? err.message : "error al consultar pedidos"}`);
+        if (!cancelado) setAvisoImpresion(t("restaurantes.pedidos.aviso.autoSinConexion", { detalle: err instanceof Error ? err.message : t("restaurantes.pedidos.aviso.autoErrorConsulta") }));
       } finally {
         autoEnCurso.current = false;
       }
@@ -340,10 +345,10 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
       const r = await fetchAutopilotoConfig(fetch, apiBaseUrl, token, propertyId);
       const valida = r?.config && Array.isArray(r.plantillas);
       setAutoConfig(valida ? r : null);
-      if (!valida) setAutoConfigError("No se pudieron cargar las reglas del autopiloto.");
+      if (!valida) setAutoConfigError(t("restaurantes.pedidos.error.reglas"));
     } catch (err) {
       setAutoConfig(null);
-      setAutoConfigError(err instanceof Error ? err.message : "No se pudieron cargar las reglas del autopiloto.");
+      setAutoConfigError(err instanceof Error ? err.message : t("restaurantes.pedidos.error.reglas"));
     }
   }
 
@@ -373,7 +378,7 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
         if (status === "pending") fijarLineaBase(page.orders);
       }
     } catch (err) {
-      if (gen === cargaGenRef.current) setError(err instanceof Error ? err.message : "No se pudieron cargar los pedidos.");
+      if (gen === cargaGenRef.current) setError(err instanceof Error ? err.message : t("restaurantes.pedidos.error.pedidos"));
     }
   }
 
@@ -475,7 +480,7 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
       setRepartidores(await fetchRepartidores(fetch, apiBaseUrl, token, propertyId));
     } catch (err) {
       setRepartidores(null);
-      setRepartidoresError(err instanceof Error ? err.message : "No se pudieron cargar los repartidores.");
+      setRepartidoresError(err instanceof Error ? err.message : t("restaurantes.pedidos.error.repartidores"));
     }
   }
 
@@ -528,7 +533,7 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
       await load();
       return true;
     } catch (err) {
-      const mensaje = err instanceof Error ? err.message : "No se pudo cambiar el estado del pedido.";
+      const mensaje = err instanceof Error ? err.message : t("restaurantes.pedidos.error.cambiarEstado");
       setError(mensaje);
       if (extra.motivo) setErrorCancelar(mensaje);
       if (extra.incidentNote !== undefined) setErrorIncidencia(mensaje);
@@ -547,7 +552,7 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
       return;
     }
     const ok = await aplicarCambioEstado(order, nextStatus);
-    if (ok && nextStatus === "entregado") notify.success(`Pedido entregado — ${etiquetaFolio(order)} se marcó como entregado.`);
+    if (ok && nextStatus === "entregado") notify.success(t("restaurantes.pedidos.exito.entregado", { folio: etiquetaFolio(order) }));
   }
 
   // «Confirmar envío» (repo suelto): asigna al repartidor Y manda el pedido a reparto. Respeta la maquina de estados real: solo un pedido en
@@ -562,16 +567,16 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
       await assignRepartidor(fetch, apiBaseUrl, token, propertyId, order.id, repartidorId, estimada);
       if (sale) await updateOrderStatus(fetch, apiBaseUrl, token, propertyId, order.id, "en_camino");
       if (sale) {
-        notify.success(`Pedido enviado — ${etiquetaFolio(order)} pasó a Enviadas.`);
+        notify.success(t("restaurantes.pedidos.exito.enviado", { folio: etiquetaFolio(order) }));
         setVista("enviadas");
         setSelectedOrderId(order.id);
       } else {
-        notify.success(`Repartidor asignado — ${etiquetaFolio(order)}. Márcalo como Preparando para poder enviarlo.`);
+        notify.success(t("restaurantes.pedidos.exito.asignado", { folio: etiquetaFolio(order) }));
       }
       await load();
       return true;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo despachar el pedido.");
+      setError(err instanceof Error ? err.message : t("restaurantes.pedidos.error.despachar"));
       // El repartidor ya pudo quedar asignado aunque el cambio de estado fallara: se recarga para no mostrar un estado viejo.
       void load();
       return false;
@@ -618,22 +623,24 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
   const cargandoLista = vista === "programadas" ? programados === null : orders === null;
   const porAprobar = aprobaciones?.solicitudes.length ?? 0;
   const textoTiempos = tiempos
-    ? `Tiempo prometido hoy: domicilio ${tiempos.domicilio.texto}; recoger ${tiempos.recoger.texto}${
-        tiempos.domicilio.origen === "aprendido" || tiempos.recoger.origen === "aprendido" ? " (aprendido de las entregas recientes; nunca menos que el tiempo que fijó el dueño)" : " (el tiempo que fijó el dueño; aún no hay entregas suficientes para aprender)"
-      }${tiempos.domicilio.saturacion !== "normal" || tiempos.recoger.saturacion !== "normal" ? ". Hay alta carga: se está alargando el tiempo prometido." : "."}`
+    ? t(tiempos.domicilio.saturacion !== "normal" || tiempos.recoger.saturacion !== "normal" ? "restaurantes.pedidos.tiempos.altaCarga" : "restaurantes.pedidos.tiempos.normal", {
+        domicilio: tiempos.domicilio.texto,
+        recoger: tiempos.recoger.texto,
+        origen: t(tiempos.domicilio.origen === "aprendido" || tiempos.recoger.origen === "aprendido" ? "restaurantes.pedidos.tiempos.aprendido" : "restaurantes.pedidos.tiempos.fijo"),
+      })
     : null;
   const estadoActualizacion = sondeo.pausado
-    ? "En pausa (pestaña oculta)"
+    ? t("restaurantes.pedidos.sondeo.pausa")
     : sondeo.fallosSeguidos > 0
-      ? `Sin conexión: reintentando en ${Math.round(sondeo.proximoEnMs / 1000)} s`
-      : `${etiquetaActualizado(sondeo.ultimaActualizacion, ahoraMs)} · cada ${SONDEO_BASE_MS / 1000} s`;
-  const vacioTexto = vista === "enviadas" ? "No hay pedidos en camino" : filtro === "todos" ? "No hay pedidos por despachar" : "No hay pedidos en este filtro";
+      ? t("restaurantes.pedidos.sondeo.sinConexion", { s: Math.round(sondeo.proximoEnMs / 1000) })
+      : t("restaurantes.pedidos.sondeo.cada", { actualizado: etiquetaActualizado(sondeo.ultimaActualizacion, ahoraMs), s: SONDEO_BASE_MS / 1000 });
+  const vacioTexto = t(vista === "enviadas" ? "restaurantes.pedidos.vacio.enCamino" : filtro === "todos" ? "restaurantes.pedidos.vacio.porDespachar" : "restaurantes.pedidos.vacio.filtro");
   const IconoVacio = vista === "enviadas" ? Truck : Package;
 
   return (
     <PageContainer padding="none">
       {/* El nombre de la pagina lo pinta la barra superior del shell (contrato de pagina UNI-4): el h1 queda solo para lectores de pantalla. */}
-      <h1 className="sr-only">Pedidos en operación</h1>
+      <h1 className="sr-only">{t("restaurantes.pedidos.titulo")}</h1>
 
       {detalleId ? (
         <PedidoDetalle
@@ -651,7 +658,7 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
           <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
               <p className="text-eyebrow tabular-nums text-muted-foreground" data-testid="total-pedidos">
-                {conteo} en total
+                {t("restaurantes.pedidos.total", { n: conteo })}
               </p>
               <HerramientasPedidos
                 estadoActualizacion={estadoActualizacion}
@@ -672,8 +679,8 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
                 tiempoPrometido={textoTiempos}
               />
             </div>
-            <div role="tablist" aria-label="Vista de pedidos" className="inline-flex w-full items-center gap-1 rounded-full border border-border bg-muted/40 p-1 sm:w-auto">
-              {VISTAS.map(({ id, etiqueta, icono: Icono }) => (
+            <div role="tablist" aria-label={t("restaurantes.pedidos.vista.aria")} className="inline-flex w-full items-center gap-1 rounded-full border border-border bg-muted/40 p-1 sm:w-auto">
+              {VISTAS.map(({ id, clave, icono: Icono }) => (
                 <button
                   key={id}
                   type="button"
@@ -686,14 +693,14 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
                   )}
                 >
                   <Icono className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
-                  {etiqueta}
+                  {t(clave)}
                 </button>
               ))}
             </div>
           </div>
 
           {vista === "recibidas" && (
-            <div role="group" aria-label="Filtrar por estado" className="flex flex-wrap items-center gap-1.5">
+            <div role="group" aria-label={t("restaurantes.pedidos.filtro.aria")} className="flex flex-wrap items-center gap-1.5">
               {CHIPS_RECIBIDAS.map((c) => (
                 <button
                   key={c.id}
@@ -705,7 +712,7 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
                     filtro === c.id ? "border-primary/40 bg-primary/10 text-primary" : "border-border text-muted-foreground hover:text-foreground",
                   )}
                 >
-                  {c.etiqueta}
+                  {t(c.clave)}
                   {c.id === "por_aprobar" && porAprobar > 0 && (
                     <StatusBadge tone="warning" dot={false} className="px-1.5 py-0 text-2xs" data-testid="insignia-por-aprobar">
                       {porAprobar}
@@ -724,7 +731,7 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
           {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
           {repartidoresError && (
             <p role="alert" className="m-0 text-xs text-destructive">
-              No se pudo cargar la lista de repartidores: {repartidoresError}
+              {t("restaurantes.pedidos.error.listaRepartidores", { detalle: repartidoresError })}
             </p>
           )}
 
@@ -745,12 +752,12 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
             !error && (
               <RegionCargando
                 ocupado
-                etiquetaDs3={vista === "programadas" ? "Cargando pedidos programados…" : "Cargando pedidos…"}
+                etiquetaDs3={t(vista === "programadas" ? "restaurantes.pedidos.cargandoProgramados" : "restaurantes.pedidos.cargando")}
                 className="flex items-center justify-center rounded-2xl border border-border bg-card p-12"
                 claseDs3="min-h-40 rounded-2xl border border-border bg-card"
                 giro="h-5 w-5 text-muted-foreground"
               >
-                <span className="sr-only">{vista === "programadas" ? "Cargando pedidos programados…" : "Cargando pedidos…"}</span>
+                <span className="sr-only">{t(vista === "programadas" ? "restaurantes.pedidos.cargandoProgramados" : "restaurantes.pedidos.cargando")}</span>
               </RegionCargando>
             )
           ) : vista === "programadas" ? (
@@ -820,7 +827,7 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
       <TicketCocinaDialog
         ticket={vistaPrevia?.ticket ?? null}
         onClose={() => setVistaPrevia(null)}
-        etiquetaImprimir={vistaPrevia && prefs.impresos.includes(vistaPrevia.orderId) ? "Reimprimir" : "Imprimir"}
+        etiquetaImprimir={t(vistaPrevia && prefs.impresos.includes(vistaPrevia.orderId) ? "restaurantes.pedidos.reimprimir" : "restaurantes.pedidos.imprimir")}
         onImprimir={() => {
           const o = orders?.find((x) => x.id === vistaPrevia?.orderId);
           if (o) imprimirPedido(o);
@@ -837,7 +844,7 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
           void aplicarCambioEstado(order, "problema", { incidentNote: nota }).then((ok) => {
             if (!ok) return;
             setIncidencia(null);
-            notify.success(`Incidencia reportada — ${etiquetaFolio(order)} pasó a Incidencias.`);
+            notify.success(t("restaurantes.pedidos.exito.incidencia", { folio: etiquetaFolio(order) }));
           });
         }}
       />
@@ -845,9 +852,9 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
       <MotivoDialogo
         open={cancelando !== null}
         onOpenChange={(o) => !o && setCancelando(null)}
-        titulo="¿Cancelar este pedido?"
-        subtitulo={cancelando ? `${etiquetaFolio(cancelando)} — ${cancelando.customerName} pasará a "Cancelado" y saldrá de Recibidos. Sigue visible en Historial. Se avisa al cliente y no se puede deshacer.` : undefined}
-        textoConfirmar="Sí, cancelar pedido"
+        titulo={t("restaurantes.pedidos.cancelar.titulo")}
+        subtitulo={cancelando ? t("restaurantes.pedidos.cancelar.subtitulo", { folio: etiquetaFolio(cancelando), cliente: cancelando.customerName }) : undefined}
+        textoConfirmar={t("restaurantes.pedidos.cancelar.confirmar")}
         tonoPeligro
         error={errorCancelar}
         enCurso={changingId !== null}
@@ -855,7 +862,8 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
           if (!cancelando) return;
           void aplicarCambioEstado(cancelando, "cancelado", { motivo }).then((ok) => {
             if (!ok) return;
-            notify.success(`Pedido cancelado — ${etiquetaFolio(cancelando)} se canceló.`);
+            notify.success(t("restaurantes.pedidos.exito.cancelado", { folio: etiquetaFolio(cancelando) }));
+
             setCancelando(null);
           });
         }}

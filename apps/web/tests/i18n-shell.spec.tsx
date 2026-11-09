@@ -80,7 +80,7 @@ describe("shell en ingles", () => {
     expect(etiquetas(rendered.container)).toContain("Navegación principal");
     act(() => guardarIdioma("en"));
     expect(etiquetas(rendered.container)).toContain("Main navigation");
-    expect(document.documentElement.lang).toBe("en");
+    expect(document.documentElement.lang).toBe("en-US");
   });
 });
 

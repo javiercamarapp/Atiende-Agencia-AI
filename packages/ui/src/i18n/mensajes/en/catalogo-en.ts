@@ -8,6 +8,7 @@ import { consolaEn } from "./consola.ts";
 import { datosEn } from "./datos.ts";
 import { navEn } from "./nav.ts";
 import { notifEn } from "./notif.ts";
+import { MODULOS_EN_RESTAURANTES } from "./restaurantes/index.ts";
 import { rolEn } from "./rol.ts";
 import { shellEn } from "./shell.ts";
 import { waMetaEn } from "./waMeta.ts";
@@ -21,4 +22,5 @@ export const MODULOS_EN = {
   notif: notifEn,
   datos: datosEn,
   waMeta: waMetaEn,
+  ...MODULOS_EN_RESTAURANTES,
 } as const satisfies ModulosTraducidos;

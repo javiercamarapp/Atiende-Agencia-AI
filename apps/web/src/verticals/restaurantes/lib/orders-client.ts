@@ -2,25 +2,23 @@
 // listado para ambas vistas (ver comentario de cabecera de admin-orders.ts), un
 // filtro distinto por página. Estados reales de `orders.status`
 // (migrations/001_restaurantes_schema.sql) — nunca inventados.
+import { etiquetasTraducidas, traductorActivo } from "@atiende/ui";
+import { restaurantesComun } from "@atiende/ui/i18n/restaurantes/comun";
 import { fetchJson, sendJson } from "./admin-client.ts";
+
+const trComun = traductorActivo(restaurantesComun);
 
 export type OrderStatus = "pending" | "preparando" | "en_camino" | "entregado" | "cancelado" | "completado" | "problema" | "listo_para_recoger" | "no_recogido" | "programado" | "por_aprobar";
 
 export type OrderCanal = "domicilio" | "recoger";
 
-export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
-  pending: "Recibido",
-  preparando: "Preparando",
-  en_camino: "En camino",
-  entregado: "Entregado",
-  completado: "Completado",
-  cancelado: "Cancelado",
-  problema: "Incidencia",
-  listo_para_recoger: "Listo para recoger",
-  no_recogido: "No recogido",
-  programado: "Programado",
-  por_aprobar: "Por aprobar",
-};
+/** Etiqueta visible de cada estado, en el idioma activo de la consola (i18n): cada lectura traduce, asi que el mapa se usa igual que
+ *  antes (`ORDER_STATUS_LABELS[s]`) y en espanol da exactamente el texto de siempre. */
+export const ORDER_STATUS_LABELS: Readonly<Record<OrderStatus, string>> = etiquetasTraducidas<OrderStatus>(
+  ["pending", "preparando", "en_camino", "entregado", "completado", "cancelado", "problema", "listo_para_recoger", "no_recogido", "programado", "por_aprobar"],
+  (s) => `restaurantes.estado.${s}` as const,
+  restaurantesComun,
+);
 
 /** Próximos estados que SÍ aplican al canal del pedido: un pedido para recoger no sale "en_camino" y los estados
  * de recoger no aplican a domicilio. Canal desconocido (pedido histórico) ofrece todos; el servidor valida igual. */
@@ -150,7 +148,7 @@ export function etiquetaFolio(order: { readonly id: string; readonly orderNumber
 
 /** «Venta 1001» (folio de 4 digitos como minimo); sin folio, el id corto en mayusculas («#A1B2C3D4»). */
 export function etiquetaVenta(order: { readonly id: string; readonly orderNumber?: number | null }): string {
-  return order.orderNumber != null ? `Venta ${String(order.orderNumber).padStart(4, "0")}` : `#${idCortoPedido(order.id).toUpperCase()}`;
+  return order.orderNumber != null ? trComun("restaurantes.venta", { folio: String(order.orderNumber).padStart(4, "0") }) : `#${idCortoPedido(order.id).toUpperCase()}`;
 }
 
 export async function updateOrderStatus(
