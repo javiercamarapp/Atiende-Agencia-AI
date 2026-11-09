@@ -138,6 +138,7 @@ export const nav = {
   "nav.costosFacturacion": "Costos y facturación",
   "nav.consumoIa": "Consumo de IA",
   "nav.ejecutivo": "Ejecutivo / Board",
+  "nav.cfoPlataforma": "CFO de la plataforma",
   "nav.plataforma": "Plataforma",
   "nav.integraciones": "Integraciones",
   "nav.seguridadMfa": "Seguridad (MFA)",
