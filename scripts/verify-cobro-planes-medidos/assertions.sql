@@ -1,4 +1,4 @@
--- Cobro por plan medido (packages/db/migrations/0080 + packages/domain-restaurantes/migrations/200) contra Postgres REAL.
+-- Cobro por plan medido (packages/db/migrations/0103 + packages/domain-restaurantes/migrations/203) contra Postgres REAL.
 -- Cada escenario corre en su propio `begin; ... rollback;`. Alias `should_fail` = debe terminar en ERROR; alias con
 -- sufijo `_deberia_ser_N` = valor esperado (ver scripts/verify-real-postgres-ci/run-gate.mjs). Datos ficticios.
 -- Sesion de sistema = sin `set local role` ni claim (auth.uid() es null); usuario real = `set local role authenticated`

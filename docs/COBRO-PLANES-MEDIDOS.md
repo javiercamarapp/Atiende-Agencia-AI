@@ -1,7 +1,7 @@
 # Cobro por plan medido (restaurantes primero)
 
-Migraciones: `packages/db/migrations/0080_cobro_planes_medidos.sql` (tarifa del plan) y
-`packages/domain-restaurantes/migrations/200_uso_facturable.sql` (uso del mes). Espejos en `supabase/migrations/20240101000700_*` y `..._701_*`.
+Migraciones: `packages/db/migrations/0103_cobro_planes_medidos.sql` (tarifa del plan) y
+`packages/domain-restaurantes/migrations/203_uso_facturable.sql` (uso del mes). Espejos en `supabase/migrations/20240101000910_*` y `..._911_*`.
 Verificación contra Postgres real: `scripts/verify-cobro-planes-medidos/` (la corre el gate de CI).
 
 ## Por qué
@@ -58,14 +58,14 @@ Base sin migrar: las lecturas responden `disponible: false` y la escritura 503; 
 ## Orden de despliegue
 
 1. Desplegar el código: contra la base vieja todo responde «no disponible» y nada cambia.
-2. Aplicar `20240101000700_0080_cobro_planes_medidos.sql` y después `20240101000701_200_uso_facturable.sql` (solo aditivas).
+2. Aplicar `20240101000910_0103_cobro_planes_medidos.sql` y después `20240101000911_203_uso_facturable.sql` (solo aditivas).
 3. Capturar los planes y tarifas desde el superadmin.
 
 ## Rollback
 
 Las instrucciones exactas están en la cabecera de cada migración (drop de funciones, triggers y columnas). Se pierde la tarifa capturada.
 
-## Tabulador, bandas de volumen, planes de lista y cotizador (0081, 0082, restaurantes 201)
+## Tabulador, bandas de volumen, planes de lista y cotizador (0104, 0105, restaurantes 204)
 
 - **Tabulador por sucursal** (`core.plan_tramo_sucursal`): el precio por sucursal lo fija el TOTAL de sucursales activas (escalón por volumen). Cada tramo puede traer su propia bolsa por sucursal. Tramo con precio NULL = «a cotizar».
 - **Bandas de volumen** (`core.plan_banda_uso`): precio GRADUADO por minuto o conversación según el volumen mensual de la cuenta, con el **costo unitario de cada banda** (el costo también baja con el volumen). Si un plan tiene bandas para una métrica, su excedente se cobra por bandas. Banda con precio NULL = volumen a cotizar.
@@ -77,9 +77,9 @@ Las instrucciones exactas están en la cabecera de cada migración (drop de func
 - **Margen por organización** (`GET /superadmin/cobro/organizaciones`): ingreso proyectado, costo con los costos unitarios y margen, marcado si queda debajo del mínimo del plan.
 - **Avisos de bolsa** (`apps/api/src/plan-topes/aviso-bolsa.ts`): al 80 %, al 100 % y al pasar el uso justo, in-app y por correo al dueño (y a superadmin al pasar el uso justo). Corre en el cron diario existente `/internal/plataforma/prueba-avisos` (no agrega cron; siguen 40 de 40). Reclamo idempotente en `core.cobro_aviso_bolsa`. **Nada se corta.**
 
-Orden de despliegue: código → `20240101000702_0081_*` → `20240101000703_201_*` → `20240101000704_0082_*`. Rollback: cabecera de cada migración.
+Orden de despliegue: código → `20240101000912_0104_*` → `20240101000913_204_*` → `20240101000914_0105_*`. Rollback: cabecera de cada migración.
 
-## Stripe, cobranza y CFDI (0083)
+## Stripe, cobranza y CFDI (0106)
 
 - **Lista permitida de precios** (`core.plan_stripe_precio`): por plan y componente (`cuota_fija`, `sucursal`, `alta`, `minuto_voz_excedente`, `conversacion_wa_excedente`). `PUT /superadmin/planes/:id/stripe-precios/:componente` (step-up) valida el precio contra Stripe: activo, en MXN, recurrente y mayor que $0. El alta es de pago único y los excedentes son precios **medidos** ligados a un meter. `POST /billing/checkout` (el de antes) ya solo acepta precios de esta lista.
 - **Autoservicio con tarjeta**: `POST /billing/checkout-plan`. La sucursal se cobra por cantidad, los medidos van sin cantidad y el alta entra solo en la primera factura. El IVA usa `STRIPE_IVA_TAX_RATE_ID`; sin esa variable, responde 503. El periodo se ancla al día 1 en la zona del negocio, así que el periodo de Stripe coincide con el mes que se mide.
@@ -99,4 +99,4 @@ Configuración en Stripe (la hace una persona; no la toca ninguna migración):
 5. Habilitar la transferencia bancaria (SPEI) en la cuenta.
 6. Suscribir el webhook a `invoice.paid`, `invoice.payment_failed` e `invoice.created`.
 
-Orden de despliegue: código, después `20240101000705_0083_*` y después la configuración de Stripe de arriba.
+Orden de despliegue: código, después `20240101000915_0106_*` y después la configuración de Stripe de arriba.

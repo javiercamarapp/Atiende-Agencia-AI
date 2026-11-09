@@ -5,10 +5,13 @@ import { expect, test } from "../helpers/fixtures.ts";
 import type { Locator, Page } from "@playwright/test";
 import { afirmarModo, afirmarSinScrollHorizontal } from "../helpers/ds.ts";
 import { afirmarPantallaSana } from "../helpers/humo.ts";
+import { mostrarTema } from "../helpers/copiloto.ts";
 import { abrirMasMovil, esMovil, irASeccion } from "../helpers/navegacion.ts";
 
 const RUTA = "/superadmin/copiloto";
 const CHIP = "¿Cuántas organizaciones tengo por estado?";
+// Tema de la portada donde vive CHIP (el primero activo es «CFO y cobranza»).
+const TEMA_CHIP = "Clientes, agentes y salud";
 const TEXTO = "Hay 6 organizaciones, 5 activas.";
 const PEDIDO_ACCION = "apaga el agente de whatsapp de restaurantes";
 const MOTIVO = "Costos fuera de control en este agente";
@@ -49,6 +52,7 @@ test.describe("copiloto de superadmin @copiloto", () => {
     if (!esMovil(page)) await expect(page.getByTestId("barra-pagina-titulo")).toHaveText("Copiloto");
     await expect(page.getByText("Toda la plataforma").first()).toBeVisible();
 
+    await mostrarTema(page, TEMA_CHIP);
     await page.getByRole("button", { name: CHIP }).click();
     const hilo = page.getByRole("log", { name: "Conversación con el Copiloto" });
     await expect(hilo.getByText(TEXTO)).toBeVisible();
@@ -72,6 +76,7 @@ test.describe("copiloto de superadmin @copiloto", () => {
     await expect(panel(page)).not.toHaveAttribute("inert", "");
     if (!esMovil(page)) await expect.poll(async () => (await panel(page).boundingBox())?.width ?? 0).toBeGreaterThanOrEqual(399);
 
+    await mostrarTema(panel(page), TEMA_CHIP);
     await panel(page).getByRole("button", { name: CHIP }).click();
     await expect(panel(page).getByText(TEXTO)).toBeVisible();
     await page.screenshot({ path: info.outputPath(`copiloto-panel-${info.project.name}.png`) });
@@ -98,6 +103,7 @@ test.describe("copiloto de superadmin @copiloto", () => {
   test("'Abrir en página completa' lleva la conversacion a la pagina", async ({ page, iniciarSesion, vigilante }) => {
     await iniciarSesion("superadmin");
     await abrirPanel(page);
+    await mostrarTema(panel(page), TEMA_CHIP);
     await panel(page).getByRole("button", { name: CHIP }).click();
     await expect(panel(page).getByText(TEXTO)).toBeVisible();
     await panel(page).getByRole("link", { name: "Abrir en página completa" }).click();
@@ -111,13 +117,14 @@ test.describe("copiloto de superadmin @copiloto", () => {
     await iniciarSesion("superadmin");
     await page.goto(RUTA);
     await afirmarPantallaSana(page, "copiloto");
+    await mostrarTema(page, TEMA_CHIP);
     await page.getByRole("button", { name: CHIP }).click();
     await expect(page.getByText(TEXTO)).toBeVisible();
 
     await page.getByRole("button", { name: "Historial de chats" }).click();
     const historial = page.getByRole("dialog", { name: "Historial de chats" });
     await expect(historial.getByRole("button", { name: CHIP, exact: true })).toBeVisible();
-    await historial.getByRole("button", { name: "Nuevo chat" }).click();
+    await historial.getByRole("button", { name: "Chat nuevo", exact: true }).click();
     await expect(page.getByText(TEXTO)).toHaveCount(0);
 
     await page.getByRole("button", { name: "Historial de chats" }).click();
@@ -131,12 +138,15 @@ test.describe("copiloto de superadmin @copiloto", () => {
     await iniciarSesion("superadmin");
     await page.goto(RUTA);
     await afirmarPantallaSana(page, "copiloto");
-    // Portada: «Consulta» abre las tres tarjetas de preguntas por categoria; los chips CFO / cobranza ya estan a la vista.
-    await page.getByRole("button", { name: "Consulta", exact: true }).click();
-    for (const titulo of ["CFO y cobranza", "Ventas y costos de IA", "Clientes, agentes y salud", "Varias organizaciones", "Actividad por negocio"]) await expect(page.getByText(titulo, { exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "¿Cuál es mi MRR por vertical?" }).first()).toBeVisible();
-    await expect(page.getByRole("button", { name: "¿Qué clientes tienen el pago pendiente?" }).first()).toBeVisible();
+    // Portada: una fila de hasta 4 temas con sus preguntas; el primero (CFO y cobranza) viene activo con sus preguntas a la vista.
+    const temas = page.getByTestId("copiloto-temas");
+    for (const titulo of ["CFO y cobranza", "Ventas y costos de IA", "Clientes, agentes y salud", "Varias organizaciones"]) await expect(temas.getByRole("button", { name: titulo, exact: true })).toBeVisible();
+    await expect(temas.getByRole("button", { name: "Actividad por negocio", exact: true })).toHaveCount(0);
+    await expect(temas.getByRole("button", { name: "CFO y cobranza", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(temas.getByRole("button", { name: "¿Cuál es mi MRR por vertical?" })).toBeVisible();
+    await expect(temas.getByRole("button", { name: "¿Qué clientes tienen el pago pendiente?" })).toBeVisible();
 
+    await mostrarTema(page, TEMA_CHIP);
     await page.getByRole("button", { name: CHIP }).first().click();
     await expect(page.getByText(TEXTO)).toBeVisible();
     // Copiar, CSV y Fijar existen (el servidor declara `fijados`); Fijar es un POST real a /pins con conversacion + posicion + bloque.
@@ -217,7 +227,7 @@ test.describe("copiloto de superadmin @copiloto", () => {
     await expect(page.getByTestId("copiloto-tarjeta-accion")).toHaveAttribute("data-fase", "ejecutada");
 
     await page.getByRole("button", { name: "Historial de chats" }).click();
-    await page.getByRole("dialog", { name: "Historial de chats" }).getByRole("button", { name: "Nuevo chat" }).click();
+    await page.getByRole("dialog", { name: "Historial de chats" }).getByRole("button", { name: "Chat nuevo", exact: true }).click();
     await page.getByRole("button", { name: "Historial de chats" }).click();
     await page.getByRole("dialog", { name: "Historial de chats" }).getByRole("button", { name: PEDIDO_ACCION, exact: true }).click();
     await expect(page.getByTestId("copiloto-tarjeta-accion")).toHaveAttribute("data-fase", "ejecutada");

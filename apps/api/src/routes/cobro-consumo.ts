@@ -1,4 +1,4 @@
-// Consumo, proyeccion, margen y cotizador del cobro medido (0081/0082 + restaurantes 201).
+// Consumo, proyeccion, margen y cotizador del cobro medido (0104/0105 + restaurantes 204).
 //
 //   GET  /billing/consumo[?organizationId=&mes=YYYY-MM]          pantalla «Consumo y facturacion» (miembro o superadmin)
 //   GET  /superadmin/cobro/organizaciones[?mes=]                  ingreso proyectado, costo y margen por organizacion
@@ -27,7 +27,7 @@ import type { AppDeps } from "../deps.ts";
 
 /** Piso de negociacion por omision cuando el plan no declara su propio margen minimo. */
 export const MARGEN_MINIMO_POR_OMISION_PCT = 55;
-const NO_DISPONIBLE = "El consumo y el cotizador todavía no están disponibles en este despliegue (faltan las migraciones 0081/0082 y restaurantes 201).";
+const NO_DISPONIBLE = "El consumo y el cotizador todavía no están disponibles en este despliegue (faltan las migraciones 0104/0105 y restaurantes 204).";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 const PLAN_ID_RE = /^[a-z0-9][a-z0-9-]{1,58}[a-z0-9]$/u;
 const MES_RE = /^(\d{4})-(0[1-9]|1[0-2])$/u;

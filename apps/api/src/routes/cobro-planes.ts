@@ -1,4 +1,4 @@
-// Cobro por plan MEDIDO (packages/db/migrations/0080_cobro_planes_medidos.sql + restaurantes 200_uso_facturable.sql):
+// Cobro por plan MEDIDO (packages/db/migrations/0103_cobro_planes_medidos.sql + restaurantes 203_uso_facturable.sql):
 //   GET  /superadmin/planes/tarifas            tarifa de todos los planes del catalogo (superadmin, zona CFO de lectura)
 //   PUT  /superadmin/planes/:id/tarifa          fija la tarifa medida de un plan (superadmin + step-up MFA, bitacora en la base)
 //   GET  /billing/plan-medido[?organizationId=&mes=YYYY-MM]
@@ -19,7 +19,7 @@ import { readJsonCapped, requestActor } from "../http-security.ts";
 import { traducirErrorSeguridad } from "./superadmin-mfa.ts";
 import type { AppDeps } from "../deps.ts";
 
-const NO_DISPONIBLE = "El cobro por plan medido todavía no está disponible en este despliegue (faltan las migraciones 0080_cobro_planes_medidos y restaurantes 200_uso_facturable).";
+const NO_DISPONIBLE = "El cobro por plan medido todavía no está disponible en este despliegue (faltan las migraciones 0103_cobro_planes_medidos y restaurantes 203_uso_facturable).";
 const PLAN_ID_RE = /^[a-z0-9][a-z0-9-]{1,58}[a-z0-9]$/u;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 const MES_RE = /^(\d{4})-(0[1-9]|1[0-2])$/u;

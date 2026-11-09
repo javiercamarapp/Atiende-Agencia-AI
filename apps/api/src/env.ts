@@ -42,6 +42,11 @@ export interface ApiEnv {
   readonly whatsappWabaIds?: readonly string[];
   /** Id de configuracion de Embedded Signup v4 (`WHATSAPP_ES_CONFIG_ID`). `null` si no existe. OPCIONAL. */
   readonly whatsappEsConfigId?: string | null;
+  /** Alta autoservicio: id del usuario de sistema de la PLATAFORMA en el Business Manager (`WHATSAPP_SYSTEM_USER_ID`), al que Embedded
+   *  Signup le da acceso MANAGE sobre el WABA del restaurante para que la plataforma envie con su token de siempre. `null` si no existe. OPCIONAL. */
+  readonly whatsappSystemUserId?: string | null;
+  /** Interruptor de Embedded Signup (`WHATSAPP_EMBEDDED_SIGNUP=true`). Apagado (default) = el panel dice «no disponible aún». OPCIONAL. */
+  readonly whatsappEmbeddedSignup?: boolean;
   /** L-05: `phone_number_id` de Meta del numero remitente de licitaciones (avisos y botones go/no-go). Sin esto el webhook de licitaciones acusa recibo sin procesar y el envio se omite. OPCIONAL: ningun fixture lo exige. */
   readonly licitacionesWhatsappPhoneNumberId?: string | null;
   /** H-01 -- llave AES-256-GCM (32 bytes en base64) de la boveda de identidad de hoteles
@@ -57,6 +62,9 @@ export interface ApiEnv {
   readonly rentasAccessKey: string | null;
   /** Version de la llave de arriba (`RENTAS_ACCESS_KEY_VERSION`, default 1); se guarda en cada fila para la rotacion futura. */
   readonly rentasAccessKeyVersion: number;
+  /** Llave AES-256 (32 bytes en base64) de las credenciales de Meta por organizacion (migracion 0090). Ausente = funcion apagada. */
+  readonly whatsappCredentialsKey?: string | null;
+  readonly whatsappCredentialsKeyVersion?: number;
   /** D-28 -- URL del CSV publico "Listado completo 69-B" del SAT para el cron mensual (`EFOS_69B_URL`). Vacia = valor oficial por defecto, marcado NO VERIFICADO en `HttpEfos69bSource`. OPCIONAL: ningun fixture la exige. */
   readonly efos69bUrl?: string;
   /** Secreto compartido para rutas internas invocadas por un scheduler externo
@@ -243,11 +251,15 @@ export function loadApiEnv(): ApiEnv {
     metaAppId: process.env.META_APP_ID?.trim() || null,
     whatsappWabaIds: (process.env.WHATSAPP_WABA_IDS ?? "").split(",").map((s) => s.trim()).filter(Boolean),
     whatsappEsConfigId: process.env.WHATSAPP_ES_CONFIG_ID?.trim() || null,
+    whatsappSystemUserId: process.env.WHATSAPP_SYSTEM_USER_ID?.trim() || null,
+    whatsappEmbeddedSignup: process.env.WHATSAPP_EMBEDDED_SIGNUP === "true",
     licitacionesWhatsappPhoneNumberId: process.env.LICITACIONES_WHATSAPP_PHONE_NUMBER_ID || null,
     hotelesIdentityKey: process.env.HOTELES_IDENTITY_KEY ?? null,
     hotelesIdentityKeyVersion: Number(process.env.HOTELES_IDENTITY_KEY_VERSION ?? 1),
     rentasAccessKey: process.env.RENTAS_ACCESS_KEY ?? null,
     rentasAccessKeyVersion: Number(process.env.RENTAS_ACCESS_KEY_VERSION ?? 1),
+    whatsappCredentialsKey: process.env.WHATSAPP_CREDENTIALS_KEY?.trim() || null,
+    whatsappCredentialsKeyVersion: Number(process.env.WHATSAPP_CREDENTIALS_KEY_VERSION ?? 1),
     efos69bUrl: process.env.EFOS_69B_URL || undefined,
     internalSecret: requireEnv("INTERNAL_SECRET"),
     allowedOrigins: (process.env.ALLOWED_ORIGINS ?? "http://localhost:5173").split(",").map((s) => s.trim()).filter(Boolean),

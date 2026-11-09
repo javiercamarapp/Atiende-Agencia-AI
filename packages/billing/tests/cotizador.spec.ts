@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { cotizar, margenExcedentePct, margenPeorPunto, type CostosUnitarios, type TarifaPlanMedido } from '../src/index.ts';
 
-// Espejo de la SEMILLA de packages/db/migrations/0082 (tabulador de referencia interna y costos unitarios). Si alguien cambia
+// Espejo de la SEMILLA de packages/db/migrations/0105 (tabulador de referencia interna y costos unitarios). Si alguien cambia
 // la semilla, este archivo debe cambiar igual; el mismo minimo se verifica contra la semilla real en
 // scripts/verify-cobro-tabulador-consumo/ (escenario «margen >= 55 % en cada tramo»).
 const COSTOS_SEMILLA: CostosUnitarios = { minutoVozMxn: 1.2, conversacionWaMxn: 0.35, fijoMensualSucursalMxn: 150, numeroVozMensualSucursalMxn: 116, fijoMensualOrganizacionMxn: 0 };
@@ -95,7 +95,7 @@ describe('cotizar: PM (7 sucursales, contrato anual)', () => {
   });
 });
 
-// ---- Planes de LISTA de autoservicio (espejo de la semilla 0082) y pago por uso por bandas ----
+// ---- Planes de LISTA de autoservicio (espejo de la semilla 0105) y pago por uso por bandas ----
 const TARJETA = { porcentaje: 0.036, fijoMxn: 3, ivaSobreComisionPct: 0.16 };
 const lista = (planId: string, precio: number, min: number, conv: number, margen: number): TarifaPlanMedido => ({
   ...base,

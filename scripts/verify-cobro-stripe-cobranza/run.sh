@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Verificación manual, opt-in, contra un Postgres LOCAL efímero real (initdb/pg_ctl) de las
-# migracion 0083 (Stripe por plan, uso reportado, cobranza y CFDI). En CI la corre automáticamente
+# migracion 0106 (Stripe por plan, uso reportado, cobranza y CFDI). En CI la corre automáticamente
 # scripts/verify-real-postgres-ci/run-gate.mjs (descubre este directorio solo).
 # Uso:  scripts/verify-cobro-stripe-cobranza/run.sh
 set -euo pipefail
