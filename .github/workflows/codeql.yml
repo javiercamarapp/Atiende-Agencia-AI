@@ -14,7 +14,13 @@ name: CodeQL
 # - Si alguna vez se activa el "default setup" de code scanning desde la UI de GitHub, desactivar este workflow
 #   o el default setup: usar los dos a la vez duplica el analisis y GitHub rechaza la subida.
 on:
-  pull_request: {}
+  # En PR: no corre si el diff solo toca documentacion, ni en borrador (ver `if:` del job). En push a main y
+  # en el schedule semanal corre siempre, sin filtros.
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
   push:
     branches: [main]
   schedule:
@@ -23,7 +29,7 @@ on:
   workflow_dispatch: {}
 
 concurrency:
-  group: codeql-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
@@ -32,6 +38,7 @@ permissions:
 jobs:
   analyze:
     name: CodeQL (javascript-typescript)
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
