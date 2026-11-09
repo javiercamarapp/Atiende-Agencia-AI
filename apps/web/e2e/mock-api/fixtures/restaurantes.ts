@@ -3,6 +3,7 @@
 import { conStatus, fallo, ndjson } from "../respuestas.ts";
 import { orgDe, propiedadDe } from "../personas.ts";
 import type { Ruta } from "../tipos.ts";
+import { CLAVES_ALTA } from "./restaurantes-alta.ts";
 
 const PROP = propiedadDe("restaurantes");
 const ORG = orgDe("restaurantes");
@@ -348,6 +349,8 @@ export const rutasRestaurantes: readonly Ruta[] = [
       if ((c.mensajes ?? []).length > 40) return fallo(400, "mensajes: se esperaba una lista de 1 a 40 mensajes.");
       const ultimo = [...(c.mensajes ?? [])].reverse().find((m) => m.rol === "usuario")?.texto ?? "";
       if (/pedido|quiero|tacos/i.test(ultimo)) {
+        // Como agente-preview.ts: la prueba llego a un pedido simulado (PRUEBA-xxxx) => hito `prueba_agente_whatsapp` (lo lee el «primer valor»).
+        p.estado.guardar(CLAVES_ALTA.pruebaAgente, true);
         return { respuesta: "Listo, le anoto 3 tacos al pastor y una horchata para recoger. Son $183.00. ¿Confirmo su pedido?", escalado: false, pedidoSimulado: { id: "PRUEBA-AB12", branch: PROP.nombre, total: 183, status: "simulado", payment_method: "efectivo", simulado: true, items: [{ name: "Tacos al pastor (orden)", quantity: 3, price: 45 }, { name: "Horchata", quantity: 1, price: 48 }] } };
       }
       return { respuesta: "Hola, bienvenido a Taquería El Faro. ¿En qué le puedo ayudar hoy?", escalado: false, pedidoSimulado: null };
