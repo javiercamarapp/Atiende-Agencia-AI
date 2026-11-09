@@ -92,6 +92,15 @@ export interface ConfigElevenLabs {
     /** US$ por HORA de audio en streaming y el add-on de keyterms (lista del 6-nov-2026; Scribe v2 Realtime 0.39 + 0.08 US$/h). */
     readonly usdPorHora: number;
     readonly usdPorHoraKeyterms: number;
+    /** Compuerta de voz de fondo (pide `include_timestamps`): descarta un segmento confirmado `dbBajoVoz` dB por debajo de la mediana de los segmentos aceptados del
+     * cliente Y con logprob medio por debajo de `logprobMax`, una vez aceptados `segmentosMin`. null = apagada (por omision; ver `COMPUERTA_FONDO_ELEVENLABS`). `filter_background_audio` NO se usa: medido el 6-nov-2026
+     * con 100 clips, el WER pasa de 23.7 % a 24.0 % y el limpio de 8.9 % a 14.0 %. */
+    readonly compuertaFondo: { readonly dbBajoVoz: number; readonly logprobMax: number; readonly segmentosMin: number } | null;
+    /** Compuerta por NIVEL (no cambia el protocolo): el STT mide el audio que envia. Un parcial o segmento cuyo nivel (p80 de 300 ms) queda a menos de `dbSobrePiso` dB
+     * del piso de ruido (p20 de los ultimos 10 s) Y, si ya hay referencia, `dbBajoCliente` dB por debajo de la voz del cliente (mediana de sus segmentos aceptados) es
+     * platica de fondo: no corta al agente ni mantiene abierto el turno; con referencia (un segmento del cliente ya aceptado) tampoco abre turno. Tras `descartesMax` descartes seguidos se apaga en esa llamada (nunca sorda).
+     * En linea limpia el piso es muy bajo y nunca actua. null = apagada. */
+    readonly compuertaNivel?: { readonly dbSobrePiso: number; readonly dbBajoCliente: number; readonly descartesMax: number } | null;
   };
   readonly tts: {
     /** `model_id` (eleven_v4_turbo: el unico modelo rapido que leyo bien «#512 x 45» y «$345» en la medicion). */
@@ -172,8 +181,13 @@ export interface ConfigCascadaV2 {
       /** Plazo (ms) al primer token. */
       readonly plazoPrimerTokenMs: number;
     };
-    /** Frases cortas de espera que se dicen (una por turno) al vencer el plazo del primer token (solo con el plazo encendido). */
+    /** Frases cortas de espera (solo con el plazo encendido). Se dice UNA por llamada, como mucho, y solo si pasan `esperaMinMs` sin audio del agente. */
     readonly frasesEspera: readonly string[];
+    /** Silencio minimo (ms) del agente en un turno antes de decir la frase de espera. Independiente del plazo del hedge: con el hedge a 2.5 s la frase sonaba
+     * en casi cada turno y el cliente contestaba «si» encima de la respuesta real (E2E del 6-nov-2026). */
+    readonly esperaMinMs: number;
+    /** Lo que se dice si el modelo solo afirmo el registro del pedido sin que crear_pedido tuviera exito (la afirmacion no se dice). */
+    readonly fraseSinRegistro: string;
     /** `reasoning.effort` de OpenRouter para los modelos Anthropic (Sonnet 5.5 tiene razonamiento obligatorio: `none` se rechaza). */
     readonly esfuerzo: "low" | "medium" | "high";
     /** RETENCION CERO (decision de Javier, 14-oct-2026): el cerebro de voz solo se enruta a endpoints con Zero Data Retention de OpenRouter (`provider.zdr: true`),
@@ -194,6 +208,14 @@ export interface ConfigCascadaV2 {
   /** Piso estimado por minuto (micro-USD) cuando una etapa cae antes de reportar componentes: STT + TTS + LLM tipicos. El desglose por componente reemplaza este piso. */
   readonly precioMicroUsdPorMinuto: number;
 }
+
+/** Compuerta de voz de fondo de ElevenLabs para encenderla a mano (`compuertaFondo`). APAGADA por omision (revision #752 P1-4): pide `include_timestamps`, que cambia
+ * el protocolo de Scribe RT, y no hay una E2E que muestre beneficio; la alineacion de tiempos por sesion no esta confirmada con la API real. */
+export const COMPUERTA_FONDO_ELEVENLABS = Object.freeze({ dbBajoVoz: 12, logprobMax: -1.4, segmentosMin: 2 });
+
+/** Compuerta por nivel del STT de ElevenLabs (E2E r2 7-nov-2026: con platica a 10 dB la condicion 4 dio 0/12). Medido sobre la cama de restaurante del arnes: la platica
+ * llega a 57-59 dB (p80 de 300 ms) sobre un piso de ~52; el cliente a 63-74 dB. */
+export const COMPUERTA_NIVEL_ELEVENLABS = Object.freeze({ dbSobrePiso: 8, dbBajoCliente: 7, descartesMax: 3 });
 
 export const VOZ_PLATAFORMA: ConfigPlataformaVoz = Object.freeze({
   escalera: ESCALERA_VOZ,
@@ -238,13 +260,13 @@ export const VOZ_PLATAFORMA: ConfigPlataformaVoz = Object.freeze({
     // Cerebro (decision de Javier, 13-oct): Sonnet 5.5 en esfuerzo bajo por omision; Haiku 5.5 queda como modelo configurable para turnos faciles.
     // ElevenLabs (lista del 6-nov-2026, PRUEBAS-STT-TTS-NOV.md): Scribe v2 Realtime 0.39 US$/h + keyterms 0.08 US$/h; eleven_v4_turbo 0.04 US$ por 1 000 caracteres (creditos del plan).
     elevenlabs: Object.freeze({
-      stt: Object.freeze({ modelo: "scribe_v2_realtime", idioma: "es", vadSilencioS: 0.55, finTurnoMinMs: 400, finTurnoMaxMs: 3_000, keytermsMax: 50, usdPorHora: 0.39, usdPorHoraKeyterms: 0.08 }),
+      stt: Object.freeze({ modelo: "scribe_v2_realtime", idioma: "es", vadSilencioS: 0.55, finTurnoMinMs: 400, finTurnoMaxMs: 3_000, keytermsMax: 50, usdPorHora: 0.39, usdPorHoraKeyterms: 0.08, compuertaFondo: null, compuertaNivel: COMPUERTA_NIVEL_ELEVENLABS }),
       tts: Object.freeze({ modelo: "eleven_v4_turbo", voz: "9Godp7dNohUvXk6qp0gS", idioma: "es", hzSalida: 24_000, usdPorMilCaracteres: 0.04, fraseTimeoutMs: 8_000, primerByteTimeoutMs: 2_500 }),
     }),
     // Cerebro de dos niveles de PM (decision del dueno, 6-nov-2026; opt-in con VOZ_CEREBRO_DOS_NIVELES=1): rapido google/gemini-3.5-flash-lite para turnos faciles,
     // preciso openai/gpt-6-luna para el resto y anthropic/claude-haiku-5.5 como peticion de respaldo si el primero no da su primer token en 2.5 s. Los tres tienen
     // endpoint ZDR en OpenRouter (/api/v1/endpoints/zdr, leido el 6-nov-2026): gpt-6-luna solo en Azure, por eso `azure` entra a la lista.
-    llm: Object.freeze({ modelo: "anthropic/claude-sonnet-5.5", modeloFacil: "anthropic/claude-haiku-5.5", dosNiveles: Object.freeze({ modelo: "openai/gpt-6-luna", modeloRapido: "google/gemini-3.5-flash-lite", modeloRespaldo: "anthropic/claude-haiku-5.5", plazoPrimerTokenMs: 2_500 }), frasesEspera: Object.freeze(["Mmm, permítame.", "Un segundito.", "Déjeme ver."]), esfuerzo: "low" as const, proveedoresZdr: Object.freeze(["google-vertex", "amazon-bedrock", "azure"]), topeSalidaTokens: 1_500, fraseRespaldo: "Disculpe, ¿me lo puede repetir, por favor?", fraseCorte: "Disculpe, se me cortó la respuesta. ¿Quiere que se la repita?", fuenteCosto: "openrouter-usage-cost" as const }),
+    llm: Object.freeze({ modelo: "anthropic/claude-sonnet-5.5", modeloFacil: "anthropic/claude-haiku-5.5", dosNiveles: Object.freeze({ modelo: "openai/gpt-6-luna", modeloRapido: "google/gemini-3.5-flash-lite", modeloRespaldo: "anthropic/claude-haiku-5.5", plazoPrimerTokenMs: 2_500 }), frasesEspera: Object.freeze(["Mmm, permítame.", "Un segundito.", "Déjeme ver."]), esperaMinMs: 4_000, fraseSinRegistro: "Para registrar su pedido, ¿me lo confirma con un sí?", esfuerzo: "low" as const, proveedoresZdr: Object.freeze(["google-vertex", "amazon-bedrock", "azure"]), topeSalidaTokens: 1_500, fraseRespaldo: "Disculpe, ¿me lo puede repetir, por favor?", fraseCorte: "Disculpe, se me cortó la respuesta. ¿Quiere que se la repita?", fuenteCosto: "openrouter-usage-cost" as const }),
     frase: Object.freeze({ minCaracteres: 12, maxCaracteres: 220 }),
     // Piso por minuto (SUPUESTO a reemplazar con la medicion del smoke): Deepgram STT ~4 800 (+1 300 de keyterms) + Aura-2 ~600 caracteres/min (~18 000) + LLM ~24 000 micro-USD
     // (Sonnet 5.5 con esfuerzo bajo; con ~10 000 se subestimaba).

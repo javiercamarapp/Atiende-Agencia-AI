@@ -251,3 +251,20 @@ describe("G_PRECIO_HABLADO sobre fragmentos de Gemini (voz-15)", () => {
     expect((await G_PRECIO_HABLADO(l)).ok).toBe(false);
   });
 });
+
+// E2E r4 (8-nov-2026, P14 limpio): dos buscar_producto PRECARGADOS expiraron (API local lenta) y contaron como dos timeouts de herramienta: la maquina escalo por
+// `falla_sistema` antes de que el modelo pidiera nada. Una lectura precargada es una optimizacion: si falla o expira no es una falla de la llamada.
+describe("lecturas precargadas: no cuentan como herramientas del agente", () => {
+  it("dos lecturas precargadas que expiran no escalan ni dicen el pregrabado de espera (herramienta registrada del doble como lectura)", async () => {
+    const { c, s, escaladas, dichos } = controlador({
+      ejecutor: crearEjecutorTools({ registro: REGISTRO, timeoutMs: 15, transporte: (_n, _a, senal) => new Promise((_r, rej) => senal.addEventListener("abort", () => rej(new Error("abortado")))) }),
+    });
+    await c.iniciar({ habilitado: true, gastoMesMicroUsd: 0, topeMensualMicroUsd: null });
+    const h = s.estado.manejadores();
+    await h.ejecutarTool({ id: "precarga_1_0", nombre: "cotizar_pedido", args: {}, precarga: true });
+    await h.ejecutarTool({ id: "precarga_1_1", nombre: "cotizar_pedido", args: {}, precarga: true });
+    await c.vacio();
+    expect(escaladas).toHaveLength(0);
+    expect(dichos).not.toContain("tool_timeout");
+  });
+});

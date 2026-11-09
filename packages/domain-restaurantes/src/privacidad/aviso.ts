@@ -100,29 +100,29 @@ export function composeWithPrivacyNotice(notice: string, reply: string): string 
  * grabar. Corta a proposito: cada segundo de la llamada cuesta. El detalle (proveedor, pais, su politica) va en el aviso integral. */
 export const VOICE_PROCESSOR_NOTICE = "Su voz la procesa un proveedor externo para entenderle. ";
 
-/** Guion de apertura de la llamada: asistente virtual (IA) + aviso simplificado + consentimiento
- * de grabacion. Con retencion de voz 0 la llamada NUNCA se graba y no se pide consentimiento. */
+/** Guion de apertura de la llamada: asistente virtual (IA) + aviso simplificado + consentimiento de grabacion en UNA pregunta CERRADA (si/no).
+ * CORTO a proposito (E2E del 6-nov-2026: el guion de ~90 palabras ocupaba los primeros 25 s y el cliente contestaba con su pedido encima):
+ * a lo mas 45 palabras con un nombre de 4 palabras. Conserva lo legal de #743 (revision #752 P1-1): finalidad de los datos, proveedor de voz,
+ * donde esta el aviso integral, canal para ejercer derechos (ARCO: WhatsApp o sucursal), «grabar y transcribir», retencion y finalidad de la
+ * grabacion. Si el cliente dice que no, VOICE_CONSENT_DENIED_REPLY le confirma que se le atiende sin grabar. Mismo texto que
+ * docs/legal/aviso-privacidad-simplificado.md §2. Con retencion de voz 0 la llamada NUNCA se graba y no se pide consentimiento. */
 export function voiceOpeningScript(config: PrivacyConfig): string {
   const businessName = businessNameOf(config);
   const intro =
-    `Hola, soy el asistente virtual de ${businessName}; soy una inteligencia artificial, no una persona. ` +
-    "Aviso de privacidad: uso sus datos solo para tomar y entregar su pedido. " +
+    `Soy el asistente virtual de ${businessName}, inteligencia artificial. ` +
+    "Uso sus datos solo para su pedido. " +
     VOICE_PROCESSOR_NOTICE +
-    (config.noticeUrl ? "El aviso integral está en nuestra página; también puede pedirlo en la sucursal. " : "Puede pedir el aviso integral en la sucursal. ") +
-    "Para ejercer sus derechos sobre sus datos, escriba por WhatsApp o dígaselo a la sucursal. ";
+    (config.noticeUrl ? "Aviso en la página; derechos: WhatsApp. " : "Aviso y derechos: WhatsApp o sucursal. ");
   if (config.voiceRetentionDays === 0) return `${intro}Esta llamada no se graba.`;
   if (!config.recordingConsentRequired) {
     return `${intro}Esta llamada se transcribe y se guarda ${config.voiceRetentionDays} días para mejorar el servicio.`;
   }
-  return (
-    `${intro}¿Autoriza que esta llamada se grabe y se transcriba para mejorar el servicio? ` +
-    `Se guarda ${config.voiceRetentionDays} días. Si dice que no, lo atiendo igual, sin grabar.`
-  );
+  return `${intro}¿Autoriza grabar y transcribir la llamada ${config.voiceRetentionDays} días para mejorar el servicio?`;
 }
 
 export const VOICE_CONSENT_GRANTED_REPLY = "Gracias, queda registrado. ¿Qué le gustaría pedir?";
 export const VOICE_CONSENT_DENIED_REPLY = "Sin problema: esta llamada no se graba. ¿Qué le gustaría pedir?";
-export const VOICE_CONSENT_REPEAT_REPLY = "No lo escuché bien: ¿autoriza que se grabe la llamada? Puede decir sí o no; si no responde, no se graba.";
+export const VOICE_CONSENT_REPEAT_REPLY = "¿Autoriza grabar la llamada? Diga sí o no; si no responde, no se graba.";
 
 function normalize(text: string): string {
   return text

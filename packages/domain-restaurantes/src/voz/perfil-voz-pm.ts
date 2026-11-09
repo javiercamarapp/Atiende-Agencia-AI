@@ -93,6 +93,45 @@ export const REGLAS_VIVAS_VOZ = `# REGLAS ADICIONALES DE LA LLAMADA
 - FUERA DE LA CIUDAD ("estoy en Cancún"): no hay servicio ahí; ofrezca recoger en una sucursal o pasar con una persona (zona_no_reconocida) en vez de repetir la negativa.
 - "ALGUIEN DE CAJA" al recoger no pide una persona: el pago es en caja al recoger; no escale por eso.`;
 
+// ---------------------------------------------------------------------------------------------------------------------------------
+// Dieta del prompt de voz (latencia, 7-nov-2026): las reglas vivas que solo aplican a un TEMA ya no viajan en cada turno. `REGLAS_VIVAS_VOZ` sigue siendo la
+// fuente unica del texto; aqui solo se reparte por renglon: lo que aplica a todo pedido queda en el NUCLEO (va en la instruccion) y lo tematico pasa a
+// `REGLAS_CONDICIONALES_VOZ_PM`, que la sesion de la cascada agrega a la conversacion la primera vez que el cliente toca el tema (y desde ahi se queda).
+
+/** Regla que la sesion agrega cuando lo que dice el cliente coincide con `patron`. `patron` es el `source` de una RegExp escrita SIN acentos y en minusculas:
+ * quien la usa la compila con la bandera "i" y la prueba contra el texto del cliente normalizado (NFD sin diacriticos, minusculas). */
+export interface ReglaCondicionalVoz {
+  readonly id: string;
+  readonly patron: string;
+  readonly texto: string;
+}
+
+/** Tema de cada renglon tematico (por el inicio del renglon, sin el «- »). Lo que no esta aqui es NUCLEO. */
+const TEMAS_REGLAS_VIVAS: readonly { readonly id: string; readonly inicios: readonly string[]; readonly patron: string }[] = [
+  { id: "cantidad_enorme", inicios: [PM_REGLA_CANTIDAD_ENORME], patron: String.raw`\b(?:mil|miles|cien|cientos?|doscient\w*|trescient\w*|cuatrocient\w*|quinient\w*|docenas?|treinta|cuarenta|cincuenta|sesenta|setenta|ochenta|noventa|[3-9]\d|\d{3,})\b` },
+  { id: "reservaciones", inicios: [PM_REGLA_RESERVACIONES], patron: String.raw`reserv|apartar|\bmesas?\b|evento|fiesta|cumplea` },
+  { id: "horas", inicios: ["HORA Y FECHA", "HORAS HABLADAS", "HORA DE RECOGIDA AL CERRAR", "CAMBIO DE HORA DE RECOGIDA"], patron: String.raw`\bhoras?\b|\ba las?\b|minutos?|ahorita|en cuanto|\bmanana\b|\bhoy\b|\btarde\b|\bnoche\b|cierran?\b|abren?\b|horario|recog|paso por|paso a` },
+  { id: "kilos", inicios: ["KILOS Y FRACCIONES"], patron: String.raw`\bkilos?\b|\bkg\b|cuarto|\bmedio\b|\bmedia\b|gramos?|fraccion` },
+  { id: "estado_rellamada", inicios: ["LLAMADA CORTADA", "ESTADO DEL PEDIDO", "RELLAMADA"], patron: String.raw`se corto|se colgo|volvi a llamar|hace rato|ya quedo|ya salio|cuanto falta|cuanto tarda|en cocina|mi pedido|estatus|no ha llegado|no llega` },
+  { id: "combo_martes", inicios: ["COMBO DEL MARTES"], patron: String.raw`nacho|martes|\baguas?\b|cortesia|gratis|promo|2x1|dos por uno` },
+  { id: "ordenes_2_5", inicios: ["ÓRDENES DE 2 Y DE 5"], patron: String.raw`gringa|mestiza|alambre|suizo|papadzul` },
+  { id: "cambios_tras_pedido", inicios: ["AGREGADO A UN PEDIDO YA ENVIADO", "CANCELAR UN PEDIDO YA REGISTRADO"], patron: String.raw`agreg|anad|aument|tambien quiero|se me olvid|cancel|cambi|modific|ya no quiero|quit` },
+  { id: "telefono_dictado", inicios: ["TELÉFONO DICTADO"], patron: String.raw`numero|telefono|celular|whats|\d{4,}|(?:\b(?:cero|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve)\b[\s,.-]*){5,}` },
+  { id: "fuera_ciudad", inicios: ["FUERA DE LA CIUDAD"], patron: String.raw`cancun|playa del carmen|tulum|valladolid|campeche|progreso|tizimin|motul|chetumal|cdmx|ciudad de mexico|monterrey|guadalajara|otra ciudad|fuera de merida` },
+  { id: "caja", inicios: ['"ALGUIEN DE CAJA"'], patron: String.raw`\bcaja\b|cajer` },
+];
+
+const RENGLONES_VIVOS = REGLAS_VIVAS_VOZ.split("\n").filter((l) => l.startsWith("- "));
+const temaDe = (renglon: string): string | null => TEMAS_REGLAS_VIVAS.find((t) => t.inicios.some((i) => renglon.slice(2).startsWith(i)))?.id ?? null;
+
+/** Reglas vivas que aplican a TODO pedido: van siempre en la instruccion. */
+export const REGLAS_VOZ_NUCLEO = [REGLAS_VIVAS_VOZ.split("\n")[0]!, ...RENGLONES_VIVOS.filter((l) => temaDe(l) === null)].join("\n");
+
+/** Reglas vivas por tema (ver `ReglaCondicionalVoz`). Juntas con `REGLAS_VOZ_NUCLEO` cubren `REGLAS_VIVAS_VOZ` completo. */
+export const REGLAS_CONDICIONALES_VOZ_PM: readonly ReglaCondicionalVoz[] = Object.freeze(
+  TEMAS_REGLAS_VIVAS.map((t) => Object.freeze({ id: t.id, patron: t.patron, texto: RENGLONES_VIVOS.filter((l) => temaDe(l) === t.id).join("\n") })).filter((r) => r.texto !== ""),
+);
+
 export interface EntradaBloqueReglasVoz {
   readonly businessName?: string;
   readonly agentName?: string;
@@ -101,6 +140,8 @@ export interface EntradaBloqueReglasVoz {
   readonly salsasTexto?: string | null;
   readonly pedidoGrandeTexto?: string | null;
   readonly motivosDesactivados?: readonly string[];
+  /** true = el bloque lleva TODAS las reglas vivas (`REGLAS_VIVAS_VOZ`), no solo el nucleo: para quien no recibe las reglas por tema aparte (vista previa de Gemini). */
+  readonly reglasCompletas?: boolean;
 }
 
 const TITULO_BLOQUE = "# REGLAS VIGENTES DE LA PLATAFORMA (prevalecen sobre cualquier texto anterior, incluido el comportamiento editable)";
@@ -114,7 +155,7 @@ function seccionDe(prompt: string, titulo: string): string {
 }
 
 /** Bloque de reglas duras (H1-H18), flujo de toma de pedido y seguridad del MISMO perfil que WhatsApp (`buildPmSystemPrompt` con canal
- * `voz`), mas las reglas vivas y el apendice de la llamada. Con la config de la organizacion (promos, tiempos, umbral de pedido grande) las
+ * `voz`), mas el NUCLEO de las reglas vivas (lo tematico va en `REGLAS_CONDICIONALES_VOZ_PM`) y el apendice de la llamada. Con la config de la organizacion (promos, tiempos, umbral de pedido grande) las
  * reglas que dependen de ella (H3, paso 8 del flujo) quedan igual que en el comportamiento editable. */
 export function bloqueReglasVozPm(e: EntradaBloqueReglasVoz = {}): string {
   const completo = buildPmSystemPrompt({
@@ -132,7 +173,7 @@ export function bloqueReglasVozPm(e: EntradaBloqueReglasVoz = {}): string {
     pedidoGrandeTexto: e.pedidoGrandeTexto ?? null,
     motivosDesactivados: e.motivosDesactivados ?? [],
   });
-  return [TITULO_BLOQUE, seccionDe(completo, "REGLAS DURAS"), seccionDe(completo, "FLUJO DE TOMA DE PEDIDO"), seccionDe(completo, "SEGURIDAD"), REGLAS_VIVAS_VOZ, APENDICE_VOZ.trim()].join("\n\n");
+  return [TITULO_BLOQUE, seccionDe(completo, "REGLAS DURAS"), seccionDe(completo, "FLUJO DE TOMA DE PEDIDO"), seccionDe(completo, "SEGURIDAD"), e.reglasCompletas === true ? REGLAS_VIVAS_VOZ : REGLAS_VOZ_NUCLEO, APENDICE_VOZ.trim()].join("\n\n");
 }
 
 export interface EntradaInstruccionVoz extends EntradaBloqueReglasVoz {
@@ -142,8 +183,59 @@ export interface EntradaInstruccionVoz extends EntradaBloqueReglasVoz {
   readonly mensajeInicial?: string;
 }
 
-/** Instruccion final de la sesion de voz (vista previa y llamada): texto editable + saludo inicial + BLOQUE al final. */
+/** Etiqueta de una regla: «H3.», «5.», «5b.» o «- TITULO:» (renglon de lista con titulo corto antes de dos puntos). */
+const ETIQUETA_RE = /^(?:(H\d+[a-z]?)\.|(\d+[a-z]?)\.|-\s+([^:]{1,60}):)/;
+const etiquetaDe = (renglon: string): string | null => {
+  const m = ETIQUETA_RE.exec(renglon.trim());
+  return m ? (m[1] ?? m[2] ?? m[3] ?? "").trim().toUpperCase() : null;
+};
+/** Titulo comparable de un encabezado «# TITULO (aclaracion)»: sin el parentesis final, en mayusculas. */
+const tituloDe = (encabezado: string): string => {
+  // Sin regex con cuantificadores anidados (CodeQL: texto de entrada con muchos espacios o parentesis): cortes por indice.
+  const sinGato = encabezado.startsWith("#") ? encabezado.slice(1) : encabezado;
+  const p = sinGato.indexOf("(");
+  return (p < 0 ? sinGato : sinGato.slice(0, p)).trim().toUpperCase();
+};
+
+/** Quita del texto editable lo que el BLOQUE ya dice en una seccion con el MISMO titulo: el renglon identico y la regla con la misma etiqueta (la version del
+ * bloque prevalece, como ya declara su titulo; dos versiones de H3 se contradecian). Lo propio del dueno (otra etiqueta, renglon sin etiqueta distinto, otras
+ * secciones) se conserva; una seccion que queda vacia se quita con su encabezado. */
+export function editableSinRepetirBloque(editable: string, bloque: string): string {
+  const delBloque = new Map<string, { renglones: Set<string>; etiquetas: Set<string> }>();
+  let actual: { renglones: Set<string>; etiquetas: Set<string> } | null = null;
+  for (const l of bloque.split("\n")) {
+    if (l.startsWith("# ")) {
+      actual = { renglones: new Set(), etiquetas: new Set() };
+      delBloque.set(tituloDe(l), actual);
+    } else if (actual && l.trim() !== "") {
+      actual.renglones.add(l.trim());
+      const et = etiquetaDe(l);
+      if (et) actual.etiquetas.add(et);
+    }
+  }
+  const salida: string[] = [];
+  let seccion: { encabezado: string | null; renglones: string[] } = { encabezado: null, renglones: [] };
+  const cerrar = (): void => {
+    const s = seccion;
+    const regla = s.encabezado ? delBloque.get(tituloDe(s.encabezado)) : undefined;
+    const propios = regla ? s.renglones.filter((l) => l.trim() === "" || !(regla.renglones.has(l.trim()) || (etiquetaDe(l) !== null && regla.etiquetas.has(etiquetaDe(l)!)))) : s.renglones;
+    if (regla && propios.every((l) => l.trim() === "")) return;
+    if (s.encabezado) salida.push(s.encabezado);
+    salida.push(...propios);
+  };
+  for (const l of editable.split("\n")) {
+    if (l.startsWith("# ")) {
+      cerrar();
+      seccion = { encabezado: l, renglones: [] };
+    } else seccion.renglones.push(l);
+  }
+  cerrar();
+  return salida.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+/** Instruccion final de la sesion de voz (vista previa y llamada): texto editable (sin lo que el bloque ya dice) + saludo inicial + BLOQUE al final. */
 export function instruccionVozConReglas(e: EntradaInstruccionVoz): string {
   const saludo = e.mensajeInicial && e.mensajeInicial.trim() !== "" ? `Saluda al iniciar diciendo: ${e.mensajeInicial.trim()}` : "";
-  return [e.comportamiento.trim(), saludo, bloqueReglasVozPm(e)].filter((t) => t !== "").join("\n\n");
+  const bloque = bloqueReglasVozPm(e);
+  return [editableSinRepetirBloque(e.comportamiento.trim(), bloque), saludo, bloque].filter((t) => t !== "").join("\n\n");
 }

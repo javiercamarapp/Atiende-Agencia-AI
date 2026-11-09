@@ -11,9 +11,9 @@
 //   5. Escalera, puente de audio, controlador. Al terminar: se vacia la despedida, se cuelga, se registran turnos, costo por escalon y cierre.
 //
 // El worker nunca contesta a medias: sin contexto de la API (o sin token) dice el pregrabado de falla y cuelga, sin abrir sesion con el proveedor.
-import { ControladorLlamada, canonicalizeMexicanPhone, crearEjecutorTools, crearGuardiaPersonaVoz, transporteHttp, LIMITES_VOZ_PM } from "@atiende/domain-restaurantes";
+import { ControladorLlamada, afirmaPedidoRegistrado, canonicalizeMexicanPhone, consultasDeProductoDelMensaje, crearEjecutorTools, crearGuardiaPersonaVoz, evaluarPersonaVoz, transporteHttp, LIMITES_VOZ_PM } from "@atiende/domain-restaurantes";
 import type { AbrirSesionLlamada, EjecutorTools, MensajeId, SumideroLog, TransporteTools, VozResultado } from "@atiende/domain-restaurantes";
-import { MezcladorSalida, conAvisosDeHerramienta, costoTotalMicroUsd, eventoSinPII, eventosCostoLlamada, referenciaLlamada } from "@atiende/voice-core";
+import { MezcladorSalida, conAvisosDeHerramienta, esAfirmacion, costoTotalMicroUsd, eventoSinPII, eventosCostoLlamada, referenciaLlamada } from "@atiende/voice-core";
 import type { EscaleraLlamada, LimitesLlamada, VozSesionLlamada } from "@atiende/voice-core";
 import { ErrorApi } from "./api-cliente.ts";
 import type { AperturaPrivacidad, ClienteApi, ContextoLlamada, TurnoRegistro } from "./api-cliente.ts";
@@ -30,9 +30,38 @@ export const DISPARADOR_SALUDO = "(La llamada acaba de conectarse. Salude al cli
 /** Frase que dispara el saludo y, si la API trajo el guion de apertura, le pide al agente decirlo TAL CUAL (aviso de privacidad + grabacion). */
 export function disparadorDeApertura(apertura: AperturaPrivacidad | null): string {
   if (!apertura) return DISPARADOR_SALUDO;
-  const espera = apertura.pideConsentimientoGrabacion ? " Después de decirlo, espere la respuesta del cliente sobre la grabación antes de tomar el pedido." : "";
+  // El sistema (no el modelo) interpreta la respuesta de grabacion: si el cliente sigue con su pedido, la llamada queda SIN grabar y el modelo no debe repreguntar
+  // (E2E r2 7-nov-2026: «espere la respuesta antes de tomar el pedido» hacia que el modelo preguntara «¿autoriza grabar…?» dos o tres veces).
+  const espera = apertura.pideConsentimientoGrabacion
+    ? " Pregunte por la grabación una sola vez: el sistema registra la respuesta. Si el cliente contesta con su pedido u otra cosa, no vuelva a preguntar por la grabación: atiéndalo sin grabar y siga con su pedido."
+    : "";
   return `${DISPARADOR_SALUDO} Después del saludo diga al cliente, tal cual y sin cambiar nada, este aviso: «${apertura.guion}».${espera}`;
 }
+
+/** Regla confirmar -> crear de la cascada v2 de PM: con el «si» al resumen el pedido se crea antes de cualquier escalacion, y una frase que afirma el registro
+ * (`afirmaPedidoRegistrado`, la misma guardia de WhatsApp) no se dice hasta que crear_pedido tuvo exito. */
+export const CONFIRMACION_VOZ_PM = { confirmar: "confirmar_resumen", crear: "crear_pedido", cotizar: "cotizar_pedido", escalar: "escalar_a_humano", afirmaRegistro: afirmaPedidoRegistrado } as const;
+
+/** Sin acuse rapido en un turno que la guardia de voz de PM marca como riesgo o como pedir una persona (alergia, cobro, privacidad, queja, urgencia...): la guardia del
+ * controlador dira su propio texto (revision #752 P1-2). La plataforma ademas omite el acuse en sus propios turnos de riesgo (`esTurnoDeRiesgoVoz`). */
+export const OMITIR_ACUSE_VOZ_PM = (texto: string): boolean => evaluarPersonaVoz(texto) !== null;
+
+/** Lecturas que el worker de PM PRECARGA antes de la primera vuelta del modelo (latencia, E2E r3: una vuelta de Luna ~2.5 s solo para pedirlas). Primer turno:
+ * `buscar_cliente` y `consultar_sucursal`; cualquier turno que nombre productos: `buscar_producto` por producto (hasta 3). Una afirmacion pura no precarga. */
+export function precargaVozPm(texto: string, turno: number, branchSlug: string): { nombre: string; args: Record<string, unknown> }[] {
+  const out: { nombre: string; args: Record<string, unknown> }[] = [];
+  if (turno === 1) out.push({ nombre: "buscar_cliente", args: {} }, { nombre: "consultar_sucursal", args: { branch_slug: branchSlug } });
+  if (!esAfirmacion(texto)) {
+    const { entera, partes } = consultasDeProductoDelMensaje(texto);
+    const consultas = partes.length > 0 ? partes : entera ? [entera] : [];
+    for (const query of consultas.slice(0, 3)) out.push({ nombre: "buscar_producto", args: { query, branch_slug: branchSlug } });
+  }
+  return out.slice(0, 4);
+}
+
+/** Una respuesta ambigua a la pregunta de grabacion con al menos estas palabras ya es el cliente siguiendo con su pedido: no se repregunta. */
+export const PALABRAS_RESPUESTA_CON_CONTENIDO = 4;
+const palabrasDe = (t: string): number => t.trim().split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
 
 /** Cuantas veces se repite la pregunta de grabacion ante una respuesta ambigua antes de atender la llamada sin grabar. */
 export const REINTENTOS_CONSENTIMIENTO = 2;
@@ -286,6 +315,13 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
       const r = await deps.api.consentimientoGrabacion({ organizationId, conversationId, respuesta: texto });
       if (r.consentimiento === "pendiente") {
         intentosConsentimiento += 1;
+        // El cliente siguio con lo suyo (su pedido, una pregunta) en vez de contestar: NO se repregunta (chocaba con el turno del pedido y el agente decia
+        // «no lo escuché bien»); la llamada sigue sin grabar, que es lo conservador. Solo una respuesta corta y confusa («¿mande?») repite la pregunta.
+        if (palabrasDe(texto) >= PALABRAS_RESPUESTA_CON_CONTENIDO) {
+          consentimientoResuelto = true;
+          log("consentimiento_resuelto", { resultado: "sin_respuesta" });
+          return;
+        }
         if (intentosConsentimiento >= REINTENTOS_CONSENTIMIENTO) consentimientoResuelto = true; // sin respuesta clara: se atiende sin grabar
         else (sesionActual as VozSesionLlamada | null)?.enviarTexto(`(El cliente no respondió con claridad a la pregunta de grabación. Repítala tal cual: «${r.respuestaSugerida}»)`);
         return;
@@ -314,6 +350,7 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
         h.usuarioDijo?.(texto);
         void procesarConsentimiento(texto);
       },
+      precargar: (texto, turno) => precargaVozPm(texto, turno, entrada.branchSlug),
       interrumpido: () => {
         puente.cortarAudio();
         h.interrumpido();
@@ -373,6 +410,7 @@ export async function atenderLlamada(tel: LlamadaTelefonica, deps: DepsAtencion,
     voiceId: contexto.voiceId,
     // Cascada v2: nombres del menu como keyterms del STT, modelo de los ajustes del agente y voz telefonica de la sucursal (la API vieja no los manda: valores de la plataforma).
     vocabulario: contexto.vocabulario,
+    ...(contexto.reglasCondicionales.length > 0 ? { reglasCondicionales: contexto.reglasCondicionales } : {}),
     ...(contexto.modeloVoz ? { modeloLlm: contexto.modeloVoz } : {}),
     ...(contexto.vozTelefono ? { vozTelefono: contexto.vozTelefono } : {}),
     limites,

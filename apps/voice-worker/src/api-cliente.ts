@@ -4,7 +4,7 @@
 //     token por llamada (`x-atiende-call-token`) desde `transporteHttp`, nunca el secreto.
 // Los errores llevan solo el estado HTTP y un codigo corto: jamas el cuerpo de la respuesta ni los secretos.
 import { esPresetAmbiente, esVolumenFondo, esVolumenTecleo, temperaturaParaLlamada } from "@atiende/voice-core";
-import type { PresetAmbiente, TramoLlamada } from "@atiende/voice-core";
+import type { PresetAmbiente, ReglaCondicional, TramoLlamada } from "@atiende/voice-core";
 import { sinDiagonalFinal } from "./config.ts";
 import type { VozProveedorFallo } from "@atiende/voice-core";
 
@@ -38,6 +38,8 @@ export interface ContextoLlamada {
   readonly temperatura: number | null;
   /** Nombres y apodos del menu (hasta 50) para los keyterms del STT; vacio si la API no lo manda (API vieja). */
   readonly vocabulario: readonly string[];
+  /** Reglas del prompt por tema (dieta del prompt de voz); vacio si la API no las manda (API vieja). */
+  readonly reglasCondicionales: readonly ReglaCondicional[];
   /** Voz telefonica de la sucursal (id de ElevenLabs, 20 alfanumericos); null = la de la plataforma (Regina). */
   readonly vozTelefono: string | null;
   /** Modelo de texto de la cascada elegido en los ajustes del agente (`voice_cascade_model`); null = el de la plataforma. */
@@ -56,6 +58,31 @@ export interface SonidoLlamada {
 export function leerVocabulario(v: unknown): string[] {
   if (!Array.isArray(v)) return [];
   return v.filter((t): t is string => typeof t === "string" && t.trim() !== "" && t.length <= 60).slice(0, 50);
+}
+
+const ID_REGLA_RE = /^[a-z0-9_]{1,40}$/;
+
+/** Reglas condicionales del contexto: id corto, patron que compila (hasta 400) y texto (hasta 2 000); sin ids repetidos y hasta 40. Lo invalido se descarta
+ * (una regla rota nunca tumba la llamada) y cualquier otra forma = sin reglas. */
+export function leerReglasCondicionales(v: unknown): ReglaCondicional[] {
+  if (!Array.isArray(v)) return [];
+  const out: ReglaCondicional[] = [];
+  const ids = new Set<string>();
+  for (const r of v) {
+    if (out.length >= 40) break;
+    if (typeof r !== "object" || r === null) continue;
+    const { id, patron, texto } = r as { id?: unknown; patron?: unknown; texto?: unknown };
+    if (typeof id !== "string" || !ID_REGLA_RE.test(id) || ids.has(id)) continue;
+    if (typeof patron !== "string" || patron.length === 0 || patron.length > 400 || typeof texto !== "string" || texto.trim() === "" || texto.length > 2_000) continue;
+    try {
+      new RegExp(patron, "i");
+    } catch {
+      continue;
+    }
+    ids.add(id);
+    out.push({ id, patron, texto });
+  }
+  return out;
 }
 
 /** Valida lo que manda la API (nunca confia en el cuerpo): cualquier cosa fuera de rango o de forma se descarta como "sin sonido". */
@@ -180,6 +207,7 @@ export class ClienteApi {
       sonido: leerSonidoLlamada((r as { sonido?: unknown }).sonido),
       temperatura: temperaturaParaLlamada((r as { temperatura?: unknown }).temperatura).valor,
       vocabulario: leerVocabulario((r as { vocabulario?: unknown }).vocabulario),
+      reglasCondicionales: leerReglasCondicionales((r as { reglasCondicionales?: unknown }).reglasCondicionales),
       vozTelefono: typeof (r as { vozTelefono?: unknown }).vozTelefono === "string" && VOZ_ELEVENLABS_RE.test((r as { vozTelefono: string }).vozTelefono) ? (r as { vozTelefono: string }).vozTelefono : null,
       modeloVoz: typeof (r as { modeloVoz?: unknown }).modeloVoz === "string" && MODELO_OPENROUTER_RE.test((r as { modeloVoz: string }).modeloVoz) && (r as { modeloVoz: string }).modeloVoz.length <= 80 ? (r as { modeloVoz: string }).modeloVoz : null,
     };
