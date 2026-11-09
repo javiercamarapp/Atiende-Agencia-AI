@@ -1,0 +1,118 @@
+{
+  "_doc": "Excepciones documentadas de scripts/guard-sql-privilegios/guard.ts. Cada entrada necesita justificación de seguridad y revisión en el PR que la agrega. Formato de objeto: tabla:schema.nombre, secuencia:schema.nombre, schema:nombre, funcion:schema.nombre(tipos). Estado verificado contra Postgres real (9-nov-2026): las 9 tablas de catálogo se heredan de 001_citas_schema/001_restaurantes_schema y hoy son letra muerta para anon (sus policies consultan core.membership o helpers sin privilegio para anon y la lectura termina en 'permission denied'); la app nunca usa el rol anon (ManagedPostgresEngine.withAppSession corre como authenticated). Propuesta de seguimiento: revocarlas junto con el USAGE de schema y vaciar esta lista.",
+  "anon": [
+    {
+      "objeto": "tabla:citas.providers",
+      "privilegios": [
+        "select"
+      ],
+      "justificacion": "Catálogo público de reserva de citas (001_citas_schema). La RLS (016_catalogo_publico_scoped_y_dead_policies) solo expone filas sin auth.uid() o de la organización del staff; sin datos de pacientes. Letra muerta hoy para anon (la policy falla sin privilegios de anon); se conserva hasta el PR que la revoque."
+    },
+    {
+      "objeto": "tabla:citas.services",
+      "privilegios": [
+        "select"
+      ],
+      "justificacion": "Catálogo público de servicios de citas (001_citas_schema); RLS acotada por 016_catalogo_publico_scoped_y_dead_policies. Letra muerta hoy para anon (la policy falla sin privilegios de anon); se conserva hasta el PR que la revoque."
+    },
+    {
+      "objeto": "tabla:citas.provider_services",
+      "privilegios": [
+        "select"
+      ],
+      "justificacion": "Relación prestador-servicio del catálogo público de citas; RLS acotada por 016_catalogo_publico_scoped_y_dead_policies. Letra muerta hoy para anon (la policy falla sin privilegios de anon); se conserva hasta el PR que la revoque."
+    },
+    {
+      "objeto": "tabla:citas.availability_rules",
+      "privilegios": [
+        "select"
+      ],
+      "justificacion": "Reglas de disponibilidad publicadas para reservar; RLS acotada por 016_catalogo_publico_scoped_y_dead_policies. Letra muerta hoy para anon (la policy falla sin privilegios de anon); se conserva hasta el PR que la revoque."
+    },
+    {
+      "objeto": "tabla:citas.availability_overrides",
+      "privilegios": [
+        "select"
+      ],
+      "justificacion": "Excepciones de disponibilidad publicadas para reservar; RLS acotada por 016_catalogo_publico_scoped_y_dead_policies. Letra muerta hoy para anon (la policy falla sin privilegios de anon); se conserva hasta el PR que la revoque."
+    },
+    {
+      "objeto": "tabla:restaurantes.categories",
+      "privilegios": [
+        "select"
+      ],
+      "justificacion": "Menú público del checkout web (001_restaurantes_schema); RLS acotada por 014_catalogo_publico_scoped. Letra muerta hoy para anon (la policy falla sin privilegios de anon); se conserva hasta el PR que la revoque."
+    },
+    {
+      "objeto": "tabla:restaurantes.products",
+      "privilegios": [
+        "select"
+      ],
+      "justificacion": "Menú público del checkout web; RLS acotada por 014_catalogo_publico_scoped. Letra muerta hoy para anon (la policy falla sin privilegios de anon); se conserva hasta el PR que la revoque."
+    },
+    {
+      "objeto": "tabla:restaurantes.branch_products",
+      "privilegios": [
+        "select"
+      ],
+      "justificacion": "Precio y disponibilidad por sucursal del menú público; RLS acotada por 014_catalogo_publico_scoped (core.has_property_access solo se evalúa con auth.uid()). Letra muerta hoy para anon (la policy falla sin privilegios de anon); se conserva hasta el PR que la revoque."
+    },
+    {
+      "objeto": "tabla:restaurantes.branch_detail",
+      "privilegios": [
+        "select"
+      ],
+      "justificacion": "Datos públicos de la sucursal para el checkout; RLS acotada por 014_catalogo_publico_scoped (core.has_property_access solo se evalúa con auth.uid()). Letra muerta hoy para anon (la policy falla sin privilegios de anon); se conserva hasta el PR que la revoque."
+    },
+    {
+      "objeto": "schema:citas",
+      "privilegios": [
+        "usage"
+      ],
+      "justificacion": "0005_grant_schema_usage: USAGE de schema para authenticated y anon (lo que la plataforma hace al exponer el schema). USAGE solo permite resolver nombres: no da acceso a ninguna tabla ni función, cada objeto exige su propio grant (y este guard prohíbe esos grants a anon)."
+    },
+    {
+      "objeto": "schema:core",
+      "privilegios": [
+        "usage"
+      ],
+      "justificacion": "0005_grant_schema_usage: USAGE de schema para authenticated y anon (lo que la plataforma hace al exponer el schema). USAGE solo permite resolver nombres: no da acceso a ninguna tabla ni función, cada objeto exige su propio grant (y este guard prohíbe esos grants a anon)."
+    },
+    {
+      "objeto": "schema:despachos",
+      "privilegios": [
+        "usage"
+      ],
+      "justificacion": "0005_grant_schema_usage: USAGE de schema para authenticated y anon (lo que la plataforma hace al exponer el schema). USAGE solo permite resolver nombres: no da acceso a ninguna tabla ni función, cada objeto exige su propio grant (y este guard prohíbe esos grants a anon)."
+    },
+    {
+      "objeto": "schema:hoteles",
+      "privilegios": [
+        "usage"
+      ],
+      "justificacion": "0005_grant_schema_usage: USAGE de schema para authenticated y anon (lo que la plataforma hace al exponer el schema). USAGE solo permite resolver nombres: no da acceso a ninguna tabla ni función, cada objeto exige su propio grant (y este guard prohíbe esos grants a anon)."
+    },
+    {
+      "objeto": "schema:licitaciones",
+      "privilegios": [
+        "usage"
+      ],
+      "justificacion": "0005_grant_schema_usage: USAGE de schema para authenticated y anon (lo que la plataforma hace al exponer el schema). USAGE solo permite resolver nombres: no da acceso a ninguna tabla ni función, cada objeto exige su propio grant (y este guard prohíbe esos grants a anon)."
+    },
+    {
+      "objeto": "schema:rentas",
+      "privilegios": [
+        "usage"
+      ],
+      "justificacion": "0005_grant_schema_usage: USAGE de schema para authenticated y anon (lo que la plataforma hace al exponer el schema). USAGE solo permite resolver nombres: no da acceso a ninguna tabla ni función, cada objeto exige su propio grant (y este guard prohíbe esos grants a anon)."
+    },
+    {
+      "objeto": "schema:restaurantes",
+      "privilegios": [
+        "usage"
+      ],
+      "justificacion": "0005_grant_schema_usage: USAGE de schema para authenticated y anon (lo que la plataforma hace al exponer el schema). USAGE solo permite resolver nombres: no da acceso a ninguna tabla ni función, cada objeto exige su propio grant (y este guard prohíbe esos grants a anon)."
+    }
+  ],
+  "definerConPublic": []
+}

@@ -149,12 +149,24 @@ jobs:
       - name: Trinquete i18n (sin textos en espanol a mano en lo migrado)
         run: npm run i18n:guard
 
+      # Ola 2 (seguridad): toda funcion SECURITY DEFINER con revoke de PUBLIC y sin EXECUTE para anon, y ningun
+      # GRANT a anon fuera de scripts/guard-sql-privilegios/excepciones.json. Estatico sobre supabase/migrations/,
+      # sin Postgres, sin red ni secretos (el equivalente contra Postgres real es scripts/verify-security-definer-revoke/).
+      - name: Guard de privilegios SQL (security definer y anon)
+        run: npm run verify:sql-privilegios
+
       - name: Build de apps/web (Vite)
         run: npm run build --workspace apps/web
 
       # R-37: el JS por ruta no puede crecer sin que alguien lo decida en un PR.
       - name: Presupuesto de bundle (gzip por ruta)
         run: npm run verify:bundle-budget
+
+      # Ola 2 (seguridad): `npm audit` -- 0 high/critical en dependencias de produccion (--omit=dev) y ningun high/critical
+      # NUEVO en el arbol completo fuera de scripts/npm-audit-baseline/baseline.json (hoy 9, todos de desarrollo). Sin
+      # secretos; si el registro de npm no responde, avisa y no bloquea.
+      - name: npm audit --audit-level=high (trinquete con baseline)
+        run: npm run verify:npm-audit
 
   # test:unit partido en 3 shards de vitest (`--shard=i/3`): la suite completa ya
   # tardaba ~24-25 min en un solo job y chocaba con el timeout. Mismas pruebas, mismos
