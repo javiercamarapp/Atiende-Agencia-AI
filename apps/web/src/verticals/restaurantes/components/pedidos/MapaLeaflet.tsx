@@ -108,6 +108,5 @@ export default function MapaLeaflet({ sucursal, direccionCliente, repartidorNomb
     };
   }, [listo, pedidoId, sucursal.lat, sucursal.lng, sucursal.nombre, direccionCliente, repartidorNombre, enCamino, tr]);
 
-  return <div ref={contenedor} role="region" aria-label={tr("restaurantes.pedidos.mapa.aria")}
- data-testid="mapa-entrega-leaflet" className="pedido-mapa h-[360px] overflow-hidden rounded-xl border border-border" />;
+  return <div ref={contenedor} role="region" aria-label={tr("restaurantes.pedidos.mapa.aria")} data-testid="mapa-entrega-leaflet" className="pedido-mapa h-[360px] overflow-hidden rounded-xl border border-border" />;
 }

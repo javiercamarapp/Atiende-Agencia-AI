@@ -13,7 +13,8 @@ import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react"
 import type { KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { Check, CheckCheck, RotateCcw, Send, SlidersHorizontal } from "lucide-react";
-import { Checkbox, FormField, Selector, useMarcoShell } from "@atiende/ui";
+import { Checkbox, FormField, Selector, useMarcoShell, useT } from "@atiende/ui";
+import { restaurantesPreview } from "@atiende/ui/i18n/restaurantes/preview";
 import { hora24EsMx } from "../../../lib/formato-fecha.ts";
 import { enviarMensajePrueba } from "../lib/agente-whatsapp-client.ts";
 import type { ConfigAgenteForm, MensajePrueba } from "../lib/agente-whatsapp-client.ts";
@@ -44,8 +45,6 @@ type Mensaje =
 
 /** Tope del servidor (AGENTE_PREVIEW_LIMITES.maxMensajes). */
 const LIMITE_MENSAJES = 40;
-/** Mensaje del agente cuando algo falla, como en el original; el detalle honesto del servidor va debajo. */
-const TEXTO_FALLO = "Ahorita no pude procesar tu mensaje — intenta de nuevo en un momento.";
 const CONSULTA_ESCRITORIO = "(min-width: 768px)";
 const ENFOCABLES = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
@@ -65,7 +64,8 @@ function useEscritorio(): boolean | null {
 
 /** Palomitas: una gris (enviado), dos grises (entregado) o dos azules (leído). El estado también va en texto para lectores de pantalla. */
 function Palomitas({ leido, entregado }: { readonly leido: boolean; readonly entregado: boolean }) {
-  const estado = leido ? "Leído" : entregado ? "Entregado" : "Enviado";
+  const t = useT(restaurantesPreview);
+  const estado = t(leido ? "restaurantes.preview.palomitas.leido" : entregado ? "restaurantes.preview.palomitas.entregado" : "restaurantes.preview.palomitas.enviado");
   return (
     <span className="wa-palomitas" data-estado={leido ? "leido" : entregado ? "entregado" : "enviado"}>
       {entregado ? <CheckCheck aria-hidden="true" strokeWidth={2.25} /> : <Check aria-hidden="true" strokeWidth={2.25} />}
@@ -77,7 +77,9 @@ function Palomitas({ leido, entregado }: { readonly leido: boolean; readonly ent
 const nuevaSesion = (): string => crypto.randomUUID();
 const inicial = (nombre: string): string => (nombre.trim().charAt(0) || "A").toLocaleUpperCase("es-MX");
 
-export function WidgetWhatsApp({ apiBaseUrl, token, propertyId, nombreNegocio = "Agente de WhatsApp", borrador }: Props) {
+export function WidgetWhatsApp({ apiBaseUrl, token, propertyId, nombreNegocio: nombreNegocioProp, borrador }: Props) {
+  const t = useT(restaurantesPreview);
+  const nombreNegocio = nombreNegocioProp ?? t("restaurantes.preview.agente");
   const [abierto, setAbierto] = useState(false);
   const [opcionesAbiertas, setOpcionesAbiertas] = useState(false);
   const [sesionId, setSesionId] = useState(nuevaSesion);
@@ -196,7 +198,7 @@ export function WidgetWhatsApp({ apiBaseUrl, token, propertyId, nombreNegocio = 
     if (mensajes.filter((m) => m.rol !== "sistema").length + 1 > LIMITE_MENSAJES) {
       reiniciar();
       setBorradorTexto(limpio);
-      setAviso(`La conversación de prueba llegó al límite de ${LIMITE_MENSAJES} mensajes y se reinició. Vuelve a enviar tu mensaje.`);
+      setAviso(t("restaurantes.preview.limite", { n: LIMITE_MENSAJES }));
       return;
     }
     setAviso(null);
@@ -211,13 +213,13 @@ export function WidgetWhatsApp({ apiBaseUrl, token, propertyId, nombreNegocio = 
       const r = await enviarMensajePrueba(fetch, apiBaseUrl, token, propertyId, { sesionId, mensajes: historial, clienteSimuladoId: clienteId || null, borrador: usarBorrador && borrador ? borrador : null });
       const nuevos: Mensaje[] = [mio, { id: crypto.randomUUID(), rol: "agente", texto: r.respuesta, hora: new Date() }];
       const simulado = pedidoSimuladoDe({ order: r.pedidoSimulado });
-      if (simulado) nuevos.push({ id: crypto.randomUUID(), rol: "sistema", texto: `Pedido simulado · ${simulado.folio} · Prueba`, hora: new Date(), pedido: simulado });
+      if (simulado) nuevos.push({ id: crypto.randomUUID(), rol: "sistema", texto: t("restaurantes.preview.pedidoSimulado", { folio: simulado.folio }), hora: new Date(), pedido: simulado });
       setMensajes([...antes, ...nuevos]);
     } catch (err) {
       // El mensaje del cliente se quita para que pueda reenviarlo: el servidor no guardó nada de este turno.
       setMensajes(antes);
       setBorradorTexto(limpio);
-      setError(err instanceof Error ? err.message : "No se pudo probar el agente.");
+      setError(err instanceof Error ? err.message : t("restaurantes.preview.errorProbar"));
     } finally {
       setEscribiendo(false);
     }
@@ -250,8 +252,8 @@ export function WidgetWhatsApp({ apiBaseUrl, token, propertyId, nombreNegocio = 
   const noDisponible = error?.startsWith("No disponible") ?? false;
   const hayMensajes = mensajes.length > 0;
   const marcas = agruparMensajes(mensajes, zona);
-  const estadoChat = escribiendo ? "escribiendo…" : "En línea";
-  const chip = escribiendo ? "● Escribiendo" : hayMensajes ? "● Conversación" : "Vista previa";
+  const estadoChat = t(escribiendo ? "restaurantes.preview.escribiendo" : "restaurantes.preview.enLinea");
+  const chip = t(escribiendo ? "restaurantes.preview.chip.escribiendo" : hayMensajes ? "restaurantes.preview.chip.conversacion" : "restaurantes.preview.chip.vistaPrevia");
   // Palomitas: azules cuando el agente ya contestó después de ese mensaje; grises (entregado) mientras espera.
   const ultimoAgente = mensajes.reduce((acc, m, i) => (m.rol === "agente" ? i : acc), -1);
 
@@ -260,7 +262,7 @@ export function WidgetWhatsApp({ apiBaseUrl, token, propertyId, nombreNegocio = 
       ref={panel}
       role="dialog"
       aria-modal="true"
-      aria-label={`Vista previa de conversación: Agente de WhatsApp de ${nombreNegocio}`}
+      aria-label={t("restaurantes.preview.dialogo", { negocio: nombreNegocio })}
       tabIndex={-1}
       onKeyDown={atraparTab}
       className={`wa-widget wa-vista voz-aparece ${enBody ? "wa-vista--fija" : "wa-vista--marco"}`}
@@ -268,22 +270,22 @@ export function WidgetWhatsApp({ apiBaseUrl, token, propertyId, nombreNegocio = 
     >
       <header className="wa-top">
         <div className="wa-top__izq">
-          <button type="button" className="wa-atras" onClick={() => setAbierto(false)} aria-label="Cerrar la vista previa, volver atrás" data-testid="cerrar-chat-whatsapp">
-            ‹ Atrás
+          <button type="button" className="wa-atras" onClick={() => setAbierto(false)} aria-label={t("restaurantes.preview.atrasAria")} data-testid="cerrar-chat-whatsapp">
+            {t("restaurantes.preview.atras")}
           </button>
           <span className="wa-top__sep" aria-hidden="true">
             |
           </span>
           <div className="wa-top__titulo">
-            <p>Agente de WhatsApp</p>
+            <p>{t("restaurantes.preview.agente")}</p>
             <p>{nombreNegocio}</p>
           </div>
         </div>
         <div className="wa-top__der">
-          <button type="button" className="wa-icono" onClick={reiniciar} disabled={escribiendo} aria-label="Reiniciar conversación" title="Reiniciar conversación" data-testid="reiniciar-prueba">
+          <button type="button" className="wa-icono" onClick={reiniciar} disabled={escribiendo} aria-label={t("restaurantes.preview.reiniciar")} title={t("restaurantes.preview.reiniciar")} data-testid="reiniciar-prueba">
             <RotateCcw aria-hidden="true" strokeWidth={1.75} />
           </button>
-          <button type="button" className="wa-icono" onClick={() => setOpcionesAbiertas((v) => !v)} aria-expanded={opcionesAbiertas} aria-controls={idOpciones} aria-label="Opciones de prueba" title="Opciones de prueba">
+          <button type="button" className="wa-icono" onClick={() => setOpcionesAbiertas((v) => !v)} aria-expanded={opcionesAbiertas} aria-controls={idOpciones} aria-label={t("restaurantes.preview.opciones")} title={t("restaurantes.preview.opciones")}>
             <SlidersHorizontal aria-hidden="true" strokeWidth={1.75} />
           </button>
           <span data-testid="chip-estado" className="wa-chip" data-activo={escribiendo || hayMensajes ? "true" : undefined}>
@@ -293,18 +295,18 @@ export function WidgetWhatsApp({ apiBaseUrl, token, propertyId, nombreNegocio = 
       </header>
 
       {opcionesAbiertas ? (
-        <div id={idOpciones} className="wa-opciones" role="group" aria-label="Opciones de prueba">
-          <FormField label="Simular cliente" {...(hayMensajes ? { hint: "Reinicia la conversación para cambiar de cliente." } : {})}>
+        <div id={idOpciones} className="wa-opciones" role="group" aria-label={t("restaurantes.preview.opciones")}>
+          <FormField label={t("restaurantes.preview.simularCliente")} {...(hayMensajes ? { hint: t("restaurantes.preview.simularAyuda") } : {})}>
             <Selector value={clienteId} onChange={(e) => setClienteId(e.target.value)} disabled={hayMensajes}>
-              <option value="">Cliente nuevo</option>
+              <option value="">{t("restaurantes.preview.clienteNuevo")}</option>
               {clientes.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.name ?? "Sin nombre"} · {c.orderCount} {c.orderCount === 1 ? "pedido" : "pedidos"}
+                  {c.name ?? t("restaurantes.preview.sinNombre")} · {t("restaurantes.preview.pedidos", { count: c.orderCount })}
                 </option>
               ))}
             </Selector>
           </FormField>
-          {borrador ? <Checkbox label="Probar con los cambios sin guardar" checked={usarBorrador} onChange={(e) => setUsarBorrador(e.target.checked)} /> : null}
+          {borrador ? <Checkbox label={t("restaurantes.preview.conBorrador")} checked={usarBorrador} onChange={(e) => setUsarBorrador(e.target.checked)} /> : null}
         </div>
       ) : null}
 
@@ -313,26 +315,26 @@ export function WidgetWhatsApp({ apiBaseUrl, token, propertyId, nombreNegocio = 
           <span className="wa-lateral__logo">
             <WhatsAppIcon />
           </span>
-          <p className="wa-lateral__titulo">{hayMensajes ? "Conversación de prueba en curso" : "Aún no hay una conversación"}</p>
-          <p className="wa-lateral__texto" aria-hidden="true">Escríbele al agente como lo haría un cliente. Puede tomar un pedido de principio a fin, pero es una prueba: no se crean pedidos ni se avisa a nadie.</p>
+          <p className="wa-lateral__titulo">{t(hayMensajes ? "restaurantes.preview.enCurso" : "restaurantes.preview.sinConversacion")}</p>
+          <p className="wa-lateral__texto" aria-hidden="true">{t("restaurantes.preview.lateral")}</p>
         </aside>
 
-        <section className="wa-chat" aria-label="Chat de prueba">
+        <section className="wa-chat" aria-label={t("restaurantes.preview.chat")}>
           <div className="wa-chat__cabecera">
             <span className="wa-avatar" aria-hidden="true">
               {inicial(nombreNegocio)}
             </span>
             <div className="wa-chat__cabecera-texto">
               <p className="wa-chat__nombre">{nombreNegocio}</p>
-              <p className="wa-chat__estado">{estadoChat} · Prueba</p>
+              <p className="wa-chat__estado">{t("restaurantes.preview.estadoPrueba", { estado: estadoChat })}</p>
             </div>
           </div>
 
-          <div className="wa-cuerpo" role="log" aria-live="polite" aria-relevant="additions" aria-label="Conversación de prueba">
+          <div className="wa-cuerpo" role="log" aria-live="polite" aria-relevant="additions" aria-label={t("restaurantes.preview.conversacion")}>
             {!hayMensajes && !error ? (
               <div className="wa-vacio">
                 <p>
-                  Escríbele al agente de WhatsApp de {nombreNegocio} como lo haría un cliente. Puede tomar un pedido de principio a fin, pero es una prueba: no se crean pedidos ni se avisa a nadie.
+                  {t("restaurantes.preview.vacio", { negocio: nombreNegocio })}
                 </p>
               </div>
             ) : null}
@@ -366,7 +368,7 @@ export function WidgetWhatsApp({ apiBaseUrl, token, propertyId, nombreNegocio = 
                   {sep}
                   <div className={`wa-fila wa-fila--${m.rol}`} data-primero={primero ? "true" : undefined}>
                     <div className={`wa-burbuja wa-burbuja--${m.rol}`} data-cola={primero ? "true" : undefined}>
-                      <span className="wa-solo-lectores">{m.rol === "cliente" ? "Cliente: " : "Agente: "}</span>
+                      <span className="wa-solo-lectores">{t(m.rol === "cliente" ? "restaurantes.preview.lector.cliente" : "restaurantes.preview.lector.agente")}</span>
                       <FormatoWhatsApp texto={m.texto} fin={pie} />
                     </div>
                   </div>
@@ -376,7 +378,7 @@ export function WidgetWhatsApp({ apiBaseUrl, token, propertyId, nombreNegocio = 
 
             {escribiendo ? (
               <div className="wa-fila wa-fila--agente" role="status" data-primero="true">
-                <span className="wa-solo-lectores">El agente está escribiendo…</span>
+                <span className="wa-solo-lectores">{t("restaurantes.preview.agenteEscribiendo")}</span>
                 <div className="wa-escribiendo wa-burbuja--agente" data-cola="true" aria-hidden="true">
                   <span className="wa-punto" />
                   <span className="wa-punto" />
@@ -394,7 +396,7 @@ export function WidgetWhatsApp({ apiBaseUrl, token, propertyId, nombreNegocio = 
             {error ? (
               <div className="wa-fila wa-fila--agente" role="alert" data-testid="error-prueba" data-primero="true">
                 <div className="wa-burbuja wa-burbuja--agente wa-burbuja--error" data-cola="true">
-                  <span>{noDisponible ? "Por ahora no puedo contestar." : TEXTO_FALLO}</span>
+                  <span>{t(noDisponible ? "restaurantes.preview.noPuedoContestar" : "restaurantes.preview.fallo")}</span>
                   <span className="wa-burbuja__detalle">{error}</span>
                 </div>
               </div>
@@ -409,8 +411,8 @@ export function WidgetWhatsApp({ apiBaseUrl, token, propertyId, nombreNegocio = 
               void enviar();
             }}
           >
-            <input ref={campo} className="wa-campo" aria-label="Mensaje de prueba" maxLength={1000} value={borradorTexto} placeholder="Escribe un mensaje" onChange={(e) => setBorradorTexto(e.target.value)} disabled={escribiendo} autoComplete="off" />
-            <button type="submit" className="wa-enviar" aria-label="Enviar mensaje" disabled={escribiendo || borradorTexto.trim() === ""}>
+            <input ref={campo} className="wa-campo" aria-label={t("restaurantes.preview.mensajeAria")} maxLength={1000} value={borradorTexto} placeholder={t("restaurantes.preview.mensaje")} onChange={(e) => setBorradorTexto(e.target.value)} disabled={escribiendo} autoComplete="off" />
+            <button type="submit" className="wa-enviar" aria-label={t("restaurantes.preview.enviar")} disabled={escribiendo || borradorTexto.trim() === ""}>
               <Send aria-hidden="true" strokeWidth={2} />
             </button>
           </form>
@@ -430,13 +432,13 @@ export function WidgetWhatsApp({ apiBaseUrl, token, propertyId, nombreNegocio = 
             type="button"
             className="globo-whatsapp"
             data-testid="globo-whatsapp"
-            aria-label="Probar conversación con el agente de WhatsApp (vista previa)"
+            aria-label={t("restaurantes.preview.globoAria")}
             onClick={() => setAbierto(true)}
           >
             <span className="globo-whatsapp__logo" aria-hidden="true">
               <WhatsAppIcon />
             </span>
-            <span>Probar conversación</span>
+            <span>{t("restaurantes.preview.globo")}</span>
           </button>
         </div>,
         document.body,

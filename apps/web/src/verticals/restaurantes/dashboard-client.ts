@@ -25,7 +25,6 @@ export const PERIOD_OPTIONS: ReadonlyArray<{ readonly id: StatsPeriod; readonly 
   },
 }));
 
-
 export interface BranchOption {
   readonly propertyId: string;
   readonly name: string;

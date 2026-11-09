@@ -75,7 +75,6 @@ export function HerramientasPedidos(p: HerramientasPedidosProps) {
             <Button type="button" size="sm" variant="outline" className="w-full" onClick={p.onReglas}>
               <SlidersHorizontal className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
               {t("restaurantes.pedidos.herramientas.reglas")}
-
             </Button>
           )}
         </PopoverContent>

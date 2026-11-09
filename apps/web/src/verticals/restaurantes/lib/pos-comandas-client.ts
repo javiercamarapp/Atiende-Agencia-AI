@@ -155,7 +155,6 @@ export function etiquetaInsigniaPedido(estado: EstadoComandaWire): string {
   if (estado === "captura_manual") return ETIQUETA_ESTADO_COMANDA.captura_manual;
   if (estado === "fallida") return ETIQUETA_ESTADO_COMANDA.fallida;
   return ETIQUETA_ESTADO_COMANDA.enviada;
-
 }
 
 /** Solo los ultimos 4 digitos ("******1234"); para pantalla, nunca para copiar. */
