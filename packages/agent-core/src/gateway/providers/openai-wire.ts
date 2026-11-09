@@ -11,7 +11,9 @@ import type { LlmMessage, LlmToolCall, LlmToolDefinition } from '../types.js';
 /** Partes de contenido multimodal de Chat Completions (texto + audio de entrada). */
 export type OpenAiWireContentPart =
   | { type: 'text'; text: string; cache_control?: { type: 'ephemeral' } }
-  | { type: 'input_audio'; input_audio: { data: string; format: string } };
+  | { type: 'input_audio'; input_audio: { data: string; format: string } }
+  | { type: 'image_url'; image_url: { url: string } }
+  | { type: 'file'; file: { filename: string; file_data: string } };
 
 export interface OpenAiWireMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
@@ -57,6 +59,16 @@ export function toOpenAiWireMessages(system: string, messages: readonly LlmMessa
     if (m.role === 'user' && m.audio) {
       // Mensaje con nota de voz: texto (instruccion) + parte `input_audio`. Sin texto, solo el audio.
       wire.push({ role: 'user', content: [...(m.content ? [{ type: 'text' as const, text: m.content }] : []), { type: 'input_audio' as const, input_audio: { data: m.audio.data, format: m.audio.format } }] });
+      continue;
+    }
+    if (m.role === 'user' && m.archivos && m.archivos.length > 0) {
+      // Mensaje con imagen/PDF: texto (instruccion) + una parte por archivo (data URL; el PDF como parte `file` de OpenRouter).
+      const partes: OpenAiWireContentPart[] = m.content ? [{ type: 'text', text: m.content }] : [];
+      for (const a of m.archivos) {
+        const url = `data:${a.mimeType};base64,${a.data}`;
+        partes.push(a.kind === 'pdf' ? { type: 'file', file: { filename: a.filename, file_data: url } } : { type: 'image_url', image_url: { url } });
+      }
+      wire.push({ role: 'user', content: partes });
       continue;
     }
     wire.push({ role: 'user', content: m.content });

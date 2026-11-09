@@ -6,6 +6,7 @@ import type { Page } from "../../helpers/fixtures.ts";
 import { cuerpoDe, esperarEscrituras, ir, BASE } from "../../helpers/recorrido.ts";
 import { personaDe } from "../../mock-api/personas.ts";
 import { elegirValor, elegirEtiqueta } from "../../helpers/listas.ts";
+import { abrirMasMovil, esMovil } from "../../helpers/navegacion.ts";
 
 const main = (page: Page) => page.locator("main#contenido-principal");
 
@@ -72,14 +73,17 @@ test.describe("restaurantes: viaje completo de un pedido @viaje", () => {
 
     // 6. Consulta el Copiloto.
     await ir(page, "/copiloto");
-    await page.getByRole("button", { name: "¿Cuánto vendí esta semana?" }).click();
+    await page.getByRole("button", { name: "¿Cuánto vendí por día en los últimos 7 días?" }).click();
     await expect(page.getByText("En los últimos 7 días vendiste")).toBeVisible();
 
     // 7. Cierra sesion y vuelve al login de restaurantes.
-    // En movil el menu de cuenta es una hoja que se abre con el boton de usuario.
-    const cuenta = page.getByRole("button", { name: "Abrir menú de cuenta" });
-    if (await cuenta.isVisible()) await cuenta.click();
-    await page.getByRole("button", { name: "Cerrar sesión" }).click();
+    // En movil la cuenta vive al pie de la hoja «Más» («Salir»); en escritorio, al pie del menu lateral («Cerrar sesión»).
+    if (esMovil(page)) {
+      const hoja = await abrirMasMovil(page);
+      await hoja.getByTestId("mas-cuenta").getByRole("button", { name: "Salir" }).click();
+    } else {
+      await page.getByRole("button", { name: "Cerrar sesión" }).click();
+    }
     await expect(page).toHaveURL(/\/restaurantes\/login/);
     vigilante.verificar();
   });

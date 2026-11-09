@@ -1,7 +1,7 @@
 import { idiomaActivo } from "./activo.ts";
 import { registrarModuloEs, type Clave } from "./mensajes/index.ts";
 import type { ModuloEs, Variables } from "./tipos.ts";
-import { traducir, type Traductor } from "./traducir";
+import { traducir, type Traductor } from "./traducir.ts";
 
 const registrados = /* @__PURE__ */ new WeakSet<ModuloEs>();
 

@@ -160,6 +160,7 @@ export function useCopiloto({ transporte, fases, conversacionInicial, onConversa
           status: r.status,
           ...(r.blocks ? { blocks: r.blocks } : {}),
           ...(r.sources ? { sources: r.sources } : {}),
+          ...(r.cobertura ? { cobertura: r.cobertura } : {}),
           ...((r.seq ?? seqEvento) !== undefined ? { seq: (r.seq ?? seqEvento) as number } : {}),
           ...(r.sugerencias ? { sugerencias: r.sugerencias } : {}),
           ...(r.reintentarEnSeg !== undefined ? { reintentarEnSeg: r.reintentarEnSeg } : {}),

@@ -29,7 +29,7 @@ test("la animación responde al cursor y respeta movimiento reducido sin control
 
 // Desde el 6-nov el login de las 6 verticales es el de Rovaq (VerticalLoginDs3): panel oscuro con la esfera de particulas
 // a la izquierda en escritorio, tambien en restaurantes (ya sin la lamina con foto, que queda solo en la pantalla anterior,
-// interruptor de emergencia VITE_LOGIN_LEGADO=1). Las pruebas de abajo cubren lo mismo que cubrian para el panel editorial.
+// interruptor de emergencia VITE_DISENO_LEGADO=1). Las pruebas de abajo cubren lo mismo que cubrian para el panel editorial.
 test("el panel no descarga fotografías ni ocupa espacio en móvil", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 667 });
   const images: string[] = [];

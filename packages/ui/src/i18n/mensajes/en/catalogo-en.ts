@@ -5,6 +5,7 @@
 import type { ModulosTraducidos } from "../index.ts";
 import { comunEn } from "./comun.ts";
 import { consolaEn } from "./consola.ts";
+import { datosEn } from "./datos.ts";
 import { navEn } from "./nav.ts";
 import { notifEn } from "./notif.ts";
 import { MODULOS_EN_RESTAURANTES } from "./restaurantes/index.ts";
@@ -16,6 +17,7 @@ import { MODULOS_EN_CITAS } from "./citas/index.ts";
 import { MODULOS_EN_SUPERADMIN } from "./superadmin/index.ts";
 import { rolEn } from "./rol.ts";
 import { shellEn } from "./shell.ts";
+import { waMetaEn } from "./waMeta.ts";
 
 export const MODULOS_EN = {
   comun: comunEn,
@@ -24,6 +26,8 @@ export const MODULOS_EN = {
   rol: rolEn,
   consola: consolaEn,
   notif: notifEn,
+  datos: datosEn,
+  waMeta: waMetaEn,
   ...MODULOS_EN_RESTAURANTES,
   ...MODULOS_EN_RENTAS,
   ...MODULOS_EN_LICITACIONES,
