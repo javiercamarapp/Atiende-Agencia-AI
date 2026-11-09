@@ -19,7 +19,7 @@ async function construir(opts: { sinRepo?: boolean } = {}) {
   return { ctx, ajustes, deps, app: envolver(buildApp(deps)), base: `/v1/restaurantes/${ctx.propertyIdA}/admin/agente` };
 }
 
-const OK = { ...AJUSTES_AGENTE_POR_DEFECTO, whatsappModelo: "google/gemini-2.5-flash-lite", whatsappTemperatura: 0.3, vozTemperatura: 0.5, vozRitmo: "pausado", vozEstilo: "calido", vozFondoActivo: true, vozFondoVolumen: 10 };
+const OK = { ...AJUSTES_AGENTE_POR_DEFECTO, whatsappModelo: "deepseek/deepseek-v4.1-flash", whatsappTemperatura: 0.3, vozTemperatura: 0.5, vozRitmo: "pausado", vozEstilo: "calido", vozFondoActivo: true, vozFondoVolumen: 10 };
 
 describe("GET/PUT .../admin/agente/ajustes", () => {
   it("sin ajustes guardados: valores de siempre, lista permitida con costo estimado y los estados honestos", async () => {
@@ -40,7 +40,7 @@ describe("GET/PUT .../admin/agente/ajustes", () => {
     const { ctx, app, base, ajustes } = await construir();
     const put = await app.request(`${base}/ajustes`, authedJson(ctx.staff.owner.token, OK, "PUT"));
     expect(put.status).toBe(200);
-    expect((await put.json()).ajustes).toMatchObject({ whatsappModelo: "google/gemini-2.5-flash-lite", whatsappTemperatura: 0.3, vozFondoVolumen: 10 });
+    expect((await put.json()).ajustes).toMatchObject({ whatsappModelo: "deepseek/deepseek-v4.1-flash", whatsappTemperatura: 0.3, vozFondoVolumen: 10 });
     expect(ajustes.escrituras).toHaveLength(1);
     expect(ajustes.escrituras[0]).toMatchObject({ organizationId: ctx.organizationId, actorUserId: ctx.staff.owner.id });
     const leido = await (await app.request(`${base}/ajustes`, authedGet(ctx.staff.admin.token))).json();
@@ -48,12 +48,12 @@ describe("GET/PUT .../admin/agente/ajustes", () => {
 
     const entrada = ctx.restaurantesRepo.auditLog.find((r) => r.action === "configuracion.agente_ajustes_actualizados");
     expect(entrada).toMatchObject({ actorUserId: ctx.staff.owner.id, entityId: ctx.organizationId, antes: null });
-    expect(JSON.parse(entrada!.despues!)).toMatchObject({ wa: ["google/gemini-2.5-flash-lite", 0.3], habla: ["pausado", "calido"], fondo: [true, 10, "cocina-taqueria"] });
+    expect(JSON.parse(entrada!.despues!)).toMatchObject({ wa: ["deepseek/deepseek-v4.1-flash", 0.3], habla: ["pausado", "calido"], fondo: [true, 10, "cocina-taqueria"] });
 
-    await app.request(`${base}/ajustes`, authedJson(ctx.staff.owner.token, { ...OK, whatsappModelo: "deepseek/deepseek-v4.1-flash" }, "PUT"));
+    await app.request(`${base}/ajustes`, authedJson(ctx.staff.owner.token, { ...OK, whatsappModelo: "anthropic/claude-haiku-5.5", whatsappTemperatura: null }, "PUT"));
     const segunda = ctx.restaurantesRepo.auditLog.filter((r) => r.action === "configuracion.agente_ajustes_actualizados").at(-1)!;
-    expect(JSON.parse(segunda.antes!).wa[0]).toBe("google/gemini-2.5-flash-lite");
-    expect(JSON.parse(segunda.despues!).wa[0]).toBe("deepseek/deepseek-v4.1-flash");
+    expect(JSON.parse(segunda.antes!).wa[0]).toBe("deepseek/deepseek-v4.1-flash");
+    expect(JSON.parse(segunda.despues!).wa[0]).toBe("anthropic/claude-haiku-5.5");
   });
 
   it("validacion: modelo fuera de la lista, temperatura a un modelo que no la admite, rangos, faltantes -> 400 y NADA se guarda", async () => {
@@ -61,7 +61,7 @@ describe("GET/PUT .../admin/agente/ajustes", () => {
     const casos: unknown[] = [
       {},
       { ...OK, whatsappModelo: "evil/modelo" },
-      { ...OK, whatsappModelo: "anthropic/claude-sonnet-5.5", whatsappTemperatura: 0.2 },
+      { ...OK, whatsappModelo: "anthropic/claude-haiku-5.5", whatsappTemperatura: 0.2 },
       { ...OK, whatsappModelo: null, whatsappTemperatura: 0.2 }, // el predeterminado (Luna) no admite temperatura
       { ...OK, vozModeloCascada: "x/y" },
       { ...OK, vozTemperatura: 1.2 },
@@ -173,9 +173,9 @@ describe("lado sistema: /internal/restaurantes/voz/ajustes-llamada", () => {
     expect(sin).toMatchObject({ disponible: true, ajustes: { modeloCascada: null, temperatura: null, ritmo: "normal", fondo: { activo: false, volumen: 0 } } });
     expect(sin.conocimiento).toMatchObject({ incluidos: expect.any(Array) });
 
-    await ajustes.guardar(ctx.organizationId, ctx.staff.owner.id, { ...AJUSTES_AGENTE_POR_DEFECTO, vozModeloCascada: "google/gemini-3.8-flash", vozTemperatura: 0.4, vozFondoActivo: true, vozFondoVolumen: 7, vozRitmo: "agil" });
+    await ajustes.guardar(ctx.organizationId, ctx.staff.owner.id, { ...AJUSTES_AGENTE_POR_DEFECTO, vozModeloCascada: "deepseek/deepseek-v4.1-flash", vozTemperatura: 0.4, vozFondoActivo: true, vozFondoVolumen: 7, vozRitmo: "agil" });
     const con = await (await app.request(url(ctx.organizationId), { headers })).json();
-    expect(con.ajustes).toMatchObject({ modeloCascada: "google/gemini-3.8-flash", temperatura: 0.4, ritmo: "agil", fondo: { activo: true, volumen: 7 } });
+    expect(con.ajustes).toMatchObject({ modeloCascada: "deepseek/deepseek-v4.1-flash", temperatura: 0.4, ritmo: "agil", fondo: { activo: true, volumen: 7 } });
     expect((await app.request(url("no-es-uuid"), { headers })).status).toBe(400);
   });
 

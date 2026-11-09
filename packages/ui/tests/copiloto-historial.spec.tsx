@@ -170,13 +170,15 @@ describe("contenido del historial", () => {
     expect(activo.className).toContain("bg-muted font-medium");
   });
 
-  it("estado de carga con skeletons y, si falla, el aviso de Likida con reintento que vuelve a pedir la lista", async () => {
+  it("estado de carga con el logo (region «Cargando historial», sin esqueletos) y, si falla, el aviso con reintento que vuelve a pedir la lista", async () => {
     const listar = vi.fn().mockRejectedValueOnce(new Error("x")).mockResolvedValueOnce(CONVS);
     const { props: p } = props({ listar });
     montado = montar(<ChatDatosShell {...p} />);
     const c = montado.container;
     clic(botonHistorial(c));
-    expect(panel(c)?.querySelectorAll(".ds-skeleton").length).toBe(3);
+    const carga = panel(c)?.querySelector('[role="status"][aria-busy="true"]');
+    expect(carga?.getAttribute("aria-label")).toBe("Cargando historial");
+    expect(panel(c)?.querySelectorAll(".ds-skeleton").length).toBe(0);
     await microtareas();
     expect(panel(c)?.textContent).toContain("No se pudo leer el historial ahora mismo — tus conversaciones siguen guardadas; reintenta en un momento.");
     clic(porTexto(panel(c) as HTMLElement, "button", "Reintentar"));

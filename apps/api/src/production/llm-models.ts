@@ -4,26 +4,20 @@
 // Ver docs/LLM-GATEWAY.md para la tabla completa, como cambiar un modelo y la privacidad.
 //
 // Reglas de este archivo:
-//   * Politica de PROVEEDORES, no de autores (2-oct-2026, decision de Javier: "si acepta DeepSeek y
-//     Qwen"): un modelo de CUALQUIER laboratorio entra a produccion solo si la ruta fija
-//     `provider.only` a proveedores con servidores en EE.UU. (`ALLOWED_PROVIDER_HOSTS`), siempre con
-//     `data_collection: 'deny'` y `require_parameters`, y con `zdr: true` cuando el endpoint lo ofrece.
-//     Los modelos de laboratorios chinos (DeepSeek, Qwen, GLM...) solo existen aqui si estan en
-//     `VERIFIED_MODEL_HOSTS` (tabla verificada contra la API publica de OpenRouter, ver su comentario);
-//     si para un modelo no hay proveedor EE.UU. con esas garantias, se rechaza al validar con un error claro.
-//     LLM_MODELS_JSON solo puede ESTRECHAR los proveedores de un modelo, nunca ampliarlos, quitarlos ni
-//     relajar la privacidad.
-//   * Defaults 2-oct-2026: chat GPT-6 Luna (low) -> DeepSeek V4.1 Flash -> Gemini 2.5 Flash-Lite -> Muse
-//     Spark 1.3; reintento por guardia de cifras DeepSeek V4 Pro; CFO/superadmin Claude Sonnet 5.5
-//     (respaldo DeepSeek V4 Pro); reportes con etapa de analisis y de redaccion por separado.
-//   * Parametros por modelo: los endpoints de GPT-6 Luna y Claude Sonnet 5.5 NO listan `temperature`
-//     entre los parametros soportados en OpenRouter (verificado en /api/v1/models/<id>/endpoints el
-//     2026-10-01; con Luna y Sonnet 5.5 se confirmo con una llamada real: `temperature: 0` -> 404 sin
-//     endpoints). Con `require_parameters: true` mandarla deja la ruta sin endpoints, asi que se omite
-//     ('omit') en todos los defaults.
-//   * El gateway NUNCA cae a un modelo no listado: una variable mal formada se ignora (con un
-//     error estructurado en logs) y se usan los defaults.
-import type { OpenRouterModelParams, OpenRouterRouting } from "@atiende/agent-core";
+//   * MODELOS POR ACTIVIDAD (6-nov-2026, decision de Omar): cada uso del LLM pertenece a una actividad (`ACTIVIDADES_LLM`) con su ruta
+//     principal -> respaldo elegida por calidad/precio PARA ESA ACTIVIDAD; `ACTIVIDAD_POR_ROL` mapea cada rol del gateway a su actividad y
+//     `DEFAULT_ROLE_ROUTES` se deriva de ahi (fuente unica de verdad).
+//   * RETENCION CERO OBLIGATORIA, FALLA CERRADA: todas las superficies tocan datos de clientes u organizaciones, asi que todo escalon sale con
+//     `provider.zdr: true`, `only` = proveedores de EE.UU. (`ALLOWED_PROVIDER_HOSTS`) que hoy sirven el endpoint ZDR del modelo
+//     (`VERIFIED_MODEL_HOSTS`, verificado en https://openrouter.ai/api/v1/endpoints/zdr), `data_collection: 'deny'` y `require_parameters`.
+//     Un modelo fuera del registro, sin endpoint ZDR o sin proveedor de EE.UU. se rechaza al validar (y si OpenRouter no encuentra endpoint
+//     ZDR responde 404: el escalon falla, nunca se relaja la politica). Politica de PROVEEDORES, no de autores (2-oct-2026, Javier).
+//   * SOLO MODELOS BARATOS (regla del dueno, 2-nov-2026): nada de Opus/Sonnet/Sol/Argon; tope de precio `PRECIO_MAXIMO_USD_POR_M`.
+//   * LLM_MODELS_JSON solo puede ESTRECHAR los proveedores de un modelo del registro: nunca ampliarlos, quitarlos, apagar el ZDR ni relajar
+//     la privacidad. El gateway NUNCA cae a un modelo no listado: una variable mal formada se ignora (con un error estructurado en logs).
+//   * Parametros por modelo: los endpoints ZDR de GPT-6 Luna, Claude Haiku 5.5 y los Gemini 3.x NO listan `temperature` entre los parametros
+//     soportados; con `require_parameters: true` mandarla deja la ruta sin endpoints, asi que se omite ('omit') en todos los defaults.
+import { lookupModelPrice, type OpenRouterModelParams, type OpenRouterRouting } from "@atiende/agent-core";
 import { MODELOS_AGENTE, modeloAgentePorId } from "@atiende/domain-restaurantes";
 
 export const SUPERADMIN_COPILOTO_ROLE = "superadmin:copiloto";
@@ -52,6 +46,9 @@ export const COMPACTACION_HISTORIAL_ROLE = "plataforma:compactacion_historial";
  *  Studio / Vertex (`GOOGLE_HOSTS`, en la lista permitida). Si ningun escalon acepta la peticion, el llamador conserva el comportamiento de
  *  "pedir al cliente que escriba". */
 export const RESTAURANTES_TRANSCRIPCION_ROLE = "restaurantes:transcripcion";
+/** Alta autoservicio: extraccion del menu (PDF o foto) a un borrador de productos/precios que el dueño revisa antes de guardar
+ *  (llamador: apps/api/src/routes/verticals/restaurantes/admin-menu-importar.ts). Entrada de imagen/PDF: actividad `extraccion_menu`. */
+export const RESTAURANTES_EXTRACCION_MENU_ROLE = "restaurantes:extraccion_menu";
 export const NEW_PLATFORM_LLM_ROLES: readonly string[] = [
   REPORTE_ANALISIS_FINANCIERO_ROLE,
   REPORTE_ANALISIS_GENERAL_ROLE,
@@ -107,30 +104,71 @@ export interface VerifiedModelHosts {
   readonly note: string;
 }
 
-/** Modelos cuyo origen no basta para inferir proveedores seguros (laboratorios chinos y Meta), con los
- *  proveedores EE.UU. verificados el 2026-10-01 en https://openrouter.ai/api/v1/models/<id>/endpoints
- *  cruzado con https://openrouter.ai/api/v1/endpoints/zdr (lista publica de endpoints con retencion cero).
+/** REGISTRO UNICO de modelos (de CUALQUIER laboratorio) con los proveedores de EE.UU. que hoy sirven su endpoint de RETENCION CERO.
+ *  Fuente: https://openrouter.ai/api/v1/endpoints/zdr cruzado con https://openrouter.ai/api/v1/models/<id>/endpoints, leido el
+ *  2026-11-06 (antes 2026-10-01). Un modelo que NO esta aqui con `zdr: true` y `hosts` no vacio NO se puede usar en ninguna superficie
+ *  (todas tocan datos de clientes u organizaciones): se rechaza al validar, falla cerrado. Ya no hay proveedores "por autor".
  *  Re-verificar con `node scripts/check-llm-us-hosts.mjs` antes de cambiar una fila. */
 export const VERIFIED_MODEL_HOSTS: Readonly<Record<string, VerifiedModelHosts>> = {
+  "openai/gpt-6-luna": {
+    hosts: ["azure"],
+    zdr: true,
+    note: "GPT-6 Luna: el UNICO endpoint ZDR es Azure (azure, azure/us); el endpoint directo de OpenAI no tiene ZDR.",
+  },
+  "anthropic/claude-haiku-5.5": {
+    hosts: ["google-vertex", "amazon-bedrock"],
+    zdr: true,
+    note: "Claude Haiku 5.5: Google Vertex (us/global) y Amazon Bedrock (us-east-1) con endpoint ZDR; el directo de Anthropic no aparece con ZDR.",
+  },
+  "google/gemini-3.5-flash-lite": {
+    hosts: ["google-vertex"],
+    zdr: true,
+    note: "Gemini 3.5 Flash-Lite: Google Vertex (us/global) con endpoint ZDR; Google AI Studio no aparece con ZDR. Acepta audio, imagen y PDF.",
+  },
+  "google/gemini-3.1-flash-lite": {
+    hosts: ["google-vertex"],
+    zdr: true,
+    note: "Gemini 3.1 Flash-Lite: Google Vertex (us/global) con endpoint ZDR. Acepta audio, imagen y PDF.",
+  },
+  "google/gemini-3.8-flash": {
+    hosts: ["google-vertex"],
+    zdr: true,
+    note: "Gemini 3.8 Flash: Google Vertex (us/global) con endpoint ZDR; Google AI Studio no aparece con ZDR.",
+  },
   "deepseek/deepseek-v4.1-flash": {
     hosts: ["deepinfra", "together", "fireworks", "baseten", "parasail", "coreweave"],
     zdr: true,
-    note: "DeepSeek V4.1 Flash: 6 proveedores de EE.UU. con endpoint ZDR (DeepInfra, Together, Fireworks, Baseten, Parasail, CoreWeave).",
+    note: "DeepSeek V4.1 Flash: 6 proveedores de EE.UU. con endpoint ZDR (DeepInfra, Together, Fireworks, Baseten, Parasail, CoreWeave); re-verificado el 6-nov-2026.",
   },
   "deepseek/deepseek-v4-pro": {
-    hosts: ["deepinfra", "parasail", "azure"],
+    hosts: ["deepinfra", "azure"],
     zdr: true,
-    note: "DeepSeek V4 Pro: DeepInfra, Parasail y Azure (azure/us) con endpoint ZDR.",
+    note: "DeepSeek V4 Pro: DeepInfra y Azure (azure/us) con endpoint ZDR (6-nov-2026: Parasail ya no aparece con ZDR para este modelo).",
   },
   "openai/gpt-oss-120b": {
-    hosts: ["deepinfra", "baseten", "coreweave", "amazon-bedrock", "google-vertex"],
+    hosts: ["deepinfra", "baseten", "coreweave", "parasail", "groq"],
     zdr: true,
-    note: "gpt-oss-120b: DeepInfra, Baseten, CoreWeave, Amazon Bedrock y Google Vertex con endpoint ZDR (1-oct-2026). OpenAI y Azure NO lo sirven, por eso no vale el default por autor.",
+    note: "gpt-oss-120b: DeepInfra, Baseten, CoreWeave, Parasail y Groq con endpoint ZDR y herramientas (6-nov-2026). OpenAI y Azure NO lo sirven; Bedrock y Vertex no listan `tools`.",
   },
   "qwen/qwen3-235b-a22b-2507": {
-    hosts: ["google-vertex", "parasail", "deepinfra"],
+    hosts: ["parasail", "deepinfra"],
     zdr: true,
-    note: "Qwen3-235B-A22B-2507: Google Vertex (us-south1), Parasail y DeepInfra con endpoint ZDR.",
+    note: "Qwen3-235B-A22B-2507: Parasail y DeepInfra con endpoint ZDR (6-nov-2026: Google Vertex ya no aparece con ZDR).",
+  },
+  "xiaomi/mimo-v2.6-flash": {
+    hosts: ["deepinfra"],
+    zdr: true,
+    note: "MiMo V2.6 Flash: DeepInfra con endpoint ZDR (6-nov-2026). Acepta audio e imagen.",
+  },
+  "anthropic/claude-sonnet-5.5": {
+    hosts: [],
+    zdr: false,
+    note: "Claude Sonnet 5.5: tiene endpoint ZDR, pero es de gama premium y la regla del dueno es solo modelos baratos (ver `PRECIO_MAXIMO_USD_POR_M`). Rechazado.",
+  },
+  "google/gemini-2.5-flash-lite": {
+    hosts: [],
+    zdr: false,
+    note: "Gemini 2.5 Flash-Lite: NINGUN endpoint con ZDR (6-nov-2026). Rechazado hasta que aparezca uno.",
   },
   "mistralai/mistral-small-3.2-24b-instruct": {
     hosts: ["deepinfra", "parasail"],
@@ -153,45 +191,56 @@ export const VERIFIED_MODEL_HOSTS: Readonly<Record<string, VerifiedModelHosts>> 
     note: "Qwen 3.7 Flash: hoy SOLO lo sirve Alibaba (sin endpoint ZDR ni servidores de EE.UU. verificados). Rechazado hasta que aparezca un proveedor de EE.UU. con ZDR.",
   },
   "meta/muse-spark-1.3": {
-    hosts: ["meta"],
+    hosts: [],
     zdr: false,
-    note: "Muse Spark 1.3: solo el endpoint de Meta (EE.UU.), sin ZDR.",
+    note: "Muse Spark 1.3: solo el endpoint de Meta (EE.UU.), SIN ZDR (6-nov-2026). Rechazado: todas las superficies tocan datos.",
   },
 };
 
-// Proveedores de infraestructura por laboratorio de EE.UU. cuando el modelo no esta en la tabla.
-const OPENAI_HOSTS = ["openai", "azure"] as const;
-const GOOGLE_HOSTS = ["google-ai-studio", "google-vertex"] as const;
-const ANTHROPIC_HOSTS = ["anthropic", "google-vertex", "amazon-bedrock"] as const;
+/** Tope de precio de la regla del dueno (2-nov-2026: "quiero baratos", nada de Opus/Sonnet/Argon): un modelo cuyo precio de lista
+ *  (entrada + salida, USD por millon, `MODEL_PRICES` de agent-core) pase de este tope se rechaza en cualquier ruta. Tambien se rechaza un
+ *  modelo SIN precio conocido (no se puede comprobar que sea barato). DeepSeek V4 Pro (1.91 + 3.83) y Gemini 3.8 Flash (0.75 + 3.75)
+ *  quedan debajo; Sonnet 5.5 (2 + 10) y GPT-6 Sol (1 + 5 = 6, gama "sol") quedan fuera por precio o por gama. */
+export const PRECIO_MAXIMO_USD_POR_M = 6;
+/** Gamas premium prohibidas aunque su precio bajara (defensa en profundidad de la regla del dueno). */
+export const GAMAS_PREMIUM = /(^|\/)(claude-(opus|sonnet)|gpt-[0-9.]+-(sol|astra|terra)|gemini-[0-9.]+-(pro|argon|ultra)|o[0-9]+-pro)/;
 
-/** Proveedores permitidos de un modelo: la fila verificada o, para openai/google/anthropic, los de su
- *  propia infraestructura. `undefined` = modelo sin proveedores verificados (exige `only` explicito). */
-export function defaultHostsForModel(model: string): readonly string[] | undefined {
-  const verified = VERIFIED_MODEL_HOSTS[model];
-  if (verified) return verified.hosts;
-  const author = model.split("/")[0];
-  if (author === "openai") return OPENAI_HOSTS;
-  if (author === "google") return GOOGLE_HOSTS;
-  if (author === "anthropic") return ANTHROPIC_HOSTS;
-  return undefined;
+/** Motivo por el que un modelo no cumple la regla de "solo baratos", o `null` si la cumple. */
+export function motivoNoBarato(model: string): string | null {
+  if (GAMAS_PREMIUM.test(model)) return `"${model}" es de gama premium (regla del dueno: solo modelos baratos)`;
+  const precio = lookupModelPrice(model);
+  if (!precio) return `"${model}" no tiene precio de lista en MODEL_PRICES: no se puede comprobar que sea barato`;
+  if (precio.inPerM + precio.outPerM > PRECIO_MAXIMO_USD_POR_M) return `"${model}" cuesta ${precio.inPerM} + ${precio.outPerM} USD por millon (tope ${PRECIO_MAXIMO_USD_POR_M}; regla del dueno: solo modelos baratos)`;
+  return null;
 }
 
-/** Evalua un escalon contra la politica. Devuelve los proveedores efectivos o el error (en espanol). */
+/** Proveedores permitidos de un modelo: los de su fila verificada con ZDR. `undefined` = el modelo no esta en el registro. */
+export function defaultHostsForModel(model: string): readonly string[] | undefined {
+  return VERIFIED_MODEL_HOSTS[model]?.hosts;
+}
+
+/** Modelos usables hoy: fila verificada con ZDR, al menos un proveedor y precio dentro del tope. */
+export function modelosZdrBaratos(): readonly string[] {
+  return Object.entries(VERIFIED_MODEL_HOSTS)
+    .filter(([m, v]) => v.zdr && v.hosts.length > 0 && motivoNoBarato(m) === null)
+    .map(([m]) => m);
+}
+
+/** Evalua un escalon contra la politica (ZDR obligatorio + EE.UU. + solo baratos). Devuelve los proveedores efectivos o el error (en espanol). */
 export function resolveRungHosts(model: string, requestedOnly: readonly string[] | undefined): { hosts: readonly string[] } | { error: string } {
   const verified = VERIFIED_MODEL_HOSTS[model];
-  if (verified && verified.hosts.length === 0) {
+  if (!verified) {
+    return { error: `"${model}" no esta en el registro de modelos con retencion cero verificada (VERIFIED_MODEL_HOSTS): no se puede usar en produccion (todas las superficies tocan datos)` };
+  }
+  if (!verified.zdr || verified.hosts.length === 0) {
     return { error: `"${model}" no tiene hoy un proveedor con servidores en EE.UU. y retencion cero verificado (${verified.note}); no se puede usar en produccion` };
   }
-  const base = defaultHostsForModel(model);
+  const caro = motivoNoBarato(model);
+  if (caro) return { error: caro };
+  const base = verified.hosts;
   const outsideAllowlist = (requestedOnly ?? []).filter((h) => !ALLOWED_PROVIDER_HOSTS.includes(h));
   if (outsideAllowlist.length > 0) {
     return { error: `"only" incluye proveedores fuera de la lista permitida de EE.UU.: ${outsideAllowlist.join(", ")}` };
-  }
-  if (!base) {
-    if (!requestedOnly || requestedOnly.length === 0) {
-      return { error: `"${model}" no tiene proveedores de EE.UU. verificados: la ruta debe fijar "only" a proveedores permitidos (${ALLOWED_PROVIDER_HOSTS.join(", ")})` };
-    }
-    return { hosts: requestedOnly };
   }
   if (!requestedOnly || requestedOnly.length === 0) return { hosts: base };
   const notVerified = requestedOnly.filter((h) => !base.includes(h));
@@ -201,26 +250,26 @@ export function resolveRungHosts(model: string, requestedOnly: readonly string[]
   return { hosts: requestedOnly };
 }
 
+// ---- Escalones (un modelo con sus parametros) ----
+// Temperatura 'omit' en todos: Luna, Haiku 5.5 y los Gemini 3.x no listan `temperature` en sus endpoints ZDR y, con `require_parameters`,
+// mandarla deja la ruta sin endpoints.
 const LUNA_LOW: LlmRungConfig = { model: "openai/gpt-6-luna", reasoningEffort: "low", temperature: "omit", minMaxTokens: 1500, supportsStructuredOutput: true };
+const LUNA_HIGH: LlmRungConfig = { ...LUNA_LOW, reasoningEffort: "high", minMaxTokens: 3000 };
+const HAIKU_55: LlmRungConfig = { model: "anthropic/claude-haiku-5.5", temperature: "omit", minMaxTokens: 1500, supportsStructuredOutput: true };
 const DEEPSEEK_FLASH: LlmRungConfig = { model: "deepseek/deepseek-v4.1-flash", reasoningEffort: "low", temperature: "omit", minMaxTokens: 1500, supportsStructuredOutput: true };
-const DEEPSEEK_PRO: LlmRungConfig = { model: "deepseek/deepseek-v4-pro", reasoningEffort: "medium", temperature: "omit", minMaxTokens: 3000, supportsStructuredOutput: true };
-const FLASH_LITE_25: LlmRungConfig = { model: "google/gemini-2.5-flash-lite", reasoningEffort: "minimal", temperature: "omit", minMaxTokens: 1500, supportsStructuredOutput: true };
-const MUSE_SPARK: LlmRungConfig = { model: "meta/muse-spark-1.3", reasoningEffort: "low", temperature: "omit", minMaxTokens: 1500, supportsStructuredOutput: true };
-const SONNET_MEDIUM: LlmRungConfig = { model: "anthropic/claude-sonnet-5.5", reasoningEffort: "medium", temperature: "omit", minMaxTokens: 3000, supportsStructuredOutput: true };
-const QWEN_235B: LlmRungConfig = { model: "qwen/qwen3-235b-a22b-2507", temperature: "omit", minMaxTokens: 3000, supportsStructuredOutput: true };
 const GEMINI_38_FLASH: LlmRungConfig = { model: "google/gemini-3.8-flash", reasoningEffort: "low", temperature: "omit", minMaxTokens: 4000, supportsStructuredOutput: true };
+const FLASH_LITE_35: LlmRungConfig = { model: "google/gemini-3.5-flash-lite", temperature: "omit", minMaxTokens: 1000, supportsStructuredOutput: true };
+const FLASH_LITE_31: LlmRungConfig = { model: "google/gemini-3.1-flash-lite", temperature: "omit", minMaxTokens: 1000, supportsStructuredOutput: true };
 
 /** Escalon para un modelo ELEGIDO por una organizacion de restaurantes (lista permitida `MODELOS_AGENTE` de domain-restaurantes): los mismos
  *  parametros de razonamiento/tokens que el escalon por defecto del modelo, pero con la temperatura HABILITADA solo si el modelo la admite
- *  (`aceptaTemperatura`: verificado en los endpoints permitidos de OpenRouter el 2026-10-04) y 'omit' si no (con `require_parameters` mandarla a
- *  Luna o Sonnet deja la ruta sin endpoints). Sin `temperature` el escalon usa la de la peticion. `undefined` = el id no esta en la lista. */
+ *  (`aceptaTemperatura`) y 'omit' si no (con `require_parameters` mandarla a Luna o Haiku deja la ruta sin endpoints). Sin `temperature` el
+ *  escalon usa la de la peticion. `undefined` = el id no esta en la lista. */
 const BASE_RUNG_MODELO_AGENTE: Readonly<Record<string, LlmRungConfig>> = {
   [LUNA_LOW.model]: LUNA_LOW,
+  [HAIKU_55.model]: HAIKU_55,
   [DEEPSEEK_FLASH.model]: DEEPSEEK_FLASH,
-  [FLASH_LITE_25.model]: FLASH_LITE_25,
-  [MUSE_SPARK.model]: MUSE_SPARK,
-  [GEMINI_38_FLASH.model]: GEMINI_38_FLASH,
-  [SONNET_MEDIUM.model]: SONNET_MEDIUM,
+  [FLASH_LITE_35.model]: FLASH_LITE_35,
 };
 
 export function rungParaModeloAgente(modeloId: string): LlmRungConfig | undefined {
@@ -236,90 +285,133 @@ export function rungsDeModelosAgente(): readonly LlmRungConfig[] {
   return MODELOS_AGENTE.map((m) => rungParaModeloAgente(m.id)).filter((r): r is LlmRungConfig => r !== undefined);
 }
 
-/** Perfil por defecto (data-chat de las 6 verticales, agentes de WhatsApp, extractores, borradores,
- *  conciliacion): barato y rapido. Luna -> DeepSeek V4.1 Flash -> Gemini 2.5 Flash-Lite -> Muse Spark 1.3;
- *  despues, modo sin IA (lo decide el llamador). */
-const ECONOMICO: LlmRouteConfig = {
-  models: [LUNA_LOW, DEEPSEEK_FLASH, FLASH_LITE_25, MUSE_SPARK],
-  // `only` por escalon se resuelve en `routingForModel`; aqui las preferencias comunes.
-  routing: { allowFallbacks: true },
+// ---- Modelos por ACTIVIDAD (fuente unica de verdad) ----
+// Cada uso del LLM pertenece a una actividad; cada actividad tiene UNA ruta (principal -> respaldo) elegida por calidad/precio para esa
+// actividad, medida en el bake-off del 6-nov-2026 (MODELOS-POR-ACTIVIDAD-NOV.md fuera del repo; resumen en docs/LLM-GATEWAY.md). Todas
+// las actividades tocan datos de clientes u organizaciones: todos los escalones son modelos del registro ZDR y baratos (un test lo exige).
+// Los roles del gateway se mapean a su actividad en `ACTIVIDAD_POR_ROL`; `DEFAULT_ROLE_ROUTES` se DERIVA de aqui.
+
+export type ActividadLlm =
+  | "whatsapp_agente"
+  | "whatsapp_agente_escalado"
+  | "datos_preguntas"
+  | "datos_reintento_cifras"
+  | "copiloto_superadmin"
+  | "reporte_analisis_financiero"
+  | "reporte_analisis_general"
+  | "reporte_redaccion"
+  | "resumen_diario"
+  | "tareas_cortas"
+  | "transcripcion_audio"
+  | "extraccion_documentos"
+  | "extraccion_menu"
+  | "borradores"
+  | "conciliacion"
+  | "demo_publica";
+
+export type ModalidadLlm = "texto" | "texto_herramientas" | "audio" | "imagen_pdf";
+
+export interface ActividadLlmConfig {
+  readonly descripcion: string;
+  readonly modalidad: ModalidadLlm;
+  /** Quien decidio la ruta: "dueno" = decision explicita de Omar (no la cambia un eval), "medicion" = bake-off, "precio" = sin eval propio. */
+  readonly decision: "dueno" | "medicion" | "precio";
+  readonly route: LlmRouteConfig;
+}
+
+const ruta = (...models: LlmRungConfig[]): LlmRouteConfig => ({ models, routing: { allowFallbacks: true } });
+
+export const ACTIVIDADES_LLM: Readonly<Record<ActividadLlm, ActividadLlmConfig>> = {
+  whatsapp_agente: { descripcion: "Agente de WhatsApp (pedidos, reservas, citas): conversacion con herramientas", modalidad: "texto_herramientas", decision: "dueno", route: ruta(LUNA_LOW, HAIKU_55) },
+  whatsapp_agente_escalado: { descripcion: "Agente de WhatsApp tras una falla de herramienta (escalado)", modalidad: "texto_herramientas", decision: "dueno", route: ruta(LUNA_LOW, HAIKU_55) },
+  // Bake-off 6-nov (30 preguntas del arnes del Copiloto, 6 verticales): Luna 76.7 % a US$0.00019/pregunta, Gemini 3.5 Flash-Lite 83.3 % (p95 2.4 s),
+  // Haiku 5.5 70 %; DeepSeek V4.1 Flash 73.3 % con p95 9 s y DeepSeek V4 Pro 62.1 % con 7 cifras inventadas a 13x el costo de Luna.
+  datos_preguntas: { descripcion: "Preguntale a tus datos (6 verticales): elegir consulta del catalogo y narrar cifras", modalidad: "texto_herramientas", decision: "medicion", route: ruta(LUNA_LOW, FLASH_LITE_35, HAIKU_55) },
+  // El reintento usa OTRO modelo que el primario (Luna): el mas exacto del bake-off. DeepSeek V4 Pro salio el peor (62 %, 7 cifras inventadas).
+  datos_reintento_cifras: { descripcion: "Reintento unico cuando la guardia de cifras rechaza la narrativa", modalidad: "texto_herramientas", decision: "medicion", route: ruta({ ...FLASH_LITE_35, minMaxTokens: 3000 }, { ...HAIKU_55, minMaxTokens: 3000 }) },
+  // Antes Sonnet 5.5 -> DeepSeek V4 Pro (premium y el peor en cifras). Mismo motor que el chat de datos: misma ruta medida, con mas piso de tokens.
+  copiloto_superadmin: { descripcion: "Copiloto de superadmin/CFO (multi-organizacion): preguntas de datos, resumenes y reportes", modalidad: "texto_herramientas", decision: "medicion", route: ruta({ ...LUNA_LOW, minMaxTokens: 3000 }, { ...FLASH_LITE_35, minMaxTokens: 3000 }, { ...HAIKU_55, minMaxTokens: 3000 }) },
+  reporte_analisis_financiero: { descripcion: "Reportes: etapa de analisis de datos financieros", modalidad: "texto", decision: "precio", route: ruta(LUNA_HIGH, { ...FLASH_LITE_35, minMaxTokens: 3000 }) },
+  reporte_analisis_general: { descripcion: "Reportes: etapa de analisis de datos no financieros", modalidad: "texto", decision: "precio", route: ruta({ ...LUNA_LOW, minMaxTokens: 3000 }, { ...FLASH_LITE_35, minMaxTokens: 3000 }) },
+  reporte_redaccion: { descripcion: "Reportes: etapa de redaccion", modalidad: "texto", decision: "precio", route: ruta(GEMINI_38_FLASH, { ...LUNA_LOW, minMaxTokens: 4000 }) },
+  resumen_diario: { descripcion: "Resumen diario de operacion para superadmin", modalidad: "texto", decision: "precio", route: ruta(GEMINI_38_FLASH, { ...LUNA_LOW, minMaxTokens: 4000 }) },
+  tareas_cortas: { descripcion: "Clasificacion y tareas cortas: enrutador de turno, compuerta de escalamiento, titulos, compactacion", modalidad: "texto", decision: "precio", route: ruta(LUNA_LOW, FLASH_LITE_35) },
+  // Bake-off 6-nov (10 notas sinteticas es-MX en m4a): Gemini 3.1 Flash-Lite WER 7.1 % (mediana 0), Gemini 3.5 Flash-Lite 10.0 %, ambos ~US$0.00017
+  // por nota y p50 ~1.8-2.0 s; MiMo V2.6 Flash (DeepInfra) rechaza `input_audio` (422). Antes: Gemini 2.5 Flash-Lite, que NO tiene endpoint ZDR.
+  transcripcion_audio: { descripcion: "Notas de voz de WhatsApp a texto", modalidad: "audio", decision: "medicion", route: ruta({ ...FLASH_LITE_31, minMaxTokens: 800 }, FLASH_LITE_35) },
+  extraccion_documentos: { descripcion: "Extraccion de requisitos de bases de licitacion (texto extraido por pagina)", modalidad: "texto", decision: "precio", route: ruta(LUNA_LOW, DEEPSEEK_FLASH) },
+  // Sin bake-off propio (decision "precio"): los dos modelos baratos con ZDR que aceptan imagen y PDF (`MODELOS_CON_IMAGEN_PDF`); salida
+  // estructurada (json_schema) y piso de tokens alto porque un menu de 150 productos rebasa los 4 mil tokens de salida.
+  extraccion_menu: { descripcion: "Alta de restaurante: menu en PDF o foto a borrador de productos y precios (lo revisa el dueño)", modalidad: "imagen_pdf", decision: "precio", route: ruta({ ...FLASH_LITE_35, minMaxTokens: 12000 }, { ...GEMINI_38_FLASH, minMaxTokens: 12000 }) },
+  borradores: { descripcion: "Borradores (preguntas de junta, propuesta tecnica, mensajes de rentas)", modalidad: "texto_herramientas", decision: "precio", route: ruta(LUNA_LOW, HAIKU_55) },
+  conciliacion: { descripcion: "Conciliacion bancaria de despachos: sugerir coincidencias", modalidad: "texto_herramientas", decision: "precio", route: ruta(LUNA_LOW, HAIKU_55) },
+  demo_publica: { descripcion: "Demo publica del sitio (chat sin herramientas)", modalidad: "texto", decision: "precio", route: ruta(LUNA_LOW, HAIKU_55) },
 };
 
-/** CFO / copiloto de superadmin: poco volumen, mayor riesgo. */
-const PREMIUM: LlmRouteConfig = {
-  models: [SONNET_MEDIUM, DEEPSEEK_PRO],
-  routing: { allowFallbacks: true },
+/** Rol del gateway -> actividad. Clave exacta o "*:sufijo". Un test exige que TODOS los roles de produccion (y los de gateways dedicados)
+ *  tengan actividad explicita: ninguno cae a un default implicito. */
+export const ACTIVIDAD_POR_ROL: Readonly<Record<string, ActividadLlm>> = {
+  "*:whatsapp_agent": "whatsapp_agente",
+  "*:whatsapp_agent_escalated": "whatsapp_agente_escalado",
+  "*:data_chat": "datos_preguntas",
+  [`*:${DATA_CHAT_RETRY_SUFFIX}`]: "datos_reintento_cifras",
+  [SUPERADMIN_COPILOTO_ROLE]: "copiloto_superadmin",
+  [REPORTE_ANALISIS_FINANCIERO_ROLE]: "reporte_analisis_financiero",
+  [REPORTE_ANALISIS_GENERAL_ROLE]: "reporte_analisis_general",
+  [REPORTE_REDACCION_FINANCIERO_ROLE]: "reporte_redaccion",
+  [REPORTE_REDACCION_GENERAL_ROLE]: "reporte_redaccion",
+  "plataforma:resumen_diario": "resumen_diario",
+  [ENRUTADOR_TURNO_ROLE]: "tareas_cortas",
+  [COMPUERTA_ESCALAMIENTO_ROLE]: "tareas_cortas",
+  [TITULOS_RESUMENES_ROLE]: "tareas_cortas",
+  [COMPACTACION_HISTORIAL_ROLE]: "tareas_cortas",
+  [RESTAURANTES_TRANSCRIPCION_ROLE]: "transcripcion_audio",
+  [RESTAURANTES_EXTRACCION_MENU_ROLE]: "extraccion_menu",
+  "licitaciones:requirement_extractor": "extraccion_documentos",
+  "licitaciones:junta_question_agent": "borradores",
+  "licitaciones:proposal_draft_agent": "borradores",
+  "rentas:mensajeria_agent": "borradores",
+  "despachos:conciliacion_llm_agent": "conciliacion",
+  "plataforma:demo_publica": "demo_publica",
 };
 
-/** Reintento por guardia de cifras: un solo modelo mas fuerte que el primario del chat. */
-const REINTENTO_CIFRAS: LlmRouteConfig = {
-  models: [DEEPSEEK_PRO, { ...LUNA_LOW, reasoningEffort: "high", minMaxTokens: 3000 }],
-  routing: { allowFallbacks: true },
-};
+/** Modelos con entrada de AUDIO verificada (`architecture.input_modalities` de OpenRouter, 6-nov-2026) y que la aceptan por la API de chat
+ *  (`input_audio`): una actividad de modalidad "audio" solo puede usar estos. MiMo V2.6 Flash lista audio pero DeepInfra rechaza `input_audio` (422). */
+export const MODELOS_CON_AUDIO: ReadonlySet<string> = new Set(["google/gemini-3.5-flash-lite", "google/gemini-3.1-flash-lite", "google/gemini-3.8-flash"]);
 
-/** Reportes largos (resumen mensual, informes): carril no interactivo. */
-const REPORTES: LlmRouteConfig = {
-  models: [GEMINI_38_FLASH, { ...LUNA_LOW, minMaxTokens: 4000 }],
-  routing: { allowFallbacks: true },
-};
+/** Modelos con entrada de IMAGEN y PDF verificada (`architecture.input_modalities` de OpenRouter, notas de `VERIFIED_MODEL_HOSTS`): una
+ *  actividad de modalidad "imagen_pdf" solo puede usar estos. MiMo V2.6 Flash acepta imagen pero no PDF: fuera. */
+export const MODELOS_CON_IMAGEN_PDF: ReadonlySet<string> = new Set(["google/gemini-3.5-flash-lite", "google/gemini-3.1-flash-lite", "google/gemini-3.8-flash"]);
 
-/** Analisis de datos de reportes financieros: Sonnet 5.5 (mueve dinero); respaldo DeepSeek V4 Pro. */
-const ANALISIS_FINANCIERO: LlmRouteConfig = { models: [SONNET_MEDIUM, DEEPSEEK_PRO], routing: { allowFallbacks: true } };
-/** Analisis de datos de reportes no financieros: Qwen3-235B-A22B-2507 (EE.UU., ZDR). */
-const ANALISIS_GENERAL: LlmRouteConfig = { models: [QWEN_235B, DEEPSEEK_FLASH, { ...LUNA_LOW, minMaxTokens: 3000 }], routing: { allowFallbacks: true } };
-/** Redaccion de reportes (rutas separadas por tipo para que el eval decida: Gemini 3.8 Flash hoy; Qwen 3.7
- *  Flash cuando tenga proveedor de EE.UU. con ZDR). */
-const REDACCION: LlmRouteConfig = { models: [GEMINI_38_FLASH, { ...LUNA_LOW, minMaxTokens: 4000 }], routing: { allowFallbacks: true } };
-/** Tareas cortas y baratas (enrutador de turno, compuerta de escalamiento, titulos y resumenes,
- *  compactacion de historial). */
-const TAREAS_CORTAS: LlmRouteConfig = { models: [LUNA_LOW, DEEPSEEK_FLASH], routing: { allowFallbacks: true } };
+/** Actividad de un rol: clave exacta > "*:sufijo". `undefined` = rol sin actividad declarada (usa `DEFAULT_ROUTE`). */
+export function actividadDeRol(role: string): ActividadLlm | undefined {
+  const suffix = role.includes(":") ? role.slice(role.indexOf(":") + 1) : role;
+  return ACTIVIDAD_POR_ROL[role] ?? ACTIVIDAD_POR_ROL[`*:${suffix}`];
+}
 
-/** Transcripcion de audio (R-32): solo modelos con entrada de audio verificada en `architecture.input_modalities` de OpenRouter
- *  (2026-10-03). Salida corta (una nota de voz de <= 60 s son ~200 palabras): piso de tokens bajo. */
-const TRANSCRIPCION: LlmRouteConfig = {
-  models: [
-    { model: "google/gemini-2.5-flash-lite", reasoningEffort: "minimal", temperature: "omit", minMaxTokens: 800 },
-    { model: "google/gemini-3.5-flash-lite", temperature: "omit", minMaxTokens: 1000 },
-  ],
-  routing: { allowFallbacks: true },
-};
+/** Perfil por rol, DERIVADO de `ACTIVIDAD_POR_ROL` + `ACTIVIDADES_LLM`. */
+export const DEFAULT_ROLE_ROUTES: Readonly<Record<string, LlmRouteConfig>> = Object.fromEntries(
+  Object.entries(ACTIVIDAD_POR_ROL).map(([rol, actividad]) => [rol, ACTIVIDADES_LLM[actividad].route]),
+);
 
-/** Perfil por rol. Clave exacta ("superadmin:copiloto") o "*:sufijo" (ej. "*:data_chat_retry"). Todo
- *  rol no listado usa ECONOMICO. */
-export const DEFAULT_ROLE_ROUTES: Readonly<Record<string, LlmRouteConfig>> = {
-  [SUPERADMIN_COPILOTO_ROLE]: PREMIUM,
-  "plataforma:resumen_diario": REPORTES,
-  [`*:${DATA_CHAT_RETRY_SUFFIX}`]: REINTENTO_CIFRAS,
-  [REPORTE_ANALISIS_FINANCIERO_ROLE]: ANALISIS_FINANCIERO,
-  [REPORTE_ANALISIS_GENERAL_ROLE]: ANALISIS_GENERAL,
-  [REPORTE_REDACCION_FINANCIERO_ROLE]: REDACCION,
-  [REPORTE_REDACCION_GENERAL_ROLE]: REDACCION,
-  [RESTAURANTES_TRANSCRIPCION_ROLE]: TRANSCRIPCION,
-  [ENRUTADOR_TURNO_ROLE]: TAREAS_CORTAS,
-  [COMPUERTA_ESCALAMIENTO_ROLE]: TAREAS_CORTAS,
-  [TITULOS_RESUMENES_ROLE]: TAREAS_CORTAS,
-  [COMPACTACION_HISTORIAL_ROLE]: TAREAS_CORTAS,
-};
-
-export const DEFAULT_ROUTE: LlmRouteConfig = ECONOMICO;
+/** Rol sin actividad declarada (no deberia existir; un test lo impide para los roles de produccion): la ruta de chat barata. */
+export const DEFAULT_ROUTE: LlmRouteConfig = ruta(LUNA_LOW, FLASH_LITE_35, HAIKU_55);
 
 /** Retadores SOLO para el arnes de evals (MOD-07/08). Apagados: nada en produccion los lee. */
 export const EVAL_CHALLENGERS: readonly (LlmRungConfig & { readonly enabled: false; readonly note: string })[] = [
-  { model: "z-ai/glm-5.3-flash", enabled: false, note: "Retador de evals; sin proveedores de EE.UU. verificados en `VERIFIED_MODEL_HOSTS`: no se puede usar en produccion." },
+  { model: "z-ai/glm-5.3-flash", enabled: false, note: "Retador de evals; no esta en el registro ZDR de `VERIFIED_MODEL_HOSTS`: no se puede usar en produccion." },
   { model: "qwen/qwen3.7-flash", enabled: false, note: "Candidato a enrutador/redactor; hoy solo lo sirve Alibaba (sin EE.UU./ZDR), rechazado en produccion hasta que cambie." },
 ];
 
-/** Enrutamiento efectivo de un escalon: la politica de proveedores SIEMPRE se aplica (`only` nunca vacio,
- *  `data_collection: 'deny'`, `require_parameters`, `zdr` forzado cuando el endpoint lo ofrece). Lanza si el
- *  escalon no cumple la politica (los defaults los cubre un test; LLM_MODELS_JSON se valida antes). */
-export function routingForModel(route: LlmRouteConfig, model: string, globalZdr: boolean): OpenRouterRouting {
+/** Enrutamiento efectivo de un escalon: la politica SIEMPRE se aplica y FALLA CERRADA: `only` = proveedores de EE.UU. con endpoint ZDR del
+ *  registro, `data_collection: 'deny'`, `require_parameters` y `zdr: true` en TODAS las rutas (todas las superficies tocan datos), sin importar
+ *  `OPENROUTER_ZDR` ni lo que traiga la ruta. Si OpenRouter no tiene un endpoint ZDR disponible responde 404 y el escalon falla (no se relaja).
+ *  Lanza si el escalon no cumple la politica (los defaults los cubre un test; LLM_MODELS_JSON se valida antes). `_globalZdr` se conserva por
+ *  compatibilidad de firma: ya no puede apagar el ZDR. */
+export function routingForModel(route: LlmRouteConfig, model: string, _globalZdr: boolean): OpenRouterRouting {
   const base = route.routing ?? {};
   const resolved = resolveRungHosts(model, base.only);
   if ("error" in resolved) throw new Error(`routing invalido para ${model}: ${resolved.error}`);
-  const verified = VERIFIED_MODEL_HOSTS[model];
-  // Un modelo sin fila verificada y sin laboratorio conocido exige ZDR (no se puede comprobar el endpoint).
-  const unknownLab = verified === undefined && defaultHostsForModel(model) === undefined;
-  const forceZdr = verified?.zdr === true || unknownLab;
   const order = base.order?.filter((h) => resolved.hosts.includes(h));
   return {
     ...base,
@@ -327,7 +419,7 @@ export function routingForModel(route: LlmRouteConfig, model: string, globalZdr:
     order: order && order.length > 0 ? order : undefined,
     dataCollection: "deny",
     requireParameters: true,
-    zdr: forceZdr ? true : (base.zdr ?? (globalZdr ? true : undefined)),
+    zdr: true,
   };
 }
 
@@ -388,11 +480,14 @@ function parseRouting(raw: unknown, where: string, errors: string[]): OpenRouter
     if (raw.requireParameters === true) out.requireParameters = true;
     else errors.push(`${where}: "requireParameters" solo puede ser true (no se permite mandar parametros que el proveedor no soporte)`);
   }
-  for (const key of ["zdr", "allowFallbacks"] as const) {
-    const v = raw[key];
-    if (v === undefined) continue;
-    if (typeof v === "boolean") out[key] = v;
-    else errors.push(`${where}: "${key}" debe ser booleano`);
+  if (raw.zdr !== undefined) {
+    // Retencion cero obligatoria en todas las superficies: no se puede apagar por configuracion.
+    if (raw.zdr === true) out.zdr = true;
+    else errors.push(`${where}: "zdr" solo puede ser true (retencion cero obligatoria: todas las superficies tocan datos)`);
+  }
+  if (raw.allowFallbacks !== undefined) {
+    if (typeof raw.allowFallbacks === "boolean") out.allowFallbacks = raw.allowFallbacks;
+    else errors.push(`${where}: "allowFallbacks" debe ser booleano`);
   }
   if (raw.sort !== undefined) {
     if (raw.sort === "price" || raw.sort === "latency" || raw.sort === "throughput") out.sort = raw.sort;
@@ -443,6 +538,17 @@ export function parseLlmModelsJson(raw: string | null | undefined): { config: Ll
         if ("error" in resolved) errors.push(`${where}.models[${i}]: ${resolved.error}`);
       });
     }
+    // Decisiones del dueno (WhatsApp): no se sobreescriben por variable de entorno, ni con clave exacta ni con "*:sufijo".
+    const actividad = actividadDeRol(key);
+    if (actividad && ACTIVIDADES_LLM[actividad].decision === "dueno") {
+      errors.push(`${where}: la actividad "${actividad}" es decision del dueno (${ACTIVIDADES_LLM[actividad].route.models.map((m) => m.model).join(" -> ")}); LLM_MODELS_JSON no la cambia`);
+    }
+    // Una actividad de audio solo acepta modelos con entrada de audio.
+    if (actividad && ACTIVIDADES_LLM[actividad].modalidad === "audio") {
+      models.forEach((m, i) => {
+        if (m && !MODELOS_CON_AUDIO.has(m.model)) errors.push(`${where}.models[${i}]: "${m.model}" no acepta audio (actividad "${actividad}")`);
+      });
+    }
     if (errors.length > before || models.some((m) => m === null)) continue;
     roles[key] = { models: models as LlmRungConfig[], ...(routing ? { routing } : {}) };
   }
@@ -450,9 +556,15 @@ export function parseLlmModelsJson(raw: string | null | undefined): { config: Ll
 }
 
 /** Resuelve la ruta de un rol: clave exacta > "*:sufijo" > "*" (de LLM_MODELS_JSON) > defaults versionados
- *  (clave exacta > "*:sufijo") > perfil economico. */
+ *  (clave exacta > "*:sufijo") > perfil economico. Dos candados sobre LLM_MODELS_JSON (incluido el comodin "*"):
+ *  - una actividad con `decision: "dueno"` (WhatsApp) NUNCA toma una ruta de la variable;
+ *  - una actividad de audio solo toma una ruta de la variable si TODOS sus modelos aceptan audio (`MODELOS_CON_AUDIO`). */
 export function resolveRoleRoute(role: string, overrides: LlmModelsConfig | undefined): LlmRouteConfig {
   const o = overrides?.roles ?? {};
   const suffix = role.includes(":") ? role.slice(role.indexOf(":") + 1) : role;
-  return o[role] ?? o[`*:${suffix}`] ?? o["*"] ?? DEFAULT_ROLE_ROUTES[role] ?? DEFAULT_ROLE_ROUTES[`*:${suffix}`] ?? DEFAULT_ROUTE;
+  const actividad = actividadDeRol(role);
+  const cfg = actividad ? ACTIVIDADES_LLM[actividad] : undefined;
+  const candidatos = cfg?.decision === "dueno" ? [] : [o[role], o[`*:${suffix}`], o["*"]];
+  const override = candidatos.find((r): r is LlmRouteConfig => r !== undefined && (cfg?.modalidad !== "audio" || r.models.every((m) => MODELOS_CON_AUDIO.has(m.model))));
+  return override ?? DEFAULT_ROLE_ROUTES[role] ?? DEFAULT_ROLE_ROUTES[`*:${suffix}`] ?? DEFAULT_ROUTE;
 }
