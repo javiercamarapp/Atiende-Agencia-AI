@@ -7,7 +7,7 @@
 // sin defectos. Accesibilidad con axe: el repo no trae @axe-core/playwright (agregarlo requiere visto bueno), asi que el
 // barrido de axe corre solo si AXE_CORE_JS apunta a un axe.min.js local; sin la variable se omite y lo dice en la salida.
 //
-// Capturas antes/despues: DS3_CAPTURAS=1 DS3_ETAPA=antes|despues. «antes» = build con VITE_LOGIN_LEGADO=1 (la pantalla
+// Capturas antes/despues: DS3_CAPTURAS=1 DS3_ETAPA=antes|despues. «antes» = build con VITE_DISENO_LEGADO=1 (la pantalla
 // anterior): solo captura y no afirma nada del login nuevo.
 // API simulada de e2e/mock-api, nunca la real.
 import { existsSync, readFileSync } from "node:fs";

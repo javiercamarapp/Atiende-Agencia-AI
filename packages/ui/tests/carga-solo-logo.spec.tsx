@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 //
-// ds3 / 2.2: delegacion de la carga en CargandoLogo. Con la bandera APAGADA el DOM es el de siempre (esqueletos, Loader2 girando);
-// con `html[data-diseno="ds3"]` (que la bandera lee al cargar el modulo) TODO lo que carga pinta solo el logo, sin texto visible,
-// conservando nombre, props y ARIA.
+// Delegacion de la carga en CargandoLogo. Por omision (diseno nuevo, el de todos) TODO lo que carga pinta solo el logo, sin texto
+// visible, conservando nombre, props y ARIA. Con el interruptor de emergencia de build (VITE_DISENO_LEGADO=1, aqui simulado con un
+// doble de lib/diseno) el DOM es el anterior (esqueletos, Loader2 girando).
 import { act, createElement, type ReactElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -22,8 +22,8 @@ type Modulos = {
 
 async function cargar(ds3: boolean): Promise<Modulos> {
   vi.resetModules();
-  if (ds3) document.documentElement.dataset.diseno = "ds3";
-  else delete document.documentElement.dataset.diseno;
+  vi.doUnmock("../src/lib/diseno");
+  if (!ds3) vi.doMock("../src/lib/diseno", () => ({ DISENO_DS3: false, leerDisenoDs3: () => false, disenoLegadoActivo: () => true }));
   const [e, b, s, r, c] = await Promise.all([
     import("../src/components/EstadoCargando"),
     import("../src/components/ui/button"),
@@ -59,11 +59,11 @@ afterEach(() => {
   raices = [];
   m?.reiniciar();
   m = null;
-  delete document.documentElement.dataset.diseno;
+  vi.doUnmock("../src/lib/diseno");
   vi.useRealTimers();
 });
 
-describe("bandera APAGADA: el DOM de produccion no cambia", () => {
+describe("interruptor de emergencia VITE_DISENO_LEGADO=1: el DOM anterior no cambia", () => {
   it("EstadoCargando conserva esqueletos, role/aria y sr-only", async () => {
     m = await cargar(false);
     const { el } = montar(createElement(m.EstadoCargando, { etiqueta: "Cargando pedidos", lineas: 3 }));
@@ -102,7 +102,7 @@ describe("bandera APAGADA: el DOM de produccion no cambia", () => {
   });
 });
 
-describe("bandera ENCENDIDA (?diseno=ds3): solo el logo", () => {
+describe("por omision (diseno nuevo): solo el logo", () => {
   it.each(["bloque", "tabla", "tarjeta", "pantalla"] as const)("EstadoCargando %s: logo, misma etiqueta ARIA, sin esqueleto ni texto visible", async (variante) => {
     m = await cargar(true);
     const { el } = montar(createElement(m.EstadoCargando, { variante, etiqueta: "Cargando pedidos" }));
@@ -226,8 +226,8 @@ describe("bandera ENCENDIDA (?diseno=ds3): solo el logo", () => {
   });
 });
 
-describe("IconoDeCarga: produccion no paga el hook de retencion", () => {
-  // La retencion de useCargaRetenida arma un timer (400 ms) al pasar de cargando a no cargando; si la bandera esta apagada
+describe("IconoDeCarga: el diseno anterior no paga el hook de retencion", () => {
+  // La retencion de useCargaRetenida arma un timer (400 ms) al pasar de cargando a no cargando; con el interruptor de emergencia
   // el hook no debe existir en el arbol, asi que no hay estado ni efecto ni timer extra.
   async function ciclo(ds3: boolean) {
     m = await cargar(ds3);
@@ -238,13 +238,13 @@ describe("IconoDeCarga: produccion no paga el hook de retencion", () => {
     return { el, despues: vi.getTimerCount() };
   }
 
-  it("bandera apagada: al terminar de cargar no se arma ningun timer de retencion y el boton queda sin hijos extra", async () => {
+  it("interruptor de emergencia: al terminar de cargar no se arma ningun timer de retencion y el boton queda sin hijos extra", async () => {
     const { el, despues } = await ciclo(false);
     expect(despues).toBe(0);
     expect(el.querySelector("button")!.children).toHaveLength(0);
   });
 
-  it("bandera encendida (control): al terminar de cargar si se arma el timer de retencion", async () => {
+  it("por omision (control): al terminar de cargar si se arma el timer de retencion", async () => {
     const { despues } = await ciclo(true);
     expect(despues).toBeGreaterThan(0);
   });

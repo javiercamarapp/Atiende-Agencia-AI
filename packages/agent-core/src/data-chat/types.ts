@@ -125,6 +125,16 @@ export interface DataChatAnswer {
   /** Siempre de dónde salen las cifras y su periodo; vacío solo si no se consultó nada. */
   readonly sources: readonly DataChatSource[];
   readonly toolsUsed: readonly string[];
+  /** Cobertura de fuentes de ESTE turno (aditivo): cuantas consultas distintas del catalogo corrieron y cuantas devolvieron filas. Lo
+   *  sabe el motor porque las ejecuto; ausente si el turno no consulto nada (la UI entonces no pinta «x de y fuentes»). */
+  readonly coverage?: DataChatCoverage;
+}
+
+export interface DataChatCoverage {
+  /** Consultas distintas del catalogo que se ejecutaron en el turno (con o sin datos, incluidas las no disponibles). */
+  readonly consulted: number;
+  /** De esas, cuantas devolvieron al menos una fila. */
+  readonly withData: number;
 }
 
 export interface DataChatHistoryTurn {
