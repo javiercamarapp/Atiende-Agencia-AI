@@ -34,6 +34,7 @@ import type {
   AcceptStaffInviteResult,
   BillingWebhookEventMark,
   BillingWebhookEventSummaryRow,
+  BillingWebhookTxRepository,
   BillingWebhookLogFilters,
   BillingWebhookLogPage,
   CoreRepository,
@@ -252,6 +253,14 @@ export class ProductionCoreRepository implements CoreRepository {
 
   sealBillingEntityOrder(entityId: string, createdUnix: number): Promise<void> {
     return this.engine.withAppSession({ userId: null }, (session) => new PostgresCoreRepository(session).sealBillingEntityOrder(entityId, createdUnix));
+  }
+
+  // A diferencia de los métodos de arriba (una transacción por llamada), éste abre UNA sola sesión
+  // de sistema para marca + upsert + sello del webhook de Stripe: si cualquiera lanza,
+  // `withAppSession` hace ROLLBACK de los tres y el reintento de Stripe no se pierde como
+  // 'duplicado'. Misma sesión de sistema que ya usaban por separado.
+  withBillingWebhookTransaction<T>(fn: (tx: BillingWebhookTxRepository) => Promise<T>): Promise<T> {
+    return this.engine.withAppSession({ userId: null }, (session) => fn(new PostgresCoreRepository(session)));
   }
 
   // Bitácora de webhooks (`0018_billing_webhook_registro.sql`) — escritura en
