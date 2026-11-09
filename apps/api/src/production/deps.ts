@@ -142,6 +142,7 @@ import { crearDespachadorAlertas, configAlertasDesdeEnv } from "../alertas/index
 import { notProductionReady } from "./not-ready.ts";
 import { conAjustesDeVoz, resolverAjustesVozPostgres } from "./voz-con-ajustes.ts";
 import { conBitacoraDeTurno } from "../agentes/corridas.ts";
+import { avisosTechoPostgres, conTechoDeGastoWhatsApp, lectorTechoPostgres } from "../costos/techo-whatsapp.ts";
 import { resolveRoleRoute } from "./llm-models.ts";
 import { buildProductionDataChat } from "../data-chat/deps.ts";
 import { buildProductionSuperadminCopiloto } from "../superadmin-copiloto/deps.ts";
@@ -444,7 +445,14 @@ export function buildProductionDeps(): AppDeps {
     voiceProvider: conAjustesDeVoz(new GeminiLiveProvider({ apiKey: env.geminiApiKey ?? null }), resolverAjustesVozPostgres(engine)),
     dataChat: buildProductionDataChat(llmGateway, engine),
     turnHandler: llmGateway
-      ? conBitacoraDeTurno(buildRealRestaurantesTurnHandler(engine, llmGateway, observabilidadTurnosRestaurantes(env.whatsappAppSecret)), { deps: depsBitacora, agente: RESTAURANTES_WHATSAPP_AGENT_ROLE, vertical: "restaurantes" })
+      ? conBitacoraDeTurno(
+          // Ola 4 (H1): gasto del agente de WhatsApp por organizacion: avisa por umbral; solo corta si se configuro un corte (por omision, nunca).
+          conTechoDeGastoWhatsApp(buildRealRestaurantesTurnHandler(engine, llmGateway, observabilidadTurnosRestaurantes(env.whatsappAppSecret)), {
+            leer: lectorTechoPostgres(engine),
+            avisar: avisosTechoPostgres(engine),
+          }),
+          { deps: depsBitacora, agente: RESTAURANTES_WHATSAPP_AGENT_ROLE, vertical: "restaurantes" },
+        )
       : notProductionReady<WhatsAppTurnHandler>("turnHandler (falta configurar OPENROUTER_API_KEY)"),
     hotelesRepo: (db) => new PostgresHotelesRepository(db),
     hotelesPaymentsPort: env.stripe.secretKey
