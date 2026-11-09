@@ -314,6 +314,7 @@ export function VerticalShell({
   const [accionesBarra, fijarAcciones] = React.useState<React.ReactNode>(null);
   const [marco, fijarMarco] = React.useState<HTMLElement | null>(null);
   const ranuraAvisos = useRanuraAvisosShell();
+  const abrirGuia = () => (onGuia ? onGuia() : window.dispatchEvent(new CustomEvent(GUIA_ABRIR_EVENTO, { detail: { ruta: pathname } })));
   // Los destinos del pie del Sidebar ("Ver los otros paneles") tambien son paginas del panel aunque no esten en `sections`:
   // la barra les pone su nombre en vez del titulo de la consola. Van DESPUES de `sections`, asi un destino que ya es de una
   // categoria (p. ej. "Costos de IA" -> "Costos y margen") conserva el nombre de su categoria.
@@ -362,6 +363,10 @@ export function VerticalShell({
             {/* ds3 (decision de Omar 7-nov-2026, igual que Rovaq): campana con contador y «Más» de 44 que abre la hoja con el sidebar
                 completo (cuenta, tema y salir incluidos); el menu de cuenta del diseno actual se oculta. El chat de datos no va aqui: es
                 «Preguntar» de la barra inferior. */}
+            {/* «Guía» tambien en movil (auditoria R2 #3): en escritorio vive junto al titulo de la barra, que en movil no existe. */}
+            <button type="button" hidden data-testid="movil-guia" aria-label={t("shell.guia")} onClick={abrirGuia} className="ds3-solo ds3-movil-guia">
+              <CircleHelp aria-hidden="true" strokeWidth={1.75} />
+            </button>
             {notificaciones ? <CampanaMovil {...notificaciones} /> : null}
             <button
               type="button"
@@ -401,7 +406,7 @@ export function VerticalShell({
             type="button"
             hidden
             data-testid="barra-guia"
-            onClick={() => (onGuia ? onGuia() : window.dispatchEvent(new CustomEvent(GUIA_ABRIR_EVENTO, { detail: { ruta: pathname } })))}
+            onClick={abrirGuia}
             className="ds3-solo ds3-guia"
           >
             <CircleHelp aria-hidden="true" strokeWidth={1.75} />
