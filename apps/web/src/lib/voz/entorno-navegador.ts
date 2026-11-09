@@ -4,7 +4,9 @@
 import type { CapturaMicrofono, EntornoVoz, ReproductorAudio, SocketPreview } from "./adaptador-gemini-live.ts";
 import { nivelRms } from "./audio-pcm.ts";
 
-const WORKLET = `class Captura extends AudioWorkletProcessor { process(entradas) { const c = entradas[0] && entradas[0][0]; if (c) this.port.postMessage(c.slice(0)); return true; } } registerProcessor("captura-pcm", Captura);`;
+// AudioWorklet servido como archivo estatico del mismo origen (apps/web/public/voz/captura-pcm-worklet.js): la CSP de la SPA
+// (vercel.json, script-src 'self') bloquea un modulo de worklet cargado desde blob:.
+export const URL_WORKLET_CAPTURA = `${import.meta.env.BASE_URL}voz/captura-pcm-worklet.js`;
 const MUESTRAS_POR_BLOQUE = 2048;
 
 async function capturarMicrofono(onBloque: (m: Float32Array, tasaHz: number) => void): Promise<CapturaMicrofono> {
@@ -16,15 +18,12 @@ async function capturarMicrofono(onBloque: (m: Float32Array, tasaHz: number) => 
     throw new Error("No se pudo usar el micrófono. Revise el permiso del navegador e intente de nuevo.");
   }
   const contexto = new AudioContext();
-  const url = URL.createObjectURL(new Blob([WORKLET], { type: "application/javascript" }));
   try {
-    await contexto.audioWorklet.addModule(url);
+    await contexto.audioWorklet.addModule(URL_WORKLET_CAPTURA);
   } catch {
     flujo.getTracks().forEach((t) => t.stop());
     void contexto.close();
     throw new Error("Este navegador no permite capturar el audio de la llamada de prueba.");
-  } finally {
-    URL.revokeObjectURL(url);
   }
   const fuente = contexto.createMediaStreamSource(flujo);
   const nodo = new AudioWorkletNode(contexto, "captura-pcm");

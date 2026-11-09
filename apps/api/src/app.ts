@@ -12,6 +12,7 @@ import { cabecerasSeguridadApi } from "./cabeceras-seguridad.ts";
 import { originGuard, sinCacheEnSesion } from "./origin-guard.ts";
 import { demoAgentsRoutes } from "./routes/demo-agents.ts";
 import { healthRoutes } from "./routes/health.ts";
+import { cspReportRoutes } from "./routes/csp-report.ts";
 import { authRoutes } from "./routes/auth.ts";
 import { authGoogleRoutes } from "./routes/auth-google.ts";
 import { authMagicLinkRoutes } from "./routes/auth-magic-link.ts";
@@ -115,6 +116,8 @@ export function buildApp(deps: AppDeps): Hono {
 
   // /health real (BD + latidos + rate limiter, degrada a 503), ver routes/health.ts.
   app.route("/", healthRoutes(deps));
+  // Colector de reportes de la CSP de la SPA (vercel.json: report-uri / report-to), ver routes/csp-report.ts.
+  app.route("/", cspReportRoutes());
 
   app.route("/", authRoutes(deps));
   app.route("/", authGoogleRoutes(deps));

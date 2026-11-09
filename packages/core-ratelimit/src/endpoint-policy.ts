@@ -144,6 +144,11 @@ export const ENDPOINT_POLICIES: Record<string, EndpointPolicy> = {
     reason:
       'Verificar en el SAT (POST .../cfdi/:invoiceId/verificar-estatus-sat, sesion autenticada con rol de escritura): cada llamada dispara una consulta al servicio PUBLICO del SAT, que tiene limites de frecuencia no documentados. Sin tope global, un blip de Redis dejaria abierta una rafaga hacia un tercero que puede bloquear la IP de salida de toda la plataforma (y con ella el cron semanal), asi que negar una verificacion aislada es preferible.',
   },
+  'csp:report': {
+    failMode: 'closed',
+    reason:
+      'Colector público de reportes de CSP (POST /v1/csp-report, apps/api/src/routes/csp-report.ts): sin sesión, solo escribe una línea de log por violación. Perder un reporte durante una avería de Redis no cuesta nada (el navegador lo vuelve a mandar en la siguiente violación) y abrirlo sin tope dejaría inundar los logs.',
+  },
   'conversation:inbound-webhook': {
     failMode: 'open',
     reason:
