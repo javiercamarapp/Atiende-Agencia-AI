@@ -2,6 +2,8 @@ import { useEffect, useLayoutEffect, useRef, type HTMLAttributes } from "react";
 import { AtiendeMark, AtiendeWordmark } from "./AtiendeLogo";
 import { cn } from "../lib/utils";
 import { CARGA_TOPE_MS, faseCarga, useCargaCoordinada, type CargaTamano } from "../lib/carga-coordinador";
+import { useT } from "../i18n/proveedor";
+import { comun } from "../i18n/mensajes/comun.ts";
 
 export type CargandoLogoTamano = CargaTamano;
 
@@ -33,7 +35,9 @@ const CONTENEDOR: Record<CargandoLogoTamano, string> = {
  * unico dibujo visible a la vez; las demas instancias siguen siendo role=status con su texto sr-only. La region
  * conserva el `min-height` que le ponga quien llama (via `className`), asi no hay salto de layout.
  */
-export function CargandoLogo({ tamano = "panel", etiqueta = "Cargando…", decorativo = false, alTope, className, ...resto }: Props) {
+export function CargandoLogo({ tamano = "panel", etiqueta: etiquetaProp, decorativo = false, alTope, className, ...resto }: Props) {
+  const t = useT(comun);
+  const etiqueta = etiquetaProp ?? t("comun.cargando");
   const { visible } = useCargaCoordinada(tamano);
   const dibujo = useRef<HTMLSpanElement>(null);
   const alTopeRef = useRef(alTope);

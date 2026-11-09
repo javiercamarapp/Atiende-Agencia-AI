@@ -2,6 +2,8 @@ import * as React from "react";
 
 import { cn } from "../../lib/utils";
 import { Label } from "./label";
+import { useT } from "../../i18n/proveedor";
+import { comun } from "../../i18n/mensajes/comun.ts";
 
 /** Props que FormField inyecta al control para enlazar etiqueta, ayuda y error. */
 export interface FormFieldControlProps {
@@ -37,6 +39,7 @@ export interface FormFieldProps {
  * validación nativa del navegador: la validación es de la pantalla).
  */
 export function FormField({ label, hint, error, required, id, className, children }: FormFieldProps) {
+  const t = useT(comun);
   const autoId = React.useId();
   const idPropioDelControl = typeof children === "function" ? undefined : (children.props as { id?: string }).id;
   const controlId = id ?? idPropioDelControl ?? `campo-${autoId.replace(/:/g, "")}`;
@@ -71,7 +74,7 @@ export function FormField({ label, hint, error, required, id, className, childre
             <span aria-hidden="true" className="ml-0.5 text-destructive">
               *
             </span>
-            <span className="sr-only"> (obligatorio)</span>
+            <span className="sr-only">{t("comun.obligatorio")}</span>
           </>
         )}
       </Label>
