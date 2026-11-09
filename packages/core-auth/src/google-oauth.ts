@@ -53,7 +53,7 @@ export class GoogleOAuthError extends Error {
 export interface OAuthStateClaims {
   /** `login`: iniciar sesion (anonimo). `link`: vincular Google a una cuenta YA autenticada (el
    *  `state` lo emite una ruta con sesion y lleva `staffId`/`orgSlug`; sin sesion nunca se emite). */
-  readonly purpose: "login" | "link";
+  readonly purpose: "login" | "link" | "signup";
   readonly vertical: string;
   readonly nonce: string;
   readonly codeVerifier: string;
@@ -62,6 +62,9 @@ export interface OAuthStateClaims {
   readonly staffId?: string;
   /** Solo `purpose: "link"`: slug de la organizacion a la que se regresa (validado contra las membresias). */
   readonly orgSlug?: string;
+  /** Solo `purpose: "signup"` (registro autoservicio): hash (sha256) del token de la solicitud de registro, el mismo que guarda la base
+   *  (0077). El `state` va firmado por el servidor y vive 10 min: el callback lo usa tal cual, sin volver a hashear nada. */
+  readonly registroHash?: string;
 }
 
 function secretKey(secret: string): Uint8Array {
