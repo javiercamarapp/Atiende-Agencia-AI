@@ -9,7 +9,23 @@
 import { describe, expect, it } from "vitest";
 import { generarXmlCfdiNomina } from "../src/nomina/xml-nomina.ts";
 import type { DatosEmisorNominaXml, DatosPeriodoNominaXml, DatosReceptorNominaXml } from "../src/nomina/xml-nomina.ts";
-import type { EmployeePayroll } from "../src/nomina/types.ts";
+import type { EmployeePayroll, PayrollTaxes } from "../src/nomina/types.ts";
+import { calcularImssPorRama } from "../src/nomina/imss-engine.ts";
+
+const IMSS_0 = calcularImssPorRama({ sbcDiario: 524.65, diasPagados: 30, fechaPago: "2026-07-31" });
+const TAXES: PayrollTaxes = { isr: 1500, isrCausado: 1500, subsidioCausado: 0, imssPatronal: 2137.5, imssObrero: 400, infonavit: 750, imss: IMSS_0, total: 2650 };
+const SIN_CONCEPTOS = { total: 0, exento: 0, gravado: 0 };
+const BASE_2026 = {
+  salarioDiarioCalculado: 500,
+  sbcDiario: 524.65,
+  factorIntegracion: 1.0493,
+  antiguedadAnios: 1,
+  conceptos: { aguinaldo: SIN_CONCEPTOS, primaVacacional: SIN_CONCEPTOS, ptu: SIN_CONCEPTOS, tiempoExtra: SIN_CONCEPTOS, descuentoIncapacidad: 0, totalPercibido: 0, totalExento: 0, totalGravado: 0 },
+  periodicidad: "mensual" as const,
+  fechaPago: "2026-07-31",
+  horasExtra: [],
+  incapacidades: [],
+};
 
 function empleado(overrides: Partial<EmployeePayroll> = {}): EmployeePayroll {
   return {
@@ -19,9 +35,10 @@ function empleado(overrides: Partial<EmployeePayroll> = {}): EmployeePayroll {
     salarioBruto: 15000,
     percepciones: 500,
     deducciones: 1900,
-    taxes: { isr: 1500, imssPatronal: 2137.5, imssObrero: 400, infonavit: 750, total: 2650 },
+    taxes: TAXES,
     neto: 13100,
     diasPagados: 30,
+    ...BASE_2026,
     ...overrides,
   };
 }
@@ -148,7 +165,7 @@ describe("generarXmlCfdiNomina — estructura del XML", () => {
   it("nomina12:Receptor con los datos laborales del trabajador (nodo obligatorio, antes ausente)", () => {
     const xml = generarXmlCfdiNomina(empleado(), emisor(), receptor(), periodo(), datosLaborales({ curp: "peaa850101hdfrrn08", claveEntFed: "cmx" }));
     // CURP y ClaveEntFed se normalizan a mayúsculas.
-    expect(xml).toContain('<nomina12:Receptor Curp="PEAA850101HDFRRN08" NumEmpleado="EMP001" TipoContrato="01" TipoRegimen="02" PeriodicidadPago="05" ClaveEntFed="CMX"/>');
+    expect(xml).toContain('<nomina12:Receptor Curp="PEAA850101HDFRRN08" TipoContrato="01" TipoRegimen="02" NumEmpleado="EMP001" PeriodicidadPago="05" SalarioBaseCotApor="524.65" SalarioDiarioIntegrado="524.65" ClaveEntFed="CMX"/>');
     // nomina12:Receptor debe ir dentro de nomina12:Nomina, antes de Percepciones.
     expect(xml.indexOf("<nomina12:Receptor")).toBeGreaterThan(xml.indexOf("<nomina12:Nomina"));
     expect(xml.indexOf("<nomina12:Receptor")).toBeLessThan(xml.indexOf("<nomina12:Percepciones"));
@@ -160,22 +177,29 @@ describe("generarXmlCfdiNomina — estructura del XML", () => {
   });
 
   it("FechaFinalPago usa el último día real del mes, incluyendo febrero bisiesto", () => {
-    const xmlFeb2026 = generarXmlCfdiNomina(empleado(), emisor(), receptor(), periodo({ month: 2, year: 2026 }), datosLaborales()); // no bisiesto
+    const xmlFeb2026 = generarXmlCfdiNomina(empleado(), emisor(), receptor(), periodo({ month: 2, year: 2026, fechaPago: "2026-02-28" }), datosLaborales()); // no bisiesto
     expect(xmlFeb2026).toContain('FechaFinalPago="2026-02-28"');
 
-    const xmlFeb2028 = generarXmlCfdiNomina(empleado(), emisor(), receptor(), periodo({ month: 2, year: 2028 }), datosLaborales()); // bisiesto
+    const xmlFeb2028 = generarXmlCfdiNomina(empleado(), emisor(), receptor(), periodo({ month: 2, year: 2028, fechaPago: "2028-02-29" }), datosLaborales()); // bisiesto
     expect(xmlFeb2028).toContain('FechaFinalPago="2028-02-29"');
   });
 
-  it("FechaPago y FechaInicialPago son el primer día del mes (fidelidad literal del original)", () => {
-    const xml = generarXmlCfdiNomina(empleado(), emisor(), receptor(), periodo({ month: 7, year: 2026 }), datosLaborales());
-    expect(xml).toContain('FechaPago="2026-07-01"');
+  it("FechaPago es la fecha de pago real del empleado (ya no siempre el día 1) y FechaInicialPago el día 1", () => {
+    const xml = generarXmlCfdiNomina(empleado({ fechaPago: "2026-07-31" }), emisor(), receptor(), periodo({ month: 7, year: 2026 }), datosLaborales());
+    expect(xml).toContain('FechaPago="2026-07-31"');
     expect(xml).toContain('FechaInicialPago="2026-07-01"');
-    expect(xml).toContain('Fecha="2026-07-01T00:00:00"');
+    expect(xml).toContain('Fecha="2026-07-31T00:00:00"');
+  });
+
+  it("el periodo puede fijar fechaPago, fechaInicialPago y fechaFinalPago (quincena)", () => {
+    const xml = generarXmlCfdiNomina(empleado(), emisor(), receptor(), periodo({ fechaPago: "2026-07-15", fechaInicialPago: "2026-07-01", fechaFinalPago: "2026-07-15", diasPagados: 15 }), datosLaborales());
+    expect(xml).toContain('FechaPago="2026-07-15" FechaInicialPago="2026-07-01" FechaFinalPago="2026-07-15" NumDiasPagados="15"');
+    expect(() => generarXmlCfdiNomina(empleado(), emisor(), receptor(), periodo({ fechaInicialPago: "2026-07-20", fechaFinalPago: "2026-07-15" }), datosLaborales())).toThrow(/fechaInicialPago/);
+    expect(() => generarXmlCfdiNomina(empleado(), emisor(), receptor(), periodo({ fechaPago: "15/07/2026" }), datosLaborales())).toThrow(/fechaPago/);
   });
 
   it("sin ISR ni IMSS obrero -> no emite <nomina12:Deducciones> (igual que el original)", () => {
-    const emp = empleado({ taxes: { isr: 0, imssPatronal: 0, imssObrero: 0, infonavit: 0, total: 0 } });
+    const emp = empleado({ taxes: { ...TAXES, isr: 0, isrCausado: 0, imssPatronal: 0, imssObrero: 0, infonavit: 0, total: 0 } });
     const xml = generarXmlCfdiNomina(emp, emisor(), receptor(), periodo(), datosLaborales());
     expect(xml).not.toContain("nomina12:Deducciones");
     expect(xml).toContain('TotalDeducciones="0.00"');

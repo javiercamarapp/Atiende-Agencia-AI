@@ -19,21 +19,33 @@ export {
   UMA_MENSUAL_2026,
   UMA_DIARIA_2026,
   SBC_MAX_UMA,
-  IMSS_OBRERO_TASA,
-  IMSS_PATRONAL_TASA,
-  INFONAVIT_TASA,
+  ImssInvalidoError,
   sbcDiarioTopado,
-  calcularImssObrero,
-  calcularImssPatronal,
-  calcularInfonavit,
+  calcularImssPorRama,
 } from "./imss-engine.ts";
+export type { ImssDesglose, ImssObreroRamas, ImssPatronalRamas, OpcionesImss } from "./imss-engine.ts";
 
-export { SUBSIDIO_EMPLEO_MENSUAL_2026, SUBSIDIO_EMPLEO_QUINCENAL_2026, calcularSubsidio } from "./subsidio-empleo.ts";
-export type { FilaSubsidio, TablaSubsidio, Periodicidad } from "./subsidio-empleo.ts";
+export { UMAS, SUBSIDIOS, IMSS_2026, CEAV_PATRONAL_2026, EXENTOS_ART_93, DIAS_MES_PRORRATEO, INICIO_VIGENCIA_MOTOR, VigenciaNoSoportadaError, umaVigente, subsidioVigente, tasaCeavPatronal } from "./parametros.ts";
+export type { VigenciaUma, VigenciaSubsidio, TramoCeav } from "./parametros.ts";
 
-export { calcularAguinaldo, calcularPrimaVacacional } from "./prestaciones.ts";
+export { calcularSubsidio } from "./subsidio-empleo.ts";
+export type { Periodicidad, OpcionesSubsidio } from "./subsidio-empleo.ts";
 
-export { calcularImpuestosNomina, procesarNomina } from "./payroll-engine.ts";
+export {
+  calcularAguinaldo,
+  calcularAguinaldoProporcional,
+  calcularPrimaVacacional,
+  diasVacacionesPorAntiguedad,
+  factorIntegracion,
+  exentoAguinaldo,
+  exentoPrimaVacacional,
+  exentoPtu,
+  exentoTiempoExtra,
+  aplicarTopePtu,
+} from "./prestaciones.ts";
+export type { Exento, ResultadoPtu } from "./prestaciones.ts";
+
+export { calcularImpuestosNomina, calcularImpuestosNominaDetalle, desglosarConceptos, procesarNomina, aniosCompletos, ultimoDiaDelMesIso, NominaInvalidaError } from "./payroll-engine.ts";
 
 export type {
   PayrollTaxes,
@@ -42,6 +54,10 @@ export type {
   EmployeePayrollInput,
   PayrollPeriod,
   PayrollPeriodInput,
+  ConceptosPeriodoInput,
+  ConceptosPeriodoDesglose,
+  HoraExtraInput,
+  IncapacidadInput,
 } from "./types.ts";
 
 export { generarXmlCfdiNomina, TIPOS_NOMINA, CLAVES_ENT_FED } from "./xml-nomina.ts";
