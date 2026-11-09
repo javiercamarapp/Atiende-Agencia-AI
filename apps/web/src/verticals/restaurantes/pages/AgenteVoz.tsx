@@ -12,7 +12,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { KeyboardEvent } from "react";
 import { BookOpen, CheckCircle2, Circle, PlayCircle, Wrench } from "lucide-react";
-import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, EstadoVacio, PageContainer, Selector, Textarea, VistaPreviaLlamada, StatusBadge, useAccionesBarra, useMarcoShell } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, EstadoVacio, PageContainer, Selector, Textarea, VistaPreviaLlamada, StatusBadge, useAccionesBarra, useMarcoShell, useT } from "@atiende/ui";
+import type { Clave } from "@atiende/ui";
+import { restaurantesAgenteVoz } from "@atiende/ui/i18n/restaurantes/agenteVoz";
 import { VozNoDisponibleError, crearSesionPreviewVoz, ejecutarHerramientaPreviewVoz, fetchConversacionesVoz, fetchConversacionVoz, fetchSaludVoz, fetchVozConfig, updateVozConfig } from "../lib/voz-client.ts";
 import { pedidoSimuladoDe } from "../lib/voz-client.ts";
 import type { ConversacionVoz, PedidoSimulado, VozConfig, VozConfigInput } from "../lib/voz-client.ts";
@@ -38,19 +40,16 @@ import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 
 type PestanaId = "resumen" | "voz" | "conocimiento" | "comportamiento" | "mensaje" | "herramientas" | "conversaciones" | "indicadores";
 
-const PESTANAS: readonly { readonly id: PestanaId; readonly etiqueta: string }[] = [
-  { id: "resumen", etiqueta: "Resumen" },
-  { id: "voz", etiqueta: "Voz" },
-  { id: "conocimiento", etiqueta: "Conocimiento" },
-  { id: "comportamiento", etiqueta: "Comportamiento" },
-  { id: "mensaje", etiqueta: "Mensaje inicial" },
-  { id: "herramientas", etiqueta: "Herramientas" },
-  { id: "conversaciones", etiqueta: "Conversaciones" },
-  { id: "indicadores", etiqueta: "Indicadores" },
+const PESTANAS: readonly { readonly id: PestanaId; readonly clave: Clave }[] = [
+  { id: "resumen", clave: "restaurantes.agenteVoz.pestana.resumen" },
+  { id: "voz", clave: "restaurantes.agenteVoz.pestana.voz" },
+  { id: "conocimiento", clave: "restaurantes.agenteVoz.pestana.conocimiento" },
+  { id: "comportamiento", clave: "restaurantes.agenteVoz.pestana.comportamiento" },
+  { id: "mensaje", clave: "restaurantes.agenteVoz.pestana.mensaje" },
+  { id: "herramientas", clave: "restaurantes.agenteVoz.pestana.herramientas" },
+  { id: "conversaciones", clave: "restaurantes.agenteVoz.pestana.conversaciones" },
+  { id: "indicadores", clave: "restaurantes.agenteVoz.pestana.indicadores" },
 ];
-
-/** Chip de la vista previa como en el original: «Vista previa» en reposo y «● Llamada en curso» mientras dura la llamada (escuchando, pensando o hablando). */
-const ETIQUETAS_CHIP_LLAMADA = { escuchando: "● Llamada en curso", pensando: "● Llamada en curso", hablando: "● Llamada en curso" } as const;
 
 const PESTANAS_EDITABLES: ReadonlySet<PestanaId> = new Set(["voz", "comportamiento", "mensaje"]);
 
@@ -79,6 +78,7 @@ export interface AgenteVozPageProps extends RestaurantesShellContext {
 }
 
 export function AgenteVozPage({ apiBaseUrl, token, propertyId, role, nombreSucursal, crearAudio, entornoVoz }: AgenteVozPageProps) {
+  const t = useT(restaurantesAgenteVoz);
   const [pestana, setPestana] = useState<PestanaId>("resumen");
   const [config, setConfig] = useState<Carga<VozConfig | null>>({ estado: "cargando" });
   const [conversaciones, setConversaciones] = useState<Carga<readonly ConversacionVoz[]>>({ estado: "cargando" });
@@ -95,10 +95,10 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, role, nombreSucur
     () => (
     <Button type="button" variant="outline" size="sm" className="h-7 gap-1.5 rounded-full px-2.5 text-eyebrow" onClick={() => setVistaPrevia(true)}>
       <PlayCircle className="h-3 w-3" strokeWidth={1.75} aria-hidden="true" />
-      Vista previa
+      {t("restaurantes.agenteVoz.vistaPrevia")}
     </Button>
   ),
-    [],
+    [t],
   );
   useAccionesBarra(botonVistaPrevia);
 
@@ -113,7 +113,7 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, role, nombreSucur
         setGuardado(aBorrador(c));
         setBorrador(aBorrador(c));
       } catch (err) {
-        if (!cancelado) setConfig(desdeError(err, "No se pudo cargar la configuración de voz."));
+        if (!cancelado) setConfig(desdeError(err, t("restaurantes.agenteVoz.error.cargarConfig")));
       }
     })();
     return () => {
@@ -129,7 +129,7 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, role, nombreSucur
         const lista = await fetchConversacionesVoz(fetch, apiBaseUrl, token, propertyId);
         if (!cancelado) setConversaciones({ estado: "listo", datos: lista });
       } catch (err) {
-        if (!cancelado) setConversaciones(desdeError(err, "No se pudieron cargar las conversaciones."));
+        if (!cancelado) setConversaciones(desdeError(err, t("restaurantes.agenteVoz.error.cargarConversaciones")));
       }
     })();
     return () => {
@@ -154,7 +154,7 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, role, nombreSucur
       setBorrador(aBorrador(c));
       setAvisoGuardado(true);
     } catch (err) {
-      setErrorGuardado(err instanceof Error ? err.message : "No se pudieron guardar los cambios.");
+      setErrorGuardado(err instanceof Error ? err.message : t("restaurantes.agenteVoz.error.guardar"));
     } finally {
       setGuardando(false);
     }
@@ -182,14 +182,14 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, role, nombreSucur
       <PageContainer padding="none">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h1 className="sr-only">Agente de voz</h1>
-            <p className="text-ui text-muted-foreground">Voz, conocimiento y comportamiento del agente que atiende las llamadas de esta sucursal.</p>
+            <h1 className="sr-only">{t("restaurantes.agenteVoz.titulo")}</h1>
+            <p className="text-ui text-muted-foreground">{t("restaurantes.agenteVoz.subtitulo")}</p>
           </div>
           {/* «Vista previa» arriba a la derecha de la página, como en el original (píldora compacta con PlayCircle). */}
           <div className="md:hidden">{botonVistaPrevia}</div>
         </div>
 
-        <div role="tablist" aria-label="Secciones del agente de voz" onKeyDown={alTeclearPestanas} className="flex flex-wrap gap-1.5 border-b border-border pb-2">
+        <div role="tablist" aria-label={t("restaurantes.agenteVoz.secciones")} onKeyDown={alTeclearPestanas} className="flex flex-wrap gap-1.5 border-b border-border pb-2">
           {PESTANAS.map((p) => (
             <button
               key={p.id}
@@ -202,20 +202,20 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, role, nombreSucur
               onClick={() => setPestana(p.id)}
               className={`h-8 px-3 rounded-lg text-xs font-medium border transition-colors ${pestana === p.id ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:text-foreground"}`}
             >
-              {p.etiqueta}
+              {t(p.clave)}
             </button>
           ))}
         </div>
 
         {config.estado === "no_disponible" ? (
           <p role="status" data-testid="aviso-servicio" className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-            El servicio de voz todavía no está disponible para este negocio. Los cambios no se guardarán hasta que el servicio esté activo.
+            {t("restaurantes.agenteVoz.avisoServicio")}
           </p>
         ) : null}
         {config.estado === "error" ? <EstadoError mensaje={config.mensaje} onReintentar={reintentar} /> : null}
 
         <div role="tabpanel" id={`panel-${pestana}`} aria-labelledby={`pestana-${pestana}`}>
-          {config.estado === "cargando" && PESTANAS_EDITABLES.has(pestana) ? <EstadoCargando etiqueta="Cargando configuración de voz…" /> : null}
+          {config.estado === "cargando" && PESTANAS_EDITABLES.has(pestana) ? <EstadoCargando etiqueta={t("restaurantes.agenteVoz.cargandoConfig")} /> : null}
 
           {pestana === "resumen" ? <Resumen config={config} borrador={guardado} conversaciones={conversaciones} onVistaPrevia={() => setVistaPrevia(true)} apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} role={role} /> : null}
 
@@ -225,12 +225,12 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, role, nombreSucur
                 id="voz-habilitado"
                 checked={borrador.habilitado}
                 onChange={(e) => setBorrador({ ...borrador, habilitado: e.target.checked })}
-                label="Agente habilitado para recibir llamadas en esta sucursal"
+                label={t("restaurantes.agenteVoz.habilitado")}
               />
               <SelectorVoz vozId={borrador.vozId} onElegir={(id) => setBorrador({ ...borrador, vozId: id })} baseUrl={import.meta.env.BASE_URL} crearAudio={crearAudio} />
               <div>
                 <label htmlFor="voz-telefono" className="block text-sm font-medium text-foreground mb-1.5">
-                  Voz de la llamada telefónica
+                  {t("restaurantes.agenteVoz.vozTelefono")}
                 </label>
                 {borrador.vozTelefonoDisponible === true ? (
                   <>
@@ -241,13 +241,13 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, role, nombreSucur
                         </option>
                       ))}
                     </Selector>
-                    <p className="mt-1 text-xs text-muted-foreground">Es la voz con la que el agente contesta el teléfono. La vista previa del panel usa la voz de arriba.</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{t("restaurantes.agenteVoz.vozTelefono.nota")}</p>
                   </>
                 ) : (
                   <p role="note" data-testid="aviso-voz-telefono" className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
                     {config.estado === "listo" && config.datos === null
-                      ? "Guarde primero la configuración de voz de esta sucursal para elegir la voz telefónica. Mientras tanto se usa Regina, la voz de la plataforma."
-                      : "No disponible aún: requiere la migración 103 en la base. Mientras tanto la llamada usa Regina, la voz de la plataforma."}
+                      ? t("restaurantes.agenteVoz.vozTelefono.guardePrimero")
+                      : t("restaurantes.agenteVoz.vozTelefono.sinMigrar")}
                   </p>
                 )}
               </div>
@@ -260,15 +260,15 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, role, nombreSucur
                 <ConocimientoNegocio apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} canal="voz" />
               ) : (
                 <p role="note" data-testid="aviso-conocimiento" className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-                  El conocimiento del negocio (políticas, preguntas frecuentes y avisos) lo administran el dueño o un administrador.
+                  {t("restaurantes.agenteVoz.avisoConocimiento")}
                 </p>
               )}
               <div>
                 <p className="text-sm font-medium text-foreground mb-1.5 flex items-center gap-1.5">
                   <BookOpen className="h-4 w-4" strokeWidth={1.75} />
-                  Datos que consulta en vivo
+                  {t("restaurantes.agenteVoz.datosEnVivo")}
                 </p>
-                <p className="text-xs text-muted-foreground">El menú, los precios, las sucursales y los clientes no se copian aquí: el agente los consulta en tiempo real con sus herramientas (ver la pestaña Herramientas), así que siempre ve lo vigente.</p>
+                <p className="text-xs text-muted-foreground">{t("restaurantes.agenteVoz.datosEnVivo.nota")}</p>
               </div>
             </div>
           ) : null}
@@ -276,34 +276,35 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, role, nombreSucur
           {pestana === "comportamiento" && config.estado !== "cargando" ? (
             <div>
               <label htmlFor="voz-prompt" className="block text-sm font-medium text-foreground mb-1.5">
-                Comportamiento (prompt del sistema)
+                {t("restaurantes.agenteVoz.comportamiento")}
               </label>
               <Textarea
                 id="voz-prompt"
                 value={borrador.promptSistema}
                 onChange={(e) => setBorrador({ ...borrador, promptSistema: e.target.value })}
                 rows={14}
-                placeholder="Cómo debe hablar y actuar el agente: tono, reglas para tomar pedidos, qué hacer si no entiende…"
+                placeholder={t("restaurantes.agenteVoz.comportamiento.placeholder")}
                 className="font-mono"
               />
-              <p className="mt-1 text-xs text-muted-foreground">El español de México y el acento se piden aquí: las voces son multilingües y no vienen etiquetadas por acento.</p>
+              <p className="mt-1 text-xs text-muted-foreground">{t("restaurantes.agenteVoz.comportamiento.nota")}</p>
             </div>
           ) : null}
 
           {pestana === "mensaje" && config.estado !== "cargando" ? (
             <div className="space-y-3">
               <div role="note" data-testid="aviso-asistente-virtual" className="rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-xs text-foreground">
-                <strong>Transparencia:</strong> el primer mensaje debe presentarse como asistente virtual, por ejemplo «Le atiende el asistente virtual de …». Quien llama tiene derecho a saber que habla con una inteligencia artificial.
+                <strong>{t("restaurantes.agenteVoz.transparencia")}</strong> {t("restaurantes.agenteVoz.transparencia.texto")}
               </div>
               <div>
                 <label htmlFor="voz-mensaje-inicial" className="block text-sm font-medium text-foreground mb-1.5">
-                  Primer mensaje
+                  {t("restaurantes.agenteVoz.primerMensaje")}
                 </label>
                 <Textarea
                   id="voz-mensaje-inicial"
                   value={borrador.mensajeInicial}
                   onChange={(e) => setBorrador({ ...borrador, mensajeInicial: e.target.value })}
                   rows={4}
+                  // i18n-ignorar: ejemplo del saludo que la voz le dice al cliente; va en espanol en los dos idiomas.
                   placeholder="Hola, le atiende el asistente virtual de …"
                 />
               </div>
@@ -311,16 +312,16 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, role, nombreSucur
                 id="voz-saludo-interrumpible"
                 checked={borrador.mensajeInicialInterrumpible}
                 onChange={(e) => setBorrador({ ...borrador, mensajeInicialInterrumpible: e.target.checked })}
-                label="Quien llama puede interrumpir el primer mensaje"
+                label={t("restaurantes.agenteVoz.interrumpible")}
               />
               <p className="text-xs text-muted-foreground">
                 {borrador.mensajeInicialInterrumpible
-                  ? "Si quien llama habla encima, el agente se calla. Desmárquelo para que el aviso de asistente virtual y de grabación se escuche completo."
-                  : "El primer mensaje se escucha completo aunque quien llama hable encima; desde la segunda frase del agente sí puede interrumpirlo."}
+                  ? t("restaurantes.agenteVoz.interrumpible.si")
+                  : t("restaurantes.agenteVoz.interrumpible.no")}
               </p>
               {borrador.mensajeInicial.trim() !== "" && !mencionaAsistenteVirtual(borrador.mensajeInicial) ? (
                 <Callout tone="warning" role="alert" data-testid="alerta-sin-asistente-virtual">
-                  Este mensaje no dice que es un asistente virtual. Agrégalo antes de poner el agente en producción.
+                  {t("restaurantes.agenteVoz.alertaSinAsistente")}
                 </Callout>
               ) : null}
             </div>
@@ -328,7 +329,7 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, role, nombreSucur
 
           {pestana === "herramientas" ? (
             <div className="space-y-3">
-              <p className="text-xs text-muted-foreground">Herramientas que el agente puede usar durante una llamada.</p>
+              <p className="text-xs text-muted-foreground">{t("restaurantes.agenteVoz.herramientas.nota")}</p>
               <ul className="grid gap-2">
                 {HERRAMIENTAS_AGENTE.map((h) => (
                   <li key={h.nombre} data-herramienta={h.nombre} className="rounded-xl border border-border bg-card p-3 flex items-start justify-between gap-3">
@@ -343,14 +344,14 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, role, nombreSucur
                       {ejecuciones.disponible ? (
                         (ejecuciones.cuentas[h.nombre] ?? 0) > 0 ? (
                           <>
-                            {ejecuciones.cuentas[h.nombre]} {ejecuciones.cuentas[h.nombre] === 1 ? "ejecución" : "ejecuciones"}
-                            <span className="block text-2xs">en las últimas {ejecuciones.llamadas} llamadas</span>
+                            {t("restaurantes.agenteVoz.herramientas.ejecuciones", { count: ejecuciones.cuentas[h.nombre] ?? 0 })}
+                            <span className="block text-2xs">{t("restaurantes.agenteVoz.herramientas.enUltimas", { n: ejecuciones.llamadas })}</span>
                           </>
                         ) : (
-                          <>Sin ejecuciones en las últimas {ejecuciones.llamadas} llamadas</>
+                          <>{t("restaurantes.agenteVoz.herramientas.sinEjecuciones", { n: ejecuciones.llamadas })}</>
                         )
                       ) : (
-                        <>Sin datos de ejecuciones</>
+                        <>{t("restaurantes.agenteVoz.herramientas.sinDatos")}</>
                       )}
                     </span>
                   </li>
@@ -373,13 +374,13 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, role, nombreSucur
         {PESTANAS_EDITABLES.has(pestana) && config.estado !== "cargando" ? (
           <div className="flex flex-wrap items-center gap-3 border-t border-border pt-3">
             <Button type="button" onClick={() => void guardar()} disabled={!servicioListo || !sucio || borrador.vozId === null} loading={guardando}>
-              Guardar cambios
+              {t("restaurantes.agenteVoz.guardar")}
             </Button>
-            {sucio ? <span className="text-xs text-muted-foreground">Hay cambios sin guardar.</span> : null}
-            {borrador.vozId === null ? <span data-testid="aviso-elegir-voz" className="text-xs text-muted-foreground">Elige una voz en la pestaña Voz para poder guardar.</span> : null}
+            {sucio ? <span className="text-xs text-muted-foreground">{t("restaurantes.agenteVoz.sinGuardar")}</span> : null}
+            {borrador.vozId === null ? <span data-testid="aviso-elegir-voz" className="text-xs text-muted-foreground">{t("restaurantes.agenteVoz.elegirVozParaGuardar")}</span> : null}
             {avisoGuardado && !sucio ? (
               <span role="status" className="text-xs text-primary">
-                Cambios guardados.
+                {t("restaurantes.agenteVoz.guardados")}
               </span>
             ) : null}
             {errorGuardado ? (
@@ -394,19 +395,20 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, role, nombreSucur
       {vistaPrevia || !(role === "owner" || role === "admin") ? null : <GloboLlamada onAbrir={() => setVistaPrevia(true)} />}
 
       {vistaPrevia ? (
-        <VistaPreviaVoz apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} nombreSucursal={nombreSucursal ?? "Llamada de prueba"} vozId={guardado.vozId} servicioListo={servicioListo} entorno={entornoVoz ?? entornoNavegador} portalEn={marco} onCerrar={() => setVistaPrevia(false)} />
+        <VistaPreviaVoz apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} nombreSucursal={nombreSucursal ?? t("restaurantes.agenteVoz.llamadaPrueba")} vozId={guardado.vozId} servicioListo={servicioListo} entorno={entornoVoz ?? entornoNavegador} portalEn={marco} onCerrar={() => setVistaPrevia(false)} />
       ) : null}
     </div>
   );
 }
 
 function Resumen({ config, borrador, conversaciones, onVistaPrevia, apiBaseUrl, token, propertyId, role }: { config: Carga<VozConfig | null>; borrador: VozConfigInput; conversaciones: Carga<readonly ConversacionVoz[]>; onVistaPrevia: () => void; apiBaseUrl: string; token: string; propertyId: string; role: string }) {
+  const t = useT(restaurantesAgenteVoz);
   const voz = buscarVoz(borrador.vozId);
   const tieneMensaje = borrador.mensajeInicial.trim() !== "";
   const pasos: readonly { readonly ok: boolean; readonly texto: string }[] = [
-    { ok: voz !== undefined, texto: "Elegir una voz" },
-    { ok: borrador.promptSistema.trim() !== "", texto: "Definir el comportamiento del agente" },
-    { ok: tieneMensaje && mencionaAsistenteVirtual(borrador.mensajeInicial), texto: "Primer mensaje que se presente como asistente virtual" },
+    { ok: voz !== undefined, texto: t("restaurantes.agenteVoz.paso.voz") },
+    { ok: borrador.promptSistema.trim() !== "", texto: t("restaurantes.agenteVoz.paso.comportamiento") },
+    { ok: tieneMensaje && mencionaAsistenteVirtual(borrador.mensajeInicial), texto: t("restaurantes.agenteVoz.paso.mensaje") },
   ];
 
   return (
@@ -415,34 +417,34 @@ function Resumen({ config, borrador, conversaciones, onVistaPrevia, apiBaseUrl, 
       <div className="grid gap-3 sm:grid-cols-2">
         <Card>
           <CardHeader className="p-4 pb-2">
-            <CardTitle>Servicio de voz</CardTitle>
+            <CardTitle>{t("restaurantes.agenteVoz.servicio")}</CardTitle>
           </CardHeader>
           <CardContent className="p-4 pt-0 text-sm">
-            {config.estado === "cargando" ? <EstadoCargando etiqueta="Consultando…" /> : null}
-            {config.estado === "listo" ? <StatusBadge tone="success" dot={false}>Disponible</StatusBadge> : null}
-            {config.estado === "no_disponible" ? <p className="text-muted-foreground">Todavía no disponible para este negocio.</p> : null}
-            {config.estado === "error" ? <p className="text-destructive">No se pudo consultar: {config.mensaje}</p> : null}
-            {config.estado === "listo" && config.datos === null ? <p className="mt-1 text-xs text-muted-foreground">Esta sucursal aún no tiene configuración guardada.</p> : null}
+            {config.estado === "cargando" ? <EstadoCargando etiqueta={t("restaurantes.agenteVoz.consultando")} /> : null}
+            {config.estado === "listo" ? <StatusBadge tone="success" dot={false}>{t("restaurantes.agenteVoz.disponible")}</StatusBadge> : null}
+            {config.estado === "no_disponible" ? <p className="text-muted-foreground">{t("restaurantes.agenteVoz.servicio.noDisponible")}</p> : null}
+            {config.estado === "error" ? <p className="text-destructive">{t("restaurantes.agenteVoz.servicio.error", { mensaje: config.mensaje })}</p> : null}
+            {config.estado === "listo" && config.datos === null ? <p className="mt-1 text-xs text-muted-foreground">{t("restaurantes.agenteVoz.servicio.sinConfig")}</p> : null}
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="p-4 pb-2">
-            <CardTitle>Voz elegida</CardTitle>
+            <CardTitle>{t("restaurantes.agenteVoz.vozElegida")}</CardTitle>
           </CardHeader>
-          <CardContent className="p-4 pt-0 text-sm">{voz ? `${voz.nombre} · ${voz.tono}` : <span className="text-muted-foreground">Sin elegir</span>}</CardContent>
+          <CardContent className="p-4 pt-0 text-sm">{voz ? `${voz.nombre} · ${voz.tono}` : <span className="text-muted-foreground">{t("restaurantes.agenteVoz.sinElegir")}</span>}</CardContent>
         </Card>
 
         <Card className="sm:col-span-2">
           <CardHeader className="p-4 pb-2">
-            <CardTitle>Llamadas</CardTitle>
-            <CardDescription>Datos reales del historial; sin cifras de relleno.</CardDescription>
+            <CardTitle>{t("restaurantes.agenteVoz.llamadas")}</CardTitle>
+            <CardDescription>{t("restaurantes.agenteVoz.llamadas.nota")}</CardDescription>
           </CardHeader>
           <CardContent className="p-4 pt-0 text-sm" data-testid="resumen-llamadas">
-            {conversaciones.estado === "cargando" ? <EstadoCargando etiqueta="Cargando historial…" /> : null}
-            {conversaciones.estado === "no_disponible" ? <EstadoVacio titulo="Sin historial todavía" mensaje="Las llamadas se mostrarán aquí cuando el servicio de voz esté activo." /> : null}
-            {conversaciones.estado === "error" ? <p className="text-destructive">No se pudo cargar el historial: {conversaciones.mensaje}</p> : null}
-            {conversaciones.estado === "listo" && conversaciones.datos.length === 0 ? <EstadoVacio titulo="Sin llamadas" mensaje="Todavía no hay conversaciones registradas." /> : null}
+            {conversaciones.estado === "cargando" ? <EstadoCargando etiqueta={t("restaurantes.agenteVoz.cargandoHistorial")} /> : null}
+            {conversaciones.estado === "no_disponible" ? <EstadoVacio titulo={t("restaurantes.agenteVoz.sinHistorial")} mensaje={t("restaurantes.agenteVoz.sinHistorial.mensaje")} /> : null}
+            {conversaciones.estado === "error" ? <p className="text-destructive">{t("restaurantes.agenteVoz.errorHistorial", { mensaje: conversaciones.mensaje })}</p> : null}
+            {conversaciones.estado === "listo" && conversaciones.datos.length === 0 ? <EstadoVacio titulo={t("restaurantes.agenteVoz.sinLlamadas")} mensaje={t("restaurantes.agenteVoz.sinLlamadas.mensaje")} /> : null}
             {conversaciones.estado === "listo" && conversaciones.datos.length > 0 ? <ResumenLlamadas lista={conversaciones.datos} /> : null}
           </CardContent>
         </Card>
@@ -450,7 +452,7 @@ function Resumen({ config, borrador, conversaciones, onVistaPrevia, apiBaseUrl, 
 
       <Card>
         <CardHeader className="p-4 pb-2">
-          <CardTitle>Antes de salir en vivo</CardTitle>
+          <CardTitle>{t("restaurantes.agenteVoz.antesDeSalir")}</CardTitle>
         </CardHeader>
         <CardContent className="p-4 pt-0">
           <ul className="space-y-1.5 text-sm">
@@ -466,7 +468,7 @@ function Resumen({ config, borrador, conversaciones, onVistaPrevia, apiBaseUrl, 
             ))}
           </ul>
           <Button type="button" variant="outline" size="sm" className="mt-3" onClick={onVistaPrevia}>
-            Abrir llamada de prueba
+            {t("restaurantes.agenteVoz.abrirPrueba")}
           </Button>
         </CardContent>
       </Card>
@@ -475,6 +477,7 @@ function Resumen({ config, borrador, conversaciones, onVistaPrevia, apiBaseUrl, 
 }
 
 function ResumenLlamadas({ lista }: { lista: readonly ConversacionVoz[] }) {
+  const t = useT(restaurantesAgenteVoz);
   const conDuracion = lista.filter((c) => c.duracionSegundos !== null);
   const totalSeg = conDuracion.reduce((a, c) => a + (c.duracionSegundos ?? 0), 0);
   const conCosto = lista.filter((c) => c.costoUsd !== null);
@@ -482,15 +485,15 @@ function ResumenLlamadas({ lista }: { lista: readonly ConversacionVoz[] }) {
   return (
     <dl className="grid grid-cols-3 gap-2">
       <div>
-        <dt className="text-2xs uppercase tracking-wide text-muted-foreground">Conversaciones</dt>
+        <dt className="text-2xs uppercase tracking-wide text-muted-foreground">{t("restaurantes.agenteVoz.pestana.conversaciones")}</dt>
         <dd className="text-base font-semibold tabular-nums">{lista.length}</dd>
       </div>
       <div>
-        <dt className="text-2xs uppercase tracking-wide text-muted-foreground">Duración total</dt>
+        <dt className="text-2xs uppercase tracking-wide text-muted-foreground">{t("restaurantes.agenteVoz.duracionTotal")}</dt>
         <dd className="text-base font-semibold tabular-nums">{conDuracion.length > 0 ? formatoDuracion(totalSeg) : "—"}</dd>
       </div>
       <div>
-        <dt className="text-2xs uppercase tracking-wide text-muted-foreground">Costo total</dt>
+        <dt className="text-2xs uppercase tracking-wide text-muted-foreground">{t("restaurantes.agenteVoz.costoTotal")}</dt>
         <dd className="text-base font-semibold tabular-nums">{conCosto.length > 0 ? formatoCostoUsd(totalCosto) : "—"}</dd>
       </div>
     </dl>
@@ -512,17 +515,21 @@ interface VistaPreviaVozProps {
 }
 
 /** Llamada de prueba real con el agente configurado. Antes de ofrecer el botón consulta la salud del proveedor: sin credencial muestra el motivo y no simula nada. */
+/** Por qué la llamada de prueba no está lista (se traduce al pintar: cambia de idioma sin volver a consultar). */
+type MotivoVistaPrevia = { readonly tipo: "comprobando" | "no_activo" | "error" } | { readonly tipo: "detalle"; readonly detalle: string };
+
 function VistaPreviaVoz({ apiBaseUrl, token, propertyId, nombreSucursal, vozId, servicioListo, entorno, portalEn, onCerrar }: VistaPreviaVozProps) {
-  const [motivo, setMotivo] = useState<string | null>(servicioListo ? "Comprobando el servicio de voz…" : "No disponible: el servicio de voz todavía no está activo para este negocio.");
+  const t = useT(restaurantesAgenteVoz);
+  const [estadoMotivo, setMotivo] = useState<MotivoVistaPrevia | null>(servicioListo ? { tipo: "comprobando" } : { tipo: "no_activo" });
   useEffect(() => {
     if (!servicioListo) return;
     let cancelado = false;
     (async () => {
       try {
         const salud = await fetchSaludVoz(fetch, apiBaseUrl, token, propertyId);
-        if (!cancelado) setMotivo(salud.ok ? null : `No disponible: ${salud.detalle}`);
+        if (!cancelado) setMotivo(salud.ok ? null : { tipo: "detalle", detalle: salud.detalle });
       } catch (err) {
-        if (!cancelado) setMotivo(err instanceof VozNoDisponibleError ? "No disponible: el servicio de voz todavía no está activo para este negocio." : "No se pudo comprobar el servicio de voz. Cierre y vuelva a abrir la llamada de prueba.");
+        if (!cancelado) setMotivo(err instanceof VozNoDisponibleError ? { tipo: "no_activo" } : { tipo: "error" });
       }
     })();
     return () => {
@@ -552,21 +559,30 @@ function VistaPreviaVoz({ apiBaseUrl, token, propertyId, nombreSucursal, vozId, 
     [entorno, apiBaseUrl, token, propertyId, vozId],
   );
   const controller = useSesionVoz(fabrica);
+  const motivo =
+    estadoMotivo === null
+      ? null
+      : estadoMotivo.tipo === "detalle"
+        ? t("restaurantes.agenteVoz.vp.noDisponible", { detalle: estadoMotivo.detalle })
+        : t(estadoMotivo.tipo === "comprobando" ? "restaurantes.agenteVoz.vp.comprobando" : estadoMotivo.tipo === "no_activo" ? "restaurantes.agenteVoz.vp.noActivo" : "restaurantes.agenteVoz.vp.errorSalud");
+  // Chip como en el original: «Vista previa» en reposo y «● Llamada en curso» mientras dura la llamada (escuchando, pensando o hablando).
+  const enCurso = t("restaurantes.agenteVoz.chip.enCurso");
+  const etiquetasChip = useMemo(() => ({ escuchando: enCurso, pensando: enCurso, hablando: enCurso }), [enCurso]);
   return (
     <VistaPreviaLlamada
       controller={controller}
-      nombreAgente="Agente de voz"
+      nombreAgente={t("restaurantes.agenteVoz.titulo")}
       nombreSucursal={nombreSucursal}
       onCerrar={onCerrar}
       videoSrc={`${import.meta.env.BASE_URL}media/orbe-agente.mp4`}
       videoSiempre
       portalEn={portalEn}
-      etiquetasChip={ETIQUETAS_CHIP_LLAMADA}
+      etiquetasChip={etiquetasChip}
       {...(motivo ? { motivoNoDisponible: motivo } : {})}
       pie={
         <>
           <Callout tone="info" role="note" data-testid="aviso-prueba" className="mx-4 mb-3">
-            Llamada de prueba: consulta el menú real y simula el pedido; no se registra ni se avisa a nadie. Usa su micrófono: el navegador le pedirá permiso.
+            {t("restaurantes.agenteVoz.vp.aviso")}
           </Callout>
           {pedidoSimulado ? (
             <div className="mx-4 mb-3">

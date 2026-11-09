@@ -4,6 +4,9 @@
 // crear_pedido en routes/verticals/restaurantes/public.ts (ver el comentario de
 // cabecera de voice-tools.ts). El contador de ejecuciones NUNCA se fija aquí: sale
 // de las conversaciones reales (ver contarEjecuciones).
+//
+// i18n: este archivo se queda en espanol a proposito (fuera del PR de voz): nombres y descripciones de las herramientas del agente,
+// alineados con las que lee el LLM. Cada literal lleva `// i18n-ignorar` para el trinquete; traducirlo es un hueco declarado.
 import type { ConversacionVoz } from "../lib/voz-client.ts";
 
 export interface HerramientaAgente {
@@ -13,12 +16,19 @@ export interface HerramientaAgente {
 }
 
 export const HERRAMIENTAS_AGENTE: readonly HerramientaAgente[] = [
+  // i18n-ignorar
   { nombre: "buscar_sucursal_cercana", titulo: "Buscar sucursal cercana", descripcion: "Encuentra la sucursal más cercana a la zona o referencia que da el cliente." },
+  // i18n-ignorar
   { nombre: "buscar_producto", titulo: "Buscar producto", descripcion: "Consulta el menú real: productos, precios y disponibilidad." },
+  // i18n-ignorar
   { nombre: "cotizar_pedido", titulo: "Cotizar pedido", descripcion: "Calcula el total de un pedido antes de confirmarlo." },
+  // i18n-ignorar
   { nombre: "buscar_cliente", titulo: "Buscar cliente", descripcion: "Reconoce a un cliente recurrente por su teléfono." },
+  // i18n-ignorar
   { nombre: "historial_pedidos", titulo: "Historial de pedidos", descripcion: "Lista los últimos pedidos del mismo cliente." },
+  // i18n-ignorar
   { nombre: "repetir_pedido", titulo: "Repetir pedido", descripcion: "Vuelve a cotizar un pedido anterior con los precios de hoy." },
+  // i18n-ignorar
   { nombre: "crear_pedido", titulo: "Crear pedido", descripcion: "Registra el pedido confirmado por el cliente." },
 ];
 
@@ -32,11 +42,13 @@ export type EjecucionesPorHerramienta =
  * `disponible: false` con el motivo, en vez de mostrar "0 ejecuciones".
  */
 export function contarEjecuciones(conversaciones: readonly ConversacionVoz[] | null): EjecucionesPorHerramienta {
+  // i18n-ignorar
   if (conversaciones === null) return { disponible: false, motivo: "El historial de conversaciones todavía no está disponible." };
   const conDato = conversaciones.filter((c) => c.herramientas !== undefined);
   if (conDato.length === 0) {
     return {
       disponible: false,
+      // i18n-ignorar
       motivo: conversaciones.length === 0 ? "Todavía no hay conversaciones registradas." : "El historial no reporta qué herramientas usó cada llamada.",
     };
   }
