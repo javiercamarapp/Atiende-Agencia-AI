@@ -14,16 +14,6 @@
 -- domain-despachos/src/conciliacion/) se expone en esta fase como endpoint puro/
 -- calculadora (mismo criterio que declaraciones.ts/nomina.ts, ver comentario de
 -- cabecera de apps/api/.../despachos/conciliacion.ts) — no requiere tabla nueva.
---
--- NOTA (barrido de documentación/observabilidad): esta migración corría SOLO como
--- `supabase/migrations/20240101000037_002_despachos_migracion_catalogo_schema.sql`
--- (copia consolidada aplicada al proyecto real) sin fuente canónica en este
--- paquete — a diferencia de las demás migraciones de `despachos.*`, que sí viven
--- aquí primero y se copian a `supabase/migrations/` con timestamp (ver
--- `packages/db/README.md` para la convención). Este archivo es esa fuente
--- canónica que faltaba; el contenido es idéntico byte a byte al que ya corre en
--- `supabase/migrations/` (verificado con diff), así que no reaplica ni cambia
--- nada en ningún proyecto Supabase real ya migrado.
 
 create table despachos.mapeo_migracion_cuenta (
   id uuid primary key default gen_random_uuid(),
