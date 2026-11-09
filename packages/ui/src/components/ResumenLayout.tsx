@@ -9,6 +9,7 @@
 // los arma la pagina con datos reales de sus endpoints; una rejilla o una pildora sin contenido no
 // se pinta.
 import { useId, type ReactNode } from "react";
+import { RanuraAvisosPagina } from "./AvisoPagina";
 import { Link } from "react-router-dom";
 import { cn } from "../lib/utils";
 import { TEXTOS_DS3_CONTENIDO } from "./ds3-contenido-textos";
@@ -115,6 +116,8 @@ export function ResumenLayout({
         </div>
         {hayContenido(destacado) && <div data-parte="destacado" className="flex shrink-0 items-center gap-2.5 sm:pt-1">{destacado}</div>}
       </div>
+      {/* Avisos globales del panel (AvisoPagina) debajo del encabezado del Resumen. */}
+      <RanuraAvisosPagina />
       {estadoDatos && estadoDatos.length > 0 && (
         <dl hidden aria-label={TEXTOS_DS3_CONTENIDO.resumen.estadoDatos} data-parte="estado-datos" data-testid="resumen-estado-datos" className="ds3-solo">
           {estadoDatos.map((d) => (

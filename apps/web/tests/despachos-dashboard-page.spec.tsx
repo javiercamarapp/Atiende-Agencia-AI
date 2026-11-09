@@ -220,7 +220,10 @@ describe("DashboardPage (despachos)", () => {
     await esperar();
     const text = rendered.container.textContent!;
     expect(text).toContain("Orquestación de agentes");
-    expect(text).toContain("Sin registro de corridas");
+    // Cambio intencional (auditoria R2 #12): estado honesto y sin jerga (antes «Falta un endpoint de lectura…»).
+    expect(text).toContain("Aún no disponible");
+    expect(text).toContain("Esta sección todavía no está disponible.");
+    expect(text).not.toMatch(/endpoint|latidos/i);
     const hrefs = [...rendered.container.querySelectorAll("a")].map((a) => a.getAttribute("href"));
     for (const ruta of ["cola-cobranza", "cfdi", "conciliacion", "copiloto"]) expect(hrefs).toContain(`/despachos/demo/${ruta}`);
   });

@@ -58,7 +58,7 @@ describe("componentes comunes", () => {
   it("en espanol, los textos de siempre", () => {
     r = renderComponent(pantalla("es"));
     const t = texto(r.container);
-    for (const s of ["Sin datos aún", "No se pudo cargar la información", "Reintentar", "No se pudo conectar con Stripe", "Mostrando 1–5 de 12", "Página 1 de 3", "Siguiente", "(obligatorio)", "sin cambio vs periodo anterior", "Rango de fechas", "Todo"]) {
+    for (const s of ["Sin datos aún", "No disponible ahora", "Reintentar", "No se pudo conectar con Stripe", "Mostrando 1–5 de 12", "Página 1 de 3", "Siguiente", "(obligatorio)", "sin cambio vs periodo anterior", "Rango de fechas", "Todo"]) {
       expect(t, s).toContain(s);
     }
   });
@@ -66,7 +66,7 @@ describe("componentes comunes", () => {
   it("en ingles, ingles natural y nada del espanol del marco", () => {
     r = renderComponent(pantalla("en"));
     const t = texto(r.container);
-    for (const s of ["No data yet", "We couldn't load this information", "Try again", "We couldn't connect to Stripe", "Showing 1–5 of 12", "Page 1 of 3", "Next", "Previous", "(required)", "no change vs. previous period", "Date range", "All", "Select all"]) {
+    for (const s of ["No data yet", "Not available right now", "Try again", "We couldn't connect to Stripe", "Showing 1–5 of 12", "Page 1 of 3", "Next", "Previous", "(required)", "no change vs. previous period", "Date range", "All", "Select all"]) {
       expect(t, s).toContain(s);
     }
     for (const s of ["Sin datos", "No se pudo", "Reintentar", "Mostrando", "Página", "Siguiente", "obligatorio", "periodo anterior", "Rango de fechas"]) {

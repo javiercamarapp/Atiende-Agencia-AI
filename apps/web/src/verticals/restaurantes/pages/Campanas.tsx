@@ -5,7 +5,7 @@
 // Todo viene del API real; sin datos inventados. Sin telefonos ni nombres de clientes en pantalla.
 import { useCallback, useEffect, useState } from "react";
 import { CircleCheck, CircleX, Megaphone } from "lucide-react";
-import { Button, Callout, Card, CardContent, CardHeader, CardTitle, Checkbox, DataTable, EstadoCargando, EstadoError, EstadoVacio, FormField, Input, PageContainer, StatCard, StatusBadge, notify, useConfirm } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, CardHeader, CardTitle, Checkbox, DataTable, EstadoCargando, EstadoError, EstadoVacio, FormField, Input, PageContainer, RanuraAvisosPagina, StatCard, StatusBadge, notify, useConfirm } from "@atiende/ui";
 import { fechaHoraEsMx } from "../../../lib/formato-fecha.ts";
 import { decidirCampana, ETIQUETA_SEGMENTO, fetchMarketing, guardarConfigMarketing, recompraIncremental } from "../lib/marketing-client.ts";
 import type { CampanaMarketing, ConfigMarketing, EstadoCampana, PanelMarketing } from "../lib/marketing-client.ts";
@@ -86,6 +86,8 @@ export function CampanasPage({ apiBaseUrl, token, propertyId, role, fetchImpl }:
           <p className="mt-1 truncate text-ui text-muted-foreground">Reactiva a clientes que llevan tiempo sin pedir. Nada se envía hasta que apruebes.</p>
         </div>
       </header>
+      {/* Avisos globales (agregados, plan) debajo del encabezado de la pantalla (auditoria R2 #5). */}
+      <RanuraAvisosPagina />
 
       {!puedeVer ? (
         <Callout tone="info">

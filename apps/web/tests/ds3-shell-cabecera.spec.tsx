@@ -69,6 +69,22 @@ describe("ds3 — encabezado: boton «Guía»", () => {
     click(q('[data-testid="barra-guia"]')!);
     expect(onGuia).toHaveBeenCalledTimes(1);
   });
+
+  // Auditoria R2 #3: en 390 no habia forma de abrir la Guía (el boton solo vivia en la barra de escritorio).
+  it("en la cabecera movil hay un «Guía» de 44 que hace lo mismo", () => {
+    rendered = renderShell();
+    const guia = q('[data-testid="movil-guia"]')!;
+    expect(guia.hidden).toBe(true);
+    expect(guia.classList.contains("ds3-solo")).toBe(true);
+    expect(guia.getAttribute("aria-label")).toBe("Guía");
+    expect(guia.closest('[data-testid="mobile-header"]')).not.toBeNull();
+    const rutas: string[] = [];
+    const oyente = (e: Event) => rutas.push((e as CustomEvent<{ ruta: string }>).detail.ruta);
+    window.addEventListener(GUIA_ABRIR_EVENTO, oyente);
+    click(guia);
+    window.removeEventListener(GUIA_ABRIR_EVENTO, oyente);
+    expect(rutas).toEqual(["/v/demo/agenda"]);
+  });
 });
 
 describe("ds3 — PageHeader", () => {

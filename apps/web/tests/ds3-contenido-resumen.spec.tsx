@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { CalendarCheck, MessageCircle, Settings, Sparkles } from "lucide-react";
-import { PageHeader, ResumenLayout, VerticalShell, type SidebarSection } from "@atiende/ui";
+import { AvisoPagina, PageHeader, ResumenLayout, VerticalShell, type SidebarSection } from "@atiende/ui";
 import { renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 import { installMatchMediaStub, installMemoryLocalStorage } from "./test-utils/memory-storage.ts";
 
@@ -183,9 +183,68 @@ describe("antetitulo = grupo del menu, con texto real", () => {
     expect(qa("main p").filter((p) => p.textContent === "")).toEqual([]);
   });
 
+  // R2 #6: los items de la seccion raiz (CFO, Agenda, Panel...) no tienen categoria; antes heredaban el titulo oculto «Resumen».
+  it("un item de la seccion raiz que no es el Resumen no hereda «Resumen» como antetitulo", () => {
+    rendered = shell("/v/demo/copiloto/hilo", <PageHeader titulo="Copiloto" />);
+    expect(q('[data-testid="eyebrow-pagina"]')).toBeNull();
+    expect(q('[data-testid="encabezado-eyebrow-derivado"]')).toBeNull();
+    expect(rendered.container.textContent).not.toMatch(/^Resumen$/m);
+  });
+
+  it("el antetitulo es la categoria del item activo", () => {
+    rendered = shell("/v/demo/staff", <PageHeader titulo="Staff" />);
+    expect(q('[data-testid="encabezado-eyebrow-derivado"]')!.textContent).toBe("Configuración");
+  });
+
   it("ningun antetitulo del encabezado queda vacio", () => {
     rendered = shell("/v/demo/staff", <PageHeader titulo="Staff" />);
     for (const p of qa(".ds3-encabezado-eyebrow, .ds3-eyebrow-pagina")) expect(p.textContent!.trim()).not.toBe("");
+  });
+});
+
+// Auditoria R2 #5: antetitulo + H1 (+ descripcion) juntos y los avisos globales DEBAJO, no entre el antetitulo y el contenido.
+describe("encabezado de la pantalla y avisos debajo", () => {
+  const aviso = <AvisoPagina><div data-testid="aviso">2 agregados por validar</div></AvisoPagina>;
+  const orden = (a: Element, b: Element) => a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING;
+
+  it("sin PageHeader: el shell pinta antetitulo + nombre (nivel 1) y el aviso va despues, antes de la pagina", () => {
+    rendered = shell("/v/demo/staff", <>{aviso}<ul data-testid="lista" /></>);
+    const enc = q('[data-testid="encabezado-shell"]')!;
+    expect(enc.querySelector('[data-testid="eyebrow-pagina"]')!.textContent).toBe("Configuración");
+    expect(enc.querySelector('[role="heading"][aria-level="1"]')!.textContent).toBe("Staff");
+    const av = q('[data-testid="aviso"]')!;
+    expect(av.parentElement!.getAttribute("data-testid")).toBe("ranura-avisos-shell");
+    expect(orden(enc, av)).toBeTruthy();
+    expect(orden(av, q('[data-testid="lista"]')!)).toBeTruthy();
+  });
+
+  it("con un <h1> sr-only de la pagina: el nombre se ve en el encabezado del shell pero no duplica el nivel 1", () => {
+    rendered = shell("/v/demo/staff", <h1 className="sr-only">Staff</h1>);
+    const t = q('[data-testid="encabezado-shell-titulo"]')!;
+    expect(t.textContent).toBe("Staff");
+    expect(t.getAttribute("role")).toBeNull();
+    expect(t.getAttribute("aria-hidden")).toBe("true");
+  });
+
+  it("con PageHeader: el aviso va en la ranura que sigue al encabezado, no arriba", () => {
+    rendered = shell("/v/demo/staff", <>{aviso}<PageHeader titulo="Staff" descripcion="Tu equipo" /><ul data-testid="lista" /></>);
+    const av = q('[data-testid="aviso"]')!;
+    expect(av.parentElement!.getAttribute("data-testid")).toBe("ranura-avisos-pagina");
+    expect(q('[data-testid="ranura-avisos-shell"]')!.childElementCount).toBe(0);
+    expect(orden(q("header.ds3-encabezado")!, av)).toBeTruthy();
+    expect(orden(av, q('[data-testid="lista"]')!)).toBeTruthy();
+  });
+
+  it("en el Resumen el aviso va debajo de su encabezado", () => {
+    rendered = shell("/v/demo", <>{aviso}<ResumenLayout saludo="Hola" nombre="Ana" /></>);
+    const av = q('[data-testid="aviso"]')!;
+    expect(av.parentElement!.getAttribute("data-testid")).toBe("ranura-avisos-pagina");
+    expect(orden(q('[data-parte="titulo"]')!, av)).toBeTruthy();
+  });
+
+  it("fuera de un shell el aviso se pinta en su lugar", () => {
+    rendered = renderComponent(<MemoryRouter>{aviso}</MemoryRouter>);
+    expect(q('[data-testid="aviso"]')).not.toBeNull();
   });
 });
 
@@ -233,6 +292,10 @@ describe("ds3/contenido.css", () => {
     expect(CSS).toMatch(/\.ds3-resumen h1\[data-parte="titulo"\] \{ display: none; \}/);
     expect(CSS).toMatch(/\[data-parte="titulo-ds3"\] \{[^}]*font-size: 20px;[^}]*font-weight: 600;[^}]*letter-spacing: -0\.5px;/);
     expect(CSS).toMatch(/\.ds3-eyebrow-pagina\.ds3-solo \{[^}]*font-size: 12px;[^}]*font-weight: 600;[^}]*letter-spacing: 0\.72px;[^}]*text-transform: uppercase;/);
-    expect(CSS).toMatch(/\.ds3-eyebrow-pagina\.ds3-solo:has\(\+ \.ds3-shell-pagina :is\(\.ds3-encabezado, \.ds3-resumen\)\),\s*html\[data-diseno="ds3"\] \.ds3-shell-marco\[data-pantalla="chat"\] \.ds3-eyebrow-pagina\.ds3-solo \{\s*display: none;/);
+    // Cambio intencional (auditoria R2 #5): el antetitulo vive en el encabezado de respaldo del shell (antetitulo + nombre 20/600/-0.5),
+    // que se apaga entero con PageHeader/Resumen y en el chat, y apaga solo el nombre si la pagina trae su <h1>.
+    expect(CSS).toMatch(/\.ds3-encabezado-shell-titulo\.ds3-encabezado-shell-titulo \{[^}]*font-size: 20px;[^}]*font-weight: 600;[^}]*letter-spacing: -0\.5px;/);
+    expect(CSS).toMatch(/\.ds3-encabezado-shell\.ds3-solo:has\(~ \.ds3-shell-pagina :is\(\.ds3-encabezado, \.ds3-resumen\)\),\s*html\[data-diseno="ds3"\] \.ds3-shell-marco\[data-pantalla="chat"\] \.ds3-encabezado-shell\.ds3-solo \{\s*display: none;/);
+    expect(CSS).toMatch(/\.ds3-encabezado-shell\.ds3-solo:has\(~ \.ds3-shell-pagina :is\(h1, \[role="heading"\]\[aria-level="1"\]\):not\(\.sr-only\)\) \.ds3-encabezado-shell-titulo \{\s*display: none;/);
   });
 });

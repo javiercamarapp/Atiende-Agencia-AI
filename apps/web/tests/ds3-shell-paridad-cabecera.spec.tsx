@@ -81,10 +81,25 @@ describe("ds3 — nombre de la pagina en el encabezado", () => {
     expect(ds3.getAttribute("data-titulo")).toBe("Resumen");
   });
 
-  it("en una pagina del menu no hay titulo ds3 aparte (ya es el nombre de la pagina)", () => {
-    rendered = render("/v/demo/staff", <p>hola</p>);
+  it("en una pagina del menu con su <h1> no hay titulo ds3 aparte (ya es el nombre de la pagina)", () => {
+    rendered = render("/v/demo/staff", <h1>Staff</h1>);
     expect(q('[data-testid="barra-pagina-titulo"]')!.textContent).toBe("Staff");
     expect(q(".ds3-cabecera-titulo-ds3")).toBeNull();
+  });
+
+  // Cambio intencional (auditoria R2 #5): sin <h1> de la pagina, bajo ds3 el nivel 1 es el encabezado de respaldo del contenido; la barra
+  // pinta el nombre con su pieza ds3, que no es encabezado, y la del diseno actual (que si lo es) queda apagada por ds3-no.
+  it("en una pagina sin <h1> la barra ds3 lleva el nombre sin ser encabezado y el nivel 1 ds3 va en el contenido", () => {
+    rendered = render("/v/demo/staff", <p>hola</p>);
+    const legado = q('[data-testid="barra-pagina-titulo"]')!;
+    expect(legado.getAttribute("role")).toBe("heading");
+    expect(legado.classList.contains("ds3-no")).toBe(true);
+    const ds3 = q(".ds3-cabecera-titulo-ds3")!;
+    expect(ds3.getAttribute("data-titulo")).toBe("Staff");
+    expect(ds3.getAttribute("role")).toBeNull();
+    const enc = q('[data-testid="encabezado-shell"]')!;
+    expect(enc.hidden).toBe(true);
+    expect(enc.querySelector('[role="heading"][aria-level="1"]')!.textContent).toBe("Staff");
   });
 });
 

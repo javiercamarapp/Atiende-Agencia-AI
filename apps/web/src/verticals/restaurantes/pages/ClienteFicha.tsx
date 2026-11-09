@@ -20,6 +20,7 @@ import {
   Input,
   Selector,
   PageContainer,
+  RanuraAvisosPagina,
   StatusBadge,
   Textarea,
   formatMoney,
@@ -197,6 +198,8 @@ function FichaBasica({ detalle }: { readonly detalle: CustomerDetail }) {
           </StatusBadge>
         )}
       </div>
+      {/* Avisos globales (agregados, plan) debajo del encabezado de la pantalla (auditoria R2 #5). */}
+      <RanuraAvisosPagina />
       <Seccion titulo="Direcciones guardadas">
         {detalle.addresses.length === 0 ? (
           <p className="m-0 text-ui text-muted-foreground">Sin direcciones guardadas.</p>
@@ -255,6 +258,8 @@ function FichaCompleta({ ficha, puedeAdministrar, ejecutar, api }: { readonly fi
           </StatusBadge>
         )}
       </div>
+      {/* Avisos globales (agregados, plan) debajo del encabezado de la pantalla (auditoria R2 #5). */}
+      <RanuraAvisosPagina />
 
       <dl className="m-0 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-ui">
         <dt className="text-muted-foreground">Teléfono</dt>

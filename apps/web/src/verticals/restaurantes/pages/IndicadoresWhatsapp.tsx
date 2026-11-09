@@ -4,7 +4,7 @@
 // "Costo LLM promedio por pedido" es un promedio del periodo, no el costo real de cada pedido. Sin dato = "—" con su razón.
 import { useCallback, useEffect, useState } from "react";
 import { Activity, CheckCheck, DollarSign, Headset, MessageSquare, MessageSquareWarning, Send, ShoppingBag, TrendingUp, Wrench } from "lucide-react";
-import { Callout, Card, CardContent, CardHeader, CardTitle, DataTable, EstadoCargando, EstadoError, EstadoVacio, Selector, PageContainer, StatCard, Tabs, TabsContent, TabsList, TabsTrigger } from "@atiende/ui";
+import { Callout, Card, CardContent, CardHeader, CardTitle, DataTable, EstadoCargando, EstadoError, EstadoVacio, Selector, PageContainer, RanuraAvisosPagina, StatCard, Tabs, TabsContent, TabsList, TabsTrigger } from "@atiende/ui";
 import { ConocimientoNegocio } from "../components/ConocimientoNegocio.tsx";
 import { fetchWhatsappKpi } from "../lib/whatsapp-kpi-client.ts";
 import type { WhatsappEntrega, WhatsappEntregaDiaSerie, WhatsappKpi, WhatsappKpiDiaSerie, WhatsappKpiResumen } from "../lib/whatsapp-kpi-client.ts";
@@ -155,6 +155,8 @@ export function IndicadoresWhatsappPage({ apiBaseUrl, token, propertyId, role, n
           </div>
         ) : null}
       </header>
+      {/* Avisos globales (agregados, plan) debajo del encabezado de la pantalla (auditoria R2 #5). */}
+      <RanuraAvisosPagina />
 
       {!puedeVer ? (
         <Callout tone="info">
