@@ -2,7 +2,7 @@
 // herramienta que EXISTE en `buildRestaurantesDataChatCatalog` (packages/domain-restaurantes/src/data-chat/catalog.ts):
 // ventas_por_dia, ventas_por_sucursal, productos_mas_vendidos, ticket_medio, pedidos_por_canal, horas_pico,
 // clientes_recurrentes y promociones, y (CFO-09, «Pregunta a tu CFO») las nueve `cfo_*` del CFO. Nada aqui son respuestas: solo preguntas que el servidor contesta con datos reales.
-import type { CopilotoConfigVertical } from "./tipos.ts";
+import type { CopilotoConfigIngles, CopilotoConfigVertical } from "./tipos.ts";
 
 export const SUGERENCIAS_COPILOTO_RESTAURANTES: readonly string[] = [
   "¿Cuánto vendí esta semana?",
@@ -11,6 +11,65 @@ export const SUGERENCIAS_COPILOTO_RESTAURANTES: readonly string[] = [
   "¿Qué es lo más importante esta semana?",
   "¿Cómo va mi estado de resultados este mes por sucursal?",
 ];
+
+/** Ingles de la config (i18n ES/EN): misma consulta directa por pregunta, textos de la portada y temas. */
+export const COPILOTO_RESTAURANTES_EN: CopilotoConfigIngles = {
+  textos: {
+    titulo: "Ask your data",
+    subtitulo: "Your sales, orders and customers, with the figure the system already calculated.",
+    nota: "Answers only with figures already calculated on the server and tells you where they come from; if there's no data, it says so. It never makes up numbers. CFO answers organize your operating data and don't replace your accountant.",
+    placeholder: "Ask about your restaurant…",
+    fases: [
+      [0, "Understanding your question…"],
+      [2500, "Querying your data…"],
+      [8000, "Putting the answer together…"],
+      [20000, "Still working on this…"],
+    ],
+  },
+  temas: {
+    "Ventas": "Sales",
+    "Operación": "Operations",
+    "Clientes": "Customers",
+    "CFO": "CFO",
+  },
+  preguntas: {
+    "¿Cuánto vendí esta semana?": "How much did I sell this week?",
+    "¿Cuáles son mis productos más vendidos este mes?": "What are my best-selling products this month?",
+    "¿A qué horas tengo más pedidos en los últimos 30 días?": "At what times do I get the most orders in the last 30 days?",
+    "¿Qué es lo más importante esta semana?": "What matters most this week?",
+    "¿Cómo va mi estado de resultados este mes por sucursal?": "How is my income statement this month by location?",
+    "¿Cuánto vendí por día en los últimos 7 días?": "How much did I sell per day over the last 7 days?",
+    "¿Cuál es mi ticket medio este mes?": "What is my average ticket this month?",
+    "¿Cuánto vendió cada sucursal este mes?": "How much did each location sell this month?",
+    "¿Cuántos pedidos tengo por canal este mes?": "How many orders do I have per channel this month?",
+    "¿Cuántos clientes recurrentes tuve este mes?": "How many returning customers did I have this month?",
+    "¿Qué promociones tengo activas y cuántas veces se han usado?": "Which promotions are active and how many times have they been used?",
+    "¿Qué sucursal vende menos que su promedio este mes?": "Which location is selling below its average this month?",
+    "¿Qué porcentaje de mis clientes son frecuentes en los últimos 30 días?": "What share of my customers are frequent in the last 30 days?",
+    "¿Cuánto me cuesta el agente por pedido este mes?": "How much does the agent cost me per order this month?",
+    "¿Qué canal me trae más pedidos este mes?": "Which channel brings me the most orders this month?",
+  },
+  etiquetasHerramienta: {
+    ventas_por_dia: "Reading sales per day",
+    ventas_por_sucursal: "Comparing sales per location",
+    productos_mas_vendidos: "Finding the best-selling products",
+    ticket_medio: "Calculating the average ticket",
+    pedidos_por_canal: "Counting orders per channel",
+    horas_pico: "Reviewing peak hours",
+    clientes_recurrentes: "Reviewing returning customers",
+    promociones: "Reviewing promotions",
+    cfo_resumen: "Putting together the CFO summary",
+    cfo_lo_mas_importante: "Finding what matters most",
+    cfo_estado_resultados: "Building the income statement",
+    cfo_comparar_sucursales: "Comparing your locations",
+    cfo_clientes: "Reviewing your customers",
+    cfo_platillos: "Reviewing your dishes",
+    cfo_patrones: "Looking for sales patterns",
+    cfo_agente: "Reviewing agent performance",
+    cfo_softrestaurant: "Reviewing SoftRestaurant",
+  },
+  textoSinAcceso: "Your role doesn't have access to the Copilot. Ask the owner for access.",
+};
 
 export const COPILOTO_RESTAURANTES: CopilotoConfigVertical = {
   vertical: "restaurantes",
@@ -109,6 +168,7 @@ export const COPILOTO_RESTAURANTES: CopilotoConfigVertical = {
   },
   maxCaracteres: 600,
   textoSinAcceso: "Tu rol no tiene acceso al Copiloto. Pídele acceso al dueño.",
+  en: COPILOTO_RESTAURANTES_EN,
 };
 
 /** Chips de quien NO tiene `cfo.ver` (staff): los de siempre, sin ninguna pregunta del CFO. */
@@ -126,6 +186,10 @@ const sinCfo = <T>(m: Readonly<Record<string, T>>): Record<string, T> => Object.
 export const COPILOTO_RESTAURANTES_SIN_CFO: CopilotoConfigVertical = {
   ...COPILOTO_RESTAURANTES,
   textos: { ...COPILOTO_RESTAURANTES.textos, nota: "Responde solo con cifras ya calculadas en el servidor y te dice de dónde salen; si no hay dato, te lo dice. No inventa números." },
+  en: {
+    ...COPILOTO_RESTAURANTES_EN,
+    textos: { ...COPILOTO_RESTAURANTES_EN.textos, nota: "Answers only with figures already calculated on the server and tells you where they come from; if there's no data, it says so. It never makes up numbers." },
+  },
   sugerencias: SUGERENCIAS_COPILOTO_RESTAURANTES_SIN_CFO,
   categorias: COPILOTO_RESTAURANTES.categorias.filter((c) => c.titulo !== "CFO"),
   directas: {
