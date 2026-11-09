@@ -18,6 +18,7 @@ import type {
   AcceptStaffInviteInput,
   AcceptStaffInviteResult,
   BillingWebhookEventMark,
+  BillingWebhookTxRepository,
   BillingWebhookEventSummaryRow,
   BillingWebhookLogFilters,
   BillingWebhookLogPage,
@@ -1037,6 +1038,12 @@ export class PostgresCoreRepository implements CoreRepository, CoreStaffReposito
 
   async sealBillingEntityOrder(entityId: string, createdUnix: number): Promise<void> {
     await this.db.query(`select core.seal_billing_entity_order($1, $2);`, [entityId, createdUnix]);
+  }
+
+  /** Este repositorio ya vive sobre UNA sesión/transacción (`this.db`): `fn` corre en ella y, si
+   *  lanza, el ROLLBACK de quien abrió la sesión (`withAppSession`) deshace todo junto. */
+  withBillingWebhookTransaction<T>(fn: (tx: BillingWebhookTxRepository) => Promise<T>): Promise<T> {
+    return fn(this);
   }
 
   // ---- Bitácora de webhooks (`0018_billing_webhook_registro.sql`) — ver el
