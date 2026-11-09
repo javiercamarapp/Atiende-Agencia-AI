@@ -3,7 +3,7 @@
 // PR-2 de diseno-ux: EstadoCargando (variantes), EstadoVacio/EstadoError
 // (compactos), Callout y Skeleton. Regla de feedback 4.7: aviso persistente de
 // negocio -> Callout; error que bloquea la pagina -> EstadoError; carga ->
-// skeleton, nunca un texto suelto "Cargando...".
+// solo el logo (CargandoLogo), nunca un texto suelto "Cargando...".
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Callout, CALLOUT_TONES, EstadoCargando, EstadoError, EstadoVacio, Skeleton } from "@atiende/ui";
 import { click, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
@@ -18,55 +18,68 @@ function raiz(): HTMLElement {
   return rendered!.container.firstElementChild as HTMLElement;
 }
 
+/** Texto que veria una persona: sin sr-only y sin lo aria-hidden. */
+function textoVisible(el: HTMLElement): string {
+  const clon = el.cloneNode(true) as HTMLElement;
+  clon.querySelectorAll(".sr-only, [aria-hidden='true']").forEach((n) => n.remove());
+  return clon.textContent?.trim() ?? "";
+}
+
+// Diseno nuevo (el de todos): la carga pinta SOLO el logo (CargandoLogo); ni esqueletos, ni pulso, ni texto visible. La etiqueta
+// queda para lectores de pantalla (aria-label + sr-only) y la region conserva su altura minima.
 describe("EstadoCargando", () => {
-  it("la variante por defecto: status, aria-busy, etiqueta y 3 filas de skeleton (la ultima al 60 %)", () => {
+  it("la variante por defecto: status, aria-busy, etiqueta solo para lectores, sin esqueleto ni texto visible", () => {
     rendered = renderComponent(<EstadoCargando />);
     expect(raiz().getAttribute("role")).toBe("status");
     expect(raiz().getAttribute("aria-busy")).toBe("true");
     expect(raiz().getAttribute("aria-label")).toBe("Cargando…");
-    expect(raiz().querySelectorAll(".ds-skeleton")).toHaveLength(3);
-    expect(raiz().textContent).toBe("Cargando…");
+    expect(raiz().querySelectorAll(".ds-skeleton, .animate-pulse, .animate-spin")).toHaveLength(0);
+    expect(raiz().querySelector(".sr-only")?.textContent).toBe("Cargando…");
+    expect(textoVisible(raiz())).toBe("");
+    expect(raiz().getAttribute("data-carga-tamano")).toBe("panel");
+    expect(raiz().className).toContain("min-h-24");
   });
 
-  it("acepta etiqueta y numero de lineas", () => {
+  it("acepta etiqueta (el numero de lineas ya no dibuja nada)", () => {
     rendered = renderComponent(<EstadoCargando etiqueta="Cargando citas" lineas={5} />);
     expect(raiz().getAttribute("aria-label")).toBe("Cargando citas");
-    expect(raiz().querySelectorAll(".ds-skeleton")).toHaveLength(5);
+    expect(raiz().querySelectorAll(".ds-skeleton")).toHaveLength(0);
   });
 
-  it("tabla: cabecera + `filas` filas de esqueleto, anunciada una sola vez", () => {
+  it("tabla: una sola region anunciada, con la altura minima de la tabla y sin esqueleto", () => {
     rendered = renderComponent(<EstadoCargando variante="tabla" filas={4} etiqueta="Cargando pagos" />);
     expect(raiz().getAttribute("role")).toBe("status");
-    // 1 cabecera + 4 filas x 4 celdas
-    expect(raiz().querySelectorAll(".ds-skeleton")).toHaveLength(1 + 4 * 4);
+    expect(raiz().querySelectorAll(".ds-skeleton")).toHaveLength(0);
     expect(rendered.container.querySelectorAll("[role=status]")).toHaveLength(1);
-    expect(raiz().textContent).toBe("Cargando pagos");
+    expect(raiz().className).toContain("min-h-60");
+    expect(textoVisible(raiz())).toBe("");
   });
 
-  it("tarjeta: contenedor card con relleno p-4", () => {
+  it("tarjeta: superficie de tarjeta con su altura minima y sin esqueleto", () => {
     rendered = renderComponent(<EstadoCargando variante="tarjeta" lineas={2} />);
-    expect(raiz().className).toContain("card");
-    expect(raiz().className).toContain("p-4");
-    expect(raiz().querySelectorAll(".ds-skeleton")).toHaveLength(3);
+    expect(raiz().className).toContain("min-h-40");
+    expect(raiz().className).toContain("bg-card");
+    expect(raiz().querySelectorAll(".ds-skeleton")).toHaveLength(0);
   });
 
-  it("pantalla: glifo que respira (decorativo, oculto a AT) con el texto de carga visible", () => {
+  it("pantalla: logo de pantalla, sin el glifo anterior ni texto visible", () => {
     rendered = renderComponent(<EstadoCargando variante="pantalla" etiqueta="Abriendo tu panel" />);
     expect(raiz().getAttribute("role")).toBe("status");
     expect(raiz().getAttribute("aria-busy")).toBe("true");
-    expect(raiz().textContent).toContain("Abriendo tu panel");
-    const decorativo = raiz().querySelector("[aria-hidden='true']")!;
-    expect(decorativo.className).toContain("atiende-respira");
-    expect(decorativo.querySelector("svg")?.getAttribute("class")).toContain("atiende-glifo-animado");
+    expect(raiz().getAttribute("aria-label")).toBe("Abriendo tu panel");
+    expect(raiz().getAttribute("data-carga-tamano")).toBe("pantalla");
+    expect(raiz().querySelector(".atiende-respira")).toBeNull();
+    expect(textoVisible(raiz())).toBe("");
   });
 });
 
 describe("Skeleton", () => {
-  it("lleva la clase ds-skeleton (barrido de brillo de Likida) y ya no el pulso de Tailwind", () => {
+  it("ya no dibuja el barrido ni el pulso: hueco que conserva las medidas, oculto a lectores", () => {
     rendered = renderComponent(<Skeleton className="h-4 w-10" />);
-    expect(raiz().className).toContain("ds-skeleton");
+    expect(raiz().className).not.toContain("ds-skeleton");
     expect(raiz().className).not.toContain("animate-pulse");
     expect(raiz().className).toContain("h-4");
+    expect(raiz().getAttribute("aria-hidden")).toBe("true");
   });
 });
 

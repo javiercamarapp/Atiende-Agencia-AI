@@ -6,7 +6,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { ShieldCheck } from "lucide-react";
-import { Button, Callout, Card, CardContent, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, Input, Label, Selector, PageContainer, SolicitudesArcoPanel, SOLICITUD_ARCO_DERECHO_LABEL, SOLICITUD_ARCO_ESTADO_LABEL } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, Input, Label, Selector, PageContainer, SolicitudesArcoPanel, SOLICITUD_ARCO_DERECHO_LABEL, SOLICITUD_ARCO_ESTADO_LABEL, useT } from "@atiende/ui";
+import { restaurantesPrivacidad } from "@atiende/ui/i18n/restaurantes/privacidad";
 import type { SolicitudArcoAccion, SolicitudArcoDerecho, SolicitudArcoEstado, SolicitudArcoVista } from "@atiende/ui";
 import { actualizarEstadoSolicitudArco, fetchConfiguracionPrivacidad, fetchSolicitudesArco, guardarConfiguracionPrivacidad } from "../lib/privacidad-client.ts";
 import type { ConfiguracionPrivacidad } from "../lib/privacidad-client.ts";
@@ -17,6 +18,7 @@ const PAGE_SIZE = 25;
 const LABEL_CLASES = "flex flex-col gap-1.5 text-sm text-foreground";
 
 function ConfiguracionPrivacidadForm({ apiBaseUrl, token, propertyId }: Pick<RestaurantesShellContext, "apiBaseUrl" | "token" | "propertyId">) {
+  const t = useT(restaurantesPrivacidad);
   const [config, setConfig] = useState<ConfiguracionPrivacidad | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
@@ -45,7 +47,7 @@ function ConfiguracionPrivacidadForm({ apiBaseUrl, token, propertyId }: Pick<Res
         const c = await fetchConfiguracionPrivacidad(fetch, apiBaseUrl, token, propertyId);
         if (!cancelado) aplicar(c);
       } catch (err) {
-        if (!cancelado) setError(err instanceof Error ? err.message : "No se pudo cargar la configuración de privacidad.");
+        if (!cancelado) setError(err instanceof Error ? err.message : t("restaurantes.privacidad.error.cargarConfig"));
       }
     })();
     return () => {
@@ -70,7 +72,7 @@ function ConfiguracionPrivacidadForm({ apiBaseUrl, token, propertyId }: Pick<Res
       aplicar(saved);
       setGuardado(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo guardar la configuración.");
+      setError(err instanceof Error ? err.message : t("restaurantes.privacidad.error.guardarConfig"));
     } finally {
       setGuardando(false);
     }
@@ -81,38 +83,39 @@ function ConfiguracionPrivacidadForm({ apiBaseUrl, token, propertyId }: Pick<Res
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Aviso de privacidad, retención y grabación</CardTitle>
+        <CardTitle>{t("restaurantes.privacidad.config.titulo")}</CardTitle>
       </CardHeader>
       <CardContent>
         <form onSubmit={guardar} className="flex flex-col gap-4">
           {config && !config.configurada && (
-            <p className="m-0 text-xs text-muted-foreground">Todavía no guardas esta configuración: rigen los valores por defecto (conversaciones 180 días, voz 30 días, consentimiento de grabación exigido).</p>
+            <p className="m-0 text-xs text-muted-foreground">{t("restaurantes.privacidad.config.porDefecto")}</p>
           )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Label className={LABEL_CLASES}>
-              Responsable del tratamiento (nombre en el aviso)
-              <Input value={responsable} maxLength={200} onChange={(e) => setResponsable(e.target.value)} placeholder="Razón social o nombre comercial" />
+              {t("restaurantes.privacidad.campo.responsable")}
+              <Input value={responsable} maxLength={200} onChange={(e) => setResponsable(e.target.value)} placeholder={t("restaurantes.privacidad.campo.responsablePlaceholder")} />
             </Label>
             <Label className={LABEL_CLASES}>
-              URL del aviso de privacidad integral (https)
+              {t("restaurantes.privacidad.campo.url")}
+              {/* // i18n-ignorar: URL de ejemplo */}
               <Input value={avisoUrl} maxLength={500} onChange={(e) => setAvisoUrl(e.target.value)} placeholder="https://tu-sitio.mx/aviso-de-privacidad" />
             </Label>
             <Label className={LABEL_CLASES}>
-              Versión del aviso (súbela para mostrarlo otra vez a todos)
+              {t("restaurantes.privacidad.campo.version")}
               <Input value={avisoVersion} maxLength={32} onChange={(e) => setAvisoVersion(e.target.value)} />
             </Label>
             <Label className={LABEL_CLASES}>
-              Conservar conversaciones de WhatsApp (días, 30 a 1095)
+              {t("restaurantes.privacidad.campo.diasConv")}
               <Input type="number" min={30} max={1095} value={diasConv} onChange={(e) => setDiasConv(e.target.value)} />
             </Label>
             <Label className={LABEL_CLASES}>
-              Conservar transcripciones de voz (días, 0 a 365; 0 = no guardar)
+              {t("restaurantes.privacidad.campo.diasVoz")}
               <Input type="number" min={0} max={365} value={diasVoz} onChange={(e) => setDiasVoz(e.target.value)} />
             </Label>
             <Checkbox
               checked={exigirConsentimiento}
               onChange={(e) => setExigirConsentimiento(e.target.checked)}
-              label="Exigir consentimiento para grabar la llamada"
+              label={t("restaurantes.privacidad.campo.consentimiento")}
               wrapperClassName="sm:self-end"
             />
           </div>
@@ -121,10 +124,10 @@ function ConfiguracionPrivacidadForm({ apiBaseUrl, token, propertyId }: Pick<Res
               {error}
             </span>
           )}
-          {guardado && <span className="text-xs text-muted-foreground">Configuración guardada.</span>}
+          {guardado && <span className="text-xs text-muted-foreground">{t("restaurantes.privacidad.guardada")}</span>}
           <div>
             <Button type="submit" size="sm" loading={guardando}>
-              Guardar configuración
+              {t("restaurantes.privacidad.guardar")}
             </Button>
           </div>
         </form>
@@ -134,6 +137,7 @@ function ConfiguracionPrivacidadForm({ apiBaseUrl, token, propertyId }: Pick<Res
 }
 
 export function PrivacidadPage({ apiBaseUrl, token, propertyId, role }: RestaurantesShellContext) {
+  const t = useT(restaurantesPrivacidad);
   const puedeLeer = PRIVACIDAD_ROLES.has(role);
   const [estado, setEstado] = useState<SolicitudArcoEstado | "">("");
   const [derecho, setDerecho] = useState<SolicitudArcoDerecho | "">("");
@@ -164,7 +168,7 @@ export function PrivacidadPage({ apiBaseUrl, token, propertyId, role }: Restaura
         setNextOffset(pagina.nextOffset);
         setPlazos(pagina.plazos);
       } catch (err) {
-        if (!cancelado) setError(err instanceof Error ? err.message : "No se pudieron cargar las solicitudes ARCO.");
+        if (!cancelado) setError(err instanceof Error ? err.message : t("restaurantes.privacidad.error.solicitudes"));
       }
     })();
     return () => {
@@ -182,7 +186,7 @@ export function PrivacidadPage({ apiBaseUrl, token, propertyId, role }: Restaura
       setItems((current) => [...(current ?? []), ...pagina.items]);
       setNextOffset(pagina.nextOffset);
     } catch (err) {
-      if (generacion === generacionRef.current) setError(err instanceof Error ? err.message : "No se pudo cargar más.");
+      if (generacion === generacionRef.current) setError(err instanceof Error ? err.message : t("restaurantes.privacidad.error.cargarMas"));
     } finally {
       setCargandoMas(false);
     }
@@ -199,16 +203,18 @@ export function PrivacidadPage({ apiBaseUrl, token, propertyId, role }: Restaura
   return (
     <PageContainer padding="none" className="min-w-0 *:min-w-0">
       <header>
-        <h1 className="sr-only">Privacidad</h1>
-        <p className="m-0 text-ui text-muted-foreground">
-          Solicitudes de derechos ARCO (acceso, rectificación, cancelación y oposición) que tus clientes abren por WhatsApp o por llamada. El agente solo atiende al titular desde su propio número y nunca comparte datos por chat: tú los entregas tras verificar su identidad. En las solicitudes por llamada el identificador de llamada puede falsearse: verifica al titular por otra vía antes de responder.
-        </p>
-        <p className="m-0 mt-1 text-xs text-muted-foreground">Los plazos son una referencia operativa, no asesoría legal: valida tu aviso de privacidad y tu procedimiento con tu asesor jurídico.</p>
+        <h1 className="sr-only">{t("restaurantes.privacidad.titulo")}</h1>
+        <p className="m-0 text-ui text-muted-foreground">{t("restaurantes.privacidad.descripcion")}</p>
+        <p className="m-0 mt-1 text-xs text-muted-foreground">{t("restaurantes.privacidad.nota")}</p>
       </header>
 
       {!puedeLeer ? (
         <Callout tone="info">
-          Solo los roles <strong className="text-foreground">owner</strong>/<strong className="text-foreground">admin</strong> pueden ver las solicitudes ARCO — tu rol actual es <strong className="text-foreground">{role}</strong>.
+          {t("restaurantes.privacidad.soloRoles.inicio")}
+          {/* // i18n-ignorar: owner/admin son los nombres de rol del sistema, iguales en ambos idiomas */}
+          <strong className="text-foreground">owner</strong>/<strong className="text-foreground">admin</strong>
+          {t("restaurantes.privacidad.soloRoles.fin")}
+          <strong className="text-foreground">{role}</strong>.
         </Callout>
       ) : (
         <>
@@ -216,27 +222,27 @@ export function PrivacidadPage({ apiBaseUrl, token, propertyId, role }: Restaura
 
           <Card>
             <CardHeader>
-              <CardTitle>Filtros</CardTitle>
+              <CardTitle>{t("restaurantes.privacidad.filtros")}</CardTitle>
             </CardHeader>
             <CardContent className="flex flex-wrap gap-4">
               <Label className={`${LABEL_CLASES} min-w-[200px]`}>
-                Estado
+                {t("restaurantes.privacidad.estado")}
                 <Selector value={estado} onChange={(e) => setEstado(e.target.value as SolicitudArcoEstado | "")}>
-                  <option value="">Todos</option>
+                  <option value="">{t("restaurantes.privacidad.todos")}</option>
                   {(Object.keys(SOLICITUD_ARCO_ESTADO_LABEL) as SolicitudArcoEstado[]).map((e) => (
                     <option key={e} value={e}>
-                      {SOLICITUD_ARCO_ESTADO_LABEL[e]}
+                      {t(`restaurantes.privacidad.estado.${e}` as const)}
                     </option>
                   ))}
                 </Selector>
               </Label>
               <Label className={`${LABEL_CLASES} min-w-[180px]`}>
-                Derecho
+                {t("restaurantes.privacidad.derecho")}
                 <Selector value={derecho} onChange={(e) => setDerecho(e.target.value as SolicitudArcoDerecho | "")}>
-                  <option value="">Todos</option>
+                  <option value="">{t("restaurantes.privacidad.todos")}</option>
                   {(Object.keys(SOLICITUD_ARCO_DERECHO_LABEL) as SolicitudArcoDerecho[]).map((d) => (
                     <option key={d} value={d}>
-                      {SOLICITUD_ARCO_DERECHO_LABEL[d]}
+                      {t(`restaurantes.privacidad.derecho.${d}` as const)}
                     </option>
                   ))}
                 </Selector>
@@ -256,7 +262,7 @@ export function PrivacidadPage({ apiBaseUrl, token, propertyId, role }: Restaura
           {!error && items === null && <EstadoCargando lineas={4} />}
           {/* El Table de @atiende/ui trae su propio contenedor overflow-x-auto: se neutraliza para que el unico scroller sea esta region enfocable (teclado). */}
           {!error && items !== null && (
-            <div className="min-w-0 overflow-x-auto p-0.5 [&_.overflow-x-auto]:overflow-x-visible" tabIndex={0} role="region" aria-label="Solicitudes ARCO">
+            <div className="min-w-0 overflow-x-auto p-0.5 [&_.overflow-x-auto]:overflow-x-visible" tabIndex={0} role="region" aria-label={t("restaurantes.privacidad.region.aria")}>
               <SolicitudesArcoPanel solicitudes={items} disponible={disponible} puedeGestionar respuestaDias={plazos.respuestaDias} ejecucionDias={plazos.ejecucionDias} onCambiarEstado={cambiarEstado} />
             </div>
           )}
@@ -264,11 +270,11 @@ export function PrivacidadPage({ apiBaseUrl, token, propertyId, role }: Restaura
             <div className="flex items-center justify-between text-xs text-muted-foreground">
               <span className="flex items-center gap-1.5">
                 <ShieldCheck className="w-3.5 h-3.5" />
-                {items.length} de {total}
+                {t("restaurantes.privacidad.conteo", { n: String(items.length), total: String(total) })}
               </span>
               {nextOffset !== null && (
                 <Button type="button" variant="outline" size="sm" onClick={cargarMas} loading={cargandoMas}>
-                  Cargar más
+                  {t("restaurantes.privacidad.cargarMas")}
                 </Button>
               )}
             </div>

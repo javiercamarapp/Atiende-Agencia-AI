@@ -1,5 +1,5 @@
 // Formato de los KPI de voz. Dinero SIEMPRE desde centavos enteros; sin dato = "—", nunca 0.
-import { formatMoney } from "@atiende/ui";
+import { formatMoney, localeActivo } from "@atiende/ui";
 
 export function formatoMxn(centavos: number | null): string {
   if (centavos === null || !Number.isFinite(centavos)) return "—";
@@ -15,11 +15,11 @@ export function formatoMs(ms: number | null): string {
   return ms >= 1000 ? `${(ms / 1000).toFixed(1)} s` : `${Math.round(ms)} ms`;
 }
 
-/** "2026-03-10" -> "10 mar". Se formatea en UTC a propósito: la fecha ya es el día local de la sucursal. */
+/** "2026-03-10" -> "10 mar" ("Mar 10" con la consola en ingles). Se formatea en UTC a propósito: la fecha ya es el día local de la sucursal. */
 export function formatoDia(fecha: string): string {
   const d = new Date(`${fecha}T00:00:00Z`);
   if (Number.isNaN(d.getTime())) return fecha;
-  return d.toLocaleDateString("es-MX", { timeZone: "UTC", day: "numeric", month: "short" });
+  return d.toLocaleDateString(localeActivo(), { timeZone: "UTC", day: "numeric", month: "short" });
 }
 
 /** Pesos escritos por la persona -> centavos enteros; null si vacío, `undefined` si inválido. */

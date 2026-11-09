@@ -3,23 +3,20 @@
 // resuelve por `orgSlug`), este vertical monta TODAS sus rutas admin sobre
 // `:propertyId` (ver apps/api/src/routes/verticals/restaurantes/auditoria.ts) --
 // mismo patrón que branches-client.ts/catalog-client.ts de este mismo directorio.
+import { etiquetasTraducidas } from "@atiende/ui";
+import { restaurantesAuditoria } from "@atiende/ui/i18n/restaurantes/auditoria";
 import { fetchJson } from "./admin-client.ts";
 
 export type AuditLogEntityType = "producto" | "promocion" | "pedido" | "repartidor" | "staff" | "configuracion" | "exportacion" | "acceso";
 
 export const AUDIT_LOG_ENTITY_TYPES: readonly AuditLogEntityType[] = ["producto", "promocion", "pedido", "repartidor", "staff", "configuracion", "exportacion", "acceso"];
 
-/** Etiqueta legible por humano de cada tipo -- usada por el filtro de la pantalla. */
-export const AUDIT_LOG_ENTITY_TYPE_LABELS: Record<AuditLogEntityType, string> = {
-  producto: "Productos",
-  promocion: "Promociones",
-  pedido: "Pedidos",
-  repartidor: "Repartidor",
-  staff: "Staff",
-  configuracion: "Configuración",
-  exportacion: "Exportaciones",
-  acceso: "Accesos a datos personales",
-};
+/** Etiqueta legible por humano de cada tipo -- usada por el filtro de la pantalla. Traduce en cada lectura al idioma activo. */
+export const AUDIT_LOG_ENTITY_TYPE_LABELS: Readonly<Record<AuditLogEntityType, string>> = etiquetasTraducidas<AuditLogEntityType>(
+  AUDIT_LOG_ENTITY_TYPES,
+  (tipo) => `restaurantes.auditoria.tipo.${tipo}` as const,
+  restaurantesAuditoria,
+);
 
 export interface AuditLogEntry {
   readonly id: string;
