@@ -133,7 +133,7 @@ describe("de la fila al prompt", () => {
   });
 
   it("sin umbral guardado (NULL, base sin migrar) sigue el de Javier: $4,000, 5 kg o $2,500 sin historial en efectivo", () => {
-    expect(prompt({ ...CONFIG, largeOrderText: null })).toContain("Pedido grande (más de $4,000 o más de 5 kg; más de $2,500 si el número no tiene historial y paga en efectivo;");
+    expect(prompt({ ...CONFIG, largeOrderText: null })).toContain("Pedido grande (sin límite: se toma y va a cocina como cualquier pedido; la sucursal solo recibe un aviso;");
   });
 
   it("la espera de rafagas solo vale 1 a 10 s en el perfil PM; 0, null o una fila del perfil generico escrita a mano se ignoran", () => {

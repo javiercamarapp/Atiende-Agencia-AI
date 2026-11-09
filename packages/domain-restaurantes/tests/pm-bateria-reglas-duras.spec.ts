@@ -601,7 +601,7 @@ describe("PM-C3 -- el prompt conserva las reglas duras vigentes", () => {
   });
 
   it("T-PC05 [P19] el umbral de pedido grande es el de Javier (2-oct: $4,000, 5 kg o $2,500 sin historial en efectivo) y el agente no rechaza el pedido: lo pasa a la sucursal", () => {
-    expect(prompt).toMatch(/Pedido grande \(más de \$4,000 o más de 5 kg; más de \$2,500 si el número no tiene historial y paga en efectivo/);
+    expect(prompt).toMatch(/Pedido grande \(sin límite: se toma y va a cocina como cualquier pedido; la sucursal solo recibe un aviso/);
     expect(prompt).not.toMatch(/40 o más piezas/);
     expect(prompt).toMatch(/no lo rechace ni escale antes de cotizar/);
   });

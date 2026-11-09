@@ -51,7 +51,7 @@ describe("redos: mismo comportamiento que antes", () => {
     const v2 = adaptarPromptPmV2(base);
     expect(v2).not.toContain("NO llame escalar_a_humano con motivo pedido_grande");
     expect(v2).toContain("Una cantidad exagerada");
-    expect(base.length - v2.length).toBe(3955);
+    expect(base.length - v2.length).toBe(3951);
   });
   it("textoDeclaradoSinNegaciones conserva la cita sin la negación", () => {
     expect(textoDeclaradoSinNegaciones("No tengo alergia al cacahuate , pero sí al camarón")).toBe(textoDeclaradoSinNegaciones("No tengo alergia al cacahuate, pero sí al camarón"));

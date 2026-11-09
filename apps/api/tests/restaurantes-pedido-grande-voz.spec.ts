@@ -5,6 +5,15 @@ import { InMemoryAutopilotoRepository } from "@atiende/domain-restaurantes";
 import { InMemoryComandaOutboxStore, FakeSoftRestaurantAdapter, type SoftRestaurantPort } from "@atiende/domain-restaurantes/softrestaurant";
 import { buildApp } from "../src/app.ts";
 import { buildTestDeps, jsonRequestInit } from "./fixtures.ts";
+import { afterEach as despuesDeCada, beforeEach as antesDeCada, vi as viEspera } from "vitest";
+
+// Prueba de la espera por pedido grande CONFIGURADA (decisión de Omar, 9-nov: sin espera por omisión; umbrales de antes por entorno).
+antesDeCada(() => {
+  viEspera.stubEnv("PM_PEDIDO_GRANDE_TOTAL_MXN", "4000");
+  viEspera.stubEnv("PM_PEDIDO_GRANDE_KG", "5");
+  viEspera.stubEnv("PM_PEDIDO_GRANDE_SIN_HISTORIAL_EFECTIVO_MXN", "2500");
+});
+despuesDeCada(() => viEspera.unstubAllEnvs());
 
 const TOOL_SECRET_HEADERS = { "x-atiende-tool-secret": "test-voice-tool-secret" };
 const ORG_SLUG = "los-taquitos-de-pm";

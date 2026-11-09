@@ -11,6 +11,10 @@ import { telefonoFicticioPreview } from "../src/agent-tools/registry.ts";
 import { InMemoryRestaurantesRepository } from "../src/in-memory-repository.ts";
 import { createLlmWhatsAppTurnHandler } from "../src/whatsapp/llm-turn-handler.ts";
 import { buildRestaurantFixture } from "./fixtures.ts";
+import { activarEsperaPedidoGrande } from "./support/pedido-grande-con-espera.ts";
+
+// Prueba de la espera por pedido grande CONFIGURADA (decisión de Omar, 9-nov: sin espera por omisión).
+activarEsperaPedidoGrande();
 
 // Martes 2026-10-06 13:00 en Merida (UTC-6).
 beforeEach(() => {

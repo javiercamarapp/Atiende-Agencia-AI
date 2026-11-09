@@ -48,7 +48,7 @@ describe("PUT agente-whatsapp con los campos nuevos y version", () => {
     const opciones = (await (await app.request(`${url}/opciones`, authedGet(t))).json()) as Json;
     expect(opciones.esperaRafagasMaxSegundos).toBe(10);
     expect(opciones.limites.largeOrderText).toBe(200);
-    expect(opciones.perfiles.find((p: Json) => p.perfil === "taqueria_pm").largeOrderText).toBe("más de $4,000 o más de 5 kg; más de $2,500 si el número no tiene historial y paga en efectivo");
+    expect(opciones.perfiles.find((p: Json) => p.perfil === "taqueria_pm").largeOrderText).toBe("sin límite: se toma y va a cocina como cualquier pedido; la sucursal solo recibe un aviso");
   });
 
   it("PM-C5: rechaza (400, sin escribir) una espera fuera de 0 a 10, decimal o texto, un umbral multilinea o muy largo, y ambos campos en el perfil generico", async () => {

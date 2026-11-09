@@ -3,6 +3,10 @@
 import { describe, expect, it } from "vitest";
 import { invokeAgentTool, MENSAJE_PEDIDO_GRANDE_PENDIENTE } from "../src/agent-tools/registry.ts";
 import { buildRestaurantFixture } from "./fixtures.ts";
+import { activarEsperaPedidoGrande } from "./support/pedido-grande-con-espera.ts";
+
+// Prueba de la espera por pedido grande CONFIGURADA (decisión de Omar, 9-nov: sin espera por omisión).
+activarEsperaPedidoGrande();
 
 describe.each(["voz", "whatsapp"] as const)("%s: pedido grande retenido", (channel) => {
   it("devuelve mensaje_al_cliente sin afirmar registro, confirmacion ni cocina, y deja el aviso pedido_grande", async () => {

@@ -7,6 +7,10 @@ import type { AutopilotoTurnoHooks, PedidoGrandeHook } from "../../src/autopilot
 import { PEDIDO_GRANDE_VENTANA_ACUMULADO_MS, acumuladoReciente } from "../../src/pedido-grande.ts";
 import { banco, call, item, say, sayResumen } from "./r1-arnes-whatsapp-pm.ts";
 import type { Banco } from "./r1-arnes-whatsapp-pm.ts";
+import { activarEsperaPedidoGrande } from "../support/pedido-grande-con-espera.ts";
+
+// Prueba de la espera por pedido grande CONFIGURADA (decisión de Omar, 9-nov: sin espera por omisión).
+activarEsperaPedidoGrande();
 
 afterEach(() => {
   vi.useRealTimers();

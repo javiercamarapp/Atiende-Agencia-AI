@@ -9,6 +9,10 @@ import { buildSystemPrompt, PM_CONFIG_POR_OMISION } from "../../src/whatsapp/llm
 import { lookupCustomerConPedidoReciente } from "../../src/customers.ts";
 import { PHONE, buildRestaurantFixture, flujo, hallazgo, itemsCoca, ordenes, pedidoCompleto } from "./arnes.ts";
 import type { Fixture } from "./arnes.ts";
+import { activarEsperaPedidoGrande } from "../support/pedido-grande-con-espera.ts";
+
+// Prueba de la espera por pedido grande CONFIGURADA (decisión de Omar, 9-nov: sin espera por omisión).
+activarEsperaPedidoGrande();
 
 // Martes 2026-10-06 13:00 en Merida (UTC-6): reloj fijo para que las horas relativas sean deterministas.
 beforeEach(() => {

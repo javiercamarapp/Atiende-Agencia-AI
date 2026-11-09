@@ -6,6 +6,10 @@ import { MENSAJE_PEDIDO_GRANDE_PENDIENTE } from "../src/agent-tools/registry.ts"
 import { PEDIDO_GRANDE_TOTAL_MXN } from "../src/pedido-grande.ts";
 import { reiniciarDedupeFallaSistema } from "../src/whatsapp/dedupe-falla-sistema.ts";
 import { MARTES_14H, nuevoViaje, pedidosDe, type Viaje } from "./qa-viaje/arnes-viaje.ts";
+import { activarEsperaPedidoGrande } from "./support/pedido-grande-con-espera.ts";
+
+// Prueba de la espera por pedido grande CONFIGURADA (decisión de Omar, 9-nov: sin espera por omisión).
+activarEsperaPedidoGrande();
 
 beforeEach(() => {
   reiniciarDedupeFallaSistema();

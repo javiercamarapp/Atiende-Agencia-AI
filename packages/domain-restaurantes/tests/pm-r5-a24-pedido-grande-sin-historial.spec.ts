@@ -4,6 +4,10 @@
 // (Los rellenos con 0 / "0" los cubre el contrato de crear_pedido de la ronda 5, pm-r5-contrato-relleno-del-modelo.spec.ts.)
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { banco, call, item, say, sayResumen } from "./qa/r1-arnes-whatsapp-pm.ts";
+import { activarEsperaPedidoGrande } from "./support/pedido-grande-con-espera.ts";
+
+// Prueba de la espera por pedido grande CONFIGURADA (decisión de Omar, 9-nov: sin espera por omisión).
+activarEsperaPedidoGrande();
 
 afterEach(() => {
   vi.useRealTimers();
