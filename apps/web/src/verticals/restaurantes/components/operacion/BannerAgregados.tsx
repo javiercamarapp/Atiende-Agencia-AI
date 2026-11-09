@@ -38,12 +38,17 @@ export function BannerAgregados({ apiBaseUrl, token, propertyId, orgSlug, activo
   // Va en la ranura de avisos de la pantalla (debajo de su encabezado), no entre el antetitulo y el contenido (auditoria R2 #5).
   return (
     <AvisoPagina>
-      <div role="status" aria-live="polite" data-testid="banner-agregados-global" className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border-2 border-primary bg-card p-3">
-        <p className="flex items-center gap-2 text-base font-bold text-foreground">
-          <ListPlus className="size-5 shrink-0 text-primary" aria-hidden="true" />
+      {/* Aviso de Rovaq con el azul de Atiende (auditoria R2 #8): tinte suave con borde de 1 px teñido, texto 13 px y la accion como primario
+          suave de 32 px y radio de control (8 px bajo ds3), no una pildora solida de 48 px con borde de 2 px. */}
+      <div role="status" aria-live="polite" data-testid="banner-agregados-global" className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-control border border-primary/30 bg-primary-soft px-3 py-2">
+        <p className="flex items-center gap-2 text-ui font-semibold text-foreground">
+          <ListPlus className="size-4 shrink-0 text-primary-ink" aria-hidden="true" />
           {textoPendientes(pendientes)}
         </p>
-        <Link to={destino} className="inline-flex h-12 items-center rounded-full bg-primary px-5 text-base font-semibold text-primary-foreground">
+        <Link
+          to={destino}
+          className="inline-flex h-8 items-center rounded-control border border-primary/30 bg-card px-3 text-ui font-medium text-primary-ink transition-colors duration-fast ease-brand hover:bg-primary-soft-hover"
+        >
           Validar ahora
         </Link>
       </div>
