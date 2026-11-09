@@ -2,7 +2,7 @@
 // herramienta que EXISTE en `buildRentasDataChatTools` (packages/domain-rentas/src/data-chat/catalog.ts): ocupacion_por_unidad,
 // ingresos_por_canal, ingresos_por_propietario, conflictos_calendario_abiertos, tareas_pendientes, liquidaciones_propietarios y
 // pagos_de_canal. Nada aqui son respuestas: solo preguntas que el servidor contesta con datos reales.
-import type { CopilotoConfigVertical } from "./tipos.ts";
+import type { CopilotoConfigIngles, CopilotoConfigVertical } from "./tipos.ts";
 
 export const SUGERENCIAS_COPILOTO_RENTAS: readonly string[] = [
   "¿Cuál fue la ocupación por unidad el mes pasado?",
@@ -11,6 +11,47 @@ export const SUGERENCIAS_COPILOTO_RENTAS: readonly string[] = [
   "¿Qué conflictos de calendario siguen abiertos?",
   "¿Qué limpiezas están pendientes hasta hoy?",
 ];
+
+/** Ingles de la config (i18n ES/EN): misma consulta directa por pregunta, textos de la portada y temas. */
+export const COPILOTO_RENTAS_EN: CopilotoConfigIngles = {
+  textos: {
+    titulo: "Ask your data",
+    subtitulo: "Your occupancy, revenue and operations, with the figure the system already calculated.",
+    nota: "Answers only with figures already calculated on the server and tells you where they come from; if there's no data, it says so. It never makes up numbers.",
+    placeholder: "Ask about your properties…",
+    fases: [
+      [0, "Understanding your question…"],
+      [2500, "Querying your data…"],
+      [8000, "Putting the answer together…"],
+      [20000, "Still working on this…"],
+    ],
+  },
+  temas: {
+    "Ocupación": "Occupancy",
+    "Ingresos": "Revenue",
+    "Operación": "Operations",
+  },
+  preguntas: {
+    "¿Cuál fue la ocupación por unidad el mes pasado?": "What was occupancy per unit last month?",
+    "¿Cuánto ingresé por canal este mes?": "How much did I earn per channel this month?",
+    "¿Cuánto ingresó cada propietario este mes?": "How much did each owner earn this month?",
+    "¿Qué conflictos de calendario siguen abiertos?": "Which calendar conflicts are still open?",
+    "¿Qué limpiezas están pendientes hasta hoy?": "Which cleanings are pending as of today?",
+    "¿Cuántas noches reservé y cuántas bloqueé este mes?": "How many nights did I book and how many did I block this month?",
+    "¿Qué pagos de canal recibí este mes y cuáles siguen sin conciliar?": "Which channel payouts did I receive this month and which are still unreconciled?",
+    "¿Qué liquidaciones a propietarios generé el mes pasado?": "Which owner statements did I generate last month?",
+  },
+  etiquetasHerramienta: {
+    ocupacion_por_unidad: "Calculating occupancy per unit",
+    ingresos_por_canal: "Adding up revenue per channel",
+    ingresos_por_propietario: "Adding up revenue per owner",
+    conflictos_calendario_abiertos: "Reviewing calendar conflicts",
+    tareas_pendientes: "Reviewing pending tasks",
+    liquidaciones_propietarios: "Reviewing owner statements",
+    pagos_de_canal: "Reviewing channel payouts",
+  },
+  textoSinAcceso: "Your role doesn't have access to the Copilot. Ask the property manager's administrator for access.",
+};
 
 export const COPILOTO_RENTAS: CopilotoConfigVertical = {
   vertical: "rentas",
@@ -79,4 +120,5 @@ export const COPILOTO_RENTAS: CopilotoConfigVertical = {
   },
   maxCaracteres: 600,
   textoSinAcceso: "Tu rol no tiene acceso al Copiloto. Pídele acceso a la administradora de la gestora.",
+  en: COPILOTO_RENTAS_EN,
 };

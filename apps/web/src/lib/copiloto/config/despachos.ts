@@ -3,7 +3,7 @@
 // (packages/domain-despachos/src/data-chat/catalog.ts): cartera_por_cliente, cobranza_antiguedad, cfdi_por_periodo, impuestos_del_mes,
 // obligaciones_fiscales, cierres_pendientes, alertas_efos y carga_de_trabajo. Nada aqui son respuestas: solo preguntas que el servidor
 // contesta con datos reales (el catalogo es cerrado y de solo lectura).
-import type { CopilotoConfigVertical } from "./tipos.ts";
+import type { CopilotoConfigIngles, CopilotoConfigVertical } from "./tipos.ts";
 
 export const SUGERENCIAS_COPILOTO_DESPACHOS: readonly string[] = [
   "¿Cuánto me deben mis clientes hoy?",
@@ -12,6 +12,48 @@ export const SUGERENCIAS_COPILOTO_DESPACHOS: readonly string[] = [
   "¿Qué obligaciones fiscales vencen este mes?",
   "¿Algún proveedor de mis clientes aparece en la lista 69-B del SAT?",
 ];
+
+/** Ingles de la config (i18n ES/EN): misma consulta directa por pregunta, textos de la portada y temas. */
+export const COPILOTO_DESPACHOS_EN: CopilotoConfigIngles = {
+  textos: {
+    titulo: "Ask your data",
+    subtitulo: "Your receivables, CFDIs and tax obligations, with the figure the system already calculated.",
+    nota: "Answers only with figures already calculated on the server and tells you where they come from; if there's no data, it says so. It never makes up numbers or calculates tax returns.",
+    placeholder: "Ask about your clients…",
+    fases: [
+      [0, "Reading your clients' information…"],
+      [2500, "Querying your data…"],
+      [8000, "Putting the answer together…"],
+      [20000, "Still working on this…"],
+    ],
+  },
+  temas: {
+    "Cobranza": "Collections",
+    "Fiscal": "Tax",
+    "Operación": "Operations",
+  },
+  preguntas: {
+    "¿Cuánto me deben mis clientes hoy?": "How much do my clients owe me today?",
+    "¿Cuánta cobranza tengo vencida por antigüedad?": "How much overdue receivables do I have by age?",
+    "¿Cuántos CFDI se recibieron este mes?": "How many CFDIs were received this month?",
+    "¿Qué obligaciones fiscales vencen este mes?": "Which tax obligations are due this month?",
+    "¿Algún proveedor de mis clientes aparece en la lista 69-B del SAT?": "Does any of my clients' suppliers appear on the SAT 69-B list?",
+    "¿Cuánto IVA acreditable tuvo cada cliente este mes?": "How much creditable VAT did each client have this month?",
+    "¿Qué cierres mensuales siguen pendientes?": "Which month-end closes are still pending?",
+    "¿Qué clientes tienen más pendientes por atender hoy?": "Which clients have the most pending items today?",
+  },
+  etiquetasHerramienta: {
+    cartera_por_cliente: "Adding up receivables per client",
+    cobranza_antiguedad: "Calculating balance aging",
+    cfdi_por_periodo: "Counting the period's CFDIs",
+    impuestos_del_mes: "Adding up creditable VAT",
+    obligaciones_fiscales: "Reviewing tax deadlines",
+    cierres_pendientes: "Reviewing month-end closes",
+    alertas_efos: "Matching CFDIs against the 69-B list",
+    carga_de_trabajo: "Counting pending items per client",
+  },
+  textoSinAcceso: "Your role doesn't have access to the Copilot. Ask a firm administrator for access.",
+};
 
 export const COPILOTO_DESPACHOS: CopilotoConfigVertical = {
   vertical: "despachos",
@@ -74,4 +116,5 @@ export const COPILOTO_DESPACHOS: CopilotoConfigVertical = {
   },
   maxCaracteres: 600,
   textoSinAcceso: "Tu rol no tiene acceso al Copiloto. Pídele acceso a un administrador del despacho.",
+  en: COPILOTO_DESPACHOS_EN,
 };

@@ -4,9 +4,10 @@
 // solo viaja la sucursal activa en la URL. Los roles que el servidor rechazaria NI SIQUIERA llaman al backend: ven "sin acceso".
 import { useMemo } from "react";
 import { Lock } from "lucide-react";
-import { EstadoVacio, SeccionFijadosCopiloto } from "@atiende/ui";
+import { EstadoVacio, SeccionFijadosCopiloto, useIdiomaCopiloto } from "@atiende/ui";
 import { apiBaseUrlFromRequestUrl, withAuthRefresh } from "../../../lib/authed-fetch.ts";
 import { COPILOTO_CITAS } from "../../../lib/copiloto/config/citas.ts";
+import { textoSinAccesoEn } from "../../../lib/copiloto/config/idioma.ts";
 import { crearClienteFijados } from "../../../lib/copiloto/fijados.ts";
 import { consultarEstadoCopiloto, crearTransporteCopiloto } from "../../../lib/copiloto/transporte.ts";
 import type { CopilotoTransporteConfig } from "../../../lib/copiloto/transporte.ts";
@@ -22,10 +23,11 @@ export function urlChatDatosCitas(apiBaseUrl: string, propertyId: string): strin
 }
 
 export function CitasCopilotoPage(ctx: CitasShellContext) {
+  const { t, idioma } = useIdiomaCopiloto();
   if (!COPILOTO_CITAS_ROLES.has(ctx.role)) {
     return (
       <div className="p-4">
-        <EstadoVacio icon={Lock} titulo="Sin acceso" mensaje={COPILOTO_CITAS.textoSinAcceso} />
+        <EstadoVacio icon={Lock} titulo={t("paginaSinAcceso")} mensaje={textoSinAccesoEn(COPILOTO_CITAS, idioma)} />
       </div>
     );
   }

@@ -48,11 +48,24 @@
     "apps/web/src/superadmin/pages/WhatsappMeta.tsx",
     "packages/ui/src/components/ResumenLayout.tsx",
     "packages/ui/src/components/copiloto",
-    "apps/web/src/pages/CopilotoPage.tsx"
+    "apps/web/src/pages/CopilotoPage.tsx",
+    "apps/web/src/lib/copiloto",
+    "apps/web/src/verticals/citas/pages/Copiloto.tsx",
+    "apps/web/src/verticals/despachos/pages/Copiloto.tsx",
+    "apps/web/src/verticals/hoteles/pages/Copiloto.tsx",
+    "apps/web/src/verticals/licitaciones/pages/Copiloto.tsx",
+    "apps/web/src/verticals/rentas/pages/Copiloto.tsx",
+    "apps/web/src/verticals/restaurantes/pages/Copiloto.tsx"
   ],
   "excluir": [
     "packages/ui/src/i18n/mensajes",
-    "packages/ui/src/components/copiloto/idioma.ts"
+    "packages/ui/src/components/copiloto/idioma.ts",
+    "apps/web/src/lib/copiloto/config/citas.ts",
+    "apps/web/src/lib/copiloto/config/despachos.ts",
+    "apps/web/src/lib/copiloto/config/hoteles.ts",
+    "apps/web/src/lib/copiloto/config/licitaciones.ts",
+    "apps/web/src/lib/copiloto/config/rentas.ts",
+    "apps/web/src/lib/copiloto/config/restaurantes.ts"
   ],
   "baseline": {
     "apps/web/src/superadmin/rutas.ts": 59
