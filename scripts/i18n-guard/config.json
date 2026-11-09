@@ -346,6 +346,7 @@
     "apps/web/src/verticals/restaurantes/lib/registro-client.ts": 5,
     "apps/web/src/verticals/restaurantes/lib/whatsapp-embedded-signup.ts": 3,
     "apps/web/src/verticals/restaurantes/pages/Registro.tsx": 28,
-    "apps/web/src/verticals/restaurantes/pages/RegistroConfirmar.tsx": 7
+    "apps/web/src/verticals/restaurantes/pages/RegistroConfirmar.tsx": 7,
+    "apps/web/src/verticals/restaurantes/pages/PrimerValor.tsx": 14
   }
 }

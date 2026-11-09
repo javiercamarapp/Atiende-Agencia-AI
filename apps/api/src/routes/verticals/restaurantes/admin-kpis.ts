@@ -167,7 +167,14 @@ export function restaurantesAdminKpisRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv
     }
 
     const branches = await repo.listBranchesForOrganization(org.id);
-    return c.json({ branches: branches.map((b) => ({ propertyId: b.propertyId, name: b.name, slug: b.slug })) });
+    if (branches.length > 0) return c.json({ branches: branches.map((b) => ({ propertyId: b.propertyId, name: b.name, slug: b.slug, status: "active" as const })) });
+    // Alta autoservicio: una organizacion recien registrada solo tiene su primera sucursal INACTIVA (0071/0077). Sin este respaldo el
+    // panel quedaba en «no tiene ninguna sucursal configurada» y el dueño no podia ni configurarla. Solo cuando NO hay ninguna activa
+    // (las organizaciones que ya operan no cambian) y solo para owner/admin; la sucursal sigue sin recibir pedidos hasta activarla.
+    const membresia = memberships.find((m) => m.organizationId === org.id);
+    if (!membresia || (membresia.platformRole !== "owner" && membresia.platformRole !== "admin")) return c.json({ branches: [] });
+    const todas = await repo.listBranchesForOrganizationAdmin(org.id);
+    return c.json({ branches: todas.filter((b) => b.status === "inactive").map((b) => ({ propertyId: b.propertyId, name: b.name, slug: b.slug, status: b.status })) });
   });
 
   return app;

@@ -8,7 +8,8 @@ import type { TenantDbSession } from "@atiende/core-tenancy";
 import { isMigrationPendingError } from "./sql-errors.ts";
 import { runWithSavepointFallback } from "./savepoint-fallback.ts";
 
-export type TipoOnboardingEvento = "prueba_agente_whatsapp" | "prueba_voz" | "celebracion_listo_vista" | "celebracion_primer_valor";
+/** `metodos_pago_confirmados` requiere la 0078 (sin ella `registrar` devuelve "error" por el CHECK/lista cerrada y la ruta lo dice). */
+export type TipoOnboardingEvento = "prueba_agente_whatsapp" | "prueba_voz" | "celebracion_listo_vista" | "celebracion_primer_valor" | "metodos_pago_confirmados";
 
 export interface OnboardingEventoInput {
   readonly organizationId: string;
@@ -44,13 +45,16 @@ export async function registrarOnboardingEvento(db: TenantDbSession, input: Onbo
 }
 
 /** ¿La organizacion ya tiene el hito? `null` = no se puede medir (base sin la 0073 o error de lectura). Lee con RLS (owner/admin). */
-export async function hayOnboardingEvento(db: TenantDbSession, organizationId: string, vertical: string, tipo: TipoOnboardingEvento): Promise<boolean | null> {
+export async function hayOnboardingEvento(db: TenantDbSession, organizationId: string, vertical: string, tipo: TipoOnboardingEvento, propertyId?: string): Promise<boolean | null> {
   return runWithSavepointFallback<boolean | null>({
     session: db,
     primary: async () => {
+      // Con `propertyId`, solo cuenta el hito de ESA sucursal (p. ej. metodos de pago confirmados por sucursal).
       const { rows } = await db.query<{ hay: boolean }>(
-        `select exists (select 1 from core.onboarding_evento where organization_id = $1::uuid and vertical = $2 and tipo = $3) as hay;`,
-        [organizationId, vertical, tipo],
+        propertyId
+          ? `select exists (select 1 from core.onboarding_evento where organization_id = $1::uuid and vertical = $2 and tipo = $3 and property_id = $4::uuid) as hay;`
+          : `select exists (select 1 from core.onboarding_evento where organization_id = $1::uuid and vertical = $2 and tipo = $3) as hay;`,
+        propertyId ? [organizationId, vertical, tipo, propertyId] : [organizationId, vertical, tipo],
       );
       return rows[0]?.hay === true;
     },

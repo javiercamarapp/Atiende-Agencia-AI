@@ -85,6 +85,19 @@ export function RestaurantesPrimerosPasosPage({ apiBaseUrl, token, propertyId, o
             {t("restaurantes.onboarding.calculo")}
             {checklist.gate.operaConPedidos && checklist.resumen.obligatoriosPendientes > 0 ? t("restaurantes.onboarding.operaConPedidos") : ""}
           </Callout>
+          {!checklist.listoParaOperar && (
+            <Callout
+              tone="info"
+              titulo={t("restaurantes.onboarding.rutaCorta.titulo")}
+              accion={
+                <Link className="text-xs underline underline-offset-2" to={`/restaurantes/${orgSlug}/primer-valor`}>
+                  {t("restaurantes.onboarding.rutaCorta.empezar")}
+                </Link>
+              }
+            >
+              {t("restaurantes.onboarding.rutaCorta.texto")}
+            </Callout>
+          )}
           {ds3 ? (
             /* ds3: patrón /setup de Rovaq: avance honesto («n de m que puedes hacer ahora»), recomendado, quién lo cierra y celebración. */
             <PrimerosPasos
