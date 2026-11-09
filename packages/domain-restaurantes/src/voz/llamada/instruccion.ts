@@ -13,7 +13,8 @@ import { resolverMarcadorSaludo } from "../saludo-marcador.ts";
 import { lookupCustomerConPedidoReciente } from "../../customers.ts";
 import type { RestaurantesRepository } from "../../repository.ts";
 import type { CustomerLookupResult } from "../../types.ts";
-import { APENDICE_VOZ, instruccionVozConReglas } from "../perfil-voz-pm.ts";
+import { APENDICE_VOZ, REGLAS_CONDICIONALES_VOZ_PM, instruccionVozConReglas } from "../perfil-voz-pm.ts";
+import type { ReglaCondicionalVoz } from "../perfil-voz-pm.ts";
 import type { VozConfig } from "../types.ts";
 import { vocabularioMenuVoz } from "./vocabulario.ts";
 import { resumenSucursalesParaClientes } from "../../solo-venta-local.ts";
@@ -34,6 +35,9 @@ export interface InstruccionLlamada {
   readonly zonaHoraria: string;
   /** Nombres y apodos del menu de la sucursal (tope 50) para los keyterms del STT. Vacio si el catalogo no se pudo leer. */
   readonly vocabulario: readonly string[];
+  /** Reglas vivas por tema (dieta del prompt de voz): la cascada las agrega cuando el cliente toca el tema. Solo con comportamiento editado (es la rama que
+   * lleva el bloque de reglas vivas); el perfil por omision no las trae y manda []. */
+  readonly reglasCondicionales: readonly ReglaCondicionalVoz[];
 }
 
 function horaLocalEn(timezone: string, ahora: Date): number {
@@ -109,5 +113,5 @@ export async function armarInstruccionLlamada(repo: RestaurantesRepository, e: E
   } catch {
     vocabulario = [];
   }
-  return { instruccion, horaLocal: horaLocalEn(zonaHoraria, e.ahora), zonaHoraria, vocabulario };
+  return { instruccion, horaLocal: horaLocalEn(zonaHoraria, e.ahora), zonaHoraria, vocabulario, reglasCondicionales: editable === "" ? [] : REGLAS_CONDICIONALES_VOZ_PM };
 }

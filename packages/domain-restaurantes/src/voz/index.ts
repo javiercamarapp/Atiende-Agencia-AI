@@ -40,7 +40,8 @@ export type { FranjaVoz, ModoEntradaVoz, ResultadoRegistroCosto, VozLlamadaRepos
 export { armarInstruccionLlamada } from "./llamada/instruccion.ts";
 export { vocabularioMenuVoz, VOCABULARIO_VOZ_MAX } from "./llamada/vocabulario.ts";
 export type { EntradaInstruccionLlamada, InstruccionLlamada } from "./llamada/instruccion.ts";
-export { APENDICE_VOZ, COMPORTAMIENTO_VOZ_MAX, REGLAS_VIVAS_VOZ, bloqueReglasVozPm, comportamientoVozPm, instruccionVozConReglas } from "./perfil-voz-pm.ts";
+export { APENDICE_VOZ, COMPORTAMIENTO_VOZ_MAX, REGLAS_CONDICIONALES_VOZ_PM, REGLAS_VIVAS_VOZ, REGLAS_VOZ_NUCLEO, bloqueReglasVozPm, comportamientoVozPm, editableSinRepetirBloque, instruccionVozConReglas } from "./perfil-voz-pm.ts";
+export type { ReglaCondicionalVoz } from "./perfil-voz-pm.ts";
 export type { EntradaBloqueReglasVoz, EntradaComportamientoVoz, EntradaInstruccionVoz } from "./perfil-voz-pm.ts";
 export { evaluarAlertasVozDelSistema } from "./alertas-sistema.ts";
 export type { ResultadoAlertasVozSistema } from "./alertas-sistema.ts";

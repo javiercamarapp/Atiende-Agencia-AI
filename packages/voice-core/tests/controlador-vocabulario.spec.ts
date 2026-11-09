@@ -6,7 +6,7 @@ import type { AperturaLlamada, RegistroToolsVoz, VozSesionLlamada } from "../src
 const REGLAS = { herramientaObjetivo: "crear_pedido", resultadoObjetivo: "pedido_creado", herramientaEscalar: "escalar_a_humano" } as const;
 const REGISTRO: RegistroToolsVoz = { definiciones: () => [{ name: "crear_pedido", description: "x", parameters: { type: "object", properties: {} } }], herramientasInciertas: [], mensajeIncierto: "i" };
 
-async function abrirCon(vocabulario?: readonly string[]): Promise<AperturaLlamada[]> {
+async function abrirCon(vocabulario?: readonly string[], reglasCondicionales?: AperturaLlamada["reglasCondicionales"]): Promise<AperturaLlamada[]> {
   const aperturas: AperturaLlamada[] = [];
   const c = new ControladorLlamada({
     callId: "voc",
@@ -24,6 +24,7 @@ async function abrirCon(vocabulario?: readonly string[]): Promise<AperturaLlamad
     reproducir: () => undefined,
     dormir: async () => undefined,
     ...(vocabulario ? { vocabulario } : {}),
+    ...(reglasCondicionales ? { reglasCondicionales } : {}),
   });
   await c.iniciar({ habilitado: true, gastoMesMicroUsd: 0, topeMensualMicroUsd: null });
   return aperturas;
@@ -37,5 +38,14 @@ describe("controlador: vocabulario del menu al STT", () => {
   it("sin vocabulario no manda la clave", async () => {
     const a = await abrirCon();
     expect(a[0] && "vocabulario" in a[0]).toBe(false);
+  });
+});
+
+describe("controlador: reglas condicionales del prompt a la apertura", () => {
+  it("las pasa tal cual a la sesion; sin reglas no manda la clave", async () => {
+    const reglas = [{ id: "kilos", patron: "kilo", texto: "- KILOS: un renglon." }];
+    expect((await abrirCon(undefined, reglas))[0]?.reglasCondicionales).toEqual(reglas);
+    const sin = await abrirCon();
+    expect(sin[0] && "reglasCondicionales" in sin[0]).toBe(false);
   });
 });

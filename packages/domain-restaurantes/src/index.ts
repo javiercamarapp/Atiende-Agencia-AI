@@ -462,3 +462,6 @@ export {
   validarImportacionAprobada,
 } from "./importador-menu.ts";
 export type { BorradorMenu, BorradorProducto, DudaImportacion, ProductoAGuardar } from "./importador-menu.ts";
+
+// Clasificador de frases que afirman el registro del pedido (lo usa tambien la cascada de voz: no se dice «quedó registrado» antes de crear_pedido).
+export { afirmaPedidoRegistrado } from "./whatsapp/guards.ts";
