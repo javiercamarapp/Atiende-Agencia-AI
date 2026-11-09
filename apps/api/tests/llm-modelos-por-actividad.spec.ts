@@ -13,6 +13,7 @@ import {
   ALLOWED_PROVIDER_HOSTS,
   DEFAULT_ROLE_ROUTES,
   DEFAULT_ROUTE,
+  MODELOS_CON_IMAGEN_PDF,
   VERIFIED_MODEL_HOSTS,
   actividadDeRol,
   motivoNoBarato,
@@ -83,6 +84,12 @@ describe("tabla actividad -> modelos (fuente unica)", () => {
   it("la transcripcion solo usa modelos con entrada de audio", () => {
     expect(ACTIVIDADES_LLM.transcripcion_audio.modalidad).toBe("audio");
     for (const m of ACTIVIDADES_LLM.transcripcion_audio.route.models) expect(ACEPTAN_AUDIO.has(m.model), m.model).toBe(true);
+  });
+
+  it("la extraccion de menu (imagen/PDF) solo usa modelos con entrada de imagen y PDF, y ninguno sin ella", () => {
+    expect(ACTIVIDADES_LLM.extraccion_menu.modalidad).toBe("imagen_pdf");
+    for (const m of ACTIVIDADES_LLM.extraccion_menu.route.models) expect(MODELOS_CON_IMAGEN_PDF.has(m.model), m.model).toBe(true);
+    expect(resolveRoleRoute("restaurantes:extraccion_menu", undefined)).toBe(ACTIVIDADES_LLM.extraccion_menu.route);
   });
 
   it("cada actividad tiene principal y respaldo distintos (al menos dos escalones)", () => {

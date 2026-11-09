@@ -17,6 +17,7 @@ name: Clock guard (bombas de tiempo)
 #   y `workflow_dispatch` corren siempre.
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "apps/**"
       - "packages/**"
@@ -39,7 +40,7 @@ on:
   workflow_dispatch: {}
 
 concurrency:
-  group: clock-guard-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
@@ -48,6 +49,8 @@ permissions:
 jobs:
   clock-guard:
     name: specs con reloj simulado (TZ=${{ matrix.tz }})
+    # Informativo: se omite en PR en borrador; corre al marcarlo como listo (ready_for_review).
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
@@ -65,14 +68,9 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Setup Node
-        uses: actions/setup-node@v7
-        with:
-          node-version: "22"
-          cache: npm
-
-      - name: npm ci
-        run: npm ci
+      # Node 22 + npm ci, o node_modules restaurado del cache de main (ver .github/actions/node-deps).
+      - name: Node + dependencias
+        uses: ./.github/actions/node-deps
 
       - name: Specs sensibles al reloj
         env:
