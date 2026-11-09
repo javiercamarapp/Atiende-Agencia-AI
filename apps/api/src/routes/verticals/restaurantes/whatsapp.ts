@@ -11,7 +11,7 @@
 // sub-Hono ANTES/SIN heredar ningún middleware global de body-parsing, y este archivo
 // nunca importa ni usa `c.req.json()`.
 import { Hono } from "hono";
-import { FUNCION_MAX_MS, esperaEfectivaMs, extractMetaInboundMessages, procesarEstadosEntrega, liberarTurnoTrasFalloDeFaseB, extractMetaPhoneNumberId, extractMetaEchoes, registrarEcoDeApp, registrarMotivoNotaDeVoz, LIMITE_NOTAS_POR_ORGANIZACION_DIA, handleInboundWhatsAppMessage, recibirMensajeConEspera, resolveAgentConfig, responderTrasEspera, splitMetaPayloadByChannel, verifyMetaSignature, revocarMarketingPorTelefono } from "@atiende/domain-restaurantes";
+import { FUNCION_MAX_MS, MARGEN_CIERRE_TURNO_MS, PASADA_ESTIMADA_MS, esperaEfectivaMs, extractMetaInboundMessages, procesarEstadosEntrega, liberarTurnoTrasFalloDeFaseB, extractMetaPhoneNumberId, extractMetaEchoes, registrarEcoDeApp, registrarMotivoNotaDeVoz, LIMITE_NOTAS_POR_ORGANIZACION_DIA, handleInboundWhatsAppMessage, recibirMensajeConEspera, resolveAgentConfig, responderTrasEspera, splitMetaPayloadByChannel, verifyMetaSignature, revocarMarketingPorTelefono } from "@atiende/domain-restaurantes";
 import { rateLimit } from "@atiende/core-ratelimit";
 import { extractMetaStatuses } from "@atiende/whatsapp-gateway";
 import type { EventoEntregaFallida } from "@atiende/domain-restaurantes";
@@ -69,7 +69,9 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
 
   app.post("/v1/restaurantes/whatsapp/webhook", async (c) => {
     // El reloj del presupuesto de 30 s arranca al entrar al handler: la lectura del body y la verificacion de firma ya cuentan.
-    const inicioMs = (deps.relojMs ?? Date.now)();
+    const reloj = deps.relojMs ?? Date.now;
+    const inicioMs = reloj();
+    const finFuncionMs = inicioMs + FUNCION_MAX_MS;
     const declaredLength = Number(c.req.header("content-length") ?? 0);
     if (!Number.isFinite(declaredLength) || declaredLength < 0 || declaredLength > MAX_BODY_BYTES) {
       return c.text("Payload too large", 413);
@@ -158,6 +160,8 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
       // sin numero o con numero desconocido se acusa en silencio sin arrastrar sus mensajes a otro tenant.
       let hadRetryableFailure = false;
       let processedAny = false;
+      // Ola 4 (H2): ya no cabe otro turno del agente en la vida de la funcion; el resto del lote queda para el reintento de Meta.
+      let sinTiempo = false;
       // Correos de respaldo encolados por entregas fallidas (el WhatsApp no llego): se despachan al final aunque el webhook solo traiga statuses.
       let correosDeRespaldo = 0;
       // Coexistencia: un eco de la app que no se pudo guardar pide reintento de Meta (el wamid vuelve a reclamarse sin duplicar).
@@ -250,7 +254,16 @@ export function restaurantesWhatsAppRoutes(deps: AppDeps): Hono {
             }
             continue;
           }
+          // Ola 4 (H2): el lote se parte por tiempo. Toda la fase 1 es UNA transaccion: si la funcion muere por `maxDuration` se revierte
+          // tambien el ledger de los mensajes ya respondidos y el reintento de Meta vuelve a pagar sus turnos del LLM. Si el turno de
+          // este mensaje no cabe antes del cierre, ni se reclama: se confirma lo hecho y se pide reintento (lo procesado lo salta el ledger).
+          if (sinTiempo || reloj() + PASADA_ESTIMADA_MS > finFuncionMs - MARGEN_CIERRE_TURNO_MS) {
+            sinTiempo = true;
+            hadRetryableFailure = true;
+            continue;
+          }
           const outcome = await handleInboundWhatsAppMessage(repo, deps.turnHandler, {
+            finFuncionMs,
             organizationId,
             messageId: message.id,
             phone: `+${message.from}`,
