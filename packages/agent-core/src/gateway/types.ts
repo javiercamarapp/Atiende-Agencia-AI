@@ -55,9 +55,22 @@ export interface LlmAudioPart {
   format: string;
 }
 
+/** Archivo de entrada (imagen o PDF, p. ej. el menu de un restaurante) adjunto a un mensaje de usuario: imagen como parte `image_url`
+ *  (data URL) y PDF como parte `file` de Chat Completions/OpenRouter. Igual que el audio, los bytes viajan SOLO en la peticion: nunca se
+ *  registran ni se guardan. Solo lo aceptan modelos con entrada de imagen/PDF (ver la modalidad de la actividad en apps/api). */
+export interface LlmFilePart {
+  kind: 'imagen' | 'pdf';
+  /** image/png, image/jpeg, image/webp o application/pdf. */
+  mimeType: string;
+  /** Contenido en base64 (sin prefijo `data:`). */
+  data: string;
+  /** Nombre del archivo (solo PDF lo manda al proveedor). */
+  filename: string;
+}
+
 export type LlmMessage =
   | { role: 'system'; content: string }
-  | { role: 'user'; content: string; audio?: LlmAudioPart }
+  | { role: 'user'; content: string; audio?: LlmAudioPart; archivos?: LlmFilePart[] }
   | { role: 'assistant'; content: string; toolCalls?: LlmToolCall[] }
   | { role: 'tool'; toolCallId: string; content: string };
 
