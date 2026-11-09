@@ -4,7 +4,7 @@
 // migracion 028 todavia no esta aplicada: NUNCA se confunde con una bandeja vacia) y datos.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MessageSquare } from "lucide-react";
-import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, Selector, PageContainer, StatusBadge, Tabs, TabsContent, TabsList, TabsTrigger, Textarea, localeActivo, statusTone, traductorActivo, useT } from "@atiende/ui";
+import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, Selector, PageContainer, PageHeader, StatusBadge, Tabs, TabsContent, TabsList, TabsTrigger, Textarea, localeActivo, statusTone, traductorActivo, useT } from "@atiende/ui";
 import { restaurantesConversaciones } from "@atiende/ui/i18n/restaurantes/conversaciones";
 import {
   CANAL_LABEL,
@@ -85,10 +85,8 @@ export function ConversacionesPage(ctx: RestaurantesShellContext) {
 
   return (
     <PageContainer padding="none">
-      <header>
-        <h1 className="sr-only">{t("restaurantes.conversaciones.titulo")}</h1>
-        <p className="m-0 text-ui text-muted-foreground">{t("restaurantes.conversaciones.intro")}</p>
-      </header>
+      <PageHeader titulo={t("restaurantes.conversaciones.titulo")} />
+      <p className="m-0 text-ui text-muted-foreground">{t("restaurantes.conversaciones.intro")}</p>
 
       <Tabs defaultValue="bandeja">
         <TabsList>

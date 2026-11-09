@@ -16,7 +16,7 @@ import {
   FormField,
   Input,
   Selector,
-  PageContainer,
+  PageContainer, PageHeader,
   StatusBadge,
   Tabs,
   TabsList,
@@ -238,8 +238,7 @@ export function ComandasPosPage({ apiBaseUrl, token, propertyId, orgSlug, role }
 
   return (
     <PageContainer padding="none">
-      {/* El nombre de la pagina lo pinta la barra superior del shell (contrato de pagina UNI-4): el h1 queda solo para lectores de pantalla. */}
-      <h1 className="sr-only">{t("restaurantes.comandas.titulo")}</h1>
+      <PageHeader titulo={t("restaurantes.comandas.titulo")} />
 
       {configError && <EstadoError mensaje={configError} onReintentar={refrescar} />}
       {!config && !configError && <EstadoCargando etiqueta={t("restaurantes.comandas.cargandoEstado")} />}

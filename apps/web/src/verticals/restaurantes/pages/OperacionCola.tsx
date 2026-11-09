@@ -3,7 +3,7 @@
 // pedido nuevo. Sondeo cada 15 s. Sin datos de ejemplo: lee `GET admin/operacion/cola`; si el servidor aun no lo implementa (501) o falla,
 // lo dice con claridad y no pinta nada falso.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, EstadoCargando, EstadoError, EstadoVacio, PageContainer, StatusBadge, Tabs, TabsList, TabsTrigger, notify, useT } from "@atiende/ui";
+import { Button, EstadoCargando, EstadoError, EstadoVacio, PageContainer, PageHeader, StatusBadge, Tabs, TabsList, TabsTrigger, notify, useT } from "@atiende/ui";
 import type { Clave } from "@atiende/ui";
 import { restaurantesOperacion } from "@atiende/ui/i18n/restaurantes/operacion";
 import type { ColaSalida, TarjetaPedido as TarjetaPedidoDato } from "@atiende/domain-restaurantes/operacion";
@@ -163,7 +163,7 @@ export function OperacionColaPage({ apiBaseUrl, token, propertyId, orgSlug }: Re
   if (cola === null && error === null) {
     return (
       <PageContainer padding="none">
-        <h1 className="sr-only">{t("restaurantes.operacion.cola.titulo")}</h1>
+        <PageHeader titulo={t("restaurantes.operacion.cola.titulo")} />
         <EstadoCargando variante="tarjeta" etiqueta={t("restaurantes.operacion.cola.cargando")} />
       </PageContainer>
     );
@@ -172,7 +172,7 @@ export function OperacionColaPage({ apiBaseUrl, token, propertyId, orgSlug }: Re
     const noDisponible = error instanceof ErrorOperacion && error.esNoDisponible;
     return (
       <PageContainer padding="none">
-        <h1 className="sr-only">{t("restaurantes.operacion.cola.titulo")}</h1>
+        <PageHeader titulo={t("restaurantes.operacion.cola.titulo")} />
         {noDisponible ? (
           <EstadoVacio icon={Hourglass} titulo={t("restaurantes.operacion.cola.titulo")} mensaje={t("restaurantes.operacion.cola.noDisponible")} />
         ) : (
@@ -185,12 +185,7 @@ export function OperacionColaPage({ apiBaseUrl, token, propertyId, orgSlug }: Re
   return (
     <PageContainer padding="none">
       <div className="mx-auto w-full min-w-0 max-w-3xl space-y-3 pb-6">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h1 className="sr-only">{t("restaurantes.operacion.cola.titulo")}</h1>
-          <span className="ml-auto text-sm text-muted-foreground" aria-live="off">
-            {etiquetaActualizado(ultimaOk, ahoraMs)}
-          </span>
-        </div>
+        <PageHeader titulo={t("restaurantes.operacion.cola.titulo")} meta={<span aria-live="off">{etiquetaActualizado(ultimaOk, ahoraMs)}</span>} />
 
         {sinConexion && (
           <div role="status" className="flex items-center gap-2 rounded-lg border-2 border-warning bg-warning-tint p-3 text-base text-warning">

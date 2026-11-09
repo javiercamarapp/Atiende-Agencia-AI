@@ -4,7 +4,7 @@
 // Un cierre generado no se recalcula: se rotula con su hora de generación. Sin dato = "—" con su razón (nunca 0 inventado).
 import { useCallback, useEffect, useState } from "react";
 import { CalendarCheck, CircleSlash, Clock, DollarSign, ShoppingBag, Receipt } from "lucide-react";
-import { Button, Callout, Card, CardContent, CardHeader, CardTitle, DataTable, EstadoCargando, EstadoError, EstadoVacio, Selector, PageContainer, StatCard, notify, useT } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, CardHeader, CardTitle, DataTable, EstadoCargando, EstadoError, EstadoVacio, Selector, PageContainer, PageHeader, StatCard, notify, useT } from "@atiende/ui";
 import type { Traductor } from "@atiende/ui";
 import { restaurantesCierres } from "@atiende/ui/i18n/restaurantes/cierres";
 import { fetchCierres, generarCierre } from "../lib/cierres-client.ts";
@@ -76,30 +76,32 @@ export function CierresPage({ apiBaseUrl, token, propertyId, role, fetchImpl }: 
 
   return (
     <PageContainer padding="none">
-      <header className="flex min-w-0 items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="font-display truncate text-xl font-semibold">{t("restaurantes.cierres.titulo")}</h1>
-          <p className="mt-1 truncate text-ui text-muted-foreground">{t("restaurantes.cierres.descripcion")}</p>
-        </div>
-        {puedeVer ? (
-          <div className="shrink-0">
-            <label htmlFor="tipo-cierre" className="sr-only">
-              {t("restaurantes.cierres.tipo.aria")}
-            </label>
-            <Selector
-              id="tipo-cierre"
-              value={tipo}
-              onChange={(e) => {
-                setSeleccion(null);
-                setTipo(e.target.value as CierreTipo);
-              }}
-            >
-              <option value="dia">{t("restaurantes.cierres.titulo")}</option>
-              <option value="semana">{t("restaurantes.cierres.tipo.semana")}</option>
-            </Selector>
-          </div>
-        ) : null}
-      </header>
+      <PageHeader
+        titulo={t("restaurantes.cierres.titulo")}
+        descripcion={t("restaurantes.cierres.descripcion")}
+        acciones={
+          puedeVer ? (
+            <>
+              <label htmlFor="tipo-cierre" className="sr-only">
+                {t("restaurantes.cierres.tipo.aria")}
+              </label>
+              <Selector
+                id="tipo-cierre"
+                value={tipo}
+                onChange={(e) => {
+                  setSeleccion(null);
+                  setTipo(e.target.value as CierreTipo);
+                }}
+                wrapperClassName="w-auto"
+                className="rounded-full"
+              >
+                <option value="dia">{t("restaurantes.cierres.titulo")}</option>
+                <option value="semana">{t("restaurantes.cierres.tipo.semana")}</option>
+              </Selector>
+            </>
+          ) : undefined
+        }
+      />
 
       {!puedeVer ? (
         <Callout tone="info">

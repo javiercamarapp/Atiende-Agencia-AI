@@ -2,7 +2,7 @@
 // «Salió» con confirmacion que llama a `POST admin/orders/dispatch` (despacho atomico en el servidor: nunca dos PATCH). Lista de «en camino»
 // con tiempo transcurrido y rojo + alerta a los 90 min. Sin datos de ejemplo: lee `GET admin/operacion/viajes`.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, ConfirmDialog, EstadoCargando, EstadoError, EstadoVacio, FormField, Input, PageContainer, Selector, StatusBadge, formatMoney, notify, useT } from "@atiende/ui";
+import { Button, ConfirmDialog, EstadoCargando, EstadoError, EstadoVacio, FormField, Input, PageContainer, PageHeader, Selector, StatusBadge, formatMoney, notify, useT } from "@atiende/ui";
 import { restaurantesOperacion } from "@atiende/ui/i18n/restaurantes/operacion";
 import { restaurantesViajes } from "@atiende/ui/i18n/restaurantes/viajes";
 import type { TarjetaPedido, ViajesSalida } from "@atiende/domain-restaurantes/operacion";
@@ -113,7 +113,7 @@ export function OperacionViajesPage({ apiBaseUrl, token, propertyId, role }: Res
   if (datos === null && error === null) {
     return (
       <PageContainer padding="none">
-        <h1 className="sr-only">{t("restaurantes.viajes.titulo")}</h1>
+        <PageHeader titulo={t("restaurantes.viajes.titulo")} />
         <EstadoCargando variante="tarjeta" etiqueta={t("restaurantes.viajes.cargando")} />
       </PageContainer>
     );
@@ -122,7 +122,7 @@ export function OperacionViajesPage({ apiBaseUrl, token, propertyId, role }: Res
     const noDisponible = error instanceof ErrorOperacion && error.esNoDisponible;
     return (
       <PageContainer padding="none">
-        <h1 className="sr-only">{t("restaurantes.viajes.titulo")}</h1>
+        <PageHeader titulo={t("restaurantes.viajes.titulo")} />
         {noDisponible ? (
           <EstadoVacio icon={Hourglass} titulo={t("restaurantes.viajes.titulo")} mensaje={t("restaurantes.viajes.noDisponible")} />
         ) : (
@@ -140,10 +140,7 @@ export function OperacionViajesPage({ apiBaseUrl, token, propertyId, role }: Res
   return (
     <PageContainer padding="none">
       <div className="mx-auto w-full max-w-3xl space-y-4 pb-6">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h1 className="sr-only">{t("restaurantes.viajes.titulo")}</h1>
-          <span className="ml-auto text-sm text-muted-foreground">{etiquetaActualizado(ultimaOk, ahoraMs)}</span>
-        </div>
+        <PageHeader titulo={t("restaurantes.viajes.titulo")} meta={<span>{etiquetaActualizado(ultimaOk, ahoraMs)}</span>} />
         {sinConexion && (
           <div role="status" className="flex items-center gap-2 rounded-lg border-2 border-warning bg-warning-tint p-3 text-base text-warning">
             <WifiOff className="size-5 shrink-0" aria-hidden="true" />

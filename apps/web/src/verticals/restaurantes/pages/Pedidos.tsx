@@ -10,7 +10,7 @@
 // compactan en el boton «Herramientas».
 import { useEffect, useRef, useState } from "react";
 import { Package, Truck, CalendarClock } from "lucide-react";
-import { EstadoError, PageContainer, RegionCargando, StatusBadge, TicketCocinaDialog, cn, construirTicketCocina, imprimirTicketsCocina, notify, pedidosPorImprimir, useT } from "@atiende/ui";
+import { EstadoError, PageContainer, PageHeader, RegionCargando, StatusBadge, TicketCocinaDialog, cn, construirTicketCocina, imprimirTicketsCocina, notify, pedidosPorImprimir, useT } from "@atiende/ui";
 import type { Clave, TicketCocina } from "@atiende/ui";
 import { restaurantesComun } from "@atiende/ui/i18n/restaurantes/comun";
 import { restaurantesPedidos } from "@atiende/ui/i18n/restaurantes/pedidos";
@@ -638,8 +638,8 @@ export function PedidosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Re
 
   return (
     <PageContainer padding="none">
-      {/* El nombre de la pagina lo pinta la barra superior del shell (contrato de pagina UNI-4): el h1 queda solo para lectores de pantalla. */}
-      <h1 className="sr-only">{t("restaurantes.pedidos.titulo")}</h1>
+      {/* Encabezado de pagina ds3 (antetitulo del grupo del menu + H1); en el detalle el h1 queda solo para lectores de pantalla. */}
+      {detalleId ? <h1 className="sr-only">{t("restaurantes.pedidos.titulo")}</h1> : <PageHeader titulo={t("restaurantes.pedidos.titulo")} />}
 
       {detalleId ? (
         <PedidoDetalle

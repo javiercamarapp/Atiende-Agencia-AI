@@ -2,7 +2,7 @@
 // Estados honestos: cargando, error con Reintentar, «no disponible aun» si el servidor no tiene la ruta (501/404) y «—» con motivo por tarjeta.
 // Visible para quien tiene `turno.ver` (owner, admin, staff): el acceso real lo impone el servidor; aqui solo se pinta lo que devuelve.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Button, EstadoCargando, EstadoError, EstadoVacio, PageContainer, RadioSegmentado, formatMoney, useI18n, useT } from "@atiende/ui";
+import { Button, EstadoCargando, EstadoError, EstadoVacio, PageContainer, PageHeader, RadioSegmentado, formatMoney, useI18n, useT } from "@atiende/ui";
 import { restaurantesOperacion } from "@atiende/ui/i18n/restaurantes/operacion";
 import type { OperacionHoy, TurnoHoy } from "@atiende/domain-restaurantes/operacion";
 import { Hourglass, RefreshCw } from "lucide-react";
@@ -68,10 +68,7 @@ export function OperacionTurnoPage({ apiBaseUrl, token, propertyId, nombreSucurs
 
   return (
     <PageContainer padding="none" className="mx-auto w-full max-w-3xl gap-3">
-      <h1 className="sr-only">
-        {t("restaurantes.operacion.turno.titulo")}
-        {nombreSucursal ? ` · ${nombreSucursal}` : ""}
-      </h1>
+      <PageHeader titulo={`${t("restaurantes.operacion.turno.titulo")}${nombreSucursal ? ` · ${nombreSucursal}` : ""}`} />
 
       {carga.fase === "no_disponible" ? (
         <EstadoVacio icon={Hourglass} titulo={t("restaurantes.operacion.turno.titulo")} mensaje={t("restaurantes.operacion.turno.noDisponible")} />
