@@ -1,3 +1,5 @@
+import type { StripePlanClient } from "./production/stripe-plan-port.ts";
+import type { EmisorCfdiSuscripcion } from "@atiende/billing";
 import type { DemoAgentsDeps } from "./demo-agents/types.ts";
 import type {
   AgentRunRepository,
@@ -9,6 +11,7 @@ import type {
   LlmUsageRepository,
   MfaRepository,
   CfoRepository,
+  CfoCockpitRepository,
   PylRepository,
   CfoZoneRepository,
   ConsolaRepository,
@@ -22,6 +25,8 @@ import type {
   ContratosRepository,
   PlataformaPrivacidadRepository,
   CostosPlanesRepository,
+  CobroPlanesRepository,
+  CobroStripeRepository,
   OrgAdminRepository,
   PlatformSwitchRepository,
   ResumenDiarioRepository,
@@ -605,6 +610,9 @@ export interface AppDeps {
    *  resumen se redacta con la plantilla determinista, nunca finge una
    *  llamada al LLM. */
   readonly resumenDiarioLlmGateway: LlmGateway | undefined;
+  /** Recomendaciones del CFO de la plataforma (`POST /superadmin/cfo/recomendaciones`, ver cfo/recomendaciones.ts). OPCIONAL: sin el, las
+   *  recomendaciones salen de las reglas deterministas. Gateway DEDICADO de plataforma, como el del resumen diario. */
+  readonly recomendacionesCfoLlmGateway?: LlmGateway | undefined;
   /** Copiloto de superadmin (CHAT-16): `POST /superadmin/copiloto` y `GET /superadmin/copiloto/estado`. OPCIONAL: sin el las rutas responden "no
    *  activado". En produccion lo arma `buildProductionSuperadminCopiloto` con un gateway DEDICADO (no el de los tenants); las pruebas inyectan un LLM
    *  guionado y fuentes en memoria. Ver `superadmin-copiloto/deps.ts`. */
@@ -683,6 +691,16 @@ export interface AppDeps {
    *  `recordEvent` es SOLO-SISTEMA (`withAppSession({ userId: null })`); lo demas, la
    *  sesion del caller. OPCIONAL: ausente -> las rutas responden `disponible: false`/503. */
   readonly costosPlanesRepo?: (db: TenantDbSession) => CostosPlanesRepository;
+  /** Cobro por plan MEDIDO: tarifa del plan (0103) y uso facturable del mes (restaurantes 203). Fabrica por sesion:
+   *  superadmin y organizacion con la sesion del caller; el webhook de cobro con `withAppSession({ userId: null })`.
+   *  OPCIONAL: ausente -> las rutas responden `disponible: false`/503 (ver routes/cobro-planes.ts). */
+  readonly cobroPlanesRepo?: (db: TenantDbSession) => CobroPlanesRepository;
+  /** Stripe por plan, uso reportado, cobranza y cola de CFDI (0106). Fabrica por sesion; ausente -> rutas en 503/no disponible. */
+  readonly cobroStripeRepo?: (db: TenantDbSession) => CobroStripeRepository;
+  /** Cliente HTTP de Stripe para la suscripcion por plan; null/ausente sin STRIPE_SECRET_KEY (503 honesto). */
+  readonly stripePlanClient?: StripePlanClient | null;
+  /** Emisor de CFDI de la suscripcion; por omision `EmisorCfdiSinPac` (no timbra sin PAC/CSD). */
+  readonly emisorCfdiSuscripcion?: EmisorCfdiSuscripcion;
   /** Dashboard ejecutivo CFO, foto mensual de ingreso (NRR) y entradas de las alertas CFO
    *  (packages/db/migrations/0030_superadmin_cfo_dashboard.sql, ver routes/superadmin-cfo.ts y
    *  routes/internal/superadmin-alertas-cfo.ts). Fabrica por sesion: lectura del dashboard con la
@@ -694,6 +712,11 @@ export interface AppDeps {
    *  sesion del caller. OPCIONAL: ausente -> el P&L se calcula sin infra ("sin_infra_capturada") y la
    *  captura responde 503. El ingreso y el costo del P&L salen de `cfoRepo`. */
   readonly pylRepo?: (db: TenantDbSession) => PylRepository;
+  /** CFO de la plataforma (cockpit): uso por cliente y mes, supuestos de costo unitario y capturas del dueño
+   *  (packages/db/migrations/0085_superadmin_cfo_cockpit.sql, ver routes/superadmin-cfo-cockpit.ts y cfo/cockpit.ts).
+   *  Fabrica por sesion (caller o sistema). OPCIONAL: ausente o migracion sin aplicar -> el cockpit se arma sin uso ni
+   *  capturas y lo dice en `faltantes`; los PUT responden 503. */
+  readonly cfoCockpitRepo?: (db: TenantDbSession) => CfoCockpitRepository;
   /** Zona CFO segura (SA-41): rol `finanzas` de solo lectura y bitacora de cada consulta financiera
    *  (packages/db/migrations/0034_superadmin_zona_cfo.sql, ver superadmin-seguridad/zona-cfo.ts y
    *  routes/superadmin-zona-cfo.ts). Fabrica por sesion del caller. OPCIONAL: ausente o migracion sin

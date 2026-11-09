@@ -40,6 +40,8 @@ import type {
 } from "@atiende/db";
 import { isMigrationPendingError, runWithSavepointFallback } from "@atiende/db";
 import type { AppDeps } from "../deps.ts";
+import { armarCockpit, leerCockpit } from "../cfo/cockpit.ts";
+import type { Cockpit } from "../cfo/cockpit.ts";
 
 export type RazonFuente = "no_migrado" | "error" | "sin_repositorio";
 export type Fuente<T> = { readonly ok: true; readonly data: T } | { readonly ok: false; readonly razon: RazonFuente };
@@ -108,6 +110,8 @@ export interface FuentesPlataforma {
   contratos(): Promise<Fuente<readonly ContratoVersionRow[]>>;
   /** Facturacion por organizacion (core.list_organization_billing_for_superadmin): estado de la suscripcion, asientos y fin del periodo. Sin correos ni ids de Stripe en el catalogo. */
   facturacion(): Promise<Fuente<readonly SuperadminOrganizationBillingRow[]>>;
+  /** CFO de la plataforma (0085): economia por cliente y metricas SaaS del mes `YYYY-MM`, el MISMO armado que la pantalla. */
+  cockpitCfo(mes: string): Promise<Fuente<Cockpit>>;
   // ---- Lecturas por organizacion (seguimiento de CHAT-17): agregados sin datos personales, con bitacora por organizacion ----
   /** `desde`/`hasta`/`hoy` = `YYYY-MM-DD` (dia de la plataforma). Con `organizationId` solo esa; sin el, TODAS (las sin actividad salen con 0). */
   operacionesPorOrganizacion(desde: string, hasta: string, hoy: string, organizationId?: string | null): Promise<Fuente<readonly OperacionOrganizacionRow[]>>;
@@ -259,6 +263,11 @@ export function fuentesDeProduccion(deps: AppDeps, db: TenantDbSession, callerId
           })
         : Promise.resolve(SIN_REPO),
     facturacion: () => propio(() => deps.coreRepo.listOrganizationBillingForSuperadmin(callerId)),
+    cockpitCfo: async (mes) => {
+      const r = await propio(() => leerCockpit(deps, callerId, mes));
+      if (!r.ok) return r;
+      return r.data === null ? { ok: false, razon: "no_migrado" } : { ok: true, data: armarCockpit(r.data) };
+    },
     operacionesPorOrganizacion: (desde, hasta, hoy, organizationId) =>
       enSesion(async () => {
         const { rows } = await db.query<{

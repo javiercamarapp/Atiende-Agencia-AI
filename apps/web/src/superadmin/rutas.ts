@@ -23,6 +23,7 @@ import {
   DollarSign,
   FileSearch,
   KeyRound,
+  Landmark,
   LayoutGrid,
   LineChart,
   ListChecks,
@@ -38,6 +39,7 @@ import {
   ShieldOff,
   Sparkles,
   Tags,
+  Receipt,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -83,6 +85,8 @@ export const NEGOCIO: readonly RutaSuperadmin[] = [
   { to: "/superadmin/costos-facturacion", label: "Costos y facturación", icon: Coins },
   { to: "/superadmin/consumo-ia", label: "Consumo de IA", icon: DollarSign },
   { to: "/superadmin/ejecutivo", label: "Ejecutivo / Board", icon: LineChart },
+  // CFO de la plataforma (0085): economia por cliente, metricas SaaS, comparativos y supuestos del dueño.
+  { to: "/superadmin/cfo-plataforma", label: "CFO de la plataforma", icon: Landmark },
 ];
 
 export const PLATAFORMA: readonly RutaSuperadmin[] = [{ to: "/superadmin/integraciones", label: "Integraciones", icon: Plug }];
@@ -96,6 +100,7 @@ export const CONTROL: readonly RutaSuperadmin[] = [
   { to: "/superadmin/supresion", label: "Supresión de contactos", icon: BellOff },
   { to: "/superadmin/zona-cfo", label: "Zona CFO segura", icon: ShieldCheck },
   { to: "/superadmin/planes", label: "Planes y precios", icon: Tags },
+  { to: "/superadmin/cobro", label: "Cobro y cotizador", icon: Receipt },
 ];
 
 export const SISTEMA: readonly RutaSuperadmin[] = [

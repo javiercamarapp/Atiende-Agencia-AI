@@ -7,9 +7,14 @@ export * from './ledger.ts';
 export * from './tenant-verification.ts';
 export * from './iva.ts';
 export * from './per-seat.ts';
+export * from './plan-medido.ts';
+export * from './proyeccion.ts';
+export * from './cotizador.ts';
+export * from './stripe-plan.ts';
 export * from './cost-margin.ts';
 export * from './cfo.ts';
 export * from './pyl.ts';
+export * as cockpit from './cockpit/index.ts';
 export * from './contrato.ts';
 
 export * as cfdiCatalogs from './cfdi/catalogs.ts';

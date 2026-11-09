@@ -114,6 +114,8 @@ export const DATOS_COPILOTO_SUPERADMIN = {
     pyl: "Armando el P&L",
     contratos_por_vencer: "Buscando contratos por vencer",
     facturacion_cobranza: "Revisando la facturación y la cobranza",
+    economia_clientes: "Calculando la economía por cliente",
+    metricas_saas: "Calculando las métricas SaaS",
     proponer_accion: "Preparando la propuesta",
   },
   rutasFuente: {
@@ -139,6 +141,8 @@ export const DATOS_COPILOTO_SUPERADMIN = {
     pyl: "/superadmin/costos-facturacion?tab=pyl",
     contratos_por_vencer: "/superadmin/costos-facturacion?tab=contratos",
     facturacion_cobranza: "/superadmin/costos-facturacion?tab=facturacion",
+    economia_clientes: "/superadmin/cfo-plataforma",
+    metricas_saas: "/superadmin/cfo-plataforma",
   },
   maxCaracteres: 600,
   textoSinAcceso: "Tu rol no tiene acceso al Copiloto de plataforma.",

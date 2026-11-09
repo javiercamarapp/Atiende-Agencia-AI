@@ -16,7 +16,7 @@
 //     envia nada; un canal roto no altera la respuesta (`notificar` nunca lanza y aqui ademas se
 //     captura).
 import { Hono } from "hono";
-import { evaluarAlertasCfo } from "@atiende/billing";
+import { cockpit, evaluarAlertasCfo } from "@atiende/billing";
 import type { AlertaCfo } from "@atiende/billing";
 import { emitirNotificacion } from "@atiende/db";
 import type { SeveridadNotificacion } from "@atiende/db";
@@ -50,6 +50,65 @@ export function alertaCfoASaliente(a: AlertaCfo, mes: string): AlertaSaliente {
   };
 }
 
+/** Alerta del cockpit CFO (pool, pico de costo, dolar) -> alerta saliente; enlaza a la pantalla del CFO de la plataforma. */
+export function alertaCockpitASaliente(a: cockpit.AlertaCockpit, mes: string): AlertaSaliente {
+  const lista = a.organizaciones.slice(0, MAX_ORGS_EN_DETALLE).map((o) => `${o.nombre} (${o.dato})`);
+  const resto = a.organizaciones.length - lista.length;
+  return {
+    tipo: `cfo:${a.codigo}`,
+    severidad: a.severidad,
+    titulo: a.organizaciones.length > 0 ? `${a.titulo}: ${a.organizaciones.length}` : a.titulo,
+    detalle: lista.length > 0 ? `${lista.join("; ")}${resto > 0 ? `; y ${resto} más` : ""}` : a.titulo,
+    href: "/superadmin/cfo-plataforma",
+    contexto: { mes, organizaciones: a.organizaciones.length },
+  };
+}
+
+function mesAnteriorDe(mes: string): string {
+  const [y, m] = mes.split("-").map(Number) as [number, number];
+  return new Date(Date.UTC(y, m - 2, 1)).toISOString().slice(0, 7);
+}
+
+function diasDe(mes: string): number {
+  const [y, m] = mes.split("-").map(Number) as [number, number];
+  return new Date(Date.UTC(y, m, 0)).getUTCDate();
+}
+
+/**
+ * Alertas del cockpit CFO (0085): cliente sobre el pool de su plan, pico de costo por organizacion y movimiento del dolar contra el
+ * cierre del mes anterior, con los umbrales capturados en `core.cfo_supuesto`. Cada lectura en su PROPIA transaccion de sistema. Base
+ * sin 0085: `null` (no se evalua; el resto del cron sigue igual). Exportada para las pruebas.
+ */
+export async function evaluarAlertasDelCockpit(deps: AppDeps, mes: string, filas: ReturnType<typeof construirFilasCfo>, fx: number | null, ahora: Date): Promise<{ alertas: readonly cockpit.AlertaCockpit[]; umbralMargenPct: number } | null> {
+  const repo = deps.cfoCockpitRepo;
+  if (!repo || !deps.cfoRepo) return null;
+  const cfo = deps.cfoRepo;
+  const previo = mesAnteriorDe(mes);
+  const sup = await deps.engine.withAppSession({ userId: null }, (db) => repo(db).listSupuestosForSystem());
+  if (sup.availability === "not_migrated") return null;
+  const uso = await deps.engine.withAppSession({ userId: null }, (db) => repo(db).getUsoForSystem(`${previo}-01`, `${mes}-01`));
+  const prev = await deps.engine.withAppSession({ userId: null }, (db) => cfo(db).getAlertInputsForSystem(`${previo}-01`));
+  const supuestos = cockpit.resolverSupuestos(sup.supuestos);
+  const economia = cockpit.calcularEconomia({
+    filas,
+    uso: uso.uso.filter((u) => u.mes.slice(0, 7) === mes),
+    usoPrevio: uso.uso.filter((u) => u.mes.slice(0, 7) === previo),
+    supuestos,
+    mxnPorUsd: fx,
+    infraCentavos: null,
+    diasTranscurridos: Math.max(1, ahora.getUTCDate()),
+    diasDelMes: diasDe(mes),
+    diasMesPrevio: diasDe(previo),
+    sucursalesPorOrg: new Map(),
+  });
+  const fxPrevio = tipoCambioDeFilas(prev.rows)?.mxnPorUsd ?? null;
+  const movimiento = fx !== null && fxPrevio !== null && fxPrevio > 0 ? Math.round(((fx - fxPrevio) / fxPrevio) * 10_000) / 100 : null;
+  return {
+    alertas: cockpit.evaluarAlertasCockpit({ economia, movimientoFxPct: movimiento, umbralFxPct: supuestos.umbralFxPct.valor, umbralPicoCostoPct: supuestos.umbralPicoCostoPct.valor }),
+    umbralMargenPct: supuestos.umbralMargenPct.valor,
+  };
+}
+
 export function superadminAlertasCfoRoutes(deps: AppDeps): Hono {
   const app = new Hono();
 
@@ -80,13 +139,23 @@ export function superadminAlertasCfoRoutes(deps: AppDeps): Hono {
 
       const fx = tipoCambioDeFilas(entradas.rows);
       const filas = construirFilasCfo(entradas.rows, { umbralMargenPct: UMBRAL_MARGEN_PCT_DEFAULT, mxnPorUsd: fx?.mxnPorUsd ?? null });
-      const alertas = evaluarAlertasCfo(filas, { umbralMargenPct: UMBRAL_MARGEN_PCT_DEFAULT, ahoraMs: Date.now() });
+      // Cockpit CFO (0085): umbral de margen capturado + alertas de pool, pico de costo y dolar. Sin 0085, todo sigue como antes.
+      const delCockpit = await evaluarAlertasDelCockpit(deps, mes, filas, fx?.mxnPorUsd ?? null, new Date()).catch((err: unknown) => {
+        logEvent(c, "warn", "superadmin_alertas_cfo_cockpit_fallido", { detalle: err instanceof Error ? err.message : String(err) });
+        return null;
+      });
+      const umbral = delCockpit?.umbralMargenPct ?? UMBRAL_MARGEN_PCT_DEFAULT;
+      const alertasCfo = evaluarAlertasCfo(filas, { umbralMargenPct: umbral, ahoraMs: Date.now() });
+      const alertas: Array<{ readonly codigo: string; readonly severidad: AlertaCfo["severidad"]; readonly organizaciones: readonly unknown[]; readonly saliente: AlertaSaliente }> = [
+        ...alertasCfo.map((a) => ({ codigo: a.codigo, severidad: a.severidad, organizaciones: a.organizaciones, saliente: alertaCfoASaliente(a, mes) })),
+        ...(delCockpit?.alertas ?? []).map((a) => ({ codigo: a.codigo, severidad: a.severidad, organizaciones: a.organizaciones, saliente: alertaCockpitASaliente(a, mes) })),
+      ];
 
       let notificadas = 0;
       if (deps.alertas) {
         for (const a of alertas) {
           try {
-            await deps.alertas.notificar(alertaCfoASaliente(a, mes));
+            await deps.alertas.notificar(a.saliente);
             notificadas += 1;
           } catch {
             // best-effort: un canal roto no tumba el cron ni cambia la respuesta

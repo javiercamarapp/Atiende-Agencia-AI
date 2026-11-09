@@ -33,7 +33,7 @@ import type { PlatformScope } from "./alcance.ts";
 import type { Fuente, FuentesPlataforma, RazonFuente } from "./fuentes.ts";
 import { crearHerramientaProponerAccion, type DependenciasAcciones } from "./acciones.ts";
 
-export const HERRAMIENTAS_FINANCIERAS: readonly string[] = ["mrr", "margen_costos_unitarios", "pyl", "contratos_por_vencer", "facturacion_cobranza"];
+export const HERRAMIENTAS_FINANCIERAS: readonly string[] = ["mrr", "margen_costos_unitarios", "pyl", "contratos_por_vencer", "facturacion_cobranza", "economia_clientes", "metricas_saas"];
 
 /** CHAT-17: la unica herramienta que no lee: propone una accion para que una persona la confirme. Nunca la ve el rol `finanzas`. */
 export const HERRAMIENTAS_ACCION: readonly string[] = ["proponer_accion"];
@@ -69,6 +69,8 @@ export interface OpcionesCatalogoPlataforma {
   readonly topeCopilotoMicroUsd?: number | undefined;
   /** CHAT-17: con esto el superadmin completo recibe ademas `proponer_accion` (solo PROPONE; ver acciones.ts). Sin ello, el catalogo es de solo lectura. */
   readonly acciones?: DependenciasAcciones | undefined;
+  /** «Pregúntale a tus datos» del CFO de la plataforma: el catalogo se limita a las herramientas financieras aunque sea un superadmin completo. */
+  readonly soloFinanzas?: boolean | undefined;
 }
 
 const RAZON_TEXTO: Readonly<Record<RazonFuente, string>> = {
@@ -1299,6 +1301,101 @@ function agentesOrganizacion(f: FuentesPlataforma): DataChatTool {
   });
 }
 
+function economiaClientes(f: FuentesPlataforma, scope: PlatformScope): DataChatTool {
+  const fuente = "CFO de la plataforma: economía por cliente (MRR, uso, costo real medido o modelado con el costo unitario, margen y proyección al cierre), en MXN";
+  return herramientaCfo(f, scope, {
+    name: "economia_clientes",
+    label: "Economía por cliente",
+    description: "Por cliente: plan, MRR, llamadas, minutos promedio por llamada, conversaciones de WhatsApp, pedidos, costo real, margen, margen proyectado al cierre, uso del pool y banderas (no rentable, cerca del tope, pago fallido...). Solo consulta financiera.",
+    params: MES_PARAM,
+    async run(ctx, args) {
+      const m = resolverMes(ctx, args, fuente);
+      if (!m.ok) return m.result;
+      const source = `${cita("economia_clientes", args)}: ${fuente}`;
+      const r = await f.cockpitCfo(m.mes);
+      if (!r.ok) return sinDato(source, r.razon);
+      const filas = r.data.economia.map((e) => ({
+        cliente: texto(e.nombre),
+        vertical: e.vertical,
+        plan: e.planNombre === null ? null : texto(e.planNombre),
+        mrr_mxn: e.mrrMxn,
+        llamadas: e.uso.llamadas,
+        min_por_llamada: e.uso.duracionPromedioMin,
+        conversaciones_wa: e.uso.conversacionesWa,
+        pedidos: e.uso.pedidos,
+        costo_directo_mxn: e.costoDirectoMxn,
+        margen_pct: e.margenBrutoPct ?? e.contribucionPct,
+        margen_proyectado_pct: e.proyeccion.margenPct,
+        banderas: e.banderas.join(", ") || null,
+      }));
+      const t = r.data.agregados.total;
+      return resultado(
+        { source, periodLabel: m.enCurso ? `mes en curso (${m.mes})` : m.mes, scopeLabel: SCOPE_PLATAFORMA, summary: `${t.clientes} clientes; ingreso ${formatMxn(t.ingresoMxn)} y costo directo ${formatMxn(t.costoDirectoMxn)} entre los ${t.clientesConMargen} con margen calculable.`, chart: { kind: "bar", x: "cliente", y: "margen_pct" } },
+        [
+          col("cliente", "Cliente"),
+          col("vertical", "Vertical"),
+          col("plan", "Plan"),
+          col("mrr_mxn", "MRR (MXN)", "mxn"),
+          col("llamadas", "Llamadas", "integer"),
+          col("min_por_llamada", "Min por llamada", "decimal"),
+          col("conversaciones_wa", "Conversaciones WA", "integer"),
+          col("pedidos", "Pedidos", "integer"),
+          col("costo_directo_mxn", "Costo directo (MXN)", "mxn"),
+          col("margen_pct", "Margen", "percent"),
+          col("margen_proyectado_pct", "Margen proyectado", "percent"),
+          col("banderas", "Estado"),
+        ],
+        filas,
+        ctx.maxRows,
+      );
+    },
+  });
+}
+
+function metricasSaas(f: FuentesPlataforma, scope: PlatformScope): DataChatTool {
+  const fuente = "CFO de la plataforma: métricas SaaS (MRR, ARR, NRR, GRR, churn, ARPA, márgenes, LTV, CAC, burn, runway, concentración y exposición al dólar)";
+  return herramientaCfo(f, scope, {
+    name: "metricas_saas",
+    label: "Métricas SaaS",
+    description: "MRR, ARR, NRR, GRR, churn de logos, ARPA, margen bruto y de contribución, LTV (con su supuesto de vida), CAC y payback, burn y runway, concentración del ingreso y exposición al dólar del mes. Solo consulta financiera.",
+    params: MES_PARAM,
+    async run(ctx, args) {
+      const m = resolverMes(ctx, args, fuente);
+      if (!m.ok) return m.result;
+      const source = `${cita("metricas_saas", args)}: ${fuente}`;
+      const r = await f.cockpitCfo(m.mes);
+      if (!r.ok) return sinDato(source, r.razon);
+      const s = r.data.saas;
+      const u = s.serie.at(-1);
+      const fila = (metrica: string, valor: number | null, nota: string | null = null) => ({ metrica, valor, nota });
+      const filas = [
+        fila("MRR (MXN)", s.mrrMxn),
+        fila("ARR (MXN)", s.arrMxn),
+        fila("Clientes que aportan", s.clientes),
+        fila("ARPA (MXN)", s.arpaMxn),
+        fila("NRR (%)", u?.nrrPct ?? null, u?.nrrPct === null ? "sin foto del mes anterior" : null),
+        fila("GRR (%)", u?.grrPct ?? null),
+        fila("Churn de logos (%)", u?.churnLogosPct ?? null),
+        fila("Margen de contribución (%)", s.margen.contribucionPct),
+        fila("Margen bruto (%)", s.margen.margenBrutoPct, s.margen.margenBrutoPct === null ? "sin infraestructura capturada" : null),
+        fila("LTV (MXN)", s.ltv.disponible ? s.ltv.ltvMxn : null, s.ltv.disponible ? (s.ltv.vidaTopada ? "vida topada: aún sin churn medido" : null) : s.ltv.razon),
+        fila("CAC (MXN)", s.cac.disponible ? s.cac.cacMxn : null, s.cac.disponible ? null : s.cac.razon),
+        fila("Payback del CAC (meses)", s.cac.disponible ? s.cac.paybackMeses : null),
+        fila("Burn neto del mes (MXN)", s.burn.disponible ? s.burn.burnNetoMxn : null, s.burn.disponible ? null : s.burn.razon),
+        fila("Runway (meses)", s.burn.disponible ? s.burn.runwayMeses : null),
+        fila("Cliente más grande (% del ingreso)", s.concentracion.top1Pct),
+        fila("Costo en dólares (% del ingreso)", s.fx.disponible ? s.fx.exposicionPct : null, s.fx.disponible ? `${s.fx.mxnPorUsd} MXN/USD (${s.fx.fuente ?? "sin fuente"})` : s.fx.razon),
+      ];
+      return resultado(
+        { source, periodLabel: m.enCurso ? `mes en curso (${m.mes})` : m.mes, scopeLabel: SCOPE_PLATAFORMA, summary: `MRR ${formatMxn(s.mrrMxn)} (ARR ${formatMxn(s.arrMxn)}) con ${s.clientes} clientes.` },
+        [col("metrica", "Métrica"), col("valor", "Valor", "decimal"), col("nota", "Nota")],
+        filas,
+        ctx.maxRows,
+      );
+    },
+  });
+}
+
 // ---------------------------------------------------------------------------------------------------------------------------
 // Catalogo
 // ---------------------------------------------------------------------------------------------------------------------------
@@ -1308,7 +1405,7 @@ function agentesOrganizacion(f: FuentesPlataforma): DataChatTool {
  * (estas ultimas rechazan el turno sin step-up y dejan huella). `vertical` = 'plataforma'.
  */
 export function buildCatalogoPlataforma(fuentes: FuentesPlataforma, scope: PlatformScope, opciones: OpcionesCatalogoPlataforma = {}): DataChatCatalog {
-  const financieras = [mrr(fuentes, scope), margenCostosUnitarios(fuentes, scope), pyl(fuentes, scope), contratosPorVencer(fuentes, scope), facturacionCobranza(fuentes, scope)];
+  const financieras = [mrr(fuentes, scope), margenCostosUnitarios(fuentes, scope), pyl(fuentes, scope), contratosPorVencer(fuentes, scope), facturacionCobranza(fuentes, scope), economiaClientes(fuentes, scope), metricasSaas(fuentes, scope)];
   const operativas = [
     organizaciones(fuentes),
     costosIa(fuentes),
@@ -1329,7 +1426,7 @@ export function buildCatalogoPlataforma(fuentes: FuentesPlataforma, scope: Platf
     rankingActividad(fuentes),
   ];
   const acciones = scope.rol === "superadmin" && opciones.acciones ? [crearHerramientaProponerAccion(scope, opciones.acciones)] : [];
-  const tools = scope.rol === "finanzas" ? financieras : [...operativas, ...financieras, ...acciones];
+  const tools = scope.rol === "finanzas" || opciones.soloFinanzas ? financieras : [...operativas, ...financieras, ...acciones];
   return {
     vertical: "plataforma",
     domain:

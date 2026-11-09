@@ -1,0 +1,31 @@
+import type { ModuloEs } from "../tipos.ts";
+
+/** Pantalla «Consumo y facturación» de restaurantes. La traducción vive en `en/consumo.ts`. */
+export const consumo = {
+  "consumo.titulo": "Consumo y facturación",
+  "consumo.intro": "Lo que usaron sus agentes este mes contra lo incluido en su plan y la factura proyectada al cierre. Todo sale de las llamadas y conversaciones reales.",
+  "consumo.noDisponible": "Todavía no disponible",
+  "consumo.errorCarga": "No se pudo cargar el consumo",
+  "consumo.mes": "Mes",
+  "consumo.llamadas": "Llamadas",
+  "consumo.minutos": "Minutos de voz",
+  "consumo.duracion": "Duración promedio",
+  "consumo.duracionValor": "{minutos} min por llamada",
+  "consumo.conversaciones": "Conversaciones de WhatsApp",
+  "consumo.pedidos": "Pedidos atendidos por los agentes",
+  "consumo.bolsa": "Incluido en su plan",
+  "consumo.bolsaVoz": "Voz: {usado} de {incluido} minutos ({pct} %)",
+  "consumo.bolsaWa": "WhatsApp: {usado} de {incluido} conversaciones ({pct} %)",
+  "consumo.aviso80": "Va en el 80 % o más de lo incluido.",
+  "consumo.aviso100": "Ya usó todo lo incluido: lo adicional se cobra con la tarifa de excedente de su plan. Nada se corta.",
+  "consumo.sinPlan": "Su organización todavía no tiene un plan medido asignado.",
+  "consumo.proyeccion": "Factura proyectada al cierre del mes",
+  "consumo.proyeccionRango": "Entre {bajo} y {alto} (más IVA); lo más probable: {central}.",
+  "consumo.proyeccionSinRango": "Lo más probable: {central} (más IVA). Con menos de 3 días cerrados todavía no hay rango.",
+  "consumo.proyeccionNota": "Se calcula con el ritmo de los días transcurridos ({dias} de {total}).",
+  "consumo.facturaCorte": "Al día de hoy: {subtotal} + IVA {iva} = {total}",
+  "consumo.sucursales": "Por sucursal",
+  "consumo.sucursal": "Sucursal",
+  "consumo.waNoDesglosa": "Las conversaciones de WhatsApp no se desglosan por sucursal.",
+  "consumo.historial": "Meses anteriores",
+} as const satisfies ModuloEs;

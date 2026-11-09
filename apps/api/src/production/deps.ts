@@ -95,6 +95,7 @@ import {
   PostgresImpersonationRepository,
   PostgresMfaRepository,
   PostgresCfoRepository,
+  PostgresCfoCockpitRepository,
   PostgresPylRepository,
   PostgresCfoZoneRepository,
   PostgresAgentRunRepository,
@@ -109,6 +110,8 @@ import {
   PostgresContratosRepository,
   PostgresPlataformaPrivacidadRepository,
   PostgresCostosPlanesRepository,
+  PostgresCobroPlanesRepository,
+  PostgresCobroStripeRepository,
   PostgresOrgAdminRepository,
   PostgresPlatformSwitchRepository,
   PostgresStaffSecurityRepository,
@@ -137,6 +140,7 @@ import { ProductionResumenDiarioRepository } from "./resumen-diario-repository.t
 import { ProductionSuperadminAccionesRepository } from "./superadmin-acciones-repository.ts";
 import { StripeHotelesPaymentsPort } from "./hoteles-payments-port.ts";
 import { StripeSaasBillingCheckoutPort, StripeSaasBillingCustomerLookup } from "./saas-billing-stripe-port.ts";
+import { HttpStripePlanClient } from "./stripe-plan-port.ts";
 import { createPlatformSwitchGuard } from "../platform-switches.ts";
 import { crearDespachadorAlertas, configAlertasDesdeEnv } from "../alertas/index.ts";
 import { notProductionReady } from "./not-ready.ts";
@@ -149,6 +153,7 @@ import {
   buildProductionLlmGateway,
   buildResumenDiarioLlmGateway,
   buildSuperadminCopilotoLlmGateway,
+  buildRecomendacionesCfoLlmGateway,
   loadLlmModelsConfig,
   CITAS_WHATSAPP_AGENT_ESCALATED_ROLE,
   CITAS_WHATSAPP_AGENT_ROLE,
@@ -361,6 +366,8 @@ export function buildProductionDeps(): AppDeps {
 
   // Gateway DEDICADO del Copiloto de superadmin (CHAT-16): gasto de plataforma, nunca de una organizacion (ver `./llm-gateway.ts`).
   const superadminCopilotoLlmGateway = buildSuperadminCopilotoLlmGateway(env, engine, gatewayKillSwitch);
+  // Gateway DEDICADO de las recomendaciones del CFO de la plataforma (gasto de plataforma; ver `./llm-gateway.ts`).
+  const recomendacionesCfoLlmGateway = buildRecomendacionesCfoLlmGateway(env, gatewayKillSwitch);
 
   // Dispatcher real de WhatsApp saliente — `undefined` si `WHATSAPP_ACCESS_TOKEN` no
   // está configurado (ver env.ts), mismo criterio fail-closed que `llmGateway`
@@ -645,8 +652,11 @@ export function buildProductionDeps(): AppDeps {
     platformSwitchRepo: (db) => new PostgresPlatformSwitchRepository(db),
     orgAdminRepo: (db) => new PostgresOrgAdminRepository(db),
     costosPlanesRepo: (db) => new PostgresCostosPlanesRepository(db),
+    cobroPlanesRepo: (db) => new PostgresCobroPlanesRepository(db),
+    cobroStripeRepo: (db) => new PostgresCobroStripeRepository(db),
     cfoRepo: (db) => new PostgresCfoRepository(db),
     pylRepo: (db) => new PostgresPylRepository(db),
+    cfoCockpitRepo: (db) => new PostgresCfoCockpitRepository(db),
     cfoZoneRepo: (db) => new PostgresCfoZoneRepository(db),
     consolaRepo: (db) => new PostgresConsolaRepository(db),
     orgFichaRepo: (db) => new PostgresOrgFichaRepository(db),
@@ -677,6 +687,7 @@ export function buildProductionDeps(): AppDeps {
     // de arriba, ver ./superadmin-acciones-repository.ts.
     accionesRepo: new ProductionSuperadminAccionesRepository(engine),
     resumenDiarioLlmGateway,
+    recomendacionesCfoLlmGateway,
     superadminCopiloto: buildProductionSuperadminCopiloto(superadminCopilotoLlmGateway),
     whatsAppDispatcher,
     saludMeta,
@@ -693,6 +704,7 @@ export function buildProductionDeps(): AppDeps {
     // separadas.
     saasBillingStripeClient: env.stripe.secretKey ? new StripeSaasBillingCheckoutPort(fetch, { secretKey: env.stripe.secretKey }) : undefined,
     saasBillingPortalClient: env.stripe.secretKey ? new StripeSaasBillingCheckoutPort(fetch, { secretKey: env.stripe.secretKey }) : undefined,
+    stripePlanClient: env.stripe.secretKey ? new HttpStripePlanClient(fetch, env.stripe.secretKey) : undefined,
     saasBillingCustomerLookup: env.stripe.secretKey ? new StripeSaasBillingCustomerLookup(fetch, { secretKey: env.stripe.secretKey }) : undefined,
     saasBillingWebhookSecret: env.stripe.webhookSecret,
   };

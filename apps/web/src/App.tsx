@@ -81,10 +81,13 @@ const SuperAdminModelOpsPage = cargaPerezosa(() => import("./superadmin/pages/Mo
 const PrivacidadOrganizacionPage = cargaPerezosa(() => import("./pages/PrivacidadOrganizacion.tsx"), "PrivacidadOrganizacionPage");
 const SuperAdminCostosFacturacionPage = cargaPerezosa(() => import("./superadmin/pages/CostosFacturacion.tsx"), "SuperAdminCostosFacturacionPage");
 const SuperAdminEjecutivoPage = cargaPerezosa(() => import("./superadmin/pages/Ejecutivo.tsx"), "SuperAdminEjecutivoPage");
+const SuperAdminCfoPlataformaPage = cargaPerezosa(() => import("./superadmin/pages/CfoPlataforma.tsx"), "SuperAdminCfoPlataformaPage");
 const SuperAdminZonaCfoPage = cargaPerezosa(() => import("./superadmin/pages/ZonaCfo.tsx"), "SuperAdminZonaCfoPage");
 const SuperAdminPlanesPage = cargaPerezosa(() => import("./superadmin/pages/Planes.tsx"), "SuperAdminPlanesPage");
 const NotificacionesPagina = cargaPerezosa(() => import("./components/NotificacionesPagina.tsx"), "NotificacionesPagina");
 const PlanYUsoPagina = cargaPerezosa(() => import("./components/PlanYUsoPagina.tsx"), "PlanYUsoPagina");
+const ConsumoFacturacion = cargaPerezosa(() => import("./verticals/restaurantes/pages/ConsumoFacturacion.tsx"), "ConsumoFacturacion");
+const SuperAdminCobroPage = cargaPerezosa(() => import("./superadmin/pages/Cobro.tsx"), "SuperAdminCobroPage");
 const ReservarPage = cargaPerezosa(() => import("./verticals/citas/reserva/ReservarPage.tsx"), "ReservarPage");
 const RestaurantesPrimerosPasosPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/PrimerosPasos.tsx"), "RestaurantesPrimerosPasosPage");
 const RestaurantesCopilotoPage = cargaPerezosa(() => import("./verticals/restaurantes/pages/Copiloto.tsx"), "RestaurantesCopilotoPage");
@@ -553,6 +556,11 @@ function SuperAdminEjecutivoRoute() {
   return <SuperAdminEjecutivoPage {...ctx} />;
 }
 
+function SuperAdminCfoPlataformaRoute() {
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminCfoPlataformaPage {...ctx} />;
+}
+
 function SuperAdminZonaCfoRoute() {
   const ctx = useSuperAdminCtx();
   return <SuperAdminZonaCfoPage {...ctx} />;
@@ -566,6 +574,11 @@ function SuperAdminCostosFacturacionRoute() {
 function SuperAdminPlanesRoute() {
   const ctx = useSuperAdminCtx();
   return <SuperAdminPlanesPage {...ctx} />;
+}
+
+function SuperAdminCobroRoute() {
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminCobroPage {...ctx} />;
 }
 
 function SuperAdminNotificacionesRoute() {
@@ -582,6 +595,7 @@ const DespachosNotificacionesRoute = shellRoute(DespachosShell, "/despachos/logi
 const LicitacionesNotificacionesRoute = shellRoute(LicitacionesShell, "/licitaciones/login", (ctx) => <NotificacionesPagina apiBaseUrl={ctx.apiBaseUrl} token={ctx.token} />);
 // Plan y uso (PL-16): una sola pagina compartida, montada en el shell de cada vertical.
 const RestaurantesPlanRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <PlanYUsoPagina apiBaseUrl={ctx.apiBaseUrl} token={ctx.token} />);
+const RestaurantesConsumoRoute = shellRoute(RestaurantesShell, "/restaurantes/login", (ctx) => <ConsumoFacturacion apiBaseUrl={ctx.apiBaseUrl} token={ctx.token} />);
 const HotelesPlanRoute = shellRoute(HotelesShell, "/hoteles/login", (ctx) => <PlanYUsoPagina apiBaseUrl={ctx.apiBaseUrl} token={ctx.token} />);
 const RentasPlanRoute = shellRoute(RentasShell, "/rentas/login", (ctx) => <PlanYUsoPagina apiBaseUrl={ctx.apiBaseUrl} token={ctx.token} />);
 const CitasPlanRoute = shellRoute(CitasShell, "/citas/login", (ctx) => <PlanYUsoPagina apiBaseUrl={ctx.apiBaseUrl} token={ctx.token} />);
@@ -1114,6 +1128,7 @@ export function App() {
         <Route path="/restaurantes/:orgSlug/primeros-pasos" element={<RestaurantesPrimerosPasosRoute />} />
         <Route path="/restaurantes/:orgSlug/notificaciones" element={<RestaurantesNotificacionesRoute />} />
         <Route path="/restaurantes/:orgSlug/plan" element={<RestaurantesPlanRoute />} />
+        <Route path="/restaurantes/:orgSlug/consumo" element={<RestaurantesConsumoRoute />} />
         <Route path="/restaurantes/:orgSlug/seguridad" element={<RestaurantesSeguridadRoute />} />
         <Route path="/restaurantes/:orgSlug/*" element={<RestaurantesNoEncontradoRoute />} />
         {/* Fase 14 — genérica, fuera de cualquier shell/vertical (ver shell/
@@ -1149,9 +1164,11 @@ export function App() {
           <Route path="/superadmin/agente-whatsapp" element={<SuperAdminAgenteWhatsappRoute />} />
           <Route path="/superadmin/model-ops" element={<SuperAdminModelOpsRoute />} />
           <Route path="/superadmin/ejecutivo" element={<SuperAdminEjecutivoRoute />} />
+          <Route path="/superadmin/cfo-plataforma" element={<SuperAdminCfoPlataformaRoute />} />
           <Route path="/superadmin/zona-cfo" element={<SuperAdminZonaCfoRoute />} />
           <Route path="/superadmin/costos-facturacion" element={<SuperAdminCostosFacturacionRoute />} />
           <Route path="/superadmin/planes" element={<SuperAdminPlanesRoute />} />
+          <Route path="/superadmin/cobro" element={<SuperAdminCobroRoute />} />
           <Route path="/superadmin/notificaciones" element={<SuperAdminNotificacionesRoute />} />
           <Route path="/superadmin/break-glass" element={<SuperAdminBreakGlassRoute />} />
           <Route path="/superadmin/impersonacion" element={<SuperAdminImpersonacionRoute />} />

@@ -3,6 +3,7 @@
 import type { DataChatToolContext, DataChatToolResult } from "@atiende/agent-core/data-chat";
 import type { CfoOrgRow } from "@atiende/db";
 import { alcanceDelMotor, type PlatformScope } from "../src/superadmin-copiloto/alcance.ts";
+import { armarCockpit } from "../src/cfo/cockpit.ts";
 import type { Fuente, FuentesPlataforma, OperacionOrganizacionRow } from "../src/superadmin-copiloto/fuentes.ts";
 
 export const AHORA = new Date("2026-10-02T15:00:00.000Z");
@@ -161,6 +162,7 @@ export function fuentesFalsas(sobre: Partial<FuentesPlataforma> = {}): FuentesPl
       ]),
     cfoFilas: async () => ok([FILA_CFO, FILA_CFO_HOTEL]),
     cfoFotos: async () => ok([]),
+    cockpitCfo: async (mes) => ok(armarCockpit({ mes, rows: [FILA_CFO, FILA_CFO_HOTEL], rowsPrevias: [], fotos: [], uso: [], supuestos: [], capturas: [], infra: [], cockpitMigrado: true, infraMigrada: true }, AHORA)),
     infra: async () => ok([{ mes: "2026-10-01", concepto: "Vercel", montoMxnCentavos: 100_000, nota: null }]),
     contratos: async () =>
       ok([

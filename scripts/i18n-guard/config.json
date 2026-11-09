@@ -51,6 +51,6 @@
     "packages/ui/src/i18n/mensajes"
   ],
   "baseline": {
-    "apps/web/src/superadmin/rutas.ts": 59
+    "apps/web/src/superadmin/rutas.ts": 61
   }
 }
