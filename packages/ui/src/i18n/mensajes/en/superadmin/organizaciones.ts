@@ -1,0 +1,33 @@
+import type { Traduccion } from "../../../tipos.ts";
+import type { superadminOrganizaciones } from "../../superadmin/organizaciones.ts";
+
+export const superadminOrganizacionesEn: Traduccion<typeof superadminOrganizaciones> = {
+  "superadmin.organizaciones.descripcion": "Customers across Atiende's 6 verticals: usage, AI cost, margin and onboarding progress.",
+  "superadmin.organizaciones.odometro": "ORGANIZATIONS",
+  "superadmin.organizaciones.tabs": "Organizations sections",
+  "superadmin.organizaciones.tab.clientes": "Customers",
+  "superadmin.organizaciones.tab.gestion": "Management",
+  "superadmin.organizaciones.col.operaciones": "Operations 30 d",
+  "superadmin.organizaciones.col.costoIa": "AI cost 30 d",
+  "superadmin.organizaciones.col.margen": "Margin",
+  "superadmin.organizaciones.col.onboarding": "Onboarding",
+  "superadmin.organizaciones.col.acciones": "Actions",
+  "superadmin.organizaciones.sinMedir": "({n} not measured)",
+  "superadmin.organizaciones.ficha": "Profile",
+  "superadmin.organizaciones.srDe": "for {nombre}",
+  "superadmin.organizaciones.metricasNoDisponibles": "Per-organization metrics aren't available in this deployment yet.",
+  "superadmin.organizaciones.listaCompleta": "The list is still complete; the usage, cost and onboarding columns show “—”.",
+  "superadmin.organizaciones.margenNoDisponibleAun": "The margin isn't available yet.",
+  "superadmin.organizaciones.margenNoDisponible": "Margin unavailable: {mensaje}",
+  "superadmin.organizaciones.todas": "All organizations",
+  "superadmin.organizaciones.vacio": "No organizations have been set up in any vertical yet.",
+  "superadmin.organizaciones.top": "Top by AI cost",
+  "superadmin.organizaciones.top.sinMetricas": "No data: per-organization metrics aren't available yet.",
+  "superadmin.organizaciones.top.sinCosto": "No organization has recorded AI cost in the last 30 days.",
+  "superadmin.organizaciones.top.nota": "Last 30 days, by organization.",
+  "superadmin.organizaciones.entrar.error": "Couldn't open the impersonation session.",
+  "superadmin.organizaciones.entrar.abierta": "Read-only session opened in {nombre} (15 minutes).",
+  "superadmin.organizaciones.entrar.descripcion": "Opens a 15-minute read-only session in this organization. It's recorded in the impersonation log with your reason.",
+  "superadmin.organizaciones.entrar.confirmar": "Open session",
+  "superadmin.organizaciones.entrar.placeholder": "E.g. Check why the customer isn't receiving their WhatsApp messages.",
+};

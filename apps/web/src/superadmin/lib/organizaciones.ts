@@ -1,7 +1,9 @@
 // Tipos y helpers compartidos por la tabla de Organizaciones (SA-L-20) y la Ficha 360 (SA-07). La forma es la de
 // apps/api/src/routes/superadmin-organizaciones-ficha.ts: un dato que no se pudo medir llega como `{ valor: null, razon }` y se
 // pinta "—" con su razon, nunca como 0.
-import { formatMoney } from "@atiende/ui";
+import { etiquetasTraducidas, formatMoney } from "@atiende/ui";
+import { superadminComun } from "@atiende/ui/i18n/superadmin/comun";
+import { superadminFicha } from "@atiende/ui/i18n/superadmin/ficha";
 
 export interface CampoOrg<T> {
   readonly valor: T | null;
@@ -81,18 +83,15 @@ export interface FichaNoDisponible {
   readonly organizacion: { readonly id: string; readonly nombre: string; readonly slug: string; readonly vertical: string; readonly estado: "trial" | "active" | "suspended"; readonly creadaEn: string };
 }
 
-export const NOMBRE_VERTICAL: Readonly<Record<string, string>> = {
-  hoteles: "Hoteles",
-  restaurantes: "Restaurantes",
-  citas: "Citas",
-  licitaciones: "Licitaciones",
-  despachos: "Despachos",
-  rentas: "Rentas vacacionales",
-};
+// Etiquetas en el idioma activo de la consola (traducen en cada lectura; en espanol, los textos de siempre).
+const VERTICALES = ["hoteles", "restaurantes", "citas", "licitaciones", "despachos", "rentas"] as const;
+export const NOMBRE_VERTICAL: Readonly<Record<string, string>> = etiquetasTraducidas(VERTICALES, (v) => `superadmin.comun.vertical.${v}` as const, superadminComun);
 
-export const NOMBRE_ESTADO_ORG: Readonly<Record<string, string>> = { active: "Activa", suspended: "Suspendida", trial: "Prueba" };
+const ESTADOS_ORG = ["active", "suspended", "trial"] as const;
+export const NOMBRE_ESTADO_ORG: Readonly<Record<string, string>> = etiquetasTraducidas(ESTADOS_ORG, (e) => `superadmin.comun.estadoOrg.${e}` as const, superadminComun);
 
-export const NOMBRE_ESTADO_PASO: Readonly<Record<EstadoPasoOnboarding, string>> = { hecho: "Hecho", pendiente: "Pendiente", no_se_pudo_medir: "No se pudo medir" };
+const ESTADOS_PASO = ["hecho", "pendiente", "no_se_pudo_medir"] as const satisfies readonly EstadoPasoOnboarding[];
+export const NOMBRE_ESTADO_PASO: Readonly<Record<EstadoPasoOnboarding, string>> = etiquetasTraducidas(ESTADOS_PASO, (p) => `superadmin.ficha.paso.${p}` as const, superadminFicha);
 
 /** Motivo minimo de una sesion de impersonacion (igual que la base: core.impersonation_session.reason). */
 export const MOTIVO_IMPERSONACION_MINIMO = 20;

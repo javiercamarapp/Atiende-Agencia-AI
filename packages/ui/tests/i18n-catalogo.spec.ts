@@ -81,6 +81,11 @@ const IGUALES_PERMITIDOS = new Set<string>([
   "Marketing",
   "Puzzle",
   "Lift",
+  // Consola de superadmin: terminos que la consola ya escribe igual en los dos idiomas.
+  "Vertical",
+  "{n} vertical",
+  "Plan",
+  "Onboarding",
 ]);
 
 

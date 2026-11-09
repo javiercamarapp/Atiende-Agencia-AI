@@ -34,7 +34,10 @@ import {
   TableRow,
   NativeSelect,
   Checkbox,
+  useT,
 } from "@atiende/ui";
+import { citasComun } from "@atiende/ui/i18n/citas/comun";
+import { citasDisponibilidad } from "@atiende/ui/i18n/citas/disponibilidad";
 import {
   createAvailabilityRule,
   deleteAvailabilityOverride,
@@ -59,6 +62,7 @@ function toTimeInputValue(time: string): string {
 }
 
 export function DisponibilidadPage({ apiBaseUrl, token, propertyId }: CitasShellContext) {
+  const t = useT(citasComun, citasDisponibilidad);
   const [providers, setProviders] = useState<readonly ProviderSummary[] | null>(null);
   const [selectedProviderId, setSelectedProviderId] = useState<string>("");
   const [detail, setDetail] = useState<ProviderDetail | null>(null);
@@ -92,14 +96,14 @@ export function DisponibilidadPage({ apiBaseUrl, token, propertyId }: CitasShell
     if (!selectedProviderId) return;
     fetchProviderDetail(fetch, apiBaseUrl, token, propertyId, selectedProviderId)
       .then(setDetail)
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : "No se pudo cargar la disponibilidad."));
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : t("citas.disponibilidad.errorDisponibilidad")));
   }
 
   function loadOverrides() {
     if (!selectedProviderId) return;
     fetchAvailabilityOverrides(fetch, apiBaseUrl, token, propertyId, selectedProviderId)
       .then(setOverrides)
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : "No se pudieron cargar las excepciones."));
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : t("citas.disponibilidad.errorExcepciones")));
   }
 
   useEffect(() => {
@@ -108,7 +112,7 @@ export function DisponibilidadPage({ apiBaseUrl, token, propertyId }: CitasShell
         setProviders(list);
         if (list.length > 0) setSelectedProviderId(list[0]!.id);
       })
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : "No se pudieron cargar los proveedores."));
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : t("citas.disponibilidad.errorProveedores")));
   }, [apiBaseUrl, token, propertyId]);
 
   useEffect(() => {
@@ -119,10 +123,10 @@ export function DisponibilidadPage({ apiBaseUrl, token, propertyId }: CitasShell
     setEditingRuleId(null);
     fetchProviderDetail(fetch, apiBaseUrl, token, propertyId, selectedProviderId)
       .then((d) => !cancelado && setDetail(d))
-      .catch((err: unknown) => !cancelado && setError(err instanceof Error ? err.message : "No se pudo cargar la disponibilidad."));
+      .catch((err: unknown) => !cancelado && setError(err instanceof Error ? err.message : t("citas.disponibilidad.errorDisponibilidad")));
     fetchAvailabilityOverrides(fetch, apiBaseUrl, token, propertyId, selectedProviderId)
       .then((list) => !cancelado && setOverrides(list))
-      .catch((err: unknown) => !cancelado && setError(err instanceof Error ? err.message : "No se pudieron cargar las excepciones."));
+      .catch((err: unknown) => !cancelado && setError(err instanceof Error ? err.message : t("citas.disponibilidad.errorExcepciones")));
     return () => {
       cancelado = true;
     };
@@ -137,7 +141,7 @@ export function DisponibilidadPage({ apiBaseUrl, token, propertyId }: CitasShell
       await createAvailabilityRule(fetch, apiBaseUrl, token, propertyId, selectedProviderId, { dayOfWeek: newDayOfWeek, startTime: newStartTime, endTime: newEndTime });
       loadDetail();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo crear el horario.");
+      setError(err instanceof Error ? err.message : t("citas.disponibilidad.errorCrearHorario"));
     } finally {
       setCreatingRule(false);
     }
@@ -160,7 +164,7 @@ export function DisponibilidadPage({ apiBaseUrl, token, propertyId }: CitasShell
       setEditingRuleId(null);
       loadDetail();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo guardar el horario.");
+      setError(err instanceof Error ? err.message : t("citas.disponibilidad.errorGuardarHorario"));
     } finally {
       setSavingRule(false);
     }
@@ -174,7 +178,7 @@ export function DisponibilidadPage({ apiBaseUrl, token, propertyId }: CitasShell
       await deleteAvailabilityRule(fetch, apiBaseUrl, token, propertyId, selectedProviderId, ruleId);
       loadDetail();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo quitar el horario.");
+      setError(err instanceof Error ? err.message : t("citas.disponibilidad.errorQuitarHorario"));
     } finally {
       setDeletingRuleId(null);
     }
@@ -196,7 +200,7 @@ export function DisponibilidadPage({ apiBaseUrl, token, propertyId }: CitasShell
       setNewOverrideReason("");
       loadOverrides();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo guardar la excepción.");
+      setError(err instanceof Error ? err.message : t("citas.disponibilidad.errorGuardarExcepcion"));
     } finally {
       setSavingOverride(false);
     }
@@ -210,7 +214,7 @@ export function DisponibilidadPage({ apiBaseUrl, token, propertyId }: CitasShell
       await deleteAvailabilityOverride(fetch, apiBaseUrl, token, propertyId, selectedProviderId, overrideDate);
       loadOverrides();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo quitar la excepción.");
+      setError(err instanceof Error ? err.message : t("citas.disponibilidad.errorQuitarExcepcion"));
     } finally {
       setDeletingOverrideDate(null);
     }
@@ -227,15 +231,15 @@ export function DisponibilidadPage({ apiBaseUrl, token, propertyId }: CitasShell
 
   return (
     <div className="flex max-w-2xl flex-col gap-4">
-      <h1 className="font-display text-xl font-semibold text-foreground">Disponibilidad</h1>
+      <h1 className="font-display text-xl font-semibold text-foreground">{t("citas.disponibilidad.titulo")}</h1>
 
       {error && <EstadoError mensaje={error} />}
 
-      {providers && providers.length === 0 && <EstadoVacio icon={UserRound} mensaje="Este negocio todavía no tiene proveedores activos." />}
+      {providers && providers.length === 0 && <EstadoVacio icon={UserRound} mensaje={t("citas.disponibilidad.sinProveedores")} />}
 
       {providers && providers.length > 0 && (
         <div className="flex max-w-xs flex-col gap-1.5">
-          <Label htmlFor="citas-disponibilidad-proveedor">Proveedor</Label>
+          <Label htmlFor="citas-disponibilidad-proveedor">{t("citas.disponibilidad.proveedor")}</Label>
           <NativeSelect id="citas-disponibilidad-proveedor" value={selectedProviderId} onChange={(e) => setSelectedProviderId(e.target.value)}>
             {providers.map((p) => (
               <option key={p.id} value={p.id}>
@@ -246,19 +250,19 @@ export function DisponibilidadPage({ apiBaseUrl, token, propertyId }: CitasShell
         </div>
       )}
 
-      {!detail && selectedProviderId && !error && <EstadoCargando etiqueta="Cargando disponibilidad…" />}
+      {!detail && selectedProviderId && !error && <EstadoCargando etiqueta={t("citas.disponibilidad.cargando")} />}
 
       {detail && (
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="font-mono text-xs uppercase tracking-[0.06em] text-muted-foreground">Horario semanal</CardTitle>
+            <CardTitle className="font-mono text-xs uppercase tracking-[0.06em] text-muted-foreground">{t("citas.disponibilidad.horarioSemanal")}</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-32">Día</TableHead>
-                  <TableHead>Horario</TableHead>
+                  <TableHead className="w-32">{t("citas.disponibilidad.dia")}</TableHead>
+                  <TableHead>{t("citas.disponibilidad.horario")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -268,12 +272,12 @@ export function DisponibilidadPage({ apiBaseUrl, token, propertyId }: CitasShell
                     <TableRow key={dayOfWeek} className="align-top">
                       <TableCell className="py-3 font-medium text-foreground">{formatDayOfWeek(dayOfWeek)}</TableCell>
                       <TableCell className={`py-3 ${rules.length === 0 ? "text-muted-foreground" : "text-foreground"}`}>
-                        {rules.length === 0 && "Cerrado"}
+                        {rules.length === 0 && t("citas.disponibilidad.cerrado")}
                         {rules.map((r) =>
                           editingRuleId === r.id ? (
                             <form key={r.id} onSubmit={handleSaveRule} className="mb-2 flex flex-wrap items-center gap-2">
                               <Label htmlFor={`citas-regla-inicio-${r.id}`} className="sr-only">
-                                Hora de inicio
+                                {t("citas.disponibilidad.horaInicio")}
                               </Label>
                               <Input
                                 id={`citas-regla-inicio-${r.id}`}
@@ -285,15 +289,15 @@ export function DisponibilidadPage({ apiBaseUrl, token, propertyId }: CitasShell
                               />
                               <span aria-hidden>–</span>
                               <Label htmlFor={`citas-regla-fin-${r.id}`} className="sr-only">
-                                Hora de fin
+                                {t("citas.disponibilidad.horaFin")}
                               </Label>
                               <Input id={`citas-regla-fin-${r.id}`} type="time" value={editEndTime} onChange={(e) => setEditEndTime(e.target.value)} className="h-9 w-auto" required />
-                              <Checkbox checked={editIsActive} onChange={(e) => setEditIsActive(e.target.checked)} label="Activo" />
+                              <Checkbox checked={editIsActive} onChange={(e) => setEditIsActive(e.target.checked)} label={t("citas.disponibilidad.activo")} />
                               <Button type="submit" size="sm" className="h-9" disabled={savingRule}>
-                                {savingRule ? "Guardando…" : "Guardar"}
+                                {savingRule ? t("citas.disponibilidad.guardando") : t("citas.disponibilidad.guardar")}
                               </Button>
                               <Button type="button" variant="outline" size="sm" className="h-9" onClick={() => setEditingRuleId(null)} disabled={savingRule}>
-                                Cancelar
+                                {t("citas.cancelar")}
                               </Button>
                             </form>
                           ) : (
@@ -301,9 +305,9 @@ export function DisponibilidadPage({ apiBaseUrl, token, propertyId }: CitasShell
                               <span className={r.isActive ? undefined : "opacity-50"}>
                                 {formatHHMM(r.startTime)} – {formatHHMM(r.endTime)}
                               </span>
-                              {!r.isActive && <StatusBadge tone="neutral">inactivo</StatusBadge>}
+                              {!r.isActive && <StatusBadge tone="neutral">{t("citas.disponibilidad.inactivo")}</StatusBadge>}
                               <Button type="button" variant="ghost" size="sm" className="h-8 px-2 text-xs" onClick={() => startEditingRule(r)}>
-                                Editar
+                                {t("citas.disponibilidad.editar")}
                               </Button>
                               <Button
                                 type="button"
@@ -314,7 +318,7 @@ export function DisponibilidadPage({ apiBaseUrl, token, propertyId }: CitasShell
                                 disabled={deletingRuleId === r.id}
                               >
                                 <Trash2 aria-hidden />
-                                {deletingRuleId === r.id ? "Quitando…" : "Quitar"}
+                                {deletingRuleId === r.id ? t("citas.disponibilidad.quitando") : t("citas.disponibilidad.quitar")}
                               </Button>
                             </div>
                           ),
@@ -328,7 +332,7 @@ export function DisponibilidadPage({ apiBaseUrl, token, propertyId }: CitasShell
 
             <form onSubmit={handleCreateRule} className="flex flex-wrap items-end gap-2 border-t border-border pt-4">
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="citas-nuevo-horario-dia">Día</Label>
+                <Label htmlFor="citas-nuevo-horario-dia">{t("citas.disponibilidad.dia")}</Label>
                 <NativeSelect id="citas-nuevo-horario-dia" value={newDayOfWeek} onChange={(e) => setNewDayOfWeek(Number(e.target.value))}>
                   {DAY_OPTIONS.map((d) => (
                     <option key={d} value={d}>
@@ -338,19 +342,19 @@ export function DisponibilidadPage({ apiBaseUrl, token, propertyId }: CitasShell
                 </NativeSelect>
               </div>
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="citas-nuevo-horario-inicio">Desde</Label>
+                <Label htmlFor="citas-nuevo-horario-inicio">{t("citas.disponibilidad.desde")}</Label>
                 <Input id="citas-nuevo-horario-inicio" type="time" value={newStartTime} onChange={(e) => setNewStartTime(e.target.value)} className="w-auto" required />
               </div>
               <span aria-hidden className="pb-3">
                 –
               </span>
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="citas-nuevo-horario-fin">Hasta</Label>
+                <Label htmlFor="citas-nuevo-horario-fin">{t("citas.disponibilidad.hasta")}</Label>
                 <Input id="citas-nuevo-horario-fin" type="time" value={newEndTime} onChange={(e) => setNewEndTime(e.target.value)} className="w-auto" required />
               </div>
               <Button type="submit" disabled={creatingRule}>
                 <Plus aria-hidden />
-                {creatingRule ? "Agregando…" : "Agregar horario"}
+                {creatingRule ? t("citas.disponibilidad.agregando") : t("citas.disponibilidad.agregarHorario")}
               </Button>
             </form>
           </CardContent>
@@ -360,18 +364,18 @@ export function DisponibilidadPage({ apiBaseUrl, token, propertyId }: CitasShell
       {detail && (
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="font-mono text-xs uppercase tracking-[0.06em] text-muted-foreground">Excepciones (días específicos)</CardTitle>
+            <CardTitle className="font-mono text-xs uppercase tracking-[0.06em] text-muted-foreground">{t("citas.disponibilidad.excepciones")}</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
-            {!overrides && <EstadoCargando lineas={2} etiqueta="Cargando excepciones…" />}
-            {overrides && overrides.length === 0 && <EstadoVacio icon={CalendarOff} mensaje="Sin excepciones próximas — este proveedor sigue su horario semanal normal." />}
+            {!overrides && <EstadoCargando lineas={2} etiqueta={t("citas.disponibilidad.cargandoExcepciones")} />}
+            {overrides && overrides.length === 0 && <EstadoVacio icon={CalendarOff} mensaje={t("citas.disponibilidad.sinExcepciones")} />}
             {overrides && overrides.length > 0 && (
               <div className="flex flex-col gap-1.5">
                 {overrides.map((o) => (
                   <div key={o.overrideDate} className="flex flex-wrap items-center gap-2 text-sm">
                     <span className="font-medium text-foreground">{o.overrideDate}</span>
                     {o.isClosed ? (
-                      <StatusBadge tone="danger">Cerrado</StatusBadge>
+                      <StatusBadge tone="danger">{t("citas.disponibilidad.cerrado")}</StatusBadge>
                     ) : (
                       <span className="text-foreground">
                         {formatHHMM(o.startTime ?? "")} – {formatHHMM(o.endTime ?? "")}
@@ -387,7 +391,7 @@ export function DisponibilidadPage({ apiBaseUrl, token, propertyId }: CitasShell
                       disabled={deletingOverrideDate === o.overrideDate}
                     >
                       <Trash2 aria-hidden />
-                      {deletingOverrideDate === o.overrideDate ? "Quitando…" : "Quitar"}
+                      {deletingOverrideDate === o.overrideDate ? t("citas.disponibilidad.quitando") : t("citas.disponibilidad.quitar")}
                     </Button>
                   </div>
                 ))}
@@ -397,21 +401,21 @@ export function DisponibilidadPage({ apiBaseUrl, token, propertyId }: CitasShell
             <form onSubmit={handleSaveOverride} className="flex flex-col gap-3 border-t border-border pt-4">
               <div className="flex flex-wrap items-end gap-3">
                 <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="citas-excepcion-fecha">Fecha</Label>
+                  <Label htmlFor="citas-excepcion-fecha">{t("citas.disponibilidad.fecha")}</Label>
                   <Input id="citas-excepcion-fecha" type="date" value={newOverrideDate} onChange={(e) => setNewOverrideDate(e.target.value)} className="w-auto" required />
                 </div>
-                <Checkbox checked={newOverrideClosed} onChange={(e) => setNewOverrideClosed(e.target.checked)} label="Cerrado todo el día" wrapperClassName="h-11 items-center" />
+                <Checkbox checked={newOverrideClosed} onChange={(e) => setNewOverrideClosed(e.target.checked)} label={t("citas.disponibilidad.cerradoTodoElDia")} wrapperClassName="h-11 items-center" />
                 {!newOverrideClosed && (
                   <>
                     <div className="flex flex-col gap-1.5">
-                      <Label htmlFor="citas-excepcion-inicio">Desde</Label>
+                      <Label htmlFor="citas-excepcion-inicio">{t("citas.disponibilidad.desde")}</Label>
                       <Input id="citas-excepcion-inicio" type="time" value={newOverrideStart} onChange={(e) => setNewOverrideStart(e.target.value)} className="w-auto" required />
                     </div>
                     <span aria-hidden className="pb-3">
                       –
                     </span>
                     <div className="flex flex-col gap-1.5">
-                      <Label htmlFor="citas-excepcion-fin">Hasta</Label>
+                      <Label htmlFor="citas-excepcion-fin">{t("citas.disponibilidad.hasta")}</Label>
                       <Input id="citas-excepcion-fin" type="time" value={newOverrideEnd} onChange={(e) => setNewOverrideEnd(e.target.value)} className="w-auto" required />
                     </div>
                   </>
@@ -419,16 +423,16 @@ export function DisponibilidadPage({ apiBaseUrl, token, propertyId }: CitasShell
               </div>
               <div className="flex flex-wrap items-end gap-3">
                 <div className="flex min-w-[200px] flex-1 flex-col gap-1.5">
-                  <Label htmlFor="citas-excepcion-motivo">Motivo (opcional)</Label>
+                  <Label htmlFor="citas-excepcion-motivo">{t("citas.disponibilidad.motivo")}</Label>
                   <Input
                     id="citas-excepcion-motivo"
-                    placeholder="Motivo (opcional, ej. Vacaciones)"
+                    placeholder={t("citas.disponibilidad.motivoPlaceholder")}
                     value={newOverrideReason}
                     onChange={(e) => setNewOverrideReason(e.target.value)}
                   />
                 </div>
                 <Button type="submit" disabled={savingOverride}>
-                  {savingOverride ? "Guardando…" : "Guardar excepción"}
+                  {savingOverride ? t("citas.disponibilidad.guardando") : t("citas.disponibilidad.guardarExcepcion")}
                 </Button>
               </div>
             </form>

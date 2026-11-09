@@ -28,7 +28,10 @@ import {
   TableCell,
   TableRow,
   Checkbox,
+  useT,
 } from "@atiende/ui";
+import { citasComun } from "@atiende/ui/i18n/citas/comun";
+import { citasServicios } from "@atiende/ui/i18n/citas/servicios";
 import { activoTone } from "../lib/status-tones.ts";
 import { createService, fetchServiceDetail, fetchServices, updateService } from "../lib/services-client.ts";
 import type { ServiceSummary } from "../lib/services-client.ts";
@@ -36,6 +39,7 @@ import { formatMoneyFromCents } from "../lib/format.ts";
 import type { CitasShellContext } from "../CitasShell.tsx";
 
 export function ServiciosListPage({ apiBaseUrl, token, propertyId, orgSlug }: CitasShellContext) {
+  const t = useT(citasComun, citasServicios);
   const [services, setServices] = useState<readonly ServiceSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -48,7 +52,7 @@ export function ServiciosListPage({ apiBaseUrl, token, propertyId, orgSlug }: Ci
     setError(null);
     fetchServices(fetch, apiBaseUrl, token, propertyId)
       .then(setServices)
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : "No se pudieron cargar los servicios."));
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : t("citas.servicios.errorLista")));
   }
 
   useEffect(() => {
@@ -69,7 +73,7 @@ export function ServiciosListPage({ apiBaseUrl, token, propertyId, orgSlug }: Ci
       setNewPrice("");
       load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo crear el servicio.");
+      setError(err instanceof Error ? err.message : t("citas.servicios.errorCrear"));
     } finally {
       setCreating(false);
     }
@@ -77,28 +81,28 @@ export function ServiciosListPage({ apiBaseUrl, token, propertyId, orgSlug }: Ci
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="font-display text-xl font-semibold text-foreground">Servicios</h1>
+      <h1 className="font-display text-xl font-semibold text-foreground">{t("citas.servicios.titulo")}</h1>
       {error && <EstadoError mensaje={error} />}
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Nuevo servicio</CardTitle>
+          <CardTitle className="text-base">{t("citas.servicios.nuevo")}</CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleCreate} className="flex flex-wrap items-end gap-3">
             <div className="flex min-w-[200px] flex-1 flex-col gap-1.5">
-              <Label htmlFor="citas-nuevo-servicio-nombre">Nombre</Label>
-              <Input id="citas-nuevo-servicio-nombre" placeholder="Nombre (ej. Consulta general)" value={newName} onChange={(e) => setNewName(e.target.value)} />
+              <Label htmlFor="citas-nuevo-servicio-nombre">{t("citas.servicios.nombre")}</Label>
+              <Input id="citas-nuevo-servicio-nombre" placeholder={t("citas.servicios.nombrePlaceholder")} value={newName} onChange={(e) => setNewName(e.target.value)} />
             </div>
             <div className="flex w-28 flex-col gap-1.5">
-              <Label htmlFor="citas-nuevo-servicio-duracion">Duración (min)</Label>
-              <Input id="citas-nuevo-servicio-duracion" placeholder="Duración (min)" type="number" min={1} value={newDuration} onChange={(e) => setNewDuration(e.target.value)} />
+              <Label htmlFor="citas-nuevo-servicio-duracion">{t("citas.servicios.duracionMin")}</Label>
+              <Input id="citas-nuevo-servicio-duracion" placeholder={t("citas.servicios.duracionMin")} type="number" min={1} value={newDuration} onChange={(e) => setNewDuration(e.target.value)} />
             </div>
             <div className="flex w-36 flex-col gap-1.5">
-              <Label htmlFor="citas-nuevo-servicio-precio">Precio (opcional)</Label>
+              <Label htmlFor="citas-nuevo-servicio-precio">{t("citas.servicios.precioOpcional")}</Label>
               <Input
                 id="citas-nuevo-servicio-precio"
-                placeholder="Precio (opcional)"
+                placeholder={t("citas.servicios.precioOpcional")}
                 type="number"
                 min={0}
                 step="0.01"
@@ -108,14 +112,14 @@ export function ServiciosListPage({ apiBaseUrl, token, propertyId, orgSlug }: Ci
             </div>
             <Button type="submit" disabled={creating}>
               <Plus aria-hidden />
-              {creating ? "Creando…" : "Crear servicio"}
+              {creating ? t("citas.servicios.creando") : t("citas.servicios.crear")}
             </Button>
           </form>
         </CardContent>
       </Card>
 
-      {!services && !error && <EstadoCargando etiqueta="Cargando servicios…" />}
-      {services && services.length === 0 && <EstadoVacio icon={Scissors} mensaje="Este negocio todavía no tiene servicios activos." />}
+      {!services && !error && <EstadoCargando etiqueta={t("citas.servicios.cargandoLista")} />}
+      {services && services.length === 0 && <EstadoVacio icon={Scissors} mensaje={t("citas.servicios.vacio")} />}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {services?.map((s) => (
           <Link key={s.id} to={`/citas/${orgSlug}/servicios/${s.id}`} className="block rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
@@ -123,7 +127,7 @@ export function ServiciosListPage({ apiBaseUrl, token, propertyId, orgSlug }: Ci
               <CardContent className="p-4">
                 <p className="font-semibold text-foreground">{s.name}</p>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  {s.durationMinutes} min · {formatMoneyFromCents(s.priceCents)}
+                  {t("citas.servicios.minutos", { min: s.durationMinutes })} · {formatMoneyFromCents(s.priceCents)}
                 </p>
               </CardContent>
             </Card>
@@ -139,6 +143,7 @@ export interface ServicioFichaPageProps extends CitasShellContext {
 }
 
 export function ServicioFichaPage({ apiBaseUrl, token, propertyId, orgSlug, serviceId }: ServicioFichaPageProps) {
+  const t = useT(citasComun, citasServicios);
   const [service, setService] = useState<ServiceSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -163,7 +168,7 @@ export function ServicioFichaPage({ apiBaseUrl, token, propertyId, orgSlug, serv
         setEditPrice(s.priceCents !== null ? String(s.priceCents / 100) : "");
         setEditIsActive(s.isActive);
       })
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : "No se pudo cargar el servicio."));
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : t("citas.servicios.errorFicha")));
   }
 
   useEffect(() => {
@@ -188,7 +193,7 @@ export function ServicioFichaPage({ apiBaseUrl, token, propertyId, orgSlug, serv
       setEditing(false);
       load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo guardar el servicio.");
+      setError(err instanceof Error ? err.message : t("citas.servicios.errorGuardar"));
     } finally {
       setSaving(false);
     }
@@ -199,18 +204,18 @@ export function ServicioFichaPage({ apiBaseUrl, token, propertyId, orgSlug, serv
       <Button asChild variant="ghost" size="sm" className="w-fit px-2 text-muted-foreground">
         <Link to={`/citas/${orgSlug}/servicios`}>
           <ArrowLeft aria-hidden />
-          Volver a servicios
+          {t("citas.servicios.volver")}
         </Link>
       </Button>
       {error && <EstadoError mensaje={error} />}
-      {!service && !error && <EstadoCargando etiqueta="Cargando servicio…" />}
+      {!service && !error && <EstadoCargando etiqueta={t("citas.servicios.cargandoFicha")} />}
       {service && !editing && (
         <>
           <header className="flex flex-wrap items-start justify-between gap-3">
             <h1 className="font-display text-xl font-semibold text-foreground">{service.name}</h1>
             <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
               <Pencil aria-hidden />
-              Editar servicio
+              {t("citas.servicios.editar")}
             </Button>
           </header>
           <Card>
@@ -218,25 +223,25 @@ export function ServicioFichaPage({ apiBaseUrl, token, propertyId, orgSlug, serv
               <Table>
                 <TableBody>
                   <TableRow>
-                    <TableCell className="w-40 text-muted-foreground">Duración</TableCell>
-                    <TableCell className="text-foreground">{service.durationMinutes} min</TableCell>
+                    <TableCell className="w-40 text-muted-foreground">{t("citas.servicios.duracion")}</TableCell>
+                    <TableCell className="text-foreground">{t("citas.servicios.minutos", { min: service.durationMinutes })}</TableCell>
                   </TableRow>
                   <TableRow>
-                    <TableCell className="text-muted-foreground">Colchón antes</TableCell>
-                    <TableCell className="text-foreground">{service.bufferMinutesBefore} min</TableCell>
+                    <TableCell className="text-muted-foreground">{t("citas.servicios.colchonAntes")}</TableCell>
+                    <TableCell className="text-foreground">{t("citas.servicios.minutos", { min: service.bufferMinutesBefore })}</TableCell>
                   </TableRow>
                   <TableRow>
-                    <TableCell className="text-muted-foreground">Colchón después</TableCell>
-                    <TableCell className="text-foreground">{service.bufferMinutesAfter} min</TableCell>
+                    <TableCell className="text-muted-foreground">{t("citas.servicios.colchonDespues")}</TableCell>
+                    <TableCell className="text-foreground">{t("citas.servicios.minutos", { min: service.bufferMinutesAfter })}</TableCell>
                   </TableRow>
                   <TableRow>
-                    <TableCell className="text-muted-foreground">Precio</TableCell>
+                    <TableCell className="text-muted-foreground">{t("citas.servicios.precio")}</TableCell>
                     <TableCell className="text-foreground">{formatMoneyFromCents(service.priceCents)}</TableCell>
                   </TableRow>
                   <TableRow>
-                    <TableCell className="text-muted-foreground">Estado</TableCell>
+                    <TableCell className="text-muted-foreground">{t("citas.servicios.estado")}</TableCell>
                     <TableCell>
-                      <StatusBadge tone={activoTone(service.isActive)}>{service.isActive ? "Activo" : "Inactivo"}</StatusBadge>
+                      <StatusBadge tone={activoTone(service.isActive)}>{service.isActive ? t("citas.servicios.activo") : t("citas.servicios.inactivo")}</StatusBadge>
                     </TableCell>
                   </TableRow>
                 </TableBody>
@@ -250,34 +255,34 @@ export function ServicioFichaPage({ apiBaseUrl, token, propertyId, orgSlug, serv
           <CardContent className="pt-6">
             <form onSubmit={handleSaveEdit} className="flex flex-col gap-4">
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="citas-servicio-nombre">Nombre</Label>
+                <Label htmlFor="citas-servicio-nombre">{t("citas.servicios.nombre")}</Label>
                 <Input id="citas-servicio-nombre" value={editName} onChange={(e) => setEditName(e.target.value)} />
               </div>
               <div className="flex flex-wrap gap-3">
                 <div className="flex min-w-[120px] flex-1 flex-col gap-1.5">
-                  <Label htmlFor="citas-servicio-duracion">Duración (min)</Label>
+                  <Label htmlFor="citas-servicio-duracion">{t("citas.servicios.duracionMin")}</Label>
                   <Input id="citas-servicio-duracion" type="number" min={1} value={editDuration} onChange={(e) => setEditDuration(e.target.value)} />
                 </div>
                 <div className="flex min-w-[120px] flex-1 flex-col gap-1.5">
-                  <Label htmlFor="citas-servicio-colchon-antes">Colchón antes</Label>
+                  <Label htmlFor="citas-servicio-colchon-antes">{t("citas.servicios.colchonAntes")}</Label>
                   <Input id="citas-servicio-colchon-antes" type="number" min={0} value={editBufferBefore} onChange={(e) => setEditBufferBefore(e.target.value)} />
                 </div>
                 <div className="flex min-w-[120px] flex-1 flex-col gap-1.5">
-                  <Label htmlFor="citas-servicio-colchon-despues">Colchón después</Label>
+                  <Label htmlFor="citas-servicio-colchon-despues">{t("citas.servicios.colchonDespues")}</Label>
                   <Input id="citas-servicio-colchon-despues" type="number" min={0} value={editBufferAfter} onChange={(e) => setEditBufferAfter(e.target.value)} />
                 </div>
               </div>
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="citas-servicio-precio">Precio (vacío = sin precio fijo)</Label>
+                <Label htmlFor="citas-servicio-precio">{t("citas.servicios.precioVacio")}</Label>
                 <Input id="citas-servicio-precio" type="number" min={0} step="0.01" value={editPrice} onChange={(e) => setEditPrice(e.target.value)} />
               </div>
-              <Checkbox checked={editIsActive} onChange={(e) => setEditIsActive(e.target.checked)} label="Activo" />
+              <Checkbox checked={editIsActive} onChange={(e) => setEditIsActive(e.target.checked)} label={t("citas.servicios.activo")} />
               <div className="flex gap-2">
                 <Button type="submit" disabled={saving}>
-                  {saving ? "Guardando…" : "Guardar cambios"}
+                  {saving ? t("citas.servicios.guardando") : t("citas.servicios.guardarCambios")}
                 </Button>
                 <Button type="button" variant="outline" onClick={() => setEditing(false)} disabled={saving}>
-                  Cancelar
+                  {t("citas.cancelar")}
                 </Button>
               </div>
             </form>

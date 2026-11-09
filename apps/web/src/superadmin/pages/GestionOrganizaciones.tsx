@@ -6,7 +6,10 @@
 // "Plan de cuenta" NO es el plan de cobro: no toca Stripe ni la facturacion.
 import { useEffect, useState, type FormEvent } from "react";
 import { Building2, Plus } from "lucide-react";
-import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, FormDialog, Input, Label, NativeSelect, PageContainer, StatusBadge, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Textarea, statusTone, useConfirm } from "@atiende/ui";
+import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, FormDialog, Input, Label, NativeSelect, PageContainer, StatusBadge, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Textarea, etiquetasTraducidas, statusTone, traductorActivo, useConfirm, useT } from "@atiende/ui";
+import { comun } from "@atiende/ui/i18n/comun";
+import { superadminComun } from "@atiende/ui/i18n/superadmin/comun";
+import { superadminGestion } from "@atiende/ui/i18n/superadmin/gestion";
 import { ACCION_ESTADO_TONES, ORG_STATUS_TONES } from "../lib/status-tones.ts";
 import { fetchConStepUp } from "../lib/stepup.ts";
 
@@ -45,8 +48,10 @@ interface Solicitud {
 }
 
 const VERTICALES = ["hoteles", "restaurantes", "rentas", "licitaciones", "citas", "despachos"] as const;
-const ETIQUETA_TIPO: Record<Tipo, string> = { alta: "Alta", suspender: "Suspender", reactivar: "Reactivar", cambiar_plan: "Cambiar plan de cuenta" };
-const ETIQUETA_ESTADO: Record<Estado, string> = { pending: "Pendiente de confirmar", executed: "Ejecutada", cancelled: "Cancelada", expired: "Vencida" };
+// Etiquetas en el idioma activo (traducen en cada lectura; la pagina usa `useT` y se repinta al cambiarlo).
+const ETIQUETA_TIPO: Readonly<Record<Tipo, string>> = etiquetasTraducidas(["alta", "suspender", "reactivar", "cambiar_plan"] as const, (k) => `superadmin.gestion.tipo.${k}` as const, superadminGestion);
+const ETIQUETA_ESTADO: Readonly<Record<Estado, string>> = etiquetasTraducidas(["pending", "executed", "cancelled", "expired"] as const, (k) => `superadmin.gestion.estado.${k}` as const, superadminGestion);
+const tr = traductorActivo(superadminComun);
 
 async function fetchJson<T>(apiBaseUrl: string, token: string, path: string, init?: RequestInit): Promise<T> {
   const res = await fetchConStepUp(apiBaseUrl, token, `${apiBaseUrl.replace(/\/$/, "")}${path}`, {
@@ -55,13 +60,13 @@ async function fetchJson<T>(apiBaseUrl: string, token: string, path: string, ini
   });
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as { message?: string } | null;
-    throw new Error(body?.message ?? "No se pudo completar la solicitud.");
+    throw new Error(body?.message ?? tr("superadmin.comun.error.solicitud"));
   }
   return res.json() as Promise<T>;
 }
 
 function badgeDeEstado(status: Organizacion["status"]) {
-  return <StatusBadge tone={statusTone(ORG_STATUS_TONES, status)}>{status === "active" ? "Activa" : status === "suspended" ? "Suspendida" : "Prueba"}</StatusBadge>;
+  return <StatusBadge tone={statusTone(ORG_STATUS_TONES, status)}>{tr(`superadmin.comun.estadoOrg.${status}`)}</StatusBadge>;
 }
 
 /**
@@ -69,6 +74,7 @@ function badgeDeEstado(status: Organizacion["status"]) {
  * aqui solo va el texto de apoyo y el boton de alta. Sin `embebida` (uso historico y pruebas) conserva su cabecera y su contenedor.
  */
 export function SuperAdminGestionOrganizacionesPage({ apiBaseUrl, token, embebida = false }: { readonly apiBaseUrl: string; readonly token: string; readonly embebida?: boolean }) {
+  const t = useT(comun, superadminComun, superadminGestion);
   const { confirmar, dialogo } = useConfirm();
   const [organizaciones, setOrganizaciones] = useState<readonly Organizacion[] | null>(null);
   const [acciones, setAcciones] = useState<readonly Accion[]>([]);
@@ -96,7 +102,7 @@ export function SuperAdminGestionOrganizacionesPage({ apiBaseUrl, token, embebid
       setAcciones(a.acciones);
       setDisponible(a.disponible);
     } catch {
-      setError("No se pudieron cargar las organizaciones.");
+      setError(t("superadmin.comun.error.organizaciones"));
     }
   }
 
@@ -112,7 +118,7 @@ export function SuperAdminGestionOrganizacionesPage({ apiBaseUrl, token, embebid
   }
 
   function abrirAlta() {
-    setSolicitud({ tipo: "alta", organizationId: null, etiqueta: "Alta de organización", payload: {} });
+    setSolicitud({ tipo: "alta", organizationId: null, etiqueta: t("superadmin.gestion.alta"), payload: {} });
     setAlta(true);
     setNombre("");
     setSlug("");
@@ -125,12 +131,12 @@ export function SuperAdminGestionOrganizacionesPage({ apiBaseUrl, token, embebid
     e.preventDefault();
     if (!solicitud) return;
     if (motivo.trim().length < 20) {
-      setFormError("El motivo debe tener al menos 20 caracteres.");
+      setFormError(t("superadmin.gestion.error.motivoCorto"));
       return;
     }
     const payload = solicitud.tipo === "alta" ? { vertical, name: nombre.trim(), slug: slug.trim() } : solicitud.payload;
     if (solicitud.tipo === "alta" && (nombre.trim().length < 2 || !/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/u.test(slug.trim()))) {
-      setFormError("Indica un nombre y un slug en minúsculas, números y guiones.");
+      setFormError(t("superadmin.gestion.error.nombreSlug"));
       return;
     }
     setTrabajando("solicitud");
@@ -138,10 +144,10 @@ export function SuperAdminGestionOrganizacionesPage({ apiBaseUrl, token, embebid
     try {
       await fetchJson(apiBaseUrl, token, "/superadmin/organizaciones/acciones", { method: "POST", body: JSON.stringify({ tipo: solicitud.tipo, organizationId: solicitud.organizationId, payload, motivo }) });
       setSolicitud(null);
-      setAviso("Solicitud creada. Nada cambió todavía: confírmala abajo (vence en 10 minutos).");
+      setAviso(t("superadmin.gestion.aviso.creada"));
       await cargar();
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : "No se pudo crear la solicitud.");
+      setFormError(err instanceof Error ? err.message : t("superadmin.gestion.error.crear"));
     } finally {
       setTrabajando(null);
     }
@@ -151,21 +157,24 @@ export function SuperAdminGestionOrganizacionesPage({ apiBaseUrl, token, embebid
     if (que === "aprobar") {
       // Aprobar es el segundo control: autoriza que el solicitante ejecute; cerrar o descartar el diálogo NO aprueba nada.
       const ok = await confirmar({
-        titulo: `Aprobar ${ETIQUETA_TIPO[accion.tipo].toLowerCase()}: ${accion.organizationId ? (organizaciones?.find((o) => o.id === accion.organizationId)?.name ?? accion.organizationId) : "organización nueva"}`,
-        descripcion: `Motivo registrado: ${accion.motivo}${accion.contratoVersion ? ` · Contrato vigente, versión ${accion.contratoVersion}.` : ""} Tu aprobación queda en la bitácora; la acción solo la ejecuta quien la solicitó.`,
+        titulo: t("superadmin.gestion.aprobarTitulo", {
+          tipo: ETIQUETA_TIPO[accion.tipo].toLowerCase(),
+          nombre: accion.organizationId ? (organizaciones?.find((o) => o.id === accion.organizationId)?.name ?? accion.organizationId) : t("superadmin.gestion.orgNueva"),
+        }),
+        descripcion: `${t("superadmin.gestion.motivoRegistrado", { motivo: accion.motivo })}${accion.contratoVersion ? ` · ${t("superadmin.gestion.contratoVigente", { v: String(accion.contratoVersion) })}` : ""} ${t("superadmin.gestion.aprobacionBitacora")}`,
         tono: "danger",
-        confirmar: "Aprobar",
+        confirmar: t("superadmin.gestion.aprobar"),
       });
       if (!ok) return;
     }
     if (que === "confirmar") {
       // Confirmar ejecuta el alta / suspensión / reactivación / cambio de cuenta de una organización: Cancelar / cerrar el diálogo NO ejecuta nada.
-      const nombre = accion.organizationId ? (organizaciones?.find((o) => o.id === accion.organizationId)?.name ?? accion.organizationId) : String(accion.payload.name ?? "organización nueva");
+      const nombre = accion.organizationId ? (organizaciones?.find((o) => o.id === accion.organizationId)?.name ?? accion.organizationId) : String(accion.payload.name ?? t("superadmin.gestion.orgNueva"));
       const ok = await confirmar({
         titulo: `${ETIQUETA_TIPO[accion.tipo]}: ${nombre}`,
-        descripcion: `Motivo registrado: ${accion.motivo}`,
+        descripcion: t("superadmin.gestion.motivoRegistrado", { motivo: accion.motivo }),
         tono: accion.tipo === "suspender" ? "danger" : "default",
-        confirmar: "Ejecutar acción",
+        confirmar: t("superadmin.gestion.ejecutar"),
       });
       if (!ok) return;
     }
@@ -174,20 +183,20 @@ export function SuperAdminGestionOrganizacionesPage({ apiBaseUrl, token, embebid
     setError(null);
     try {
       await fetchJson(apiBaseUrl, token, `/superadmin/organizaciones/acciones/${accion.id}/${que}`, { method: "POST", body: JSON.stringify({}) });
-      setAviso(que === "confirmar" ? "Acción ejecutada." : que === "aprobar" ? "Aprobada. Ahora quien la solicitó puede confirmarla." : "Solicitud cancelada.");
+      setAviso(t(que === "confirmar" ? "superadmin.gestion.aviso.ejecutada" : que === "aprobar" ? "superadmin.gestion.aviso.aprobada" : "superadmin.gestion.aviso.cancelada"));
       await cargar();
     } catch (err) {
-      setAviso(err instanceof Error ? err.message : "No se pudo completar.");
+      setAviso(err instanceof Error ? err.message : t("superadmin.gestion.error.completar"));
     } finally {
       setTrabajando(null);
     }
   }
 
   if (error && !organizaciones) return <EstadoError mensaje={error} onReintentar={() => void cargar()} />;
-  if (!organizaciones) return <EstadoCargando etiqueta="Cargando organizaciones…" />;
+  if (!organizaciones) return <EstadoCargando etiqueta={t("superadmin.comun.cargandoOrganizaciones")} />;
 
   const pendientes = acciones.filter((a) => a.estado === "pending" && a.venceEnMs > Date.now());
-  const nombreDe = (id: string | null) => (id ? (organizaciones.find((o) => o.id === id)?.name ?? id) : "(organización nueva)");
+  const nombreDe = (id: string | null) => (id ? (organizaciones.find((o) => o.id === id)?.name ?? id) : t("superadmin.gestion.orgNuevaParentesis"));
 
   const Contenedor = embebida ? "div" : PageContainer;
   const propsContenedor = embebida ? { className: "space-y-4 [&>*]:min-w-0" } : { padding: "none" as const, className: "[&>*]:min-w-0" };
@@ -198,24 +207,22 @@ export function SuperAdminGestionOrganizacionesPage({ apiBaseUrl, token, embebid
           {!embebida && (
             <h1 className="text-2xl font-semibold text-foreground flex items-center gap-2">
               <Building2 className="w-5 h-5" strokeWidth={1.75} />
-              Gestión de organizaciones
+              {t("superadmin.gestion.titulo")}
             </h1>
           )}
-          <p className={embebida ? "text-ui text-muted-foreground" : "text-sm text-muted-foreground mt-1"}>
-            Alta, suspender, reactivar y plan de cuenta. Cada cambio se solicita con motivo y se confirma aparte con tu código MFA. Suspender corta el acceso del equipo de esa organización a su panel; no toca el cobro.
-          </p>
+          <p className={embebida ? "text-ui text-muted-foreground" : "text-sm text-muted-foreground mt-1"}>{t("superadmin.gestion.descripcion")}</p>
         </div>
         {disponible && (
           <Button className="rounded-full gap-1.5" onClick={abrirAlta}>
             <Plus className="w-3.5 h-3.5" strokeWidth={1.75} />
-            Alta de organización
+            {t("superadmin.gestion.alta")}
           </Button>
         )}
       </div>
 
       {!disponible && (
         <p role="alert" className="text-sm text-muted-foreground">
-          La gestión de organizaciones todavía no está disponible en esta base (migración 0025 pendiente de aplicar).
+          {t("superadmin.gestion.noDisponible")}
         </p>
       )}
       {aviso && (
@@ -227,7 +234,7 @@ export function SuperAdminGestionOrganizacionesPage({ apiBaseUrl, token, embebid
       {disponible && pendientes.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Pendientes de confirmar</CardTitle>
+            <CardTitle>{t("superadmin.gestion.pendientes")}</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
             {pendientes.map((a) => {
@@ -239,7 +246,7 @@ export function SuperAdminGestionOrganizacionesPage({ apiBaseUrl, token, embebid
                   <div className="min-w-0">
                     <p className="text-sm font-medium">
                       {ETIQUETA_TIPO[a.tipo]} — {nombreDe(a.organizationId)}
-                      {a.tipo === "cambiar_plan" ? ` → ${a.payload.plan === "active" ? "activa" : "prueba"}` : ""}
+                      {a.tipo === "cambiar_plan" ? ` → ${t(a.payload.plan === "active" ? "superadmin.gestion.plan.activa" : "superadmin.gestion.plan.prueba")}` : ""}
                       {a.tipo === "alta" ? ` (${String(a.payload.name)})` : ""}
                     </p>
                     <p className="text-sm text-muted-foreground truncate" title={a.motivo}>
@@ -247,25 +254,26 @@ export function SuperAdminGestionOrganizacionesPage({ apiBaseUrl, token, embebid
                     </p>
                     {dobleControl && (
                       <p className="text-xs text-muted-foreground mt-1">
-                        Doble control: la organización tiene contrato vigente{a.contratoVersion ? ` (versión ${a.contratoVersion})` : ""}.{" "}
-                        {aprobada ? "Aprobada por un segundo superadmin." : esMia ? "Falta la aprobación de un segundo superadmin." : "Espera tu aprobación."}
+                        {t("superadmin.gestion.dobleControl")}
+                        {a.contratoVersion ? ` ${t("superadmin.gestion.version", { v: String(a.contratoVersion) })}` : ""}.{" "}
+                        {t(aprobada ? "superadmin.gestion.aprobadaSegundo" : esMia ? "superadmin.gestion.faltaSegundo" : "superadmin.gestion.esperaTuAprobacion")}
                       </p>
                     )}
                   </div>
                   <div className="flex gap-2">
                     {esMia && (
                       <Button variant="outline" size="sm" onClick={() => void resolver(a, "cancelar")} disabled={trabajando === a.id}>
-                        Cancelar
+                        {t("comun.cancelar")}
                       </Button>
                     )}
                     {dobleControl && !esMia && !aprobada && (
                       <Button size="sm" onClick={() => void resolver(a, "aprobar")} disabled={trabajando === a.id}>
-                        {trabajando === a.id ? "Aprobando…" : "Aprobar"}
+                        {trabajando === a.id ? t("superadmin.gestion.aprobando") : t("superadmin.gestion.aprobar")}
                       </Button>
                     )}
                     {esMia && (
                       <Button size="sm" onClick={() => void resolver(a, "confirmar")} disabled={trabajando === a.id || (dobleControl && !aprobada)}>
-                        {trabajando === a.id ? "Ejecutando…" : "Confirmar"}
+                        {trabajando === a.id ? t("superadmin.gestion.ejecutando") : t("comun.confirmar")}
                       </Button>
                     )}
                   </div>
@@ -278,19 +286,19 @@ export function SuperAdminGestionOrganizacionesPage({ apiBaseUrl, token, embebid
 
       <Card>
         <CardHeader>
-          <CardTitle>Organizaciones</CardTitle>
+          <CardTitle>{t("superadmin.comun.organizaciones")}</CardTitle>
         </CardHeader>
         <CardContent>
           {organizaciones.length === 0 ? (
-            <EstadoVacio mensaje="Todavía no hay organizaciones." />
+            <EstadoVacio mensaje={t("superadmin.gestion.vacio")} />
           ) : (
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Nombre</TableHead>
-                    <TableHead>Vertical</TableHead>
-                    <TableHead>Estado</TableHead>
+                    <TableHead>{t("superadmin.comun.col.nombre")}</TableHead>
+                    <TableHead>{t("superadmin.comun.col.vertical")}</TableHead>
+                    <TableHead>{t("superadmin.comun.col.estado")}</TableHead>
                     <TableHead />
                   </TableRow>
                 </TableHeader>
@@ -304,8 +312,8 @@ export function SuperAdminGestionOrganizacionesPage({ apiBaseUrl, token, embebid
                       <TableCell>{badgeDeEstado(o.status)}</TableCell>
                       <TableCell className="flex gap-2 justify-end">
                         {disponible && o.status === "suspended" && (
-                          <Button variant="outline" size="sm" onClick={() => abrir({ tipo: "reactivar", organizationId: o.id, etiqueta: `Reactivar ${o.name}`, payload: {} })}>
-                            Reactivar
+                          <Button variant="outline" size="sm" onClick={() => abrir({ tipo: "reactivar", organizationId: o.id, etiqueta: t("superadmin.gestion.reactivarNombre", { nombre: o.name }), payload: {} })}>
+                            {ETIQUETA_TIPO.reactivar}
                           </Button>
                         )}
                         {disponible && o.status !== "suspended" && (
@@ -313,12 +321,19 @@ export function SuperAdminGestionOrganizacionesPage({ apiBaseUrl, token, embebid
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => abrir({ tipo: "cambiar_plan", organizationId: o.id, etiqueta: `Pasar ${o.name} a cuenta ${o.status === "active" ? "de prueba" : "activa"}`, payload: { plan: o.status === "active" ? "trial" : "active" } })}
+                              onClick={() =>
+                                abrir({
+                                  tipo: "cambiar_plan",
+                                  organizationId: o.id,
+                                  etiqueta: t(o.status === "active" ? "superadmin.gestion.aPruebaNombre" : "superadmin.gestion.aActivaNombre", { nombre: o.name }),
+                                  payload: { plan: o.status === "active" ? "trial" : "active" },
+                                })
+                              }
                             >
-                              {o.status === "active" ? "Pasar a prueba" : "Pasar a activa"}
+                              {t(o.status === "active" ? "superadmin.gestion.aPrueba" : "superadmin.gestion.aActiva")}
                             </Button>
-                            <Button variant="outline" size="sm" onClick={() => abrir({ tipo: "suspender", organizationId: o.id, etiqueta: `Suspender ${o.name}`, payload: {} })}>
-                              Suspender
+                            <Button variant="outline" size="sm" onClick={() => abrir({ tipo: "suspender", organizationId: o.id, etiqueta: t("superadmin.gestion.suspenderNombre", { nombre: o.name }), payload: {} })}>
+                              {ETIQUETA_TIPO.suspender}
                             </Button>
                           </>
                         )}
@@ -335,17 +350,17 @@ export function SuperAdminGestionOrganizacionesPage({ apiBaseUrl, token, embebid
       {disponible && acciones.some((a) => a.estado !== "pending") && (
         <Card>
           <CardHeader>
-            <CardTitle>Historial</CardTitle>
+            <CardTitle>{t("superadmin.comun.historial")}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Acción</TableHead>
-                    <TableHead>Organización</TableHead>
-                    <TableHead>Estado</TableHead>
-                    <TableHead>Motivo</TableHead>
+                    <TableHead>{t("superadmin.gestion.col.accion")}</TableHead>
+                    <TableHead>{t("superadmin.comun.col.organizacion")}</TableHead>
+                    <TableHead>{t("superadmin.comun.col.estado")}</TableHead>
+                    <TableHead>{t("superadmin.comun.col.motivo")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -374,15 +389,15 @@ export function SuperAdminGestionOrganizacionesPage({ apiBaseUrl, token, embebid
         open={solicitud !== null}
         onOpenChange={(open) => !open && setSolicitud(null)}
         titulo={solicitud?.etiqueta ?? ""}
-        subtitulo="Se crea una solicitud; no cambia nada hasta que la confirmes."
+        subtitulo={t("superadmin.gestion.subtitulo")}
         anchoClase="max-w-lg"
         footer={
           <>
             <Button type="button" variant="outline" className="rounded-full px-6" onClick={() => setSolicitud(null)} disabled={trabajando === "solicitud"}>
-              Cancelar
+              {t("comun.cancelar")}
             </Button>
             <Button type="submit" form="form-solicitud-org" className="rounded-full px-6" disabled={trabajando === "solicitud"}>
-              {trabajando === "solicitud" ? "Enviando…" : "Solicitar"}
+              {trabajando === "solicitud" ? t("superadmin.gestion.enviando") : t("superadmin.gestion.solicitar")}
             </Button>
           </>
         }
@@ -391,7 +406,7 @@ export function SuperAdminGestionOrganizacionesPage({ apiBaseUrl, token, embebid
           {alta && (
             <>
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="org-vertical">Vertical</Label>
+                <Label htmlFor="org-vertical">{t("superadmin.comun.col.vertical")}</Label>
                 <NativeSelect id="org-vertical" value={vertical} onChange={(e) => setVertical(e.target.value)}>
                   {VERTICALES.map((v) => (
                     <option key={v} value={v}>
@@ -401,17 +416,17 @@ export function SuperAdminGestionOrganizacionesPage({ apiBaseUrl, token, embebid
                 </NativeSelect>
               </div>
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="org-nombre">Nombre</Label>
-                <Input id="org-nombre" value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Clínica San Rafael" />
+                <Label htmlFor="org-nombre">{t("superadmin.comun.col.nombre")}</Label>
+                <Input id="org-nombre" value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder={t("superadmin.gestion.placeholderNombre")} />
               </div>
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="org-slug">Slug (identificador público)</Label>
-                <Input id="org-slug" value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="clinica-san-rafael" />
+                <Label htmlFor="org-slug">{t("superadmin.gestion.slug")}</Label>
+                <Input id="org-slug" value={slug} onChange={(e) => setSlug(e.target.value)} placeholder={t("superadmin.gestion.placeholderSlug")} />
               </div>
             </>
           )}
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="org-motivo">Motivo (obligatorio, mínimo 20 caracteres)</Label>
+            <Label htmlFor="org-motivo">{t("superadmin.comun.motivoEtiqueta", { n: 20 })}</Label>
             <Textarea
               id="org-motivo"
               value={motivo}
