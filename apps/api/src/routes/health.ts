@@ -5,7 +5,9 @@
 //   Detalle:  mismo endpoint con el secreto interno que ya usan las rutas
 //             `/internal/*` (`x-atiende-internal-secret` o `Authorization:
 //             Bearer`, ver `internalOrCronSecretMatches`) -> agrega versión,
-//             latencia de BD, estado de crons y modo del rate limiter.
+//             latencia de BD, estado de crons, modo del rate limiter y las
+//             versiones de migración aplicadas (`migraciones`, Ola 4 G4; el
+//             smoke post-deploy las compara con el repo).
 // Sin secreto válido, el detalle NUNCA se filtra: un secreto incorrecto recibe
 // exactamente la misma respuesta pública (sin 401, para no servir de oráculo).
 import { Hono } from "hono";
@@ -23,6 +25,7 @@ import {
   type LectorLatidos,
   type SenalCronsPublica,
 } from "../salud/health.ts";
+import { leerMigracionesAplicadas, type EstadoMigraciones } from "../salud/migraciones.ts";
 import type { AppDeps } from "../deps.ts";
 
 /** El sondeo público se comparte entre llamadores durante este tiempo: un
@@ -38,11 +41,15 @@ export interface HealthOptions {
   readonly leerLatidos?: LectorLatidos;
   readonly dbTimeoutMs?: number;
   readonly ahora?: () => Date;
+  /** Versiones de migración aplicadas (solo en el DETALLE). Por defecto `core.migraciones_aplicadas()` (0101) vía
+   *  `deps.engine`; contra la base sin migrar responde "sin_medir", nunca un 500. */
+  readonly leerMigraciones?: () => Promise<EstadoMigraciones>;
 }
 
 export function healthRoutes(deps: AppDeps, opciones: HealthOptions = {}): Hono {
   const app = new Hono();
   const ahora = opciones.ahora ?? (() => new Date());
+  const leerMigraciones = opciones.leerMigraciones ?? (() => leerMigracionesAplicadas(deps.engine));
   const leer = lectorConTimeout(opciones.leerLatidos ?? (() => deps.resumenDiarioRepo.listCronHeartbeatsForSystem()), opciones.dbTimeoutMs ?? HEALTH_DB_TIMEOUT_MS);
   let cache: { readonly en: number; readonly db: EstadoBaseDeDatos; readonly crons: SenalCronsPublica } | null = null;
 
@@ -72,6 +79,7 @@ export function healthRoutes(deps: AppDeps, opciones: HealthOptions = {}): Hono 
     if (!detalle) return c.json({ ok: db.ok, status, crons: senal }, httpStatus);
 
     const crons: EstadoCronsSalud = db.ok ? await evaluarCrons(lecturaUnica, ahora()) : { estado: "sin_medir", motivo: "base_de_datos_no_responde" };
+    const migraciones: EstadoMigraciones = db.ok ? await leerMigraciones() : { estado: "sin_medir", motivo: "error" };
     return c.json(
       {
         ok: db.ok,
@@ -81,6 +89,7 @@ export function healthRoutes(deps: AppDeps, opciones: HealthOptions = {}): Hono 
         crons,
         cronsSenal: senal,
         rateLimiter: estadoRateLimiter(),
+        migraciones,
       },
       httpStatus,
     );

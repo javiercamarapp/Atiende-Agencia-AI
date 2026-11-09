@@ -113,14 +113,16 @@ describe("GET /health", () => {
       const engine = engineQue(async () => undefined);
       const { deps } = await buildTestDeps();
       const app = healthRoutes({ ...deps, engine });
+      // Solo los sondeos `select 1` (el detalle además lee las migraciones aplicadas, Ola 4 G4).
+      const sondeos = () => engine.llamadas.filter((q) => q.startsWith("select 1"));
       await app.request("/health");
       await app.request("/health");
-      expect(engine.llamadas).toHaveLength(1);
+      expect(sondeos()).toHaveLength(1);
       await app.request("/health", { headers: { "x-atiende-internal-secret": deps.env.internalSecret } });
-      expect(engine.llamadas).toHaveLength(2);
+      expect(sondeos()).toHaveLength(2);
       vi.setSystemTime(Date.now() + HEALTH_PUBLIC_CACHE_MS + 1);
       await app.request("/health");
-      expect(engine.llamadas).toHaveLength(3);
+      expect(sondeos()).toHaveLength(3);
     } finally {
       vi.useRealTimers();
     }
