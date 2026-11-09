@@ -141,6 +141,12 @@ jobs:
       - name: Trinquete i18n (sin textos en espanol a mano en lo migrado)
         run: npm run i18n:guard
 
+      # Ola 2 (seguridad): toda funcion SECURITY DEFINER con revoke de PUBLIC y sin EXECUTE para anon, y ningun
+      # GRANT a anon fuera de scripts/guard-sql-privilegios/excepciones.json. Estatico sobre supabase/migrations/,
+      # sin Postgres, sin red ni secretos (el equivalente contra Postgres real es scripts/verify-security-definer-revoke/).
+      - name: Guard de privilegios SQL (security definer y anon)
+        run: npm run verify:sql-privilegios
+
       - name: Build de apps/web (Vite)
         run: npm run build --workspace apps/web
 
