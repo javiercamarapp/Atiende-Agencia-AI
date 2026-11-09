@@ -67,6 +67,7 @@ describe("admin acotado: escrituras de toda la organizacion", () => {
     ["ajustes del agente", "PUT", "/agente/ajustes", {}],
     ["alertas al dueño (umbrales)", "PUT", "/alertas-duenio", { silencioActivo: true, silencioVentanaMin: 60, silencioHistoricoMin: 10 }],
     ["resumen: configuracion de la organizacion", "PUT", "/resumen/config", { activo: true }],
+    ["aviso «va en camino»: interruptor de la organizacion", "PUT", "/whatsapp/aviso-en-camino", { activo: false }],
     ["avisos: preferencias de OTRA persona", "PUT", "/avisos/preferencias", { tipo: "restaurantes.pedido.nuevo", enabled: true, userId: "00000000-0000-4000-8000-0000000000aa" }],
     ["marca «no a domicilio» de producto", "PUT", "/config/no-domicilio/productos/00000000-0000-4000-8000-000000000001", { noDomicilio: true }],
     ["SoftRestaurant modo", "PUT", "/softrestaurant/config", { modo: "apagado" }],
