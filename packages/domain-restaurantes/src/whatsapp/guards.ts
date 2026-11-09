@@ -1073,6 +1073,14 @@ const HIGH_RISK_PATTERNS: readonly Patron[] = [
     reply: "Entendido, es urgente. Ya avisé al equipo para que lo contacte de inmediato.",
   },
   {
+    // C4 ESC-04: «mi pedido llegó completamente frío, quiero hablar con el gerente»: pide una persona POR una queja ya ocurrida. Mismo motivo y misma escalacion, pero
+    // el texto fijo se disculpa primero (el de abajo, sin queja, no tiene por que).
+    intent: "cliente_lo_pide",
+    pattern: PIDE_UNA_PERSONA_RE,
+    cuando: (texto) => pideUnaPersona(texto) && HECHO_DE_QUEJA.test(texto),
+    reply: "Lamento mucho lo ocurrido, disculpe el inconveniente. Ya avisé al equipo del restaurante para que una persona lo contacte lo antes posible.",
+  },
+  {
     intent: "cliente_lo_pide",
     pattern: PIDE_UNA_PERSONA_RE,
     cuando: (texto) => pideUnaPersona(texto),
