@@ -4,7 +4,7 @@
 // @oscuro corren tambien en los proyectos oscuros. Con CAPTURAS_RESUMEN_DIR guarda capturas (nunca en CI).
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { afirmarModo, afirmarSinScrollHorizontal } from "../helpers/ds.ts";
+import { afirmarEncabezadoResumen, afirmarModo, afirmarSinScrollHorizontal } from "../helpers/ds.ts";
 import { expect, test } from "../helpers/fixtures.ts";
 import { afirmarPantallaSana } from "../helpers/humo.ts";
 import { barraMovil, esMovil } from "../helpers/navegacion.ts";
@@ -18,8 +18,8 @@ test.describe("resumen de licitaciones @resumen", () => {
     await page.goto(RUTA);
     await afirmarPantallaSana(page, "resumen licitaciones");
 
-    await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
-    await expect(page.getByRole("heading", { level: 1 })).toContainText(/^(Buenos días|Buenas tardes|Buenas noches), /);
+    // ds3 por omision (#758): el nivel 1 del Resumen es «Resumen», no el saludo legado (ver afirmarEncabezadoResumen).
+    await afirmarEncabezadoResumen(page);
     await expect(page.getByTestId("odometro")).toContainText("Convocatorias abiertas");
     const kpi = (nombre: string) => page.getByRole("link", { name: new RegExp(nombre) }).first();
     await expect(kpi("Recordatorios de plazo")).toContainText(/Recordatorios de plazo\s*1(?!\d)/);

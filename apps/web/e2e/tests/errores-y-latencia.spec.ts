@@ -1,4 +1,5 @@
 // Errores 4xx/5xx inyectados y latencia configurable en la API simulada: la SPA debe degradar con honestidad.
+import { afirmarEncabezadoResumen } from "../helpers/ds.ts";
 import { expect, test } from "../helpers/fixtures.ts";
 import { citas } from "../mock-api/fixtures/citas.ts";
 
@@ -13,7 +14,8 @@ test.describe("errores y latencia @errores", () => {
     const reintentar = page.getByRole("button", { name: "Reintentar" });
     await expect(reintentar).toBeVisible();
     await reintentar.click();
-    await expect(page.getByRole("heading", { level: 1, name: /^(Buenos días|Buenas tardes|Buenas noches), / })).toBeVisible();
+    // ds3 por omision (#758): el panel recuperado se reconoce por su nivel 1 «Resumen», no por el saludo legado.
+    await afirmarEncabezadoResumen(page);
     await expect(page.getByText("Citas esta semana")).toBeVisible();
     // Una falla inyectada deja huella en el registro (para aserciones del tipo "se reintento").
     const registro = await mock.peticiones();

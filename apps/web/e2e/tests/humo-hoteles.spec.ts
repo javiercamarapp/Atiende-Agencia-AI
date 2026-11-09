@@ -1,4 +1,5 @@
 import { afirmarCancelarNoEscribe } from "../helpers/dialogos.ts";
+import { afirmarEncabezadoResumen } from "../helpers/ds.ts";
 import { expect, test } from "../helpers/fixtures.ts";
 import { afirmarPantallaSana, recorrerSecciones } from "../helpers/humo.ts";
 import { hoteles } from "../mock-api/fixtures/hoteles.ts";
@@ -15,8 +16,8 @@ test.describe("hoteles @humo", () => {
   test("owner: el Resumen pinta KPIs reales de la API simulada, un solo h1 y la ultima corrida, sin 4xx por rol", async ({ page, iniciarSesion, vigilante }) => {
     await iniciarSesion("hoteles", "owner");
     await page.goto(`/hoteles/${hoteles.orgSlug}`);
-    await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
-    await expect(page.getByRole("heading", { level: 1 })).toContainText(/^(Buenos días|Buenas tardes|Buenas noches), /);
+    // ds3 por omision (#758): el nivel 1 del Resumen es «Resumen», no el saludo legado (ver afirmarEncabezadoResumen).
+    await afirmarEncabezadoResumen(page);
     // Cada cifra sale de su endpoint: P&L, recepcion, tickets, aprobaciones y holds.
     const tarjeta = (rotulo: string) => page.locator("div.bg-card", { has: page.getByText(rotulo, { exact: true }) }).first();
     await expect(tarjeta("Ocupación")).toContainText("70.0%");
