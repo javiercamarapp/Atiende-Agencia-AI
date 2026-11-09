@@ -7,7 +7,7 @@ name: CodeQL
 # - Disparadores: pull_request (NO pull_request_target), push a main, schedule y manual. El codigo del PR se
 #   analiza pero nunca se ejecuta con secretos: no hay secretos en este workflow.
 # - permissions: contents: read por defecto; solo el job de analisis agrega security-events: write (necesario
-#   para subir resultados). En un PR desde un fork GitHub entrega un token de solo lectura: el analisis corre
+#   para subir resultados) y actions: read (la accion lee los metadatos de la corrida en curso). En un PR desde un fork GitHub entrega un token de solo lectura: el analisis corre
 #   y la subida de resultados se omite, sin romper el check.
 # - Sin despliegue, sin Vercel, sin Supabase. Gratis en repo publico.
 # - build-mode: none (JavaScript/TypeScript no se compila para el analisis).
@@ -44,6 +44,10 @@ jobs:
     permissions:
       contents: read
       security-events: write
+      # La accion de CodeQL consulta la corrida en curso (GET /repos/.../actions/runs/{id}) al subir el SARIF
+      # y para su reporte de estado. Sin este permiso el paso "Analizar" termina en error con
+      # "Resource not accessible by integration" aunque el analisis haya terminado. Solo lectura.
+      actions: read
     steps:
       - name: Checkout
         uses: actions/checkout@v7
