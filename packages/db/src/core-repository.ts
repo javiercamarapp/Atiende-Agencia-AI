@@ -308,6 +308,12 @@ export class OrganizationBillingAccessDeniedError extends Error {
   }
 }
 
+/** Subconjunto de `CoreRepository` que `withBillingWebhookTransaction` expone ligado a su transacción. */
+export type BillingWebhookTxRepository = Pick<
+  CoreRepository,
+  "markBillingWebhookEventSeen" | "getBillingEntityOrder" | "sealBillingEntityOrder" | "getOrganizationBillingForWebhook" | "upsertOrganizationBilling"
+>;
+
 export interface CoreRepository {
   findStaffByEmail(email: string): Promise<StaffUserRow | null>;
   findStaffById(id: string): Promise<StaffUserRow | null>;
@@ -505,6 +511,14 @@ export interface CoreRepository {
   getBillingEntityOrder(entityId: string): Promise<number | null>;
   /** Adaptador `LedgerStore.sellarOrden`. */
   sealBillingEntityOrder(entityId: string, createdUnix: number): Promise<void>;
+  /** Corre `fn` en UNA sola transacción de sistema con un repositorio ligado a ella: la marca de
+   *  "visto" del ledger, el upsert del estado de billing y el sello de orden de un evento de
+   *  `POST /billing/webhook` quedan los tres o ninguno. Si `fn` lanza, el ROLLBACK borra también
+   *  la marca, y el reintento de Stripe (que llega porque respondimos 5xx) vuelve a aplicarse en
+   *  vez de contestarse 'duplicado'. Sin SQL nuevo: son las mismas funciones de 0009/0013, solo
+   *  que en una sesión compartida. Dos entregas concurrentes del mismo id siguen siendo seguras:
+   *  la segunda espera el candado único de la primera y ve 'duplicado' si ésta confirma. */
+  withBillingWebhookTransaction<T>(fn: (tx: BillingWebhookTxRepository) => Promise<T>): Promise<T>;
   /** Bitácora completa de CADA intento de `POST /billing/webhook` (procesado,
    *  ignorado, rechazado, error) — ver `packages/db/migrations/0018_billing_
    *  webhook_registro.sql` para el porqué de una tabla nueva separada del

@@ -536,33 +536,35 @@ export function billingRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const tenantId = evento.tenantIdDelPayload!; // ya no puede ser null: `verificarTenantDelWebhook` lo hubiera rechazado arriba.
     const organizationId = organizationIdCandidate(tenantId);
 
-    const ledger: LedgerStore = {
-      marcarVisto: (eventId) => deps.coreRepo.markBillingWebhookEventSeen(eventId),
-      ordenAplicado: (entidadId) => deps.coreRepo.getBillingEntityOrder(entidadId),
-      sellarOrden: (entidadId, creadoUnix) => deps.coreRepo.sealBillingEntityOrder(entidadId, creadoUnix),
-    };
-
     let resultado: Awaited<ReturnType<typeof aplicarConLedger<OrganizationBillingRow>>>;
     try {
-      resultado = await aplicarConLedger(ledger, {
-        eventId: evento.id,
-        // La ENTIDAD que el ledger ordena es el customer de Stripe (mismo criterio
-        // que `webhook-integration.spec.ts`: "la 'entidad' para el orden es la
-        // suscripción/customer") -- dos eventos del mismo customer se comparan
-        // entre sí aunque uno sea `checkout.session.completed` y el otro
-        // `customer.subscription.updated`.
-        entidadId: evento.proveedorCustomerId,
-        creadoUnix: evento.creadoUnix,
-        aplicar: async () => {
-          const estado =
-            evento.tipo === "checkout.session.completed"
-              ? derivarEstadoDeCheckoutCompleted(evento.datos, await deps.coreRepo.getOrganizationBillingForWebhook(tenantId))
-              : derivarEstadoDeSubscription(evento.datos);
-          const fila = await deps.coreRepo.upsertOrganizationBilling({ organizationId: tenantId, ...estado });
-          // Onboarding P0: un pago confirmado pasa la prueba a activa (solo desde 'trial'; nunca reactiva una suspendida).
-          if (eventoConfirmaPago(evento.tipo, evento.datos)) await activarOrganizacionPagada(deps, tenantId);
-          return fila;
-        },
+      // Marca de "visto" + upsert del estado + sello de orden en UNA transacción
+      // (`withBillingWebhookTransaction`): si cualquiera lanza, el ROLLBACK borra también la
+      // marca y el reintento de Stripe (que llega porque respondimos 5xx) se vuelve a aplicar
+      // en vez de contestarse 'duplicado' y perder el evento.
+      resultado = await deps.coreRepo.withBillingWebhookTransaction((tx) => {
+        const ledger: LedgerStore = {
+          marcarVisto: (eventId) => tx.markBillingWebhookEventSeen(eventId),
+          ordenAplicado: (entidadId) => tx.getBillingEntityOrder(entidadId),
+          sellarOrden: (entidadId, creadoUnix) => tx.sealBillingEntityOrder(entidadId, creadoUnix),
+        };
+        return aplicarConLedger(ledger, {
+          eventId: evento.id,
+          // La ENTIDAD que el ledger ordena es el customer de Stripe (mismo criterio
+          // que `webhook-integration.spec.ts`: "la 'entidad' para el orden es la
+          // suscripción/customer") -- dos eventos del mismo customer se comparan
+          // entre sí aunque uno sea `checkout.session.completed` y el otro
+          // `customer.subscription.updated`.
+          entidadId: evento.proveedorCustomerId,
+          creadoUnix: evento.creadoUnix,
+          aplicar: async () => {
+            const estado =
+              evento.tipo === "checkout.session.completed"
+                ? derivarEstadoDeCheckoutCompleted(evento.datos, await tx.getOrganizationBillingForWebhook(tenantId))
+                : derivarEstadoDeSubscription(evento.datos);
+            return tx.upsertOrganizationBilling({ organizationId: tenantId, ...estado });
+          },
+        });
       });
     } catch (err) {
       // El propio `aplicar()` de arriba puede lanzar (p.ej. un error real de
@@ -572,6 +574,11 @@ export function billingRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       await registrarWebhook(deps, { providerEventId: evento.id, eventType: evento.tipo, organizationId, result: "error", reason: "error_interno" });
       throw err;
     }
+
+    // Onboarding P0: un pago confirmado pasa la prueba a activa (solo desde 'trial'; nunca reactiva una suspendida).
+    // Fuera de la transacción del ledger y después de su COMMIT: es best-effort (nunca lanza) e idempotente
+    // ('ya_activa'), y un fallo suyo no debe revertir el estado de billing ya aplicado.
+    if (resultado.estado === "aplicado" && eventoConfirmaPago(evento.tipo, evento.datos)) await activarOrganizacionPagada(deps, tenantId);
 
     await registrarWebhook(deps, {
       providerEventId: evento.id,
