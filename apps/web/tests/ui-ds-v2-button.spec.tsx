@@ -70,7 +70,7 @@ describe("Button", () => {
     expect(buttonVariants({ variant: "ghost" })).toContain("hover:bg-accent");
   });
 
-  it("loading: spinner, aria-busy, bloqueado y un doble clic no duplica el envio", () => {
+  it("loading: logo de linea decorativo (sin spinner), aria-busy, bloqueado y un doble clic no duplica el envio", () => {
     const onClick = vi.fn();
     rendered = renderComponent(
       <Button loading onClick={onClick}>
@@ -80,8 +80,8 @@ describe("Button", () => {
     const b = boton();
     expect(b.disabled).toBe(true);
     expect(b.getAttribute("aria-busy")).toBe("true");
-    expect(b.querySelector("svg.animate-spin")).not.toBeNull();
-    expect(b.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
+    expect(b.querySelector("svg.animate-spin")).toBeNull();
+    expect(b.querySelector('[data-carga-tamano="linea"]')?.getAttribute("aria-hidden")).toBe("true");
     expect(b.textContent).toBe("Guardando");
     click(b);
     click(b);
