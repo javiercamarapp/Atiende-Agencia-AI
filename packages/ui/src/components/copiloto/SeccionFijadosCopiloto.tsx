@@ -13,6 +13,7 @@ import { SectionLabel } from "../SectionLabel";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 import { BloqueDatos } from "./CopilotoMensaje";
+import { useIdiomaCopiloto } from "./idioma";
 import { FijadosErrorCliente, type FijadoResultado, type FijadoResumen, type FijadosCliente } from "./tipos";
 
 /** Tope de fijados que se re-ejecutan a la vez en el Resumen (el servidor tambien acota la lista). */
@@ -42,6 +43,7 @@ function FijadoTarjeta({
   onCompartido: (id: string, compartido: boolean) => void;
   sinCompartir: boolean;
 }) {
+  const { t } = useIdiomaCopiloto();
   const [carga, setCarga] = useState<CargaResultado>({ fase: "cargando" });
   const [intento, setIntento] = useState(0);
   const [aviso, setAviso] = useState<string | null>(null);
@@ -69,7 +71,7 @@ function FijadoTarjeta({
       await cliente.quitar(fijado.id);
       onQuitado(fijado.id);
     } catch {
-      setAviso("No se pudo quitar; intenta de nuevo.");
+      setAviso(t("errorQuitar"));
       setOcupado(false);
     }
   };
@@ -82,7 +84,7 @@ function FijadoTarjeta({
       await cliente.compartir(fijado.id, !fijado.compartido);
       onCompartido(fijado.id, !fijado.compartido);
     } catch (e) {
-      setAviso(e instanceof FijadosErrorCliente && e.tipo === "sin_permiso" ? "Solo el dueño o un administrador pueden compartir fijados con la organización." : "No se pudo cambiar; intenta de nuevo.");
+      setAviso(e instanceof FijadosErrorCliente && e.tipo === "sin_permiso" ? t("sinPermisoCompartir") : t("errorCompartir"));
     } finally {
       setOcupado(false);
     }
@@ -94,8 +96,8 @@ function FijadoTarjeta({
 
   return (
     <li className="min-w-0 space-y-1.5" data-testid="fijado">
-      {carga.fase === "cargando" ? <EstadoCargando variante="tarjeta" etiqueta={`Consultando ${fijado.titulo}…`} /> : null}
-      {carga.fase === "error" ? <EstadoError compacto titulo={fijado.titulo} mensaje="No pude consultar este fijado ahora." onReintentar={() => setIntento((n) => n + 1)} /> : null}
+      {carga.fase === "cargando" ? <EstadoCargando variante="tarjeta" etiqueta={t("fijadoConsultando", { t: fijado.titulo })} /> : null}
+      {carga.fase === "error" ? <EstadoError compacto titulo={fijado.titulo} mensaje={t("fijadoError")} onReintentar={() => setIntento((n) => n + 1)} /> : null}
       {resultado && bloque ? <BloqueDatos bloque={bloque} /> : null}
       {resultado && !bloque ? (
         <Card className="p-3">
@@ -108,20 +110,20 @@ function FijadoTarjeta({
         {fijado.compartido ? (
           <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
             <Users className="h-3.5 w-3.5" aria-hidden />
-            Compartido
+            {t("fijadoCompartido")}
           </span>
         ) : null}
         {fijado.propio ? (
           <>
             {sinCompartir ? null : (
-              <Button type="button" variant="ghost" size="xs" className={BOTON_ACCION} disabled={ocupado} onClick={() => void compartir()} aria-label={fijado.compartido ? `Dejar de compartir ${fijado.titulo}` : `Compartir ${fijado.titulo}`}>
+              <Button type="button" variant="ghost" size="xs" className={BOTON_ACCION} disabled={ocupado} onClick={() => void compartir()} aria-label={fijado.compartido ? t("dejarDeCompartirDe", { t: fijado.titulo }) : t("compartirDe", { t: fijado.titulo })}>
                 <Share2 aria-hidden />
-                {fijado.compartido ? "Dejar de compartir" : "Compartir"}
+                {fijado.compartido ? t("dejarDeCompartir") : t("compartir")}
               </Button>
             )}
-            <Button type="button" variant="ghost" size="xs" className={BOTON_ACCION} disabled={ocupado} onClick={() => void quitar()} aria-label={`Quitar ${fijado.titulo} del tablero`}>
+            <Button type="button" variant="ghost" size="xs" className={BOTON_ACCION} disabled={ocupado} onClick={() => void quitar()} aria-label={t("quitarDe", { t: fijado.titulo })}>
               <PinOff aria-hidden />
-              Quitar
+              {t("quitar")}
             </Button>
           </>
         ) : null}
@@ -145,6 +147,7 @@ export interface SeccionFijadosCopilotoProps {
 }
 
 export function SeccionFijadosCopiloto({ cliente, rutaCopiloto, className, sinCompartir = false }: SeccionFijadosCopilotoProps) {
+  const { t } = useIdiomaCopiloto();
   const [carga, setCarga] = useState<CargaLista>({ fase: "cargando" });
   const [intento, setIntento] = useState(0);
   const idTitulo = useId();
@@ -177,18 +180,18 @@ export function SeccionFijadosCopiloto({ cliente, rutaCopiloto, className, sinCo
 
   return (
     <Card className={cn("p-3", className)} role="region" aria-labelledby={idTitulo}>
-      <SectionLabel id={idTitulo}>Fijados del Copiloto</SectionLabel>
+      <SectionLabel id={idTitulo}>{t("fijadosTitulo")}</SectionLabel>
       <div className="mt-2">
-        {carga.fase === "cargando" ? <EstadoCargando etiqueta="Cargando tus fijados…" /> : null}
-        {carga.fase === "error" ? <EstadoError compacto titulo="No se pudieron cargar tus fijados" onReintentar={() => setIntento((n) => n + 1)} /> : null}
-        {carga.fase === "no_disponible" ? <p className="text-ui text-muted-foreground">Los fijados todavía no están disponibles en tu cuenta.</p> : null}
+        {carga.fase === "cargando" ? <EstadoCargando etiqueta={t("fijadosCargando")} /> : null}
+        {carga.fase === "error" ? <EstadoError compacto titulo={t("fijadosError")} onReintentar={() => setIntento((n) => n + 1)} /> : null}
+        {carga.fase === "no_disponible" ? <p className="text-ui text-muted-foreground">{t("fijadosNoDisponible")}</p> : null}
         {carga.fase === "listo" && carga.fijados.length === 0 ? (
           <p className="flex flex-wrap items-center gap-1.5 text-ui text-muted-foreground">
             <Pin className="h-3.5 w-3.5" aria-hidden />
-            Aún no fijas nada. Usa «Fijar» en una respuesta del Copiloto para verla aquí, siempre al día.
+            {t("fijadosVacio")}
             {rutaSegura ? (
               <Link to={rutaSegura} className="text-foreground underline underline-offset-4">
-                Abrir el Copiloto
+                {t("abrirCopiloto")}
               </Link>
             ) : null}
           </p>

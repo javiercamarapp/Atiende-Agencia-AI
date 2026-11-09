@@ -8,29 +8,30 @@ import { CopilotoTraza } from "./CopilotoTraza";
 import { CopilotoTarjetaAccion, TOOL_PROPONER_ACCION, propuestaDeBloque } from "./CopilotoTarjetaAccion";
 import { GraficaBloque, Sparkline, planGrafica } from "./CopilotoGraficas";
 import { formatoCelda, rutaInternaSegura } from "./formato";
+import { traductorCopiloto, useIdiomaCopiloto, type TraducirCopiloto } from "./idioma";
 import type { CopilotoAccionesCliente, CopilotoBloque, CopilotoMensaje, CopilotoStatus, CopilotoTransporte } from "./tipos";
 
 const MAX_FILAS = 10;
 
-/** Texto del aviso por `status`. `null` = el estado no lleva aviso (se muestra el texto de la respuesta). */
-export function textoAviso(m: Pick<CopilotoMensaje, "status" | "reintentarEnSeg" | "limiteDiario">): string | null {
+/** Texto del aviso por `status`. `null` = el estado no lleva aviso (se muestra el texto de la respuesta). Sin `t`, en espanol. */
+export function textoAviso(m: Pick<CopilotoMensaje, "status" | "reintentarEnSeg" | "limiteDiario">, t: TraducirCopiloto = traductorCopiloto("es")): string | null {
   const s: CopilotoStatus | undefined = m.status;
   switch (s) {
     case "no_data":
-      return "No hay datos para ese periodo.";
+      return t("avisoSinDatos");
     case "out_of_catalog":
-      return "Eso todavía no lo puedo consultar. Prueba con:";
+      return t("avisoFueraCatalogo");
     case "rate_limited":
-      if (m.limiteDiario !== undefined) return `Llegaste a tus ${m.limiteDiario} preguntas de hoy.`;
-      return m.reintentarEnSeg !== undefined ? `Muchas preguntas seguidas; espera ${m.reintentarEnSeg} s.` : "Muchas preguntas seguidas; espera un momento.";
+      if (m.limiteDiario !== undefined) return t("avisoLimiteDiario", { n: m.limiteDiario });
+      return m.reintentarEnSeg !== undefined ? t("avisoEspera", { n: m.reintentarEnSeg }) : t("avisoEsperaMomento");
     case "budget_exceeded":
-      return "Se alcanzó el tope de IA de tu organización este mes; lo amplía tu administrador.";
+      return t("avisoPresupuesto");
     case "apagado":
-      return "El Copiloto está en pausa por mantenimiento.";
+      return t("avisoApagado");
     case "unavailable":
-      return "No disponible por ahora.";
+      return t("avisoNoDisponible");
     case "forbidden":
-      return "Tu rol no tiene acceso a estas consultas.";
+      return t("avisoProhibido");
     default:
       return null;
   }
@@ -38,6 +39,7 @@ export function textoAviso(m: Pick<CopilotoMensaje, "status" | "reintentarEnSeg"
 
 /** Filas de la tabla del bloque, con la columna de sparkline si el catalogo mando una serie por fila. */
 function TablaDatos({ bloque }: { bloque: CopilotoBloque }) {
+  const { t } = useIdiomaCopiloto();
   const filas = bloque.rows.slice(0, MAX_FILAS);
   const recortado = bloque.rows.length > MAX_FILAS || bloque.truncated;
   const [a, b] = bloque.columns;
@@ -81,7 +83,7 @@ function TablaDatos({ bloque }: { bloque: CopilotoBloque }) {
                   ))}
                   {spark ? (
                     <td className="py-2 pr-3">
-                      <Sparkline valores={spark.series[i] ?? []} etiqueta={`${spark.label} de ${formatoCelda(a?.kind ?? "text", a ? (r[a.key] ?? null) : null)}`} />
+                      <Sparkline valores={spark.series[i] ?? []} etiqueta={t("serieDe", { serie: spark.label, fila: formatoCelda(a?.kind ?? "text", a ? (r[a.key] ?? null) : null) })} />
                     </td>
                   ) : null}
                 </tr>
@@ -92,7 +94,7 @@ function TablaDatos({ bloque }: { bloque: CopilotoBloque }) {
       )}
       {recortado ? (
         <p className="text-xs text-muted-foreground mt-2">
-          Se muestran las primeras {filas.length} filas{bloque.truncated ? "; hay más en el sistema" : ""}.
+          {t(bloque.truncated ? "filasMostradasMas" : "filasMostradas", { n: filas.length })}
         </p>
       ) : null}
     </>
@@ -145,6 +147,7 @@ export function CopilotoMensajeVista({
   /** Etiquetas legibles de las herramientas del catalogo (para «Cómo se calculó» en ds3). */
   etiquetasHerramienta?: Readonly<Record<string, string>>;
 }) {
+  const { t } = useIdiomaCopiloto();
   if (mensaje.role === "user") {
     return (
       <div data-ds3="usuario" className="flex justify-end copiloto-categorias-entra">
@@ -156,10 +159,10 @@ export function CopilotoMensajeVista({
   }
 
   if (mensaje.cancelado) {
-    return <p className="ml-6 text-sm text-faint copiloto-categorias-entra">Cancelado.</p>;
+    return <p className="ml-6 text-sm text-faint copiloto-categorias-entra">{t("cancelado")}</p>;
   }
 
-  const aviso = textoAviso(mensaje);
+  const aviso = textoAviso(mensaje, t);
   const esError = mensaje.status === "unavailable" || mensaje.status === "apagado" || mensaje.status === "forbidden" || mensaje.status === "budget_exceeded" || mensaje.status === "rate_limited";
   const alternas = mensaje.sugerencias && mensaje.sugerencias.length > 0 ? mensaje.sugerencias : sugerenciasAlternas;
   const exito = !aviso;
@@ -215,7 +218,7 @@ export function CopilotoMensajeVista({
 
       {exito && mensaje.sources && mensaje.sources.length > 0 ? (
         <div data-ds3="fuentes" className="ml-6 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-          <span>Fuentes:</span>
+          <span>{t("fuentes")}</span>
           {mensaje.sources.map((s, i) => {
             const ruta = rutaInternaSegura(rutasFuente?.[s.tool]);
             const etiqueta = [s.source, s.periodLabel, s.scopeLabel].filter(Boolean).join(" · ");
@@ -256,7 +259,7 @@ export function CopilotoMensajeVista({
             disabled={ocupado}
             className="text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50 underline underline-offset-2"
           >
-            Reintentar
+            {t("reintentar")}
           </button>
         </div>
       ) : null}
