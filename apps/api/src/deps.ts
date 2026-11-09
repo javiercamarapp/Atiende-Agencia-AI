@@ -9,6 +9,7 @@ import type {
   LlmUsageRepository,
   MfaRepository,
   CfoRepository,
+  CfoCockpitRepository,
   PylRepository,
   CfoZoneRepository,
   ConsolaRepository,
@@ -694,6 +695,11 @@ export interface AppDeps {
    *  sesion del caller. OPCIONAL: ausente -> el P&L se calcula sin infra ("sin_infra_capturada") y la
    *  captura responde 503. El ingreso y el costo del P&L salen de `cfoRepo`. */
   readonly pylRepo?: (db: TenantDbSession) => PylRepository;
+  /** CFO de la plataforma (cockpit): uso por cliente y mes, supuestos de costo unitario y capturas del dueño
+   *  (packages/db/migrations/0085_superadmin_cfo_cockpit.sql, ver routes/superadmin-cfo-cockpit.ts y cfo/cockpit.ts).
+   *  Fabrica por sesion (caller o sistema). OPCIONAL: ausente o migracion sin aplicar -> el cockpit se arma sin uso ni
+   *  capturas y lo dice en `faltantes`; los PUT responden 503. */
+  readonly cfoCockpitRepo?: (db: TenantDbSession) => CfoCockpitRepository;
   /** Zona CFO segura (SA-41): rol `finanzas` de solo lectura y bitacora de cada consulta financiera
    *  (packages/db/migrations/0034_superadmin_zona_cfo.sql, ver superadmin-seguridad/zona-cfo.ts y
    *  routes/superadmin-zona-cfo.ts). Fabrica por sesion del caller. OPCIONAL: ausente o migracion sin
