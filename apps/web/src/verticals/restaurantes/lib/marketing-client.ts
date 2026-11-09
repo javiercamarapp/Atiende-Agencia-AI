@@ -1,6 +1,8 @@
 // Cliente HTTP tipado de las campanas de reactivacion de clientes inactivos (autopiloto 2, migracion 052). Mismo criterio que cierres-client.ts:
 // 404/503 o `disponible: false` (base sin migrar) = VozNoDisponibleError y la pantalla muestra un estado honesto; nunca inventa cifras.
 // La regla (consentimiento, tope de 14 dias, control, aprobacion) vive en el servidor: aqui solo se llama y se tipa.
+import { etiquetasTraducidas } from "@atiende/ui";
+import { restaurantesCampanas } from "@atiende/ui/i18n/restaurantes/campanas";
 import { pedir, VozNoDisponibleError } from "./voz-client.ts";
 
 export type SegmentoCampana = "inactivo_30" | "inactivo_60" | "inactivo_90";
@@ -76,11 +78,12 @@ export async function decidirCampana(fetchImpl: typeof fetch, apiBaseUrl: string
 }
 
 /** Etiqueta legible del segmento (dias desde el ultimo pedido). */
-export const ETIQUETA_SEGMENTO: Readonly<Record<SegmentoCampana, string>> = {
-  inactivo_30: "30 a 59 días sin pedir",
-  inactivo_60: "60 a 89 días sin pedir",
-  inactivo_90: "90 días o más sin pedir",
-};
+export const ETIQUETA_SEGMENTO: Readonly<Record<SegmentoCampana, string>> = etiquetasTraducidas<SegmentoCampana>(
+  ["inactivo_30", "inactivo_60", "inactivo_90"],
+  (s) => `restaurantes.campanas.segmento.${s}` as const,
+  restaurantesCampanas,
+);
+
 
 /**
  * Recompra incremental en puntos porcentuales: tasa de recompra de los tratados MENOS la del grupo de control (sin mensaje). `null` mientras la

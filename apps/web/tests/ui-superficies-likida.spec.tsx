@@ -90,12 +90,15 @@ describe("Table", () => {
       </Card>,
     );
 
-  it("cabecera mono de 10 px sobre canvas, celdas px-3 py-2 (fila de ~37 px) y filas con linea line2", () => {
+  // Cambio intencional (auditoria R2 #10): la cabecera deja el mono de 10 px en MAYUSCULAS por el th de Rovaq (Hanken 13/600 en
+  // --foreground-2) sobre una cabecera teñida con el azul de Atiende (--primary-soft).
+  it("cabecera Hanken 13/600 sobre tinte azul suave, celdas px-3 py-2 y filas con linea line2", () => {
     const c = tabla();
     const th = c.querySelector("th")!;
-    for (const clase of ["px-3", "py-1.5", "etiqueta-mono", "text-2xs", "uppercase", "text-muted-foreground"]) expect(th.className).toContain(clase);
+    for (const clase of ["px-3", "py-2", "text-ui", "font-semibold", "text-foreground-2"]) expect(th.className).toContain(clase);
+    for (const clase of ["etiqueta-mono", "text-2xs", "uppercase"]) expect(th.className).not.toContain(clase);
     expect(th.className).not.toContain("h-12");
-    expect(c.querySelector("thead")!.className).toContain("[&_th]:bg-canvas");
+    expect(c.querySelector("thead")!.className).toContain("[&_th]:bg-primary-soft");
     const td = c.querySelector("td")!;
     expect(td.className).toContain("px-3");
     expect(td.className).toContain("py-2");

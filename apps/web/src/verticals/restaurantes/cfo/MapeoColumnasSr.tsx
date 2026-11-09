@@ -2,10 +2,9 @@
 // inferidos del dominio). Las columnas de CLIENTE (nombre, teléfono, correo, dirección, RFC…) no se ofrecen: se excluyen y se avisa.
 import { ShieldCheck } from "lucide-react";
 import type { TipoLayoutSr } from "@atiende/domain-restaurantes/cfo";
-import { Callout, Checkbox, FormField, Selector } from "@atiende/ui";
+import { Callout, Checkbox, FormField, Selector, useT } from "@atiende/ui";
+import { restaurantesCfoSr } from "@atiende/ui/i18n/restaurantes/cfoSr";
 import { camposDeTipo, camposFaltantes, camposRepetidos, type MapeoSr } from "./sr-importacion-navegador.ts";
-
-export const AVISO_SIN_DATOS_CLIENTES = "No subimos datos de tus clientes";
 
 export interface MapeoColumnasSrProps {
   readonly tipo: TipoLayoutSr;
@@ -23,22 +22,23 @@ export interface MapeoColumnasSrProps {
 }
 
 export function MapeoColumnasSr({ tipo, encabezados, personales, personalesFolio, excluidas, onIncluir, mapeo, onCambiar, avisoAlias }: MapeoColumnasSrProps) {
+  const t = useT(restaurantesCfoSr);
   const faltan = new Set(camposFaltantes(tipo, mapeo));
   const repetidos = new Set(camposRepetidos(mapeo));
   return (
     <div className="flex flex-col gap-3" data-testid="mapeo-sr">
       {excluidas.length > 0 && (
         <Callout tone="info" icon={<ShieldCheck className="size-4" aria-hidden="true" />} data-testid="sr-columnas-excluidas">
-          <p className="m-0 font-medium">{AVISO_SIN_DATOS_CLIENTES}.</p>
-          <p className="m-0">Parecen columnas de clientes y se excluyen: {excluidas.map((e) => `«${e.nombre}»`).join(", ")}. Nunca se muestra su contenido.</p>
-          <p className="m-0 text-xs">Aunque la recuperes, cada valor se revisa contra el tipo de su campo y lo que no encaje no se envía.</p>
+          <p className="m-0 font-medium">{t("restaurantes.cfoSr.sinDatosClientes")}.</p>
+          <p className="m-0">{t("restaurantes.cfoSr.columnasExcluidas", { lista: excluidas.map((e) => `«${e.nombre}»`).join(", ") })}</p>
+          <p className="m-0 text-xs">{t("restaurantes.cfoSr.recuperar")}</p>
           <ul className="m-0 mt-1 list-none p-0">
             {excluidas.map((e) => (
               <li key={e.indice}>
                 <Checkbox
                   checked={e.incluida}
                   onChange={(ev) => onIncluir(e.indice, ev.target.checked)}
-                  label={`Esta columna NO es de clientes, incluirla: ${e.nombre} (columna ${e.indice + 1})`}
+                  label={t("restaurantes.cfoSr.incluir", { nombre: e.nombre, n: String(e.indice + 1) })}
                   wrapperClassName="text-sm"
                   data-testid={`sr-incluir-${e.indice}`}
                 />
@@ -50,7 +50,7 @@ export function MapeoColumnasSr({ tipo, encabezados, personales, personalesFolio
       {avisoAlias && <p className="m-0 text-xs text-muted-foreground">{avisoAlias}</p>}
       <div className="grid gap-3 sm:grid-cols-2">
         {camposDeTipo(tipo).map(({ campo, etiqueta, requerido }) => {
-          const error = faltan.has(campo) ? "Elige la columna de este dato." : repetidos.has(campo) ? "Esa columna ya se usa en otro dato." : undefined;
+          const error = faltan.has(campo) ? t("restaurantes.cfoSr.eligeColumnaDato") : repetidos.has(campo) ? t("restaurantes.cfoSr.columnaUsada") : undefined;
           return (
             <FormField key={campo} label={etiqueta} required={requerido} {...(error ? { error } : {})}>
               <Selector
@@ -60,11 +60,11 @@ export function MapeoColumnasSr({ tipo, encabezados, personales, personalesFolio
                 onChange={(e) => onCambiar(campo, e.target.value === "" ? null : Number(e.target.value))}
                 data-testid={`sr-mapeo-${campo}`}
               >
-                <option value="">{requerido ? "Elige la columna…" : "No importar"}</option>
+                <option value="">{t(requerido ? "restaurantes.cfoSr.eligeColumna" : "restaurantes.cfoSr.noImportar")}</option>
                 {encabezados.map((h, i) =>
                   personales.has(i) || (campo === "folio" && personalesFolio?.has(i)) || h.trim() === "" ? null : (
                     <option key={i} value={i}>
-                      {`Columna ${i + 1}: ${h.trim()}`}
+                      {t("restaurantes.cfoSr.opcionColumna", { n: String(i + 1), nombre: h.trim() })}
                     </option>
                   ),
                 )}

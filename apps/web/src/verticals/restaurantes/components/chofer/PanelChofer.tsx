@@ -4,7 +4,8 @@
 // conserva tal cual hasta que «Hoy» del servidor nuevo cubra el mismo cuadre.
 import { useCallback, useState } from "react";
 import type { ReactNode } from "react";
-import { PageContainer, Tabs, TabsContent, TabsList, TabsTrigger, useAmbitoVertical } from "@atiende/ui";
+import { PageContainer, Tabs, TabsContent, TabsList, TabsTrigger, useAmbitoVertical, useT } from "@atiende/ui";
+import { restaurantesChofer } from "@atiende/ui/i18n/restaurantes/chofer";
 import { HistorialDiaTab, MiPerfilTab } from "../RepartidorPestanas.tsx";
 import { MisEntregas } from "./MisEntregas.tsx";
 import type { MisEntregasProps } from "./MisEntregas.tsx";
@@ -18,6 +19,7 @@ type Modo = "probando" | "nuevo" | "legado";
 
 export function PanelChofer({ legado, ...conexion }: PanelChoferProps) {
   useAmbitoVertical("restaurantes");
+  const t = useT(restaurantesChofer);
   const [modo, setModo] = useState<Modo>("probando");
   const alNoDisponible = useCallback(() => setModo("legado"), []);
   const alListaLista = useCallback(() => setModo((m) => (m === "legado" ? m : "nuevo")), []);
@@ -28,12 +30,12 @@ export function PanelChofer({ legado, ...conexion }: PanelChoferProps) {
     // El id solo existe cuando el panel es el visible: en "probando" la vista anterior (legado) trae su propio main#contenido-principal y el oculto no debe duplicarlo.
     <main id={modo === "nuevo" ? "contenido-principal" : undefined} tabIndex={-1} className="min-h-screen bg-background focus:outline-none" hidden={modo !== "nuevo"}>
       <PageContainer padding="default" className="mx-auto max-w-2xl gap-4">
-        <h1 className="m-0 font-display text-xl font-semibold text-foreground">Mis entregas</h1>
+        <h1 className="m-0 font-display text-xl font-semibold text-foreground">{t("restaurantes.chofer.titulo")}</h1>
         <Tabs defaultValue="entregas" className="flex flex-col gap-3">
           <TabsList>
-            <TabsTrigger value="entregas">En camino</TabsTrigger>
-            <TabsTrigger value="historial">Historial del día</TabsTrigger>
-            <TabsTrigger value="perfil">Mi perfil</TabsTrigger>
+            <TabsTrigger value="entregas">{t("restaurantes.chofer.tab.enCamino")}</TabsTrigger>
+            <TabsTrigger value="historial">{t("restaurantes.chofer.tab.historial")}</TabsTrigger>
+            <TabsTrigger value="perfil">{t("restaurantes.chofer.tab.perfil")}</TabsTrigger>
           </TabsList>
           <TabsContent value="entregas" className="mt-0">
             <MisEntregas {...conexion} onNoDisponible={alNoDisponible} onListaLista={alListaLista} />

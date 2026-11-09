@@ -20,12 +20,16 @@ import {
   Input,
   Selector,
   PageContainer,
+  PageHeader,
   StatusBadge,
   Textarea,
   formatMoney,
   statusTone,
   useConfirm,
+  useT,
 } from "@atiende/ui";
+import type { Clave } from "@atiende/ui";
+import { restaurantesClienteFicha } from "@atiende/ui/i18n/restaurantes/clienteFicha";
 import { ArrowLeft } from "lucide-react";
 import { fechaHoraEsMx } from "../../../lib/formato-fecha.ts";
 import {
@@ -50,9 +54,21 @@ export interface ClienteFichaPageProps extends RestaurantesShellContext {
   readonly customerId: string;
 }
 
-const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"] as const;
+const MESES: readonly Clave[] = [
+  "restaurantes.clienteFicha.mes.1",
+  "restaurantes.clienteFicha.mes.2",
+  "restaurantes.clienteFicha.mes.3",
+  "restaurantes.clienteFicha.mes.4",
+  "restaurantes.clienteFicha.mes.5",
+  "restaurantes.clienteFicha.mes.6",
+  "restaurantes.clienteFicha.mes.7",
+  "restaurantes.clienteFicha.mes.8",
+  "restaurantes.clienteFicha.mes.9",
+  "restaurantes.clienteFicha.mes.10",
+  "restaurantes.clienteFicha.mes.11",
+  "restaurantes.clienteFicha.mes.12",
+];
 const TIPOS_GUSTO = Object.keys(ETIQUETA_TIPO_GUSTO) as TipoGusto[];
-const MENSAJE_NO_DISPONIBLE = "Ficha completa no disponible aún: requiere aplicar la migración 049 de restaurantes. Mientras tanto se muestra la ficha básica.";
 
 function mensajeDeError(err: unknown, porDefecto: string): string {
   return err instanceof Error && err.message ? err.message : porDefecto;
@@ -71,6 +87,7 @@ function Seccion({ titulo, accion, children }: { readonly titulo: string; readon
 }
 
 export function ClienteFichaPage({ apiBaseUrl, token, propertyId, orgSlug, role, customerId }: ClienteFichaPageProps) {
+  const t = useT(restaurantesClienteFicha);
   const [ficha, setFicha] = useState<FichaCliente | null>(null);
   const [basica, setBasica] = useState<CustomerDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -101,7 +118,7 @@ export function ClienteFichaPage({ apiBaseUrl, token, propertyId, orgSlug, role,
       })
       .catch(async (err: unknown) => {
         if (cancelado) return;
-        const texto = mensajeDeError(err, "No se pudo cargar el cliente.");
+        const texto = mensajeDeError(err, t("restaurantes.clienteFicha.errorCargar"));
         // 503 = base sin la migracion 049: ficha basica + aviso honesto. Cualquier otro error se muestra tal cual.
         if (/no disponible a[uú]n/i.test(texto)) {
           setNoDisponible(true);
@@ -109,7 +126,7 @@ export function ClienteFichaPage({ apiBaseUrl, token, propertyId, orgSlug, role,
             const detalle = await fetchCustomerDetail(fetch, apiBaseUrl, token, propertyId, customerId);
             if (!cancelado) setBasica(detalle);
           } catch (e) {
-            if (!cancelado) setError(mensajeDeError(e, "No se pudo cargar el cliente."));
+            if (!cancelado) setError(mensajeDeError(e, t("restaurantes.clienteFicha.errorCargar")));
           }
         } else {
           setError(texto);
@@ -132,7 +149,7 @@ export function ClienteFichaPage({ apiBaseUrl, token, propertyId, orgSlug, role,
         recargar();
         return true;
       } catch (err) {
-        const mensaje = mensajeDeError(err, "No se pudo guardar el cambio.");
+        const mensaje = mensajeDeError(err, t("restaurantes.clienteFicha.errorGuardar"));
         // Con `alFallar` el error se muestra junto al formulario que lo origino (no arriba de la pagina).
         if (alFallar) alFallar(mensaje);
         else setAviso({ tono: "danger", texto: mensaje });
@@ -142,7 +159,7 @@ export function ClienteFichaPage({ apiBaseUrl, token, propertyId, orgSlug, role,
         setOcupado(false);
       }
     },
-    [recargar],
+    [recargar, t],
   );
 
   return (
@@ -150,13 +167,13 @@ export function ClienteFichaPage({ apiBaseUrl, token, propertyId, orgSlug, role,
       <Button asChild variant="ghost" size="sm" className="self-start px-2 text-muted-foreground">
         <Link to={`/restaurantes/${orgSlug}/clientes`}>
           <ArrowLeft />
-          Volver a clientes
+          {t("restaurantes.clienteFicha.volver")}
         </Link>
       </Button>
 
       {error && <EstadoError mensaje={error} onReintentar={reintentarCarga} />}
-      {!ficha && !basica && !error && <EstadoCargando etiqueta="Cargando cliente…" />}
-      {noDisponible && <Callout tone="warning">{MENSAJE_NO_DISPONIBLE}</Callout>}
+      {!ficha && !basica && !error && <EstadoCargando etiqueta={t("restaurantes.clienteFicha.cargando")} />}
+      {noDisponible && <Callout tone="warning">{t("restaurantes.clienteFicha.noDisponible")}</Callout>}
       {aviso && (
         <p role={aviso.tono === "danger" ? "alert" : "status"} className={`m-0 text-ui ${aviso.tono === "danger" ? "text-destructive" : "text-success"}`}>
           {aviso.texto}
@@ -185,41 +202,44 @@ const OcupadoContext = createContext(false);
 
 /** Ficha de siempre (nivel, direcciones, lo que mas pide): es la que se muestra mientras la migracion 049 no esta aplicada. */
 function FichaBasica({ detalle }: { readonly detalle: CustomerDetail }) {
-  if (detalle.isNew) return <EstadoVacio mensaje="Este cliente todavía no tiene ningún pedido registrado." />;
+  const t = useT(restaurantesClienteFicha);
+  if (detalle.isNew) return <EstadoVacio mensaje={t("restaurantes.clienteFicha.sinPedidos")} />;
   return (
     <>
-      <div className="flex items-center gap-2.5">
-        <h1 className="m-0 font-display text-xl font-semibold text-foreground">{detalle.name ?? "Sin nombre"}</h1>
-        {detalle.tier && (
-          <StatusBadge dot={false} tone={statusTone(CUSTOMER_TIER_TONES, detalle.tier)} className={`gap-1.5 px-2.5 py-1 ${tierBadgeClase(detalle.tier) ?? ""}`}>
-            <span aria-hidden>{CUSTOMER_TIER_META[detalle.tier].glyph}</span>
-            {CUSTOMER_TIER_META[detalle.tier].label}
-          </StatusBadge>
-        )}
-      </div>
-      <Seccion titulo="Direcciones guardadas">
+      <PageHeader
+        titulo={detalle.name ?? t("restaurantes.clienteFicha.sinNombre")}
+        meta={
+          detalle.tier ? (
+            <StatusBadge dot={false} tone={statusTone(CUSTOMER_TIER_TONES, detalle.tier)} className={`gap-1.5 px-2.5 py-1 ${tierBadgeClase(detalle.tier) ?? ""}`}>
+              <span aria-hidden>{CUSTOMER_TIER_META[detalle.tier].glyph}</span>
+              {CUSTOMER_TIER_META[detalle.tier].label}
+            </StatusBadge>
+          ) : undefined
+        }
+      />
+      <Seccion titulo={t("restaurantes.clienteFicha.direcciones")}>
         {detalle.addresses.length === 0 ? (
-          <p className="m-0 text-ui text-muted-foreground">Sin direcciones guardadas.</p>
+          <p className="m-0 text-ui text-muted-foreground">{t("restaurantes.clienteFicha.sinDirecciones")}</p>
         ) : (
           <ul className="m-0 list-disc pl-5 text-ui text-foreground">
             {detalle.addresses.map((a, i) => (
               <li key={i}>
-                {a.address} {a.isDefault && <span className="text-muted-foreground">(principal)</span>}
+                {a.address} {a.isDefault && <span className="text-muted-foreground">{t("restaurantes.clienteFicha.principalParen")}</span>}
               </li>
             ))}
           </ul>
         )}
       </Seccion>
       {detalle.notes && (
-        <Seccion titulo="Nota del cliente">
+        <Seccion titulo={t("restaurantes.clienteFicha.notaCliente")}>
           <p className="m-0 text-ui text-foreground" data-testid="cliente-nota">
             {detalle.notes}
           </p>
         </Seccion>
       )}
-      <Seccion titulo="Lo que más pide">
+      <Seccion titulo={t("restaurantes.clienteFicha.loQueMasPide")}>
         {detalle.frequentItems.length === 0 ? (
-          <p className="m-0 text-ui text-muted-foreground">Sin historial suficiente todavía.</p>
+          <p className="m-0 text-ui text-muted-foreground">{t("restaurantes.clienteFicha.sinHistorial")}</p>
         ) : (
           <ul className="m-0 list-disc pl-5 text-ui text-foreground">
             {detalle.frequentItems.map((item, i) => (
@@ -235,46 +255,53 @@ function FichaBasica({ detalle }: { readonly detalle: CustomerDetail }) {
 }
 
 function FichaCompleta({ ficha, puedeAdministrar, ejecutar, api }: { readonly ficha: FichaCliente; readonly puedeAdministrar: boolean; readonly ejecutar: Ejecutar; readonly api: Api }) {
+  const t = useT(restaurantesClienteFicha);
   const { confirmar, dialogo } = useConfirm();
   const { customer, reliability } = ficha;
   const reincidente = reliability.umbral > 0 && reliability.noRecogidos90d + reliability.pedidosFalsos >= reliability.umbral;
 
   return (
     <>
-      <div className="flex flex-wrap items-center gap-2.5">
-        <h1 className="m-0 font-display text-xl font-semibold text-foreground">{customer.name ?? "Sin nombre"}</h1>
-        {ficha.tier && (
-          <StatusBadge dot={false} tone={statusTone(CUSTOMER_TIER_TONES, ficha.tier)} className={`gap-1.5 px-2.5 py-1 ${tierBadgeClase(ficha.tier) ?? ""}`}>
-            <span aria-hidden>{CUSTOMER_TIER_META[ficha.tier].glyph}</span>
-            {CUSTOMER_TIER_META[ficha.tier].label}
-          </StatusBadge>
-        )}
-        {reincidente && (
-          <StatusBadge tone="warning">
-            El siguiente pedido lo confirma la sucursal
-          </StatusBadge>
-        )}
-      </div>
+      <PageHeader
+        titulo={customer.name ?? t("restaurantes.clienteFicha.sinNombre")}
+        meta={
+          ficha.tier || reincidente ? (
+            <>
+              {ficha.tier && (
+                <StatusBadge dot={false} tone={statusTone(CUSTOMER_TIER_TONES, ficha.tier)} className={`gap-1.5 px-2.5 py-1 ${tierBadgeClase(ficha.tier) ?? ""}`}>
+                  <span aria-hidden>{CUSTOMER_TIER_META[ficha.tier].glyph}</span>
+                  {CUSTOMER_TIER_META[ficha.tier].label}
+                </StatusBadge>
+              )}
+              {reincidente && (
+                <StatusBadge tone="warning">
+                  {t("restaurantes.clienteFicha.reincidente")}
+                </StatusBadge>
+              )}
+            </>
+          ) : undefined
+        }
+      />
 
       <dl className="m-0 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-ui">
-        <dt className="text-muted-foreground">Teléfono</dt>
+        <dt className="text-muted-foreground">{t("restaurantes.clienteFicha.telefono")}</dt>
         <dd className="m-0 text-foreground">{customer.phone}</dd>
-        <dt className="text-muted-foreground">Pedidos totales</dt>
+        <dt className="text-muted-foreground">{t("restaurantes.clienteFicha.pedidosTotales")}</dt>
         <dd className="m-0 text-foreground">{customer.orderCount}</dd>
-        <dt className="text-muted-foreground">Último pedido</dt>
+        <dt className="text-muted-foreground">{t("restaurantes.clienteFicha.ultimoPedido")}</dt>
         <dd className="m-0 text-foreground">{customer.lastOrderAt ? fechaHoraEsMx(customer.lastOrderAt) : "—"}</dd>
-        <dt className="text-muted-foreground">No recogidos ({reliability.ventanaDias} días)</dt>
+        <dt className="text-muted-foreground">{t("restaurantes.clienteFicha.noRecogidos", { dias: reliability.ventanaDias })}</dt>
         <dd className="m-0 text-foreground" data-testid="no-recogidos">
           {reliability.noRecogidos90d}
         </dd>
-        <dt className="text-muted-foreground">Pedidos falsos marcados</dt>
+        <dt className="text-muted-foreground">{t("restaurantes.clienteFicha.pedidosFalsos")}</dt>
         <dd className="m-0 text-foreground" data-testid="pedidos-falsos">
           {reliability.pedidosFalsos}
         </dd>
       </dl>
 
       {ficha.notes && (
-        <Seccion titulo="Nota del cliente">
+        <Seccion titulo={t("restaurantes.clienteFicha.notaCliente")}>
           <p className="m-0 text-ui text-foreground" data-testid="cliente-nota">
             {ficha.notes}
           </p>
@@ -285,18 +312,20 @@ function FichaCompleta({ ficha, puedeAdministrar, ejecutar, api }: { readonly fi
       <Gustos gustos={ficha.preferences} ejecutar={ejecutar} api={api} confirmar={confirmar} />
       <Pedidos pedidos={ficha.orders} ejecutar={ejecutar} api={api} />
 
-      <Seccion titulo="Conversaciones">
+      <Seccion titulo={t("restaurantes.clienteFicha.conversaciones")}>
         <p className="m-0 text-ui text-foreground">
-          WhatsApp: {ficha.whatsapp.conversaciones === 0 ? "sin conversación registrada" : `${ficha.whatsapp.mensajes} mensaje${ficha.whatsapp.mensajes === 1 ? "" : "s"} guardados`}
-          {ficha.whatsapp.ultimaActividad ? ` · última actividad ${fechaHoraEsMx(ficha.whatsapp.ultimaActividad)}` : ""}
+          {t("restaurantes.clienteFicha.whatsapp", {
+            estado: ficha.whatsapp.conversaciones === 0 ? t("restaurantes.clienteFicha.sinConversacion") : t("restaurantes.clienteFicha.mensajes", { count: ficha.whatsapp.mensajes }),
+          })}
+          {ficha.whatsapp.ultimaActividad ? t("restaurantes.clienteFicha.ultimaActividad", { fecha: fechaHoraEsMx(ficha.whatsapp.ultimaActividad) }) : ""}
         </p>
         {ficha.llamadas.length === 0 ? (
-          <p className="mt-2 text-ui text-muted-foreground">Sin llamadas registradas para este número.</p>
+          <p className="mt-2 text-ui text-muted-foreground">{t("restaurantes.clienteFicha.sinLlamadas")}</p>
         ) : (
           <ul className="mt-2 list-disc pl-5 text-ui text-foreground">
             {ficha.llamadas.map((l) => (
               <li key={l.id}>
-                {fechaHoraEsMx(l.startedAt)} · {l.durationS === null ? "en curso" : `${Math.max(1, Math.round(l.durationS / 60))} min`} · {l.resultado ?? "sin resultado"}
+                {fechaHoraEsMx(l.startedAt)} · {l.durationS === null ? t("restaurantes.clienteFicha.enCurso") : t("restaurantes.clienteFicha.minutos", { min: Math.max(1, Math.round(l.durationS / 60)) })} · {l.resultado ?? t("restaurantes.clienteFicha.sinResultado")}
               </li>
             ))}
           </ul>
@@ -317,6 +346,7 @@ function PerfilForm({ ficha, ejecutar, api }: { readonly ficha: FichaCliente; re
   const [dia, setDia] = useState(c.fechaNacimientoDia === null ? "" : String(c.fechaNacimientoDia));
   const [mes, setMes] = useState(c.fechaNacimientoMes === null ? "" : String(c.fechaNacimientoMes));
   const ocupado = useContext(OcupadoContext);
+  const t = useT(restaurantesClienteFicha);
 
   const guardar = (e: FormEvent) => {
     e.preventDefault();
@@ -328,36 +358,36 @@ function PerfilForm({ ficha, ejecutar, api }: { readonly ficha: FichaCliente; re
           staffNotes: notas.trim() === "" ? null : notas.trim(),
           ...(tieneFecha || c.fechaNacimientoDia !== null ? { fechaNacimientoDia: dia === "" ? null : Number(dia), fechaNacimientoMes: mes === "" ? null : Number(mes) } : {}),
         }),
-      "Datos del cliente guardados.",
+      t("restaurantes.clienteFicha.datosGuardados"),
     );
   };
 
   return (
-    <Seccion titulo="Datos y notas">
+    <Seccion titulo={t("restaurantes.clienteFicha.datosYNotas")}>
       <form onSubmit={guardar} className="grid gap-3">
-        <FormField label="Nombre">
+        <FormField label={t("restaurantes.clienteFicha.nombre")}>
           <Input value={nombre} maxLength={160} onChange={(e) => setNombre(e.target.value)} />
         </FormField>
         <div className="grid grid-cols-2 gap-3">
-          <FormField label="Cumpleaños: día (opcional)" hint="Solo si el cliente lo da.">
+          <FormField label={t("restaurantes.clienteFicha.cumpleDia")} hint={t("restaurantes.clienteFicha.cumpleAyuda")}>
             <Input inputMode="numeric" value={dia} maxLength={2} onChange={(e) => setDia(e.target.value.replace(/\D/g, ""))} />
           </FormField>
-          <FormField label="Cumpleaños: mes">
+          <FormField label={t("restaurantes.clienteFicha.cumpleMes")}>
             <Selector value={mes} onChange={(e) => setMes(e.target.value)}>
               <option value="">—</option>
               {MESES.map((m, i) => (
                 <option key={m} value={String(i + 1)}>
-                  {m}
+                  {t(m)}
                 </option>
               ))}
             </Selector>
           </FormField>
         </div>
-        <FormField label="Notas del restaurante" hint="Solo las ve el personal; no las lee el agente.">
+        <FormField label={t("restaurantes.clienteFicha.notasRestaurante")} hint={t("restaurantes.clienteFicha.notasAyuda")}>
           <Textarea value={notas} maxLength={1000} rows={3} onChange={(e) => setNotas(e.target.value)} />
         </FormField>
         <Button type="submit" size="sm" className="self-start" disabled={ocupado}>
-          Guardar datos
+          {t("restaurantes.clienteFicha.guardarDatos")}
         </Button>
       </form>
     </Seccion>
@@ -372,6 +402,7 @@ function Domicilios({ domicilios, ejecutar, api, confirmar }: { readonly domicil
   const [form, setForm] = useState({ address: "", label: "", access: "", maps: "", colonia: "" });
   const [errorForm, setErrorForm] = useState<string | null>(null);
   const ocupado = useContext(OcupadoContext);
+  const t = useT(restaurantesClienteFicha);
 
   const abrir = (id: string | "nuevo", d: DomicilioFicha | null) => {
     setErrorForm(null);
@@ -392,7 +423,7 @@ function Domicilios({ domicilios, ejecutar, api, confirmar }: { readonly domicil
           maps_url: form.maps.trim() === "" ? null : form.maps.trim(),
           colonia: form.colonia.trim() === "" ? null : form.colonia.trim(),
         }),
-      "Domicilio guardado.",
+      t("restaurantes.clienteFicha.domicilioGuardado"),
       setErrorForm,
     );
     if (guardado) setEditando(null);
@@ -400,54 +431,54 @@ function Domicilios({ domicilios, ejecutar, api, confirmar }: { readonly domicil
 
   return (
     <Seccion
-      titulo="Domicilios"
+      titulo={t("restaurantes.clienteFicha.domicilios")}
       accion={
         <Button size="sm" variant="outline" onClick={() => abrir("nuevo", null)}>
-          Agregar domicilio
+          {t("restaurantes.clienteFicha.agregarDomicilio")}
         </Button>
       }
     >
-      {domicilios.length === 0 && editando === null && <p className="m-0 text-ui text-muted-foreground">Sin domicilios guardados. Se guardan solos al confirmar un pedido a domicilio.</p>}
+      {domicilios.length === 0 && editando === null && <p className="m-0 text-ui text-muted-foreground">{t("restaurantes.clienteFicha.sinDomicilios")}</p>}
       <ul className="m-0 grid list-none gap-3 p-0">
         {domicilios.map((d) => (
           <li key={d.id} className="rounded-lg border border-border p-3 text-ui">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="font-semibold text-foreground">{d.label ?? "Sin etiqueta"}</span>
-              {d.isDefault && <StatusBadge tone="info">Principal</StatusBadge>}
-              {d.branchSlug && <span className="text-muted-foreground">Sucursal {d.branchSlug}</span>}
+              <span className="font-semibold text-foreground">{d.label ?? t("restaurantes.clienteFicha.sinEtiqueta")}</span>
+              {d.isDefault && <StatusBadge tone="info">{t("restaurantes.clienteFicha.principal")}</StatusBadge>}
+              {d.branchSlug && <span className="text-muted-foreground">{t("restaurantes.clienteFicha.sucursalSlug", { slug: d.branchSlug })}</span>}
             </div>
             <p className="m-0 mt-1 text-foreground">{d.address}</p>
-            {d.colonia && <p className="m-0 text-muted-foreground">Colonia: {d.colonia}</p>}
-            {d.accessNotes && <p className="m-0 text-muted-foreground">Referencias: {d.accessNotes}</p>}
+            {d.colonia && <p className="m-0 text-muted-foreground">{t("restaurantes.clienteFicha.coloniaValor", { colonia: d.colonia })}</p>}
+            {d.accessNotes && <p className="m-0 text-muted-foreground">{t("restaurantes.clienteFicha.referenciasValor", { referencias: d.accessNotes })}</p>}
             {d.mapsUrl && (
               <a href={d.mapsUrl} target="_blank" rel="noopener noreferrer" className="text-foreground underline">
-                Ver en el mapa
+                {t("restaurantes.clienteFicha.verMapa")}
               </a>
             )}
             <p className="m-0 mt-1 text-muted-foreground">
-              Usado {d.timesUsed} {d.timesUsed === 1 ? "vez" : "veces"}
-              {d.lastUsedAt ? ` · último uso ${fechaHoraEsMx(d.lastUsedAt)}` : ""}
+              {t("restaurantes.clienteFicha.usado", { count: d.timesUsed })}
+              {d.lastUsedAt ? t("restaurantes.clienteFicha.ultimoUso", { fecha: fechaHoraEsMx(d.lastUsedAt) }) : ""}
             </p>
             <div className="mt-2 flex flex-wrap gap-2">
               {!d.isDefault && (
-                <Button size="sm" variant="outline" disabled={ocupado} onClick={() => ejecutar(() => guardarDomicilio(fetch, api.apiBaseUrl, api.token, api.propertyId, api.customerId, d.id, { is_default: true }), "Domicilio principal actualizado.")}>
-                  Hacer principal
+                <Button size="sm" variant="outline" disabled={ocupado} onClick={() => ejecutar(() => guardarDomicilio(fetch, api.apiBaseUrl, api.token, api.propertyId, api.customerId, d.id, { is_default: true }), t("restaurantes.clienteFicha.principalActualizado"))}>
+                  {t("restaurantes.clienteFicha.hacerPrincipal")}
                 </Button>
               )}
               <Button size="sm" variant="outline" onClick={() => abrir(d.id, d)}>
-                Editar
+                {t("restaurantes.clienteFicha.editar")}
               </Button>
               <Button
                 size="sm"
                 variant="outline"
                 disabled={ocupado}
                 onClick={async () => {
-                  if (await confirmar({ titulo: "Eliminar este domicilio", descripcion: "El cliente podrá volver a darlo en su próximo pedido.", tono: "danger", confirmar: "Eliminar" })) {
-                    await ejecutar(() => borrarDomicilio(fetch, api.apiBaseUrl, api.token, api.propertyId, api.customerId, d.id), "Domicilio eliminado.");
+                  if (await confirmar({ titulo: t("restaurantes.clienteFicha.eliminarDomicilioTitulo"), descripcion: t("restaurantes.clienteFicha.eliminarDomicilioDesc"), tono: "danger", confirmar: t("restaurantes.clienteFicha.eliminar") })) {
+                    await ejecutar(() => borrarDomicilio(fetch, api.apiBaseUrl, api.token, api.propertyId, api.customerId, d.id), t("restaurantes.clienteFicha.domicilioEliminado"));
                   }
                 }}
               >
-                Eliminar
+                {t("restaurantes.clienteFicha.eliminar")}
               </Button>
             </div>
           </li>
@@ -455,29 +486,29 @@ function Domicilios({ domicilios, ejecutar, api, confirmar }: { readonly domicil
       </ul>
       {editando !== null && (
         <form onSubmit={guardar} className="mt-3 grid gap-3 rounded-lg border border-border p-3">
-          <FormField label="Dirección completa" required>
+          <FormField label={t("restaurantes.clienteFicha.direccionCompleta")} required>
             <Input value={form.address} maxLength={1000} onChange={(e) => setForm({ ...form, address: e.target.value })} />
           </FormField>
           <div className="grid grid-cols-2 gap-3">
-            <FormField label="Etiqueta" hint="casa, oficina…">
+            <FormField label={t("restaurantes.clienteFicha.etiqueta")} hint={t("restaurantes.clienteFicha.etiquetaAyuda")}>
               <Input value={form.label} maxLength={60} onChange={(e) => setForm({ ...form, label: e.target.value })} />
             </FormField>
-            <FormField label="Colonia">
+            <FormField label={t("restaurantes.clienteFicha.colonia")}>
               <Input value={form.colonia} maxLength={120} onChange={(e) => setForm({ ...form, colonia: e.target.value })} />
             </FormField>
           </div>
-          <FormField label="Referencias de acceso">
+          <FormField label={t("restaurantes.clienteFicha.referencias")}>
             <Input value={form.access} maxLength={300} onChange={(e) => setForm({ ...form, access: e.target.value })} />
           </FormField>
-          <FormField label="Enlace de mapa" hint="Solo si el cliente lo mandó; debe empezar con https://">
+          <FormField label={t("restaurantes.clienteFicha.enlaceMapa")} hint={t("restaurantes.clienteFicha.enlaceMapaAyuda")}>
             <Input value={form.maps} maxLength={500} onChange={(e) => setForm({ ...form, maps: e.target.value })} />
           </FormField>
           <div className="flex gap-2">
             <Button type="submit" size="sm" disabled={ocupado || (form.address.trim() === "" && actual === null)}>
-              Guardar domicilio
+              {t("restaurantes.clienteFicha.guardarDomicilio")}
             </Button>
             <Button type="button" size="sm" variant="ghost" disabled={ocupado} onClick={() => setEditando(null)}>
-              Cancelar
+              {t("restaurantes.clienteFicha.cancelar")}
             </Button>
           </div>
           {errorForm && (
@@ -495,17 +526,18 @@ function Gustos({ gustos, ejecutar, api, confirmar }: { readonly gustos: readonl
   const [kind, setKind] = useState<TipoGusto>("tortilla");
   const [value, setValue] = useState("");
   const ocupado = useContext(OcupadoContext);
+  const t = useT(restaurantesClienteFicha);
   const agregar = async (e: FormEvent) => {
     e.preventDefault();
     // Solo se limpia el campo si el gusto se guardo: ante una falla se conserva lo tecleado para reintentar.
-    const ok = await ejecutar(() => accionGusto(fetch, api.apiBaseUrl, api.token, api.propertyId, api.customerId, { accion: "agregar", kind, value: value.trim() }), "Gusto agregado.");
+    const ok = await ejecutar(() => accionGusto(fetch, api.apiBaseUrl, api.token, api.propertyId, api.customerId, { accion: "agregar", kind, value: value.trim() }), t("restaurantes.clienteFicha.gustoAgregado"));
     if (ok) setValue("");
   };
   return (
-    <Seccion titulo="Gustos">
-      <p className="m-0 mb-2 text-ui text-muted-foreground">Se aprenden de pedidos confirmados. El agente solo los propone desde la segunda vez; los descartados no se vuelven a proponer.</p>
+    <Seccion titulo={t("restaurantes.clienteFicha.gustos")}>
+      <p className="m-0 mb-2 text-ui text-muted-foreground">{t("restaurantes.clienteFicha.gustosAyuda")}</p>
       {gustos.length === 0 ? (
-        <p className="m-0 text-ui text-muted-foreground">Sin gustos registrados todavía.</p>
+        <p className="m-0 text-ui text-muted-foreground">{t("restaurantes.clienteFicha.sinGustos")}</p>
       ) : (
         <ul className="m-0 grid list-none gap-2 p-0">
           {gustos.map((g) => (
@@ -513,28 +545,28 @@ function Gustos({ gustos, ejecutar, api, confirmar }: { readonly gustos: readonl
               <span className="text-muted-foreground">{ETIQUETA_TIPO_GUSTO[g.kind]}:</span>
               <span className={g.status === "descartada" ? "text-muted-foreground line-through" : "text-foreground"}>{g.value.replace(/_/g, " ")}</span>
               <span className="text-muted-foreground">
-                {g.source === "staff" ? "anotado por el restaurante" : `${g.timesSeen} ${g.timesSeen === 1 ? "vez" : "veces"} · última ${fechaHoraEsMx(g.lastSeenAt)}`}
+                {g.source === "staff" ? t("restaurantes.clienteFicha.anotadoRestaurante") : t("restaurantes.clienteFicha.gustoVeces", { count: g.timesSeen, fecha: fechaHoraEsMx(g.lastSeenAt) })}
               </span>
               <span className="ml-auto flex gap-2">
                 <Button
                   size="sm"
                   variant="outline"
                   disabled={ocupado}
-                  onClick={() => ejecutar(() => accionGusto(fetch, api.apiBaseUrl, api.token, api.propertyId, api.customerId, { accion: g.status === "activa" ? "descartar" : "reactivar", prefId: g.id }), g.status === "activa" ? "Gusto descartado." : "Gusto reactivado.")}
+                  onClick={() => ejecutar(() => accionGusto(fetch, api.apiBaseUrl, api.token, api.propertyId, api.customerId, { accion: g.status === "activa" ? "descartar" : "reactivar", prefId: g.id }), t(g.status === "activa" ? "restaurantes.clienteFicha.gustoDescartado" : "restaurantes.clienteFicha.gustoReactivado"))}
                 >
-                  {g.status === "activa" ? "Descartar" : "Reactivar"}
+                  {t(g.status === "activa" ? "restaurantes.clienteFicha.descartar" : "restaurantes.clienteFicha.reactivar")}
                 </Button>
                 <Button
                   size="sm"
                   variant="ghost"
                   disabled={ocupado}
                   onClick={async () => {
-                    if (await confirmar({ titulo: "Eliminar este gusto", tono: "danger", confirmar: "Eliminar" })) {
-                      await ejecutar(() => accionGusto(fetch, api.apiBaseUrl, api.token, api.propertyId, api.customerId, { accion: "eliminar", prefId: g.id }), "Gusto eliminado.");
+                    if (await confirmar({ titulo: t("restaurantes.clienteFicha.eliminarGustoTitulo"), tono: "danger", confirmar: t("restaurantes.clienteFicha.eliminar") })) {
+                      await ejecutar(() => accionGusto(fetch, api.apiBaseUrl, api.token, api.propertyId, api.customerId, { accion: "eliminar", prefId: g.id }), t("restaurantes.clienteFicha.gustoEliminado"));
                     }
                   }}
                 >
-                  Eliminar
+                  {t("restaurantes.clienteFicha.eliminar")}
                 </Button>
               </span>
             </li>
@@ -542,20 +574,20 @@ function Gustos({ gustos, ejecutar, api, confirmar }: { readonly gustos: readonl
         </ul>
       )}
       <form onSubmit={agregar} className="mt-3 grid grid-cols-[auto_1fr_auto] items-end gap-2">
-        <FormField label="Tipo">
+        <FormField label={t("restaurantes.clienteFicha.tipo")}>
           <Selector value={kind} onChange={(e) => setKind(e.target.value as TipoGusto)}>
-            {TIPOS_GUSTO.map((t) => (
-              <option key={t} value={t}>
-                {ETIQUETA_TIPO_GUSTO[t]}
+            {TIPOS_GUSTO.map((tipo) => (
+              <option key={tipo} value={tipo}>
+                {ETIQUETA_TIPO_GUSTO[tipo]}
               </option>
             ))}
           </Selector>
         </FormField>
-        <FormField label="Valor">
+        <FormField label={t("restaurantes.clienteFicha.valor")}>
           <Input value={value} maxLength={120} onChange={(e) => setValue(e.target.value)} />
         </FormField>
         <Button type="submit" size="sm" disabled={ocupado || value.trim() === ""}>
-          Agregar
+          {t("restaurantes.clienteFicha.agregar")}
         </Button>
       </form>
     </Seccion>
@@ -564,22 +596,23 @@ function Gustos({ gustos, ejecutar, api, confirmar }: { readonly gustos: readonl
 
 function Pedidos({ pedidos, ejecutar, api }: { readonly pedidos: FichaCliente["orders"]; readonly ejecutar: Ejecutar; readonly api: Api }) {
   const ocupado = useContext(OcupadoContext);
+  const t = useT(restaurantesClienteFicha);
   return (
-    <Seccion titulo="Historial de pedidos">
+    <Seccion titulo={t("restaurantes.clienteFicha.historialPedidos")}>
       {pedidos.length === 0 ? (
-        <p className="m-0 text-ui text-muted-foreground">Sin pedidos registrados.</p>
+        <p className="m-0 text-ui text-muted-foreground">{t("restaurantes.clienteFicha.sinPedidosRegistrados")}</p>
       ) : (
         <ul className="m-0 grid list-none gap-3 p-0">
           {pedidos.map((p) => (
             <li key={p.id} className="rounded-lg border border-border p-3 text-ui">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="font-semibold text-foreground">{p.orderNumber === null ? "Pedido" : `Pedido ${p.orderNumber}`}</span>
+                <span className="font-semibold text-foreground">{p.orderNumber === null ? t("restaurantes.clienteFicha.pedido") : t("restaurantes.clienteFicha.pedidoNum", { n: p.orderNumber })}</span>
                 <StatusBadge tone={statusTone(ORDER_STATUS_TONES, p.status)}>{p.status.replace(/_/g, " ")}</StatusBadge>
-                {p.pedidoFalso && <StatusBadge tone="danger">Marcado como falso</StatusBadge>}
+                {p.pedidoFalso && <StatusBadge tone="danger">{t("restaurantes.clienteFicha.marcadoFalso")}</StatusBadge>}
                 <span className="ml-auto text-foreground">{formatMoney(p.total)}</span>
               </div>
               <p className="m-0 mt-1 text-muted-foreground">
-                {fechaHoraEsMx(p.createdAt)} · {p.branch ?? "sin sucursal"} · {p.source}
+                {fechaHoraEsMx(p.createdAt)} · {p.branch ?? t("restaurantes.clienteFicha.sinSucursal")} · {p.source}
               </p>
               {p.items.length > 0 && <p className="m-0 text-foreground">{p.items.map((i) => `${i.quantity}× ${i.name}`).join(", ")}</p>}
               <Button
@@ -587,9 +620,9 @@ function Pedidos({ pedidos, ejecutar, api }: { readonly pedidos: FichaCliente["o
                 variant="outline"
                 className="mt-2"
                 disabled={ocupado}
-                onClick={() => ejecutar(() => marcarPedidoFalso(fetch, api.apiBaseUrl, api.token, api.propertyId, api.customerId, p.id, !p.pedidoFalso), p.pedidoFalso ? "Se quitó la marca de pedido falso." : "Pedido marcado como falso.")}
+                onClick={() => ejecutar(() => marcarPedidoFalso(fetch, api.apiBaseUrl, api.token, api.propertyId, api.customerId, p.id, !p.pedidoFalso), t(p.pedidoFalso ? "restaurantes.clienteFicha.marcaQuitada" : "restaurantes.clienteFicha.marcadoFalsoOk"))}
               >
-                {p.pedidoFalso ? "Quitar marca de falso" : "Marcar como falso"}
+                {t(p.pedidoFalso ? "restaurantes.clienteFicha.quitarFalso" : "restaurantes.clienteFicha.marcarFalso")}
               </Button>
             </li>
           ))}
@@ -604,6 +637,7 @@ function Politica({ puedeAdministrar, api }: { readonly puedeAdministrar: boolea
   const [umbral, setUmbral] = useState("2");
   const [ventana, setVentana] = useState("90");
   const [estado, setEstado] = useState<{ tono: "success" | "danger"; texto: string } | null>(null);
+  const t = useT(restaurantesClienteFicha);
 
   useEffect(() => {
     let cancelado = false;
@@ -614,7 +648,7 @@ function Politica({ puedeAdministrar, api }: { readonly puedeAdministrar: boolea
         setUmbral(String(p.umbralNoRecogidos));
         setVentana(String(p.ventanaDias));
       })
-      .catch((err: unknown) => !cancelado && setEstado({ tono: "danger", texto: mensajeDeError(err, "No se pudo cargar la política.") }));
+      .catch((err: unknown) => !cancelado && setEstado({ tono: "danger", texto: mensajeDeError(err, t("restaurantes.clienteFicha.politicaErrorCargar")) }));
     return () => {
       cancelado = true;
     };
@@ -625,31 +659,31 @@ function Politica({ puedeAdministrar, api }: { readonly puedeAdministrar: boolea
     try {
       const nueva = await guardarPoliticaReincidencia(fetch, api.apiBaseUrl, api.token, api.propertyId, { umbralNoRecogidos: Number(umbral), ventanaDias: Number(ventana) });
       setPolitica(nueva);
-      setEstado({ tono: "success", texto: "Política guardada." });
+      setEstado({ tono: "success", texto: t("restaurantes.clienteFicha.politicaGuardada") });
     } catch (err) {
-      setEstado({ tono: "danger", texto: mensajeDeError(err, "No se pudo guardar la política.") });
+      setEstado({ tono: "danger", texto: mensajeDeError(err, t("restaurantes.clienteFicha.politicaErrorGuardar")) });
     }
   };
 
   return (
-    <Seccion titulo="Política de reincidentes">
+    <Seccion titulo={t("restaurantes.clienteFicha.politica")}>
       <p className="m-0 mb-2 text-ui text-muted-foreground">
         {politica === null
-          ? "Cargando política…"
+          ? t("restaurantes.clienteFicha.politicaCargando")
           : politica.umbralNoRecogidos === 0
-            ? "Apagada: ningún pedido se retiene por historial."
-            : `Con ${politica.umbralNoRecogidos} o más pedidos no recogidos o falsos en ${politica.ventanaDias} días, el siguiente pedido por WhatsApp o llamada lo confirma la sucursal (el agente solo dice que la sucursal lo confirma).`}
+            ? t("restaurantes.clienteFicha.politicaApagada")
+            : t("restaurantes.clienteFicha.politicaActiva", { umbral: politica.umbralNoRecogidos, dias: politica.ventanaDias })}
       </p>
       {puedeAdministrar && politica && (
         <form onSubmit={guardar} className="grid grid-cols-[1fr_1fr_auto] items-end gap-2">
-          <FormField label="Umbral (0 = apagada)">
+          <FormField label={t("restaurantes.clienteFicha.umbral")}>
             <Input inputMode="numeric" value={umbral} maxLength={2} onChange={(e) => setUmbral(e.target.value.replace(/\D/g, ""))} />
           </FormField>
-          <FormField label="Ventana (días)">
+          <FormField label={t("restaurantes.clienteFicha.ventana")}>
             <Input inputMode="numeric" value={ventana} maxLength={3} onChange={(e) => setVentana(e.target.value.replace(/\D/g, ""))} />
           </FormField>
           <Button type="submit" size="sm" disabled={umbral === "" || ventana === ""}>
-            Guardar
+            {t("restaurantes.clienteFicha.guardar")}
           </Button>
         </form>
       )}
@@ -664,6 +698,7 @@ function Politica({ puedeAdministrar, api }: { readonly puedeAdministrar: boolea
 
 function Arco({ api, ejecutar, confirmar }: { readonly api: Api; readonly ejecutar: Ejecutar; readonly confirmar: Confirmar }) {
   const ocupado = useContext(OcupadoContext);
+  const t = useT(restaurantesClienteFicha);
   const exportar = () =>
     ejecutar(async () => {
       const datos = await exportarDatosCliente(fetch, api.apiBaseUrl, api.token, api.propertyId, api.customerId);
@@ -674,27 +709,28 @@ function Arco({ api, ejecutar, confirmar }: { readonly api: Api; readonly ejecut
       enlace.download = `datos-del-cliente-${api.customerId}.json`;
       enlace.click();
       URL.revokeObjectURL(url);
-    }, "Exportación lista: se descargó el archivo con todo lo que se guarda de este cliente.");
+    }, t("restaurantes.clienteFicha.exportacionLista"));
 
   const borrar = async () => {
     const ok = await confirmar({
-      titulo: "Borrar la memoria de este cliente",
-      descripcion: "Se eliminan sus domicilios, gustos, notas, nombre y fecha de nacimiento. Los pedidos ya cumplidos se conservan. No se puede deshacer.",
+      titulo: t("restaurantes.clienteFicha.borrarTitulo"),
+      descripcion: t("restaurantes.clienteFicha.borrarDesc"),
       tono: "danger",
-      confirmar: "Borrar memoria",
+      confirmar: t("restaurantes.clienteFicha.borrarConfirmar"),
     });
-    if (ok) await ejecutar(() => borrarMemoriaCliente(fetch, api.apiBaseUrl, api.token, api.propertyId, api.customerId), "Memoria del cliente borrada.");
+    if (ok) await ejecutar(() => borrarMemoriaCliente(fetch, api.apiBaseUrl, api.token, api.propertyId, api.customerId), t("restaurantes.clienteFicha.memoriaBorrada"));
   };
 
   return (
-    <Seccion titulo="Privacidad (ARCO)">
-      <p className="m-0 mb-2 text-ui text-muted-foreground">Acceso: exporta todo lo que se guarda del titular, incluidos sus gustos. Cancelación: borra su memoria.</p>
+    <Seccion titulo={t("restaurantes.clienteFicha.arco")}>
+      <p className="m-0 mb-2 text-ui text-muted-foreground">{t("restaurantes.clienteFicha.arcoAyuda")}</p>
       <div className="flex flex-wrap gap-2">
         <Button size="sm" variant="outline" disabled={ocupado} onClick={exportar}>
-          Exportar datos del cliente
+          {t("restaurantes.clienteFicha.exportarDatos")}
         </Button>
         <Button size="sm" variant="outline" disabled={ocupado} onClick={borrar}>
-          Borrar memoria del cliente
+          {t("restaurantes.clienteFicha.borrarMemoria")}
+
         </Button>
       </div>
     </Seccion>

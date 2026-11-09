@@ -1,7 +1,8 @@
 export { ChatDatosShell } from "./ChatDatosShell";
 export { SeccionFijadosCopiloto, MAX_FIJADOS_VISIBLES } from "./SeccionFijadosCopiloto";
+export { useIdiomaCopiloto, traductorCopiloto, type ClaveCopiloto, type TraducirCopiloto } from "./idioma";
 export type { SeccionFijadosCopilotoProps } from "./SeccionFijadosCopiloto";
-export { CopilotoAccionError, CopilotoErrorTransporte, FijadosErrorCliente } from "./tipos";
+export { CopilotoAccionError, CopilotoErrorTransporte, FijadosErrorCliente, MOTIVOS_VALORACION_COPILOTO } from "./tipos";
 export { CopilotoTarjetaAccion, TOOL_PROPONER_ACCION, propuestaDeBloque } from "./CopilotoTarjetaAccion";
 export type {
   ChatDatosShellProps,
@@ -26,6 +27,8 @@ export type {
   CopilotoStatus,
   CopilotoTextos,
   CopilotoTransporte,
+  CopilotoValoracion,
+  MotivoValoracionCopiloto,
   FijadoResultado,
   FijadoResumen,
   FijadosCliente,

@@ -3,7 +3,7 @@
 // datos, sin permiso o con la base sin migrar NO muestra nada (nunca un aviso de adorno). Cada aviso se puede cerrar por sesion.
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Button, Callout } from "@atiende/ui";
+import { AvisoPagina, Button, Callout } from "@atiende/ui";
 import { avisosDePlan, leerPlanUso } from "../lib/plan-uso-client.ts";
 import type { AvisoPlan } from "../lib/plan-uso-client.ts";
 
@@ -58,27 +58,30 @@ export function BannerPlan({ apiBaseUrl, token, planHref }: BannerPlanProps) {
   const visibles = pathname === planHref ? [] : avisos.filter((a) => !cerrados.includes(a.clave));
   if (visibles.length === 0) return null;
 
+  // Debajo del encabezado de la pantalla (ranura de avisos), no entre el antetitulo y el contenido (auditoria R2 #5).
   return (
-    <div className="mb-3 space-y-2" data-testid="banner-plan">
-      {visibles.map((a) => (
-        <Callout
-          key={a.clave}
-          tone={a.tono}
-          titulo={a.titulo}
-          accion={
-            <Button asChild variant="outline" size="xs">
-              <Link to={planHref}>Ver plan y uso</Link>
-            </Button>
-          }
-          onDismiss={() => {
-            const siguiente = [...cerrados, a.clave];
-            setCerrados(siguiente);
-            guardarCerrados(siguiente);
-          }}
-        >
-          {a.detalle}
-        </Callout>
-      ))}
-    </div>
+    <AvisoPagina>
+      <div className="mb-3 space-y-2" data-testid="banner-plan">
+        {visibles.map((a) => (
+          <Callout
+            key={a.clave}
+            tone={a.tono}
+            titulo={a.titulo}
+            accion={
+              <Button asChild variant="outline" size="xs">
+                <Link to={planHref}>Ver plan y uso</Link>
+              </Button>
+            }
+            onDismiss={() => {
+              const siguiente = [...cerrados, a.clave];
+              setCerrados(siguiente);
+              guardarCerrados(siguiente);
+            }}
+          >
+            {a.detalle}
+          </Callout>
+        ))}
+      </div>
+    </AvisoPagina>
   );
 }

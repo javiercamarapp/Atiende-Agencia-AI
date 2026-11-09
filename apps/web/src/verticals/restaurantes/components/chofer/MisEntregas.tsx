@@ -3,7 +3,8 @@
 // entregado a los 2 min. Sin senal, «Entregado» se guarda en el celular y se reenvia con la MISMA llave de idempotencia al volver la red.
 // Si el servidor aun no tiene la ruta (501, backend A1 sin desplegar) avisa con `onNoDisponible` y el panel cae a la vista anterior.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { EstadoCargando, EstadoError, EstadoVacio, notify } from "@atiende/ui";
+import { EstadoCargando, EstadoError, EstadoVacio, notify, useT } from "@atiende/ui";
+import { restaurantesChofer } from "@atiende/ui/i18n/restaurantes/chofer";
 import type { EntregaChofer, ProblemaEntrada } from "@atiende/domain-restaurantes/operacion";
 import { PackageOpen, RefreshCw, WifiOff } from "lucide-react";
 import { Button } from "@atiende/ui";
@@ -44,6 +45,7 @@ function mensajeDe(err: unknown, porOmision: string): string {
 }
 
 export function MisEntregas({ apiBaseUrl, token, propertyId, fetchImpl, identidad, almacen: almacenProp, onNoDisponible, onListaLista, abrirTelefono = (enlace) => void (window.location.href = enlace) }: MisEntregasProps) {
+  const t = useT(restaurantesChofer);
   const http = useMemo<typeof fetch>(() => fetchImpl ?? ((...args) => fetch(...args)), [fetchImpl]);
   const almacen = almacenProp === undefined ? almacenDelNavegador() : almacenProp;
   const clave = useMemo(() => claveCola(propertyId, identidad), [propertyId, identidad]);
@@ -90,15 +92,15 @@ export function MisEntregas({ apiBaseUrl, token, propertyId, fetchImpl, identida
       try {
         await entregarPedidoChofer(http, apiBaseUrl, token, propertyId, p.orderId, { cobradoMonto: p.cobradoMonto }, p.llave);
         quitarPendiente(almacen, clave, p.orderId, Date.now());
-        notify.success("Se envió una entrega que estaba guardada en tu celular.");
+        notify.success(t("restaurantes.chofer.pendienteEnviado"));
       } catch (err) {
         if (esErrorDeRed(err)) break;
         quitarPendiente(almacen, clave, p.orderId, Date.now());
-        notify.warning(mensajeDe(err, "Una entrega guardada ya no se pudo enviar. Avisa al encargado."));
+        notify.warning(mensajeDe(err, t("restaurantes.chofer.pendienteFallido")));
       }
     }
     setPendientes(leerPendientes(almacen, clave, Date.now()).map((p) => p.orderId));
-  }, [almacen, http, apiBaseUrl, token, propertyId, clave]);
+  }, [almacen, http, apiBaseUrl, token, propertyId, clave, t]);
 
   const consultar = useCallback(async () => {
     try {
@@ -117,10 +119,10 @@ export function MisEntregas({ apiBaseUrl, token, propertyId, fetchImpl, identida
       }
       if (err instanceof SessionExpiredError) return; // la pagina escucha el evento y redirige al login
       // Con datos ya en pantalla se conservan (banner «Sin conexion»); sin ellos, error con «Reintentar».
-      setCarga((previo) => (previo.fase === "listo" ? previo : { fase: "error", mensaje: mensajeDe(err, "No se pudieron cargar tus entregas.") }));
+      setCarga((previo) => (previo.fase === "listo" ? previo : { fase: "error", mensaje: mensajeDe(err, t("restaurantes.chofer.errorCarga")) }));
       throw err; // cuenta como fallo para el backoff del sondeo
     }
-  }, [enviarPendientes, http, apiBaseUrl, token, propertyId, onNoDisponible, onListaLista]);
+  }, [enviarPendientes, http, apiBaseUrl, token, propertyId, onNoDisponible, onListaLista, t]);
 
   const sondeo = useSondeoPedidos({ clave: propertyId, activo: true, consulta: consultar, baseMs: SONDEO_CHOFER_MS });
   refrescarRef.current = sondeo.refrescar;
@@ -161,20 +163,20 @@ export function MisEntregas({ apiBaseUrl, token, propertyId, fetchImpl, identida
     try {
       const r = await entregarPedidoChofer(http, apiBaseUrl, token, propertyId, e.id, { cobradoMonto }, llave);
       recordarCerrada({ ...e, estado: "entregado", puedeDeshacerHasta: r.puedeDeshacerHasta });
-      notify.success(`Pedido #${e.numero} entregado.`);
+      notify.success(t("restaurantes.chofer.entregado", { numero: String(e.numero) }));
     } catch (err) {
       if (esErrorDeRed(err)) {
         const { persistida } = encolarEntrega(almacen, clave, { orderId: e.id, llave, cobradoMonto, en: Date.now() });
         setPendientes(leerPendientes(almacen, clave, Date.now()).map((p) => p.orderId));
         if (persistida) {
           setSinRespaldo(false);
-          notify.warning("Sin conexión: la entrega quedó guardada en tu celular y se enviará sola cuando vuelva la señal.");
+          notify.warning(t("restaurantes.chofer.guardadaSinRed"));
         } else {
           setSinRespaldo(true);
-          notify.warning("Sin conexión y no se pudo guardar en el celular. No cierres ni recargues esta pantalla: la entrega se enviará sola al volver la señal.");
+          notify.warning(t("restaurantes.chofer.sinRespaldoSinRed"));
         }
       } else {
-        notify.error(mensajeDe(err, "No se pudo marcar la entrega."));
+        notify.error(mensajeDe(err, t("restaurantes.chofer.errorEntregar")));
         refrescarRef.current();
       }
     } finally {
@@ -188,10 +190,10 @@ export function MisEntregas({ apiBaseUrl, token, propertyId, fetchImpl, identida
     try {
       await reportarProblemaChofer(http, apiBaseUrl, token, propertyId, e.id, entrada, nuevaLlaveIdempotencia());
       recordarCerrada({ ...e, estado: "problema" });
-      notify.success(`Se avisó al encargado del pedido #${e.numero}.`);
+      notify.success(t("restaurantes.chofer.problemaAvisado", { numero: String(e.numero) }));
       setParaProblema(null);
     } catch (err) {
-      notify.error(esErrorDeRed(err) ? "Sin conexión: no se pudo avisar al encargado. Intenta de nuevo cuando vuelva la señal." : mensajeDe(err, "No se pudo reportar el problema."));
+      notify.error(esErrorDeRed(err) ? t("restaurantes.chofer.problemaSinRed") : mensajeDe(err, t("restaurantes.chofer.errorProblema")));
     } finally {
       marcarEnCurso(e.id, null);
     }
@@ -203,14 +205,14 @@ export function MisEntregas({ apiBaseUrl, token, propertyId, fetchImpl, identida
       await deshacerEntregaChofer(http, apiBaseUrl, token, propertyId, e.id, nuevaLlaveIdempotencia());
       olvidarCerrada(e.id);
       setServidor((previo) => (previo.some((x) => x.id === e.id) ? previo.map((x) => (x.id === e.id ? { ...e, estado: "en_camino", puedeDeshacerHasta: null } : x)) : [...previo, { ...e, estado: "en_camino", puedeDeshacerHasta: null }]));
-      notify.success(`La entrega del pedido #${e.numero} se deshizo.`);
+      notify.success(t("restaurantes.chofer.deshecha", { numero: String(e.numero) }));
       refrescarRef.current();
     } catch (err) {
       if (err instanceof RepartidorClientError && err.code === "fuera_de_ventana") {
         olvidarCerrada(e.id);
-        notify.warning("Ya pasó el tiempo para deshacer. Avisa al encargado.");
+        notify.warning(t("restaurantes.chofer.fueraDeVentana"));
       } else {
-        notify.error(esErrorDeRed(err) ? "Sin conexión: no se pudo deshacer. Intenta de nuevo." : mensajeDe(err, "No se pudo deshacer la entrega."));
+        notify.error(esErrorDeRed(err) ? t("restaurantes.chofer.deshacerSinRed") : mensajeDe(err, t("restaurantes.chofer.errorDeshacer")));
       }
     } finally {
       marcarEnCurso(e.id, null);
@@ -223,9 +225,9 @@ export function MisEntregas({ apiBaseUrl, token, propertyId, fetchImpl, identida
       const { telefono } = await pedirTelefonoCliente(http, apiBaseUrl, token, propertyId, e.id, nuevaLlaveIdempotencia());
       const enlace = enlaceTelefono(telefono);
       if (enlace) abrirTelefono(enlace);
-      else notify.error("El número del cliente no es válido. Avisa al encargado.");
+      else notify.error(t("restaurantes.chofer.numeroInvalido"));
     } catch (err) {
-      notify.error(esErrorDeRed(err) ? "Sin conexión: no se pudo obtener el número." : mensajeDe(err, "No se pudo obtener el número del cliente."));
+      notify.error(esErrorDeRed(err) ? t("restaurantes.chofer.errorNumeroSinRed") : mensajeDe(err, t("restaurantes.chofer.errorNumero")));
     } finally {
       marcarEnCurso(e.id, null);
     }
@@ -238,32 +240,30 @@ export function MisEntregas({ apiBaseUrl, token, propertyId, fetchImpl, identida
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-2">
         <p className="m-0 text-sm text-muted-foreground" aria-live="polite">
-          {activas === 1 ? "1 entrega en camino" : `${activas} entregas en camino`} · {etiquetaActualizado(sondeo.ultimaActualizacion, ahora)}
+          {t("restaurantes.chofer.enCamino", { count: activas })} · {etiquetaActualizado(sondeo.ultimaActualizacion, ahora)}
         </p>
-        <Button type="button" variant="outline" size="sm" className="h-14" loading={sondeo.consultando} onClick={() => sondeo.refrescar()} aria-label="Actualizar mis entregas">
+        <Button type="button" variant="outline" size="sm" className="h-14" loading={sondeo.consultando} onClick={() => sondeo.refrescar()} aria-label={t("restaurantes.chofer.actualizarAria")}>
           <RefreshCw />
-          Actualizar
+          {t("restaurantes.chofer.actualizar")}
         </Button>
       </div>
 
       {sinConexion && (
         <p role="status" className="m-0 flex items-center gap-2 rounded-lg bg-warning-tint px-3 py-2 text-sm text-warning">
           <WifiOff className="size-4 shrink-0" aria-hidden="true" />
-          Sin conexión — reintentando. Lo que ves puede no estar al día.
+          {t("restaurantes.chofer.sinConexion")}
         </p>
       )}
       {pendientes.length > 0 && (
         <p role="status" className="m-0 rounded-lg bg-warning-tint px-3 py-2 text-sm text-warning">
-          {sinRespaldo
-            ? `${pendientes.length === 1 ? "Una entrega está pendiente" : `${pendientes.length} entregas están pendientes`} y NO se pudo guardar en el celular: no cierres ni recargues esta pantalla. Se enviará sola al volver la señal.`
-            : `${pendientes.length === 1 ? "Una entrega está guardada en tu celular" : `${pendientes.length} entregas están guardadas en tu celular`} y se enviará sola al volver la señal.`}
+          {sinRespaldo ? t("restaurantes.chofer.pendientesSinRespaldo", { count: pendientes.length }) : t("restaurantes.chofer.pendientesGuardadas", { count: pendientes.length })}
         </p>
       )}
 
-      {carga.fase === "cargando" && <EstadoCargando etiqueta="Cargando tus entregas…" />}
+      {carga.fase === "cargando" && <EstadoCargando etiqueta={t("restaurantes.chofer.cargandoEntregas")} />}
       {carga.fase === "error" && <EstadoError mensaje={carga.mensaje} onReintentar={() => sondeo.refrescar()} />}
       {carga.fase === "listo" && lista.length === 0 && (
-        <EstadoVacio icon={PackageOpen} titulo="Sin entregas en camino" mensaje="Cuando el encargado marque «Salió» con tu nombre, tus pedidos aparecen aquí." />
+        <EstadoVacio icon={PackageOpen} titulo={t("restaurantes.chofer.vacioTitulo")} mensaje={t("restaurantes.chofer.vacioTexto")} />
       )}
 
       {lista.map((e) => (

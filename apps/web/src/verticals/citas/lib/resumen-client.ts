@@ -1,6 +1,7 @@
 // Lógica de datos del panel Resumen de citas (C-05) -- GET
 // /v1/citas/properties/:propertyId/resumen (apps/api/.../citas/admin.ts). Solo lectura de
 // conteos agregados; `fetchImpl` inyectado como el resto de lib/*.ts para probar la red real sin jsdom.
+import { localeActivo } from "@atiende/ui";
 import { fetchJson } from "./admin-client.ts";
 
 export type EstadoCita = "pending" | "confirmed" | "completed" | "cancelled" | "no_show";
@@ -49,9 +50,9 @@ export async function fetchCitasResumen(fetchImpl: typeof fetch, apiBaseUrl: str
  * mediodía UTC y se formatea en UTC para que la zona del navegador nunca corra la fecha un día
  * (mismo criterio que `parseFechaSolo` de formato-fecha.ts). */
 export function formatDiaNegocio(dateStr: string): string {
-  return new Intl.DateTimeFormat("es-MX", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" }).format(new Date(`${dateStr}T12:00:00.000Z`));
+  return new Intl.DateTimeFormat(localeActivo(), { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" }).format(new Date(`${dateStr}T12:00:00.000Z`));
 }
 
 export function formatDiaCorto(dateStr: string): string {
-  return new Intl.DateTimeFormat("es-MX", { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(`${dateStr}T12:00:00.000Z`));
+  return new Intl.DateTimeFormat(localeActivo(), { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(`${dateStr}T12:00:00.000Z`));
 }

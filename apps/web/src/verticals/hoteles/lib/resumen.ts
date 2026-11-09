@@ -1,6 +1,7 @@
 // UNI-RES-hoteles -- reglas puras del Resumen de hoteles (que ve cada rol y como se redacta cada metrica). Aparte de
 // pages/Dashboard.tsx para probarlas sin DOM. Todos los sets son COSMETICOS: el servidor (`assertVerticalRole`) es la
 // unica barrera real; aqui solo se evita pedir (y pintar como error) lo que el servidor respondera 403.
+import { localeActivo } from "@atiende/ui";
 import { AGENT_VIEW_ROLES } from "./agentes-client.ts";
 import { NIGHT_AUDIT_VIEW_ROLES } from "./night-audit-client.ts";
 import { RECEPCION_VIEW_ROLES } from "./recepcion-client.ts";
@@ -52,10 +53,10 @@ export function plural(n: number, uno: string, varios: string): string {
   return `${n} ${n === 1 ? uno : varios}`;
 }
 
-/** "2 oct, 14:05" en la zona del negocio (CDMX, la misma de `hoyFechaSolo`); fecha invalida = null. */
+/** "2 oct, 14:05" («Oct 2, 02:05 PM» en EN) en la zona del negocio (CDMX, la misma de `hoyFechaSolo`); fecha invalida = null. */
 export function cuandoNegocio(iso: string | null): string | null {
   if (iso === null) return null;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
-  return new Intl.DateTimeFormat("es-MX", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "America/Mexico_City" }).format(d);
+  return new Intl.DateTimeFormat(localeActivo(), { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "America/Mexico_City" }).format(d);
 }

@@ -1,0 +1,33 @@
+import type { Traduccion } from "../../../tipos.ts";
+import type { citasServicios } from "../../citas/servicios.ts";
+
+export const citasServiciosEn: Traduccion<typeof citasServicios> = {
+  "citas.servicios.errorLista": "Couldn't load the services.",
+  "citas.servicios.errorCrear": "Couldn't create the service.",
+  "citas.servicios.titulo": "Services",
+  "citas.servicios.nuevo": "New service",
+  "citas.servicios.nombre": "Name",
+  "citas.servicios.nombrePlaceholder": "Name (e.g. General consultation)",
+  "citas.servicios.duracionMin": "Duration (min)",
+  "citas.servicios.precioOpcional": "Price (optional)",
+  "citas.servicios.creando": "Creating…",
+  "citas.servicios.crear": "Create service",
+  "citas.servicios.cargandoLista": "Loading services…",
+  "citas.servicios.vacio": "This business doesn't have any active services yet.",
+  "citas.servicios.minutos": "{min} min",
+  "citas.servicios.errorFicha": "Couldn't load the service.",
+  "citas.servicios.errorGuardar": "Couldn't save the service.",
+  "citas.servicios.volver": "Back to services",
+  "citas.servicios.cargandoFicha": "Loading service…",
+  "citas.servicios.editar": "Edit service",
+  "citas.servicios.duracion": "Duration",
+  "citas.servicios.colchonAntes": "Buffer before",
+  "citas.servicios.colchonDespues": "Buffer after",
+  "citas.servicios.precio": "Price",
+  "citas.servicios.estado": "Status",
+  "citas.servicios.activo": "Active",
+  "citas.servicios.inactivo": "Inactive",
+  "citas.servicios.precioVacio": "Price (blank = no fixed price)",
+  "citas.servicios.guardando": "Saving…",
+  "citas.servicios.guardarCambios": "Save changes",
+};

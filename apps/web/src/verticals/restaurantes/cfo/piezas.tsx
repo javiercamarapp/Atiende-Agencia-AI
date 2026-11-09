@@ -3,10 +3,10 @@ import type { ReactNode } from "react";
 import { LockKeyhole, PlugZap } from "lucide-react";
 import { AVISO_CFO } from "@atiende/domain-restaurantes/cfo";
 import type { Cifra, Confianza, VistaCfoBase } from "@atiende/domain-restaurantes/cfo";
-import { Callout, EstadoCargando, EstadoError, EstadoVacio, StatusBadge } from "@atiende/ui";
+import { Callout, EstadoCargando, EstadoError, EstadoVacio, StatusBadge, useI18n, useT } from "@atiende/ui";
+import { restaurantesCfo } from "@atiende/ui/i18n/restaurantes/cfo";
 import type { StatusTone } from "@atiende/ui";
 import { ETIQUETA_CONFIANZA } from "./formato.ts";
-import { MENSAJE_SIN_ACCESO_CFO } from "./cfo-client.ts";
 import type { CargaCfo } from "./use-carga-cfo.ts";
 
 const TONO: Readonly<Record<Confianza, StatusTone>> = {
@@ -22,9 +22,10 @@ const TONO: Readonly<Record<Confianza, StatusTone>> = {
  * (en el estado de resultados cada línea lo lleva; en tarjetas sería ruido).
  */
 export function ChipConfianza({ confianza, fuente, mostrarMedido = false }: { readonly confianza: Confianza; readonly fuente?: string; readonly mostrarMedido?: boolean }) {
+  const t = useT(restaurantesCfo);
   if (confianza === "medido" && !mostrarMedido) return null;
   return (
-    <StatusBadge tone={TONO[confianza]} data-testid="chip-confianza" data-confianza={confianza} title={fuente ? `Fuente: ${fuente}` : undefined} className="px-1.5 py-0 text-2xs">
+    <StatusBadge tone={TONO[confianza]} data-testid="chip-confianza" data-confianza={confianza} title={fuente ? t("restaurantes.cfo.fuente", { fuente }) : undefined} className="px-1.5 py-0 text-2xs">
       {ETIQUETA_CONFIANZA[confianza]}
     </StatusBadge>
   );
@@ -36,14 +37,15 @@ export function ChipDeCifra({ cifra, mostrarMedido }: { readonly cifra: Cifra; r
 
 /** Avisos del servicio («Sin datos de mostrador de SoftRestaurant», «Envío de comandas apagado», «Costo de Meta no medido») + bloques sin migrar. */
 export function AvisosCfo({ vista }: { readonly vista: Pick<VistaCfoBase, "avisos" | "bloques" | "disponible"> }) {
+  const t = useT(restaurantesCfo);
   const faltantes: string[] = [];
-  if (!vista.bloques.ventas) faltantes.push("ventas");
-  if (!vista.bloques.clientes) faltantes.push("clientes y operación");
-  if (!vista.bloques.captura) faltantes.push("captura de costos");
+  if (!vista.bloques.ventas) faltantes.push(t("restaurantes.cfo.faltaVentas"));
+  if (!vista.bloques.clientes) faltantes.push(t("restaurantes.cfo.faltaClientes"));
+  if (!vista.bloques.captura) faltantes.push(t("restaurantes.cfo.faltaCaptura"));
   if (vista.avisos.length === 0 && faltantes.length === 0) return null;
   return (
-    <Callout tone={faltantes.length > 0 ? "warning" : "info"} titulo={faltantes.length > 0 ? "Datos incompletos" : "Avisos de los datos"} data-testid="cfo-avisos">
-      {faltantes.length > 0 && <p>Todavía no hay datos de {faltantes.join(", ")} en este negocio: esas cifras aparecen como «—» y no se estiman.</p>}
+    <Callout tone={faltantes.length > 0 ? "warning" : "info"} titulo={t(faltantes.length > 0 ? "restaurantes.cfo.datosIncompletos" : "restaurantes.cfo.avisosDatos")} data-testid="cfo-avisos">
+      {faltantes.length > 0 && <p>{t("restaurantes.cfo.sinDatosDe", { lista: faltantes.join(", ") })}</p>}
       {vista.avisos.length > 0 && (
         <ul className="list-disc space-y-0.5 pl-4">
           {vista.avisos.map((a) => (
@@ -55,28 +57,33 @@ export function AvisosCfo({ vista }: { readonly vista: Pick<VistaCfoBase, "aviso
   );
 }
 
-/** Aviso de no sustitución (siempre visible en el CFO). */
+/** Aviso de no sustitución (siempre visible en el CFO). El del servidor viene en espanol: en ingles, si es el aviso estandar, va el del catalogo. */
 export function AvisoNoSustitucion({ texto }: { readonly texto?: string }) {
+  const { t, idioma } = useI18n(restaurantesCfo);
+  const propio = texto && texto.length > 0 ? texto : AVISO_CFO;
   return (
     <p data-testid="cfo-aviso-legal" className="text-xs text-muted-foreground">
-      {texto && texto.length > 0 ? texto : AVISO_CFO}
+      {idioma !== "es" && propio === AVISO_CFO ? t("restaurantes.cfo.avisoLegal") : propio}
     </p>
   );
 }
 
 export function SinAccesoCfo() {
-  return <EstadoVacio icon={LockKeyhole} titulo={MENSAJE_SIN_ACCESO_CFO} mensaje="El tablero financiero es solo para el dueño y los administradores. Si lo necesitas, pídele acceso al dueño del negocio." />;
+  const t = useT(restaurantesCfo);
+  return <EstadoVacio icon={LockKeyhole} titulo={t("restaurantes.cfo.sinAcceso")} mensaje={t("restaurantes.cfo.sinAccesoMensaje")} />;
 }
 
 export function NoDisponibleCfo() {
+  const t = useT(restaurantesCfo);
   return (
     <EstadoVacio
       icon={PlugZap}
-      titulo="El CFO aún no está disponible"
-      mensaje="Falta aplicar la actualización de base de datos de este módulo en tu negocio. Cuando esté lista, aquí verás tus cifras; mientras tanto no se muestra ningún dato."
+      titulo={t("restaurantes.cfo.noDisponibleTitulo")}
+      mensaje={t("restaurantes.cfo.noDisponibleMensaje")}
     />
   );
 }
+
 
 /** Pinta el estado de una carga y, solo con datos, llama a `children`. */
 export function CargaCfoVista<T>({ carga, onReintentar, etiqueta, children }: { readonly carga: CargaCfo<T>; readonly onReintentar: () => void; readonly etiqueta: string; readonly children: (datos: T) => ReactNode }) {

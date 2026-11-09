@@ -8,7 +8,8 @@
 // La voz, el saludo por sucursal y el conocimiento automatico viven aqui mismo como secciones propias.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Info } from "lucide-react";
-import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, Selector, PageContainer, RadioSegmentado, StatusBadge, Switch, formatMoney } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, Selector, PageContainer, PageHeader, RadioSegmentado, StatusBadge, Switch, formatMoney, useT } from "@atiende/ui";
+import { restaurantesAjustesAgente } from "@atiende/ui/i18n/restaurantes/ajustesAgente";
 import { fechaCortaEsMx } from "../../../lib/formato-fecha.ts";
 import { fetchAjustesAgente, guardarAjustesAgente } from "../lib/ajustes-agente-client.ts";
 import type { AjustesAgente, AjustesAgenteVista, ModeloAgenteVista } from "../lib/ajustes-agente-client.ts";
@@ -52,6 +53,7 @@ function SelectorTemperatura({ nombre, etiqueta, valor, onCambio, deshabilitado 
 }
 
 export function AjustesAgentePage({ apiBaseUrl, token, propertyId, crearAudio }: AjustesAgentePageProps) {
+  const t = useT(restaurantesAjustesAgente);
   const [carga, setCarga] = useState<Carga<AjustesAgenteVista>>({ estado: "cargando" });
   const [guardado, setGuardado] = useState<AjustesAgente | null>(null);
   const [borrador, setBorrador] = useState<AjustesAgente | null>(null);
@@ -71,7 +73,7 @@ export function AjustesAgentePage({ apiBaseUrl, token, propertyId, crearAudio }:
         setGuardado(v.ajustes);
         setBorrador(v.ajustes);
       } catch (err) {
-        if (!cancelado) setCarga(desdeError(err, "No se pudieron cargar los ajustes del agente."));
+        if (!cancelado) setCarga(desdeError(err, t("restaurantes.ajustesAgente.error.cargar")));
       }
     })();
     return () => {
@@ -130,7 +132,7 @@ export function AjustesAgentePage({ apiBaseUrl, token, propertyId, crearAudio }:
       setBorrador(v.ajustes);
       setAviso(true);
     } catch (err) {
-      setErrorGuardado(err instanceof Error ? err.message : "No se pudieron guardar los ajustes.");
+      setErrorGuardado(err instanceof Error ? err.message : t("restaurantes.ajustesAgente.error.guardar"));
     } finally {
       setGuardando(false);
     }
@@ -138,16 +140,14 @@ export function AjustesAgentePage({ apiBaseUrl, token, propertyId, crearAudio }:
 
   return (
     <PageContainer padding="none">
-      <div>
-        <h1 className="sr-only">Ajustes del agente</h1>
-        <p className="text-ui text-muted-foreground">Modelo, temperatura, voz, sonido de fondo y conocimiento del agente que atiende WhatsApp y las llamadas de tu restaurante.</p>
-      </div>
+      <PageHeader titulo={t("restaurantes.ajustesAgente.titulo")} />
+      <p className="m-0 text-ui text-muted-foreground">{t("restaurantes.ajustesAgente.subtitulo")}</p>
 
-      {carga.estado === "cargando" ? <EstadoCargando etiqueta="Cargando los ajustes del agente…" /> : null}
+      {carga.estado === "cargando" ? <EstadoCargando etiqueta={t("restaurantes.ajustesAgente.cargando")} /> : null}
       {carga.estado === "error" ? <EstadoError mensaje={carga.mensaje} onReintentar={reintentar} /> : null}
       {carga.estado === "no_disponible" ? (
         <p role="status" data-testid="ajustes-no-disponible" className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-          No disponible aún: los ajustes del agente todavía no están activos en este despliegue.
+          {t("restaurantes.ajustesAgente.noDisponible")}
         </p>
       ) : null}
 
@@ -155,24 +155,24 @@ export function AjustesAgentePage({ apiBaseUrl, token, propertyId, crearAudio }:
         <>
           {!vista.disponible ? (
             <Callout tone="info" role="status" data-testid="ajustes-sin-migrar">
-              Los ajustes todavía no están disponibles en esta base de datos: se muestran los valores de siempre y no se pueden guardar hasta que se active la migración 055.
+              {t("restaurantes.ajustesAgente.sinMigrar")}
             </Callout>
           ) : null}
 
           <Card data-testid="seccion-whatsapp">
             <CardHeader className="p-4 pb-2">
-              <CardTitle>Agente de WhatsApp</CardTitle>
+              <CardTitle>{t("restaurantes.ajustesAgente.whatsapp.titulo")}</CardTitle>
               <CardDescription>
-                Modelo y temperatura del agente que contesta los mensajes. <span data-testid="aplica-whatsapp">Aplica {vista.aplicaEn.whatsappModeloYTemperatura === "ahora" ? "desde el siguiente mensaje" : vista.aplicaEn.whatsappModeloYTemperatura}.</span>
+                {t("restaurantes.ajustesAgente.whatsapp.descripcion")} <span data-testid="aplica-whatsapp">{t("restaurantes.ajustesAgente.aplica", { cuando: vista.aplicaEn.whatsappModeloYTemperatura === "ahora" ? t("restaurantes.ajustesAgente.aplica.siguienteMensaje") : vista.aplicaEn.whatsappModeloYTemperatura })}</span>
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3 p-4 pt-0">
               <div>
                 <label htmlFor="ajustes-modelo-whatsapp" className="block text-sm font-medium text-foreground mb-1.5">
-                  Modelo
+                  {t("restaurantes.ajustesAgente.modelo")}
                 </label>
                 <Selector id="ajustes-modelo-whatsapp" value={borrador.whatsappModelo ?? ""} disabled={!servicioListo} onChange={(e) => cambiar({ whatsappModelo: e.target.value === "" ? null : e.target.value })}>
-                  <option value="">Predeterminado de la plataforma{modeloPlataforma ? ` (${modeloPlataforma.etiqueta})` : ""}</option>
+                  <option value="">{t("restaurantes.ajustesAgente.predeterminado")}{modeloPlataforma ? ` (${modeloPlataforma.etiqueta})` : ""}</option>
                   {vista.modelos.map((m) => (
                     <option key={m.id} value={m.id}>
                       {etiquetaOpcionModelo(m, "whatsapp")}
@@ -181,23 +181,23 @@ export function AjustesAgentePage({ apiBaseUrl, token, propertyId, crearAudio }:
                 </Selector>
                 {modeloWhatsapp ? (
                   <p className="mt-1.5 text-xs text-muted-foreground" data-testid="costo-whatsapp">
-                    {modeloWhatsapp.descripcion} Costo estimado: {costoPorMil(modeloWhatsapp.costoWhatsappMicroUsdPorMensaje, "mensajes")}
-                    {modeloWhatsapp.precioVerificadoEn ? ` (precio de lista verificado el ${fechaCorta(modeloWhatsapp.precioVerificadoEn)})` : ""}.
+                    {modeloWhatsapp.descripcion} {t("restaurantes.ajustesAgente.costoEstimado", { costo: costoPorMil(modeloWhatsapp.costoWhatsappMicroUsdPorMensaje, "mensajes") })}
+                    {modeloWhatsapp.precioVerificadoEn ? t("restaurantes.ajustesAgente.precioVerificado", { fecha: fechaCorta(modeloWhatsapp.precioVerificadoEn) }) : ""}.
                   </p>
                 ) : null}
                 <p className="mt-1 text-2xs text-muted-foreground" data-testid="supuestos-costo">
                   <Info aria-hidden="true" className="mr-1 inline size-3 align-[-2px]" strokeWidth={1.75} />
-                  Supuesto: {formatMoney(vista.supuestosCosto.whatsappMensaje.tokensEntrada, 0)} tokens de entrada y {formatMoney(vista.supuestosCosto.whatsappMensaje.tokensSalida, 0)} de salida por mensaje. {vista.supuestosCosto.nota} Si el modelo falla, la plataforma cae sola al siguiente.
+                  {t("restaurantes.ajustesAgente.supuesto", { entrada: formatMoney(vista.supuestosCosto.whatsappMensaje.tokensEntrada, 0), salida: formatMoney(vista.supuestosCosto.whatsappMensaje.tokensSalida, 0) })} {vista.supuestosCosto.nota} {t("restaurantes.ajustesAgente.respaldo")}
                 </p>
               </div>
               <div>
-                <p className="block text-sm font-medium text-foreground mb-1.5">Temperatura</p>
+                <p className="block text-sm font-medium text-foreground mb-1.5">{t("restaurantes.ajustesAgente.temperatura")}</p>
                 {modeloWhatsapp && !modeloWhatsapp.aceptaTemperatura ? (
                   <p data-testid="sin-temperatura-whatsapp" className="text-xs text-muted-foreground">
-                    {modeloWhatsapp.etiqueta} no admite temperatura: el agente usa un valor fijo (0) para que no improvise con precios ni cantidades. Elige otro modelo si quieres ajustarla.
+                    {t("restaurantes.ajustesAgente.sinTemperatura", { modelo: modeloWhatsapp.etiqueta })}
                   </p>
                 ) : (
-                  <SelectorTemperatura nombre="ajustes-temperatura-whatsapp" etiqueta="Temperatura del agente de WhatsApp" valor={borrador.whatsappTemperatura} deshabilitado={!servicioListo} onCambio={(t) => cambiar({ whatsappTemperatura: t })} />
+                  <SelectorTemperatura nombre="ajustes-temperatura-whatsapp" etiqueta={t("restaurantes.ajustesAgente.temperaturaWhatsapp")} valor={borrador.whatsappTemperatura} deshabilitado={!servicioListo} onCambio={(t) => cambiar({ whatsappTemperatura: t })} />
                 )}
               </div>
             </CardContent>
@@ -207,42 +207,52 @@ export function AjustesAgentePage({ apiBaseUrl, token, propertyId, crearAudio }:
             <Card data-testid="seccion-preset-humano">
               <CardHeader className="p-4 pb-2">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <CardTitle>Preset «restaurante humano»</CardTitle>
+                  <CardTitle>{t("restaurantes.ajustesAgente.preset.titulo")}</CardTitle>
                   {!ambienteListo ? (
                     <StatusBadge tone="neutral" dot={false}>
-                      No disponible aún
+                      {t("restaurantes.ajustesAgente.noDisponibleAun")}
                     </StatusBadge>
                   ) : null}
                 </div>
-                <CardDescription>La configuración recomendada para que la llamada suene humana: voz femenina en español de México, ritmo normal, estilo cálido, ambiente de taquería, tecleo al anotar y frases naturales.</CardDescription>
+                <CardDescription>{t("restaurantes.ajustesAgente.preset.descripcion")}</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3 p-4 pt-0">
                 {!ambienteListo ? (
                   <p role="status" data-testid="preset-no-disponible" className="text-xs text-muted-foreground">
-                    No disponible aún: requiere aplicar la migración 087 (ambiente con presets, tecleo y naturalidad) en la base de datos. Mientras tanto se conservan los ajustes de siempre.
+                    {t("restaurantes.ajustesAgente.preset.noDisponible")}
                   </p>
                 ) : null}
                 <ul className="list-disc space-y-0.5 pl-5 text-xs text-muted-foreground" data-testid="preset-valores">
-                  <li>Ritmo {RITMOS.find((r) => r.id === presetHumano.ritmo)?.rotulo ?? presetHumano.ritmo} y estilo {ESTILOS.find((e) => e.id === presetHumano.estilo)?.rotulo ?? presetHumano.estilo}; temperatura {presetHumano.temperatura.toFixed(1)}.</li>
                   <li>
-                    Ambiente «{PRESETS_AMBIENTE.find((p) => p.id === presetHumano.fondo.preset)?.rotulo ?? presetHumano.fondo.preset}» al {presetHumano.fondo.volumen} % y tecleo al {presetHumano.tecleo.volumen} %.
+                    {t("restaurantes.ajustesAgente.preset.ritmo", {
+                      ritmo: RITMOS.find((r) => r.id === presetHumano.ritmo)?.rotulo ?? presetHumano.ritmo,
+                      estilo: ESTILOS.find((e) => e.id === presetHumano.estilo)?.rotulo ?? presetHumano.estilo,
+                      temperatura: presetHumano.temperatura.toFixed(1),
+                    })}
                   </li>
-                  <li>Instrucciones de naturalidad: frases cortas, muletillas escasas, «déjeme anotarlo» antes de cotizar o confirmar, y manejo de interrupciones.</li>
+                  <li>
+                    {t("restaurantes.ajustesAgente.preset.ambiente", {
+                      ambiente: PRESETS_AMBIENTE.find((p) => p.id === presetHumano.fondo.preset)?.rotulo ?? presetHumano.fondo.preset,
+                      fondo: String(presetHumano.fondo.volumen),
+                      tecleo: String(presetHumano.tecleo.volumen),
+                    })}
+                  </li>
+                  <li>{t("restaurantes.ajustesAgente.preset.naturalidad")}</li>
                 </ul>
                 <div data-testid="preset-voces">
-                  <p className="text-sm font-medium text-foreground mb-1">Voz femenina sugerida (elígela en «Voz y saludo» más abajo)</p>
+                  <p className="text-sm font-medium text-foreground mb-1">{t("restaurantes.ajustesAgente.preset.vozSugerida")}</p>
                   <ul className="space-y-0.5 text-xs text-muted-foreground">
                     {[presetHumano.voz.principal, ...presetHumano.voz.alternativas].map((v, i) => (
                       <li key={v}>
                         <span className="font-medium text-foreground">{v}</span> · {presetHumano.voz.descripciones[v] ?? "—"}
-                        {i === 0 ? " · sugerida" : " · alternativa"}
+                        {t(i === 0 ? "restaurantes.ajustesAgente.preset.sugerida" : "restaurantes.ajustesAgente.preset.alternativa")}
                       </li>
                     ))}
                   </ul>
                 </div>
                 {presetHumano.vozPorMotor ? (
                   <p className="text-xs text-muted-foreground" data-testid="preset-voz-motores">
-                    Por motor: Gemini Live usa la voz {presetHumano.vozPorMotor["gemini-live"].principal} del catálogo de Gemini; la cascada usará {presetHumano.vozPorMotor.cascada.principal} de Deepgram Aura-2 (otro proveedor; la cascada nueva aún no está integrada).
+                    {t("restaurantes.ajustesAgente.preset.porMotor", { gemini: presetHumano.vozPorMotor["gemini-live"].principal, cascada: presetHumano.vozPorMotor.cascada.principal })}
                   </p>
                 ) : null}
                 <p className="text-xs text-muted-foreground" data-testid="preset-acento">
@@ -250,9 +260,9 @@ export function AjustesAgentePage({ apiBaseUrl, token, propertyId, crearAudio }:
                 </p>
                 <div>
                   <Button type="button" variant="outline" onClick={aplicarPresetHumano} disabled={!ambienteListo}>
-                    Aplicar el preset
+                    {t("restaurantes.ajustesAgente.preset.aplicar")}
                   </Button>
-                  <p className="mt-1.5 text-2xs text-muted-foreground">Rellena los controles de abajo; no se guarda hasta que pulses «Guardar ajustes». La voz no cambia sola.</p>
+                  <p className="mt-1.5 text-2xs text-muted-foreground">{t("restaurantes.ajustesAgente.preset.aplicarNota")}</p>
                 </div>
               </CardContent>
             </Card>
@@ -260,42 +270,42 @@ export function AjustesAgentePage({ apiBaseUrl, token, propertyId, crearAudio }:
 
           <Card data-testid="seccion-voz">
             <CardHeader className="p-4 pb-2">
-              <CardTitle>Voz (llamadas)</CardTitle>
-              <CardDescription>
-                Motor principal: {vista.escaleraVoz.principal}; respaldo automático: {vista.escaleraVoz.respaldo}.
-              </CardDescription>
+              <CardTitle>{t("restaurantes.ajustesAgente.voz.titulo")}</CardTitle>
+              <CardDescription>{t("restaurantes.ajustesAgente.voz.motor", { principal: vista.escaleraVoz.principal, respaldo: vista.escaleraVoz.respaldo })}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3 p-4 pt-0">
               <div>
-                <p className="block text-sm font-medium text-foreground mb-1.5">Temperatura de la voz</p>
-                <SelectorTemperatura nombre="ajustes-temperatura-voz" etiqueta="Temperatura de la voz" valor={borrador.vozTemperatura} deshabilitado={!servicioListo} onCambio={(t) => cambiar({ vozTemperatura: t })} />
+                <p className="block text-sm font-medium text-foreground mb-1.5">{t("restaurantes.ajustesAgente.voz.temperatura")}</p>
+                <SelectorTemperatura nombre="ajustes-temperatura-voz" etiqueta={t("restaurantes.ajustesAgente.voz.temperatura")} valor={borrador.vozTemperatura} deshabilitado={!servicioListo} onCambio={(t) => cambiar({ vozTemperatura: t })} />
                 <p className="mt-1.5 text-xs text-muted-foreground" data-testid="aplica-voz-temperatura">
-                  Es un parámetro real de Gemini Live y solo se aplica a Gemini Live (la cascada de respaldo conserva su propia temperatura). Aplica en {vista.aplicaEn.vozTemperaturaYHabla}.
+                  {t("restaurantes.ajustesAgente.voz.temperaturaNota", { cuando: vista.aplicaEn.vozTemperaturaYHabla })}
                 </p>
                 {vista.temperatura.maxLlamada !== undefined ? (
                   <p className="mt-1 text-xs text-muted-foreground" data-testid="temperatura-tope-llamada">
-                    En llamadas reales la temperatura nunca pasa de {vista.temperatura.maxLlamada.toFixed(1)}
-                    {borrador.vozTemperatura !== null && borrador.vozTemperatura > vista.temperatura.maxLlamada ? `: el valor ${borrador.vozTemperatura.toFixed(1)} que elegiste se usa como ${vista.temperatura.maxLlamada.toFixed(1)} en las llamadas (la vista previa sí prueba el valor completo).` : "; la vista previa puede probar valores mayores."}
+                    {t("restaurantes.ajustesAgente.voz.tope", { max: vista.temperatura.maxLlamada.toFixed(1) })}
+                    {borrador.vozTemperatura !== null && borrador.vozTemperatura > vista.temperatura.maxLlamada
+                      ? t("restaurantes.ajustesAgente.voz.topeExcede", { valor: borrador.vozTemperatura.toFixed(1), max: vista.temperatura.maxLlamada.toFixed(1) })
+                      : t("restaurantes.ajustesAgente.voz.topeOk")}
                   </p>
                 ) : null}
               </div>
               <div>
-                <p className="block text-sm font-medium text-foreground mb-1.5">Ritmo de habla</p>
-                <RadioSegmentado name="ajustes-ritmo" label="Ritmo de habla" value={borrador.vozRitmo} disabled={!servicioListo} onChange={(r) => cambiar({ vozRitmo: r })} opciones={RITMOS.map((r) => ({ id: r.id, rotulo: r.rotulo }))} />
+                <p className="block text-sm font-medium text-foreground mb-1.5">{t("restaurantes.ajustesAgente.voz.ritmo")}</p>
+                <RadioSegmentado name="ajustes-ritmo" label={t("restaurantes.ajustesAgente.voz.ritmo")} value={borrador.vozRitmo} disabled={!servicioListo} onChange={(r) => cambiar({ vozRitmo: r })} opciones={RITMOS.map((r) => ({ id: r.id, rotulo: r.rotulo }))} />
               </div>
               <div>
-                <p className="block text-sm font-medium text-foreground mb-1.5">Estilo de habla</p>
-                <RadioSegmentado name="ajustes-estilo" label="Estilo de habla" value={borrador.vozEstilo} disabled={!servicioListo} onChange={(e) => cambiar({ vozEstilo: e })} opciones={ESTILOS.map((e) => ({ id: e.id, rotulo: e.rotulo }))} />
+                <p className="block text-sm font-medium text-foreground mb-1.5">{t("restaurantes.ajustesAgente.voz.estilo")}</p>
+                <RadioSegmentado name="ajustes-estilo" label={t("restaurantes.ajustesAgente.voz.estilo")} value={borrador.vozEstilo} disabled={!servicioListo} onChange={(e) => cambiar({ vozEstilo: e })} opciones={ESTILOS.map((e) => ({ id: e.id, rotulo: e.rotulo }))} />
                 <p className="mt-1.5 text-xs text-muted-foreground" data-testid="nota-habla">
                   {vista.habla.nota}
                 </p>
               </div>
               <div>
                 <label htmlFor="ajustes-modelo-cascada" className="block text-sm font-medium text-foreground mb-1.5">
-                  Modelo de la cascada de respaldo
+                  {t("restaurantes.ajustesAgente.cascada")}
                 </label>
                 <Selector id="ajustes-modelo-cascada" value={borrador.vozModeloCascada ?? ""} disabled={!servicioListo} onChange={(e) => cambiar({ vozModeloCascada: e.target.value === "" ? null : e.target.value })}>
-                  <option value="">Predeterminado de la plataforma{modeloPlataforma ? ` (${modeloPlataforma.etiqueta})` : ""}</option>
+                  <option value="">{t("restaurantes.ajustesAgente.predeterminado")}{modeloPlataforma ? ` (${modeloPlataforma.etiqueta})` : ""}</option>
                   {/* Solo modelos con endpoint de retencion cero: la voz se enruta con ZDR y sin el cada turno fallaria (la API tambien lo valida). */}
                   {vista.modelos.filter((m) => m.vozZdr !== false).map((m) => (
                     <option key={m.id} value={m.id}>
@@ -305,11 +315,16 @@ export function AjustesAgentePage({ apiBaseUrl, token, propertyId, crearAudio }:
                 </Selector>
                 {modeloCascada ? (
                   <p className="mt-1.5 text-xs text-muted-foreground" data-testid="costo-cascada">
-                    Costo estimado de la cascada con {modeloCascada.etiqueta}: {costoPorMil(modeloCascada.costoVozMicroUsdPorMinuto, "minutos")} ({formatMoney(vista.supuestosCosto.vozCascadaMinuto.tokensEntrada, 0)} tokens de entrada y {formatMoney(vista.supuestosCosto.vozCascadaMinuto.tokensSalida, 0)} de salida por minuto).
+                    {t("restaurantes.ajustesAgente.cascada.costo", {
+                      modelo: modeloCascada.etiqueta,
+                      costo: costoPorMil(modeloCascada.costoVozMicroUsdPorMinuto, "minutos"),
+                      entrada: formatMoney(vista.supuestosCosto.vozCascadaMinuto.tokensEntrada, 0),
+                      salida: formatMoney(vista.supuestosCosto.vozCascadaMinuto.tokensSalida, 0),
+                    })}
                   </p>
                 ) : null}
                 <p className="mt-1 text-xs text-muted-foreground" data-testid="aplica-cascada">
-                  Aplica en {vista.aplicaEn.vozModeloCascada}.
+                  {t("restaurantes.ajustesAgente.aplicaEn", { cuando: vista.aplicaEn.vozModeloCascada })}
                 </p>
               </div>
             </CardContent>
@@ -317,22 +332,22 @@ export function AjustesAgentePage({ apiBaseUrl, token, propertyId, crearAudio }:
 
           <Card data-testid="seccion-fondo">
             <CardHeader className="p-4 pb-2">
-              <CardTitle>Sonido de fondo de restaurante</CardTitle>
-              <CardDescription>Un murmullo suave de sala mezclado bajo la voz del agente en la llamada. Apagado por omisión.</CardDescription>
+              <CardTitle>{t("restaurantes.ajustesAgente.fondo.titulo")}</CardTitle>
+              <CardDescription>{t("restaurantes.ajustesAgente.fondo.descripcion")}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3 p-4 pt-0">
               <div className="flex items-center gap-2">
-                <Switch id="ajustes-fondo" checked={borrador.vozFondoActivo} disabled={!servicioListo} onCheckedChange={(v) => cambiar({ vozFondoActivo: v })} aria-label="Activar el sonido de fondo" />
+                <Switch id="ajustes-fondo" checked={borrador.vozFondoActivo} disabled={!servicioListo} onCheckedChange={(v) => cambiar({ vozFondoActivo: v })} aria-label={t("restaurantes.ajustesAgente.fondo.activar")} />
                 <label htmlFor="ajustes-fondo" className="text-sm text-foreground">
-                  {borrador.vozFondoActivo ? "Activado" : "Apagado"}
+                  {t(borrador.vozFondoActivo ? "restaurantes.ajustesAgente.activado" : "restaurantes.ajustesAgente.apagado")}
                 </label>
               </div>
               {borrador.vozFondoActivo ? (
                 <div>
-                  <p className="block text-sm font-medium text-foreground mb-1.5">Volumen (nunca pasa de {vista.fondo.volumenMax} % para no tapar la voz)</p>
+                  <p className="block text-sm font-medium text-foreground mb-1.5">{t("restaurantes.ajustesAgente.fondo.volumen", { max: String(vista.fondo.volumenMax) })}</p>
                   <RadioSegmentado
                     name="ajustes-fondo-volumen"
-                    label="Volumen del sonido de fondo"
+                    label={t("restaurantes.ajustesAgente.fondo.volumenEtiqueta")}
                     value={String(borrador.vozFondoVolumen)}
                     disabled={!servicioListo}
                     onChange={(v) => cambiar({ vozFondoVolumen: Number(v) })}
@@ -342,15 +357,15 @@ export function AjustesAgentePage({ apiBaseUrl, token, propertyId, crearAudio }:
               ) : null}
               {borrador.vozFondoActivo && vista.fondo.presets ? (
                 <div>
-                  <p className="block text-sm font-medium text-foreground mb-1.5">Ambiente</p>
-                  <RadioSegmentado name="ajustes-fondo-preset" label="Ambiente del restaurante" value={borrador.vozFondoPreset} disabled={!ambienteListo} onChange={(p) => cambiar({ vozFondoPreset: p })} opciones={PRESETS_AMBIENTE.map((p) => ({ id: p.id, rotulo: p.rotulo }))} />
+                  <p className="block text-sm font-medium text-foreground mb-1.5">{t("restaurantes.ajustesAgente.fondo.ambiente")}</p>
+                  <RadioSegmentado name="ajustes-fondo-preset" label={t("restaurantes.ajustesAgente.fondo.ambienteEtiqueta")} value={borrador.vozFondoPreset} disabled={!ambienteListo} onChange={(p) => cambiar({ vozFondoPreset: p })} opciones={PRESETS_AMBIENTE.map((p) => ({ id: p.id, rotulo: p.rotulo }))} />
                   <p className="mt-1.5 text-xs text-muted-foreground" data-testid="descripcion-preset-ambiente">
                     {vista.fondo.presets.find((p) => p.id === borrador.vozFondoPreset)?.descripcion ?? ""}
                   </p>
                 </div>
               ) : null}
               <p className="text-xs text-muted-foreground" data-testid="aplica-fondo">
-                Aplica en {vista.aplicaEn.vozFondo}.
+                {t("restaurantes.ajustesAgente.aplicaEn", { cuando: vista.aplicaEn.vozFondo })}
               </p>
             </CardContent>
           </Card>
@@ -358,33 +373,33 @@ export function AjustesAgentePage({ apiBaseUrl, token, propertyId, crearAudio }:
           <Card data-testid="seccion-tecleo">
             <CardHeader className="p-4 pb-2">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <CardTitle>Tecleo y naturalidad</CardTitle>
+                <CardTitle>{t("restaurantes.ajustesAgente.tecleo.titulo")}</CardTitle>
                 {!ambienteListo ? (
                   <StatusBadge tone="neutral" dot={false}>
-                    No disponible aún
+                    {t("restaurantes.ajustesAgente.noDisponibleAun")}
                   </StatusBadge>
                 ) : null}
               </div>
-              <CardDescription>El sonido de teclado mientras el agente anota el pedido, y las frases naturales en español de México. Apagados por omisión.</CardDescription>
+              <CardDescription>{t("restaurantes.ajustesAgente.tecleo.descripcion")}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3 p-4 pt-0">
               {!ambienteListo ? (
                 <p role="status" data-testid="tecleo-no-disponible" className="text-xs text-muted-foreground">
-                  No disponible aún: requiere aplicar la migración 087 en la base de datos.
+                  {t("restaurantes.ajustesAgente.tecleo.noDisponible")}
                 </p>
               ) : null}
               <div className="flex items-center gap-2">
-                <Switch id="ajustes-tecleo" checked={borrador.vozTecleoActivo} disabled={!ambienteListo} onCheckedChange={(v) => cambiar({ vozTecleoActivo: v })} aria-label="Activar el sonido de tecleo" />
+                <Switch id="ajustes-tecleo" checked={borrador.vozTecleoActivo} disabled={!ambienteListo} onCheckedChange={(v) => cambiar({ vozTecleoActivo: v })} aria-label={t("restaurantes.ajustesAgente.tecleo.activar")} />
                 <label htmlFor="ajustes-tecleo" className="text-sm text-foreground">
-                  Tecleo al anotar: {borrador.vozTecleoActivo ? "activado" : "apagado"}
+                  {t("restaurantes.ajustesAgente.tecleo.estado", { estado: t(borrador.vozTecleoActivo ? "restaurantes.ajustesAgente.tecleo.activado" : "restaurantes.ajustesAgente.tecleo.apagado") })}
                 </label>
               </div>
               {borrador.vozTecleoActivo ? (
                 <div>
-                  <p className="block text-sm font-medium text-foreground mb-1.5">Volumen del tecleo (nunca pasa de {vista.tecleo?.volumenMax ?? 25} %)</p>
+                  <p className="block text-sm font-medium text-foreground mb-1.5">{t("restaurantes.ajustesAgente.tecleo.volumen", { max: String(vista.tecleo?.volumenMax ?? 25) })}</p>
                   <RadioSegmentado
                     name="ajustes-tecleo-volumen"
-                    label="Volumen del tecleo"
+                    label={t("restaurantes.ajustesAgente.tecleo.volumenEtiqueta")}
                     value={String(borrador.vozTecleoVolumen)}
                     disabled={!ambienteListo}
                     onChange={(v) => cambiar({ vozTecleoVolumen: Number(v) })}
@@ -393,28 +408,28 @@ export function AjustesAgentePage({ apiBaseUrl, token, propertyId, crearAudio }:
                 </div>
               ) : null}
               <p className="text-xs text-muted-foreground" data-testid="nota-tecleo">
-                {vista.tecleo?.nota ?? "Suena solo mientras el agente espera una herramienta y se corta si el cliente habla."} Aplica en {vista.aplicaEn.vozTecleo ?? vista.aplicaEn.vozFondo}.
+                {vista.tecleo?.nota ?? t("restaurantes.ajustesAgente.tecleo.notaPorOmision")} {t("restaurantes.ajustesAgente.aplicaEn", { cuando: vista.aplicaEn.vozTecleo ?? vista.aplicaEn.vozFondo })}
               </p>
               <div className="flex items-center gap-2">
-                <Switch id="ajustes-humanizar" checked={borrador.vozHumanizar} disabled={!ambienteListo} onCheckedChange={(v) => cambiar({ vozHumanizar: v })} aria-label="Activar las instrucciones de naturalidad" />
+                <Switch id="ajustes-humanizar" checked={borrador.vozHumanizar} disabled={!ambienteListo} onCheckedChange={(v) => cambiar({ vozHumanizar: v })} aria-label={t("restaurantes.ajustesAgente.humanizar.activar")} />
                 <label htmlFor="ajustes-humanizar" className="text-sm text-foreground">
-                  Naturalidad en español de México: {borrador.vozHumanizar ? "activada" : "apagada"}
+                  {t("restaurantes.ajustesAgente.humanizar.estado", { estado: t(borrador.vozHumanizar ? "restaurantes.ajustesAgente.humanizar.activada" : "restaurantes.ajustesAgente.humanizar.apagada") })}
                 </label>
               </div>
               <p className="text-xs text-muted-foreground" data-testid="nota-vista-previa-sonido">
-                Vista previa del panel — No disponible aún: el ambiente y el tecleo no suenan en la vista previa (solo en llamadas reales); la naturalidad sí se aplica en la vista previa.
+                {t("restaurantes.ajustesAgente.vistaPreviaSonido")}
               </p>
             </CardContent>
           </Card>
 
           <div className="flex flex-wrap items-center gap-3">
             <Button type="button" onClick={() => void guardar()} disabled={!servicioListo || !sucio} loading={guardando}>
-              Guardar ajustes
+              {t("restaurantes.ajustesAgente.guardar")}
             </Button>
-            {sucio ? <span className="text-xs text-muted-foreground">Hay cambios sin guardar.</span> : null}
+            {sucio ? <span className="text-xs text-muted-foreground">{t("restaurantes.ajustesAgente.sinGuardar")}</span> : null}
             {aviso && !sucio ? (
               <span role="status" className="text-xs text-primary">
-                Ajustes guardados{vista.actualizadoEn ? ` (${fechaCorta(vista.actualizadoEn)})` : ""}.
+                {t("restaurantes.ajustesAgente.guardados")}{vista.actualizadoEn ? ` (${fechaCorta(vista.actualizadoEn)})` : ""}.
               </span>
             ) : null}
             {errorGuardado ? (
@@ -431,9 +446,9 @@ export function AjustesAgentePage({ apiBaseUrl, token, propertyId, crearAudio }:
           <Card data-testid="seccion-clonacion">
             <CardHeader className="p-4 pb-2">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <CardTitle>Clonación de voz</CardTitle>
+                <CardTitle>{t("restaurantes.ajustesAgente.clonacion.titulo")}</CardTitle>
                 <StatusBadge tone="neutral" dot={false}>
-                  No disponible
+                  {t("restaurantes.ajustesAgente.clonacion.noDisponible")}
                 </StatusBadge>
               </div>
             </CardHeader>

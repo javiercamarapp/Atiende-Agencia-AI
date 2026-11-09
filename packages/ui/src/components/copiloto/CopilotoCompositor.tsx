@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import type { ChangeEvent, FormEvent, KeyboardEvent } from "react";
 import { ArrowUp, Paperclip, Search, Square } from "lucide-react";
+import { useIdiomaCopiloto } from "./idioma";
 import type { CopilotoAdjuntosConfig } from "./tipos";
 
 /**
@@ -41,6 +42,7 @@ export function CopilotoCompositor({
   /** Aviso honesto de un archivo rechazado antes de subirlo (demasiado grande, tipo no soportado). */
   avisoAdjunto?: string | null | undefined;
 }) {
+  const { t } = useIdiomaCopiloto();
   const ref = useRef<HTMLTextAreaElement>(null);
   const selector = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -71,9 +73,9 @@ export function CopilotoCompositor({
   };
 
   return (
-    <form onSubmit={alEnviar} data-ds3="compositor" className="w-full max-w-xl bg-card border border-border rounded-3xl shadow-sm p-3 shrink-0" aria-label="Preguntar al Copiloto">
+    <form onSubmit={alEnviar} data-ds3="compositor" className="w-full max-w-xl bg-card border border-border rounded-3xl shadow-sm p-3 shrink-0" aria-label={t("compositorAria")}>
       <label htmlFor={inputId} className="sr-only">
-        Tu pregunta
+        {t("tuPregunta")}
       </label>
       <textarea
         id={inputId}
@@ -96,8 +98,8 @@ export function CopilotoCompositor({
                 type="button"
                 onClick={() => selector.current?.click()}
                 disabled={enviando}
-                aria-label="Adjuntar archivo"
-                title="Adjuntar archivo (CSV, Excel o PDF)"
+                aria-label={t("adjuntar")}
+                title={t("adjuntarTitulo")}
                 data-ds3="adjuntar"
                 className="rounded-full shrink-0 w-8 h-8 inline-flex items-center justify-center border border-border text-muted-foreground hover:bg-muted disabled:opacity-50"
               >
@@ -115,7 +117,7 @@ export function CopilotoCompositor({
             className="flex items-center gap-1.5 rounded-full bg-foreground text-background text-xs font-medium pl-3 pr-3.5 py-1.5 hover:opacity-90 disabled:opacity-50"
           >
             <Search className="w-3.5 h-3.5" aria-hidden />
-            Consulta
+            {t("consulta")}
           </button>
         </div>
         <div data-ds3="compositor-fin" className="flex items-center gap-2">
@@ -128,7 +130,7 @@ export function CopilotoCompositor({
             <button
               type="button"
               onClick={onDetener}
-              aria-label="Detener"
+              aria-label={t("detener")}
               data-ds3="enviar"
               className="rounded-full shrink-0 w-8 h-8 inline-flex items-center justify-center bg-copiloto text-copiloto-foreground hover:opacity-90"
             >
@@ -138,7 +140,7 @@ export function CopilotoCompositor({
             <button
               type="submit"
               disabled={vacio}
-              aria-label="Enviar"
+              aria-label={t("enviar")}
               data-ds3="enviar"
               className="rounded-full shrink-0 w-8 h-8 inline-flex items-center justify-center bg-copiloto text-copiloto-foreground hover:opacity-90 disabled:opacity-50"
             >

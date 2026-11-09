@@ -12,6 +12,10 @@ import { RestaurantesPrimerosPasosPage } from "../src/verticals/restaurantes/pag
 import type { RestaurantesShellContext } from "../src/verticals/restaurantes/RestaurantesShell.tsx";
 import { click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 
+// Este spec cubre la lista de siempre (la que queda con el interruptor de build VITE_DISENO_LEGADO=1): con el diseno nuevo por omision,
+// Primeros pasos usa el patron /setup de la guia, que cubre restaurantes-primeros-pasos-guia.spec.tsx.
+vi.mock("@atiende/ui", async (importOriginal) => ({ ...(await importOriginal<typeof import("@atiende/ui")>()), leerDisenoDs3: () => false }));
+
 let rendered: RenderedComponent | undefined;
 let fetchMock: ReturnType<typeof vi.fn>;
 

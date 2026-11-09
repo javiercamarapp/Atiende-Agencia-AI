@@ -2,7 +2,8 @@
 // por WhatsApp. Endpoints reales: PUT|DELETE .../admin/staff/miembros/:userId/telefono-acceso. El servidor decide quien puede; solo aplica a
 // repartidores. Nunca se muestra el numero completo guardado (solo los ultimos 4 digitos).
 import { useEffect, useState } from "react";
-import { Button, Callout, FormDialog, FormField, Input, notify } from "@atiende/ui";
+import { Button, Callout, FormDialog, FormField, Input, notify, useT } from "@atiende/ui";
+import { restaurantesStaff } from "@atiende/ui/i18n/restaurantes/staff";
 import { guardarTelefonoAcceso, normalizarCelular, quitarTelefonoAcceso } from "../lib/login-telefono-client.ts";
 
 export function TelefonoAccesoDialogo({
@@ -28,6 +29,7 @@ export function TelefonoAccesoDialogo({
   readonly onCambio: () => void;
   readonly fetchImpl?: typeof fetch;
 }) {
+  const t = useT(restaurantesStaff);
   const [celular, setCelular] = useState("");
   const [errorCampo, setErrorCampo] = useState<string | null>(null);
   const [errorAccion, setErrorAccion] = useState<string | null>(null);
@@ -45,7 +47,7 @@ export function TelefonoAccesoDialogo({
     if (!repartidor) return;
     const nacional = normalizarCelular(celular);
     if (!nacional) {
-      setErrorCampo("Escribe un celular mexicano de 10 dígitos.");
+      setErrorCampo(t("restaurantes.staff.cel.invalido"));
       return;
     }
     setErrorCampo(null);
@@ -53,11 +55,11 @@ export function TelefonoAccesoDialogo({
     setGuardando(true);
     try {
       await guardarTelefonoAcceso(fetchImpl ?? fetch, apiBaseUrl, token, propertyId, repartidor.id, nacional);
-      notify.success("Celular de acceso guardado.");
+      notify.success(t("restaurantes.staff.cel.guardado"));
       onCambio();
       onOpenChange(false);
     } catch (err) {
-      setErrorAccion(err instanceof Error ? err.message : "No se pudo guardar el celular.");
+      setErrorAccion(err instanceof Error ? err.message : t("restaurantes.staff.cel.errorGuardar"));
     } finally {
       setGuardando(false);
     }
@@ -69,11 +71,11 @@ export function TelefonoAccesoDialogo({
     setErrorAccion(null);
     try {
       await quitarTelefonoAcceso(fetchImpl ?? fetch, apiBaseUrl, token, propertyId, repartidor.id);
-      notify.success("Se quitó el acceso con celular.");
+      notify.success(t("restaurantes.staff.cel.quitado"));
       onCambio();
       onOpenChange(false);
     } catch (err) {
-      setErrorAccion(err instanceof Error ? err.message : "No se pudo quitar el celular.");
+      setErrorAccion(err instanceof Error ? err.message : t("restaurantes.staff.cel.errorQuitar"));
     } finally {
       setQuitando(false);
     }
@@ -83,29 +85,30 @@ export function TelefonoAccesoDialogo({
     <FormDialog
       open={open}
       onOpenChange={onOpenChange}
-      titulo={repartidor ? `Celular de acceso de ${repartidor.fullName}` : "Celular de acceso"}
-      subtitulo="Con este celular entra con un código de 6 dígitos que le llega por WhatsApp. Solo repartidores."
+      titulo={repartidor ? t("restaurantes.staff.cel.tituloDe", { nombre: repartidor.fullName }) : t("restaurantes.staff.celularAcceso")}
+      subtitulo={t("restaurantes.staff.cel.sub")}
       onGuardar={() => void guardar()}
       guardando={guardando}
-      textoBotonGuardar={telefonoEnmascarado ? "Cambiar celular" : "Guardar celular"}
+      textoBotonGuardar={t(telefonoEnmascarado ? "restaurantes.staff.cel.cambiar" : "restaurantes.staff.cel.guardar")}
       bloquearCierre={guardando || quitando}
       footer={
         <div className="flex w-full flex-col-reverse gap-2 md:w-auto md:flex-row">
           {telefonoEnmascarado && (
             <Button type="button" variant="danger-outline" onClick={() => void quitar()} loading={quitando} disabled={guardando}>
-              Quitar acceso con celular
+              {t("restaurantes.staff.cel.quitar")}
             </Button>
           )}
           <Button type="submit" loading={guardando} disabled={quitando}>
-            {telefonoEnmascarado ? "Cambiar celular" : "Guardar celular"}
+            {t(telefonoEnmascarado ? "restaurantes.staff.cel.cambiar" : "restaurantes.staff.cel.guardar")}
           </Button>
         </div>
       }
     >
       <div className="grid gap-3">
         {errorAccion && <Callout tone="danger">{errorAccion}</Callout>}
-        <p className="m-0 text-sm text-muted-foreground">{telefonoEnmascarado ? `Celular registrado: ${telefonoEnmascarado}.` : "Todavía no tiene un celular registrado."}</p>
-        <FormField label={telefonoEnmascarado ? "Nuevo celular" : "Celular"} hint="10 dígitos. Debe ser el WhatsApp del repartidor." error={errorCampo ?? undefined} required>
+        <p className="m-0 text-sm text-muted-foreground">{telefonoEnmascarado ? t("restaurantes.staff.cel.registrado", { telefono: telefonoEnmascarado }) : t("restaurantes.staff.cel.sinRegistro")}</p>
+        <FormField label={t(telefonoEnmascarado ? "restaurantes.staff.cel.nuevo" : "restaurantes.staff.cel.celular")} hint={t("restaurantes.staff.cel.ayuda")}
+ error={errorCampo ?? undefined} required>
           <Input type="tel" inputMode="tel" autoComplete="off" placeholder="999 123 4567" value={celular} onChange={(e) => setCelular(e.target.value)} />
         </FormField>
       </div>

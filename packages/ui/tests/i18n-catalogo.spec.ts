@@ -7,16 +7,29 @@ import { MODULOS_EN } from "../src/i18n/mensajes/en/catalogo-en.ts";
 import type { Mensaje } from "../src/i18n/tipos.ts";
 
 type Mod = { es: Record<string, Mensaje>; en: Record<string, Mensaje> };
-// Todos los modulos en espanol, de arranque y de area: cada archivo de `mensajes/` exporta una constante con su nombre.
+// Todos los modulos en espanol, de arranque y de area: cada archivo de `mensajes/` exporta una constante con su nombre. Las
+// paginas de una vertical viven en una subcarpeta (`mensajes/restaurantes/pedidos.ts` exporta `restaurantesPedidos`, con claves
+// `restaurantes.*`): su prefijo es el de la carpeta.
 const carpeta = new URL("../src/i18n/mensajes/", import.meta.url);
-const archivos = readdirSync(carpeta).filter((f) => f.endsWith(".ts") && f !== "index.ts");
+const SUBCARPETAS = readdirSync(carpeta, { withFileTypes: true })
+  .filter((d) => d.isDirectory() && d.name !== "en")
+  .map((d) => d.name);
+const archivos = [
+  ...readdirSync(carpeta).filter((f) => f.endsWith(".ts") && f !== "index.ts"),
+  ...SUBCARPETAS.flatMap((sub) => readdirSync(new URL(`${sub}/`, carpeta)).filter((f) => f.endsWith(".ts") && f !== "index.ts").map((f) => `${sub}/${f}`)),
+];
+const nombreDe = (f: string): string => {
+  const [sub, archivo] = f.replace(/\.ts$/, "").split("/") as [string, string | undefined];
+  return archivo === undefined ? sub : `${sub}${archivo.charAt(0).toUpperCase()}${archivo.slice(1)}`;
+};
+const prefijoDe = new Map<string, string>(archivos.map((f) => [nombreDe(f), f.includes("/") ? (f.split("/")[0] as string) : nombreDe(f)]));
 const ES: Record<string, Record<string, Mensaje>> = {};
 let modulos: Array<[string, Mod]> = [];
 const CATALOGOS: { es: Record<string, Mensaje>; en: Record<string, Mensaje> } = { es: {}, en: {} };
 
 beforeAll(async () => {
   for (const f of archivos) {
-    const nombre = f.replace(/\.ts$/, "");
+    const nombre = nombreDe(f);
     const m = (await import(new URL(f, carpeta).href)) as Record<string, Record<string, Mensaje>>;
     ES[nombre] = m[nombre] ?? {};
   }
@@ -36,6 +49,13 @@ const variables = (m: Mensaje | undefined): string[] => [...new Set(textos(m).fl
 const IGUALES_PERMITIDOS = new Set<string>([
   "Español (ES)",
   "English (EN)",
+  // Zonas horarias: nombre propio de la ciudad + su id IANA.
+  "Tijuana (America/Tijuana)",
+  "Chihuahua (America/Chihuahua)",
+  "Hermosillo (America/Hermosillo)",
+  "Meta (WhatsApp Business)",
+
+
   // Siglas y nombres propios que se dicen igual en ingles.
   "CFO",
   "CFDI",
@@ -52,7 +72,37 @@ const IGUALES_PERMITIDOS = new Set<string>([
   "Revenue",
   "Tickets",
   "Auditor",
+  // Paginas de restaurantes: terminos que en ingles se escriben igual.
+  "Web",
+  "POS",
+  "Subtotal",
+  "Total",
+  "{min} min",
+  // Ajustes del agente de voz: nivel del modelo y ritmo de habla.
+  "Premium",
+  "Normal",
+  // CFO de restaurantes: terminos financieros y nombres propios que en ingles se escriben igual.
+  "SoftRestaurant",
+  "EBITDA",
+  "Food cost",
+  "Marketing",
+  "Puzzle",
+  "Lift",
+  // Consola de superadmin: terminos que la consola ya escribe igual en los dos idiomas.
+  "Vertical",
+  "{n} vertical",
+  "Plan",
+  "Onboarding",
+  // Resumen de hoteles: siglas de la industria hotelera y nombre del proceso, iguales en ingles.
+  "ADR",
+  "RevPAR",
+  "RevPAR · {periodo}",
+  "{propiedad} · RevPAR {periodo}: ",
+  "OK",
+  "Night audit",
+  "Callbacks",
 ]);
+
 
 describe("catalogo i18n", () => {
   it("hay traduccion para cada modulo y ninguna de mas", () => {
@@ -71,7 +121,9 @@ describe("catalogo i18n", () => {
       for (const clave of Object.keys(m.es)) {
         expect(vistas.get(clave), `«${clave}» esta en ${vistas.get(clave)} y en ${nombre}`).toBeUndefined();
         vistas.set(clave, nombre);
-        expect(clave.startsWith(`${nombre}.`), `«${clave}» deberia empezar con «${nombre}.»`).toBe(true);
+        const prefijo = prefijoDe.get(nombre) ?? nombre;
+        expect(clave.startsWith(`${prefijo}.`), `«${clave}» deberia empezar con «${prefijo}.»`).toBe(true);
+
       }
     }
     expect(Object.keys(CATALOGOS.es).length).toBe(vistas.size);

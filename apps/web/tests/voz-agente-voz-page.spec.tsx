@@ -513,7 +513,8 @@ describe("llamada de prueba (vista previa real)", () => {
     await pintar({}, { entornoVoz: entorno });
     click(boton("Vista previa")!);
     await settle();
-    expect(texto()).not.toContain("No disponible");
+    // «No disponible:» es el aviso de la vista previa; «No disponible ahora» (titulo de EstadoError, auditoria R2 #12) es de otra seccion.
+    expect(texto()).not.toContain("No disponible:");
     expect(rendered!.container.querySelector('[data-testid="aviso-prueba"]')!.textContent).toContain("Llamada de prueba: consulta el menú real y simula el pedido; no se registra ni se avisa a nadie");
     click(boton("Iniciar llamada de prueba")!);
     await settle();

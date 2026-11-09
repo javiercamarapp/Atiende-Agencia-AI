@@ -2,6 +2,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { VozNoDisponibleError } from "../lib/voz-client.ts";
 import { CfoSinAccesoError } from "./cfo-client.ts";
+import { traductorActivo } from "@atiende/ui";
+import { restaurantesCfo } from "@atiende/ui/i18n/restaurantes/cfo";
+
+const tr = traductorActivo(restaurantesCfo);
 
 export type CargaCfo<T> =
   | { readonly estado: "cargando" }
@@ -24,7 +28,8 @@ export interface ResultadoCarga<T> {
 }
 
 /** `cargar` se vuelve a ejecutar cuando cambia cualquier valor de `claves` (o al llamar `recargar`). */
-export function useCargaCfo<T>(cargar: () => Promise<T>, claves: readonly unknown[], fallback = "No se pudo cargar la información del CFO."): ResultadoCarga<T> {
+export function useCargaCfo<T>(cargar: () => Promise<T>, claves: readonly unknown[], fallback = tr("restaurantes.cfo.errorCarga")): ResultadoCarga<T> {
+
   const [carga, setCarga] = useState<CargaCfo<T>>({ estado: "cargando" });
   const [recargando, setRecargando] = useState(false);
   const [version, setVersion] = useState(0);

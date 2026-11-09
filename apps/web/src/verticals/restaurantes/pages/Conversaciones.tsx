@@ -4,7 +4,8 @@
 // migracion 028 todavia no esta aplicada: NUNCA se confunde con una bandeja vacia) y datos.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MessageSquare } from "lucide-react";
-import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, Selector, PageContainer, StatusBadge, Tabs, TabsContent, TabsList, TabsTrigger, Textarea, statusTone } from "@atiende/ui";
+import { Button, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, Selector, PageContainer, PageHeader, StatusBadge, Tabs, TabsContent, TabsList, TabsTrigger, Textarea, localeActivo, statusTone, traductorActivo, useT } from "@atiende/ui";
+import { restaurantesConversaciones } from "@atiende/ui/i18n/restaurantes/conversaciones";
 import {
   CANAL_LABEL,
   ESTADO_LABEL,
@@ -24,17 +25,18 @@ import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 
 /** Quien escribio cada mensaje del hilo: el cliente, el asistente, una persona del panel (por nombre) o el personal desde la app de WhatsApp Business. */
 function etiquetaAutor(m: { readonly rol: string; readonly autor?: string | null }): string {
-  if (m.rol === "cliente") return "Cliente";
-  if (m.rol === "agente") return "Agente";
-  if (m.rol === "humano") return m.autor ? `Persona (${m.autor})` : "Persona del equipo";
-  if (m.rol === "humano_app") return "Personal (app)";
-  return "Herramienta";
+  const tr = traductorActivo(restaurantesConversaciones);
+  if (m.rol === "cliente") return tr("restaurantes.conversaciones.autor.cliente");
+  if (m.rol === "agente") return tr("restaurantes.conversaciones.autor.agente");
+  if (m.rol === "humano") return m.autor ? tr("restaurantes.conversaciones.autor.persona", { autor: m.autor }) : tr("restaurantes.conversaciones.autor.personaEquipo");
+  if (m.rol === "humano_app") return tr("restaurantes.conversaciones.autor.personalApp");
+  return tr("restaurantes.conversaciones.autor.herramienta");
 }
 
 function hora(iso: string | null): string {
   if (!iso) return "";
   try {
-    return new Date(iso).toLocaleString("es-MX", { dateStyle: "short", timeStyle: "short" });
+    return new Date(iso).toLocaleString(localeActivo(), { dateStyle: "short", timeStyle: "short" });
   } catch {
     return iso;
   }
@@ -46,6 +48,7 @@ function mensaje(err: unknown, porDefecto: string): string {
 
 export function ConversacionesPage(ctx: RestaurantesShellContext) {
   const { apiBaseUrl, token, propertyId } = ctx;
+  const t = useT(restaurantesConversaciones);
   const [estado, setEstado] = useState<HandoffEstado | "">("");
   const [canal, setCanal] = useState<ConversacionCanal | "">("");
   const [data, setData] = useState<BandejaWire | null>(null);
@@ -72,7 +75,7 @@ export function ConversacionesPage(ctx: RestaurantesShellContext) {
         const b = await fetchBandeja(fetch, apiBaseUrl, token, propertyId, { estado, canal });
         if (!cancelado) setData(b);
       } catch (err) {
-        if (!cancelado) setError(mensaje(err, "No se pudo cargar la bandeja."));
+        if (!cancelado) setError(mensaje(err, t("restaurantes.conversaciones.error.bandeja")));
       }
     })();
     return () => {
@@ -82,31 +85,29 @@ export function ConversacionesPage(ctx: RestaurantesShellContext) {
 
   return (
     <PageContainer padding="none">
-      <header>
-        <h1 className="sr-only">Conversaciones</h1>
-        <p className="m-0 text-ui text-muted-foreground">WhatsApp y llamadas de esta sucursal. Toma una conversación para atenderla tú: mientras la tengas, el agente no responde.</p>
-      </header>
+      <PageHeader titulo={t("restaurantes.conversaciones.titulo")} />
+      <p className="m-0 text-ui text-muted-foreground">{t("restaurantes.conversaciones.intro")}</p>
 
       <Tabs defaultValue="bandeja">
         <TabsList>
-          <TabsTrigger value="bandeja">Bandeja</TabsTrigger>
-          <TabsTrigger value="callbacks">Callbacks</TabsTrigger>
+          <TabsTrigger value="bandeja">{t("restaurantes.conversaciones.tab.bandeja")}</TabsTrigger>
+          <TabsTrigger value="callbacks">{t("restaurantes.conversaciones.tab.callbacks")}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="bandeja" className="flex flex-col gap-4">
           {data && (
             <Card>
               <CardHeader>
-                <CardTitle>De guardia ahora</CardTitle>
+                <CardTitle>{t("restaurantes.conversaciones.guardia.titulo")}</CardTitle>
               </CardHeader>
               <CardContent className="text-sm">
                 {data.cobertura.sinCobertura ? (
-                  <p className="m-0 text-destructive">Nadie está de guardia en este momento: las solicitudes escalan a administración. Define los turnos en «Turnos».</p>
+                  <p className="m-0 text-destructive">{t("restaurantes.conversaciones.guardia.nadie")}</p>
                 ) : (
                   <ul className="m-0 pl-4">
                     {data.cobertura.guardia.map((g) => (
                       <li key={g.userId}>
-                        {g.nombre ?? "Sin nombre"} — {g.turno} ({g.orden === 1 ? "principal" : `respaldo ${g.orden - 1}`})
+                        {g.nombre ?? t("restaurantes.conversaciones.guardia.sinNombre")} — {g.turno} ({g.orden === 1 ? t("restaurantes.conversaciones.guardia.principal") : t("restaurantes.conversaciones.guardia.respaldo", { n: g.orden - 1 })})
                       </li>
                     ))}
                   </ul>
@@ -116,36 +117,36 @@ export function ConversacionesPage(ctx: RestaurantesShellContext) {
           )}
 
           <div className="flex flex-wrap gap-3">
-            <Selector aria-label="Estado" value={estado} onChange={(e) => setEstado(e.target.value as HandoffEstado | "")} wrapperClassName="w-auto min-w-48">
-              <option value="">Todos los estados</option>
+            <Selector aria-label={t("restaurantes.conversaciones.filtro.estado")} value={estado} onChange={(e) => setEstado(e.target.value as HandoffEstado | "")} wrapperClassName="w-auto min-w-48">
+              <option value="">{t("restaurantes.conversaciones.filtro.todosEstados")}</option>
               {(Object.keys(ESTADO_LABEL) as HandoffEstado[]).map((e) => (
                 <option key={e} value={e}>
                   {ESTADO_LABEL[e]}
                 </option>
               ))}
             </Selector>
-            <Selector aria-label="Canal" value={canal} onChange={(e) => setCanal(e.target.value as ConversacionCanal | "")} wrapperClassName="w-auto min-w-48">
-              <option value="">WhatsApp y llamadas</option>
-              <option value="whatsapp">WhatsApp</option>
-              <option value="voz">Llamadas</option>
+            <Selector aria-label={t("restaurantes.conversaciones.filtro.canal")} value={canal} onChange={(e) => setCanal(e.target.value as ConversacionCanal | "")} wrapperClassName="w-auto min-w-48">
+              <option value="">{t("restaurantes.conversaciones.filtro.todosCanales")}</option>
+              <option value="whatsapp">{t("restaurantes.conversaciones.canal.whatsapp")}</option>
+              <option value="voz">{t("restaurantes.conversaciones.filtro.llamadas")}</option>
             </Selector>
           </div>
 
           {error && <EstadoError mensaje={error} onReintentar={recargar} />}
           {!error && data === null && <EstadoCargando lineas={4} />}
           {!error && data && !data.disponible && (
-            <EstadoVacio icon={MessageSquare} titulo="Conversaciones no disponibles aún" mensaje="La bandeja con atención humana todavía no está habilitada en esta base de datos. El agente sigue respondiendo con normalidad." />
+            <EstadoVacio icon={MessageSquare} titulo={t("restaurantes.conversaciones.noDisponible.titulo")} mensaje={t("restaurantes.conversaciones.noDisponible.mensaje")} />
           )}
-          {!error && data && data.disponible && data.items.length === 0 && <EstadoVacio icon={MessageSquare} titulo="Sin conversaciones" mensaje="No hay conversaciones con estos filtros." />}
+          {!error && data && data.disponible && data.items.length === 0 && <EstadoVacio icon={MessageSquare} titulo={t("restaurantes.conversaciones.vacio.titulo")} mensaje={t("restaurantes.conversaciones.vacio.mensaje")} />}
 
           {!error && data && data.disponible && data.items.length > 0 && (
             <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
-              <ul className="m-0 p-0 list-none flex flex-col gap-2" aria-label="Conversaciones">
+              <ul className="m-0 p-0 list-none flex flex-col gap-2" aria-label={t("restaurantes.conversaciones.lista")}>
                 {data.items.map((i) => (
                   <FilaConversacion key={`${i.canal}:${i.conversationId}`} item={i} activa={seleccion?.id === i.conversationId} onElegir={() => setSeleccion({ canal: i.canal, id: i.conversationId })} />
                 ))}
               </ul>
-              {seleccion ? <DetalleConversacion key={`${seleccion.canal}:${seleccion.id}`} ctx={ctx} canal={seleccion.canal} conversationId={seleccion.id} onCambio={recargar} /> : <p className="m-0 text-sm text-muted-foreground">Elige una conversación para verla.</p>}
+              {seleccion ? <DetalleConversacion key={`${seleccion.canal}:${seleccion.id}`} ctx={ctx} canal={seleccion.canal} conversationId={seleccion.id} onCambio={recargar} /> : <p className="m-0 text-sm text-muted-foreground">{t("restaurantes.conversaciones.elige")}</p>}
             </div>
           )}
         </TabsContent>
@@ -159,6 +160,7 @@ export function ConversacionesPage(ctx: RestaurantesShellContext) {
 }
 
 function FilaConversacion({ item, activa, onElegir }: { item: BandejaItemWire; activa: boolean; onElegir: () => void }) {
+  const t = useT(restaurantesConversaciones);
   const esc = textoEscalacion(item.escalacion);
   return (
     <li>
@@ -169,11 +171,11 @@ function FilaConversacion({ item, activa, onElegir }: { item: BandejaItemWire; a
           </span>
           <StatusBadge tone={statusTone(HANDOFF_ESTADO_TONES, item.estado)}>{ESTADO_LABEL[item.estado]}</StatusBadge>
         </div>
-        <p className="m-0 mt-1 text-xs text-muted-foreground truncate">{item.vistaPrevia || "Sin mensajes"}</p>
+        <p className="m-0 mt-1 text-xs text-muted-foreground truncate">{item.vistaPrevia || t("restaurantes.conversaciones.sinMensajes")}</p>
         <p className="m-0 mt-1 text-xs text-muted-foreground">
           {hora(item.actividadEn)}
-          {item.tomadaPorNombre ? ` · la tiene ${item.tomadaPorNombre}` : ""}
-          {item.motivo ? ` · motivo: ${item.motivo}` : ""}
+          {item.tomadaPorNombre ? t("restaurantes.conversaciones.laTiene", { nombre: item.tomadaPorNombre }) : ""}
+          {item.motivo ? t("restaurantes.conversaciones.motivoFila", { motivo: item.motivo }) : ""}
         </p>
         {esc && <p className="m-0 mt-1 text-xs text-destructive">{esc}</p>}
       </button>
@@ -183,6 +185,7 @@ function FilaConversacion({ item, activa, onElegir }: { item: BandejaItemWire; a
 
 function DetalleConversacion({ ctx, canal, conversationId, onCambio }: { ctx: RestaurantesShellContext; canal: ConversacionCanal; conversationId: string; onCambio: () => void }) {
   const { apiBaseUrl, token, propertyId, staffEmail } = ctx;
+  const t = useT(restaurantesConversaciones);
   const [d, setD] = useState<DetalleWire | null>(null);
   const [error, setError] = useState<string | null>(null);
   // El resultado de una accion: un exito se anuncia como estado y un fallo como alerta con estilo de error (QA-restaurantes-R1-botones-04).
@@ -202,7 +205,7 @@ function DetalleConversacion({ ctx, canal, conversationId, onCambio }: { ctx: Re
           setError(null);
         }
       } catch (err) {
-        if (!cancelado) setError(mensaje(err, "No se pudo cargar la conversación."));
+        if (!cancelado) setError(mensaje(err, t("restaurantes.conversaciones.error.conversacion")));
       }
     })();
     return () => {
@@ -219,7 +222,7 @@ function DetalleConversacion({ ctx, canal, conversationId, onCambio }: { ctx: Re
       setVersion((n) => n + 1);
       onCambio();
     } catch (err) {
-      setAviso({ tipo: "error", texto: mensaje(err, "No se pudo completar la acción.") });
+      setAviso({ tipo: "error", texto: mensaje(err, t("restaurantes.conversaciones.error.accion")) });
     } finally {
       setOcupado(false);
     }
@@ -251,30 +254,30 @@ function DetalleConversacion({ ctx, canal, conversationId, onCambio }: { ctx: Re
 
         <div className="flex flex-wrap gap-2">
           {(!h || !abierta || h.estado === "pendiente") && (
-            <Button disabled={ocupado} onClick={() => ejecutar(() => tomarConversacion(fetch, apiBaseUrl, token, propertyId, canal, conversationId), "La conversación es tuya: el agente ya no responde.")}>
-              Tomar conversación
+            <Button disabled={ocupado} onClick={() => ejecutar(() => tomarConversacion(fetch, apiBaseUrl, token, propertyId, canal, conversationId), t("restaurantes.conversaciones.ok.tomada"))}>
+              {t("restaurantes.conversaciones.tomar")}
             </Button>
           )}
           {h && abierta && (
             <>
-              <Button variant="outline" disabled={ocupado} onClick={() => ejecutar(() => liberarHandoff(fetch, apiBaseUrl, token, propertyId, h.handoffId, "devolver"), "Devuelta al agente.")}>
-                Devolver al agente
+              <Button variant="outline" disabled={ocupado} onClick={() => ejecutar(() => liberarHandoff(fetch, apiBaseUrl, token, propertyId, h.handoffId, "devolver"), t("restaurantes.conversaciones.ok.devuelta"))}>
+                {t("restaurantes.conversaciones.devolver")}
               </Button>
-              <Button variant="outline" disabled={ocupado} onClick={() => ejecutar(() => liberarHandoff(fetch, apiBaseUrl, token, propertyId, h.handoffId, "cerrar"), "Conversación resuelta.")}>
-                Marcar como resuelta
+              <Button variant="outline" disabled={ocupado} onClick={() => ejecutar(() => liberarHandoff(fetch, apiBaseUrl, token, propertyId, h.handoffId, "cerrar"), t("restaurantes.conversaciones.ok.resuelta"))}>
+                {t("restaurantes.conversaciones.resolver")}
               </Button>
             </>
           )}
         </div>
-        {h?.tomadaPorNombre && <p className="m-0 text-muted-foreground">La tiene: {h.tomadaPorNombre}</p>}
+        {h?.tomadaPorNombre && <p className="m-0 text-muted-foreground">{t("restaurantes.conversaciones.laTieneDetalle", { nombre: h.tomadaPorNombre })}</p>}
         {h?.motivo === "personal_app" ? (
-          <p className="m-0 text-muted-foreground">El personal está atendiendo desde la app de WhatsApp Business: el asistente está callado en esta conversación.</p>
+          <p className="m-0 text-muted-foreground">{t("restaurantes.conversaciones.personalApp")}</p>
         ) : (
-          h?.motivo && <p className="m-0 text-muted-foreground">Motivo de la solicitud: {h.motivo}</p>
+          h?.motivo && <p className="m-0 text-muted-foreground">{t("restaurantes.conversaciones.motivoSolicitud", { motivo: h.motivo })}</p>
         )}
 
-        <section aria-label="Mensajes" className="flex flex-col gap-1 max-h-[280px] overflow-auto">
-          {!d.transcripcionDisponible && <p className="m-0 text-muted-foreground">La transcripción de esta llamada solo se muestra a quien la toma o a owner/admin.</p>}
+        <section aria-label={t("restaurantes.conversaciones.mensajes")} className="flex flex-col gap-1 max-h-[280px] overflow-auto">
+          {!d.transcripcionDisponible && <p className="m-0 text-muted-foreground">{t("restaurantes.conversaciones.transcripcionPrivada")}</p>}
           {d.mensajes.map((m, i) => (
             <p key={i} className="m-0">
               {m.creadoEn && <span className="text-muted-foreground">{hora(m.creadoEn)} · </span>}
@@ -292,23 +295,23 @@ function DetalleConversacion({ ctx, canal, conversationId, onCambio }: { ctx: Re
               void ejecutar(async () => {
                 await responderWhatsapp(fetch, apiBaseUrl, token, propertyId, h.handoffId, respuesta.trim());
                 setRespuesta("");
-              }, "Respuesta enviada al cliente.");
+              }, t("restaurantes.conversaciones.ok.respuesta"));
             }}
           >
             <label className="flex flex-col gap-1">
-              Responder por WhatsApp
+              {t("restaurantes.conversaciones.responder")}
               <Textarea value={respuesta} maxLength={1000} onChange={(e) => setRespuesta(e.target.value)} rows={2} />
             </label>
             <Button type="submit" disabled={ocupado || !respuesta.trim()}>
-              Enviar respuesta
+              {t("restaurantes.conversaciones.enviar")}
             </Button>
           </form>
         )}
 
         {h && (
-          <section aria-label="Notas internas" className="flex flex-col gap-2">
-            <h2 className="m-0 text-sm font-semibold">Notas internas (el cliente no las ve)</h2>
-            {d.notas.length === 0 && <p className="m-0 text-muted-foreground">Sin notas.</p>}
+          <section aria-label={t("restaurantes.conversaciones.notas.aria")} className="flex flex-col gap-2">
+            <h2 className="m-0 text-sm font-semibold">{t("restaurantes.conversaciones.notas.titulo")}</h2>
+            {d.notas.length === 0 && <p className="m-0 text-muted-foreground">{t("restaurantes.conversaciones.notas.vacio")}</p>}
             {d.notas.map((n) => (
               <p key={n.id} className="m-0">
                 <span className="text-muted-foreground">{hora(n.creadoEn)} · {n.autor ?? staffEmail}:</span> {n.texto}
@@ -322,12 +325,13 @@ function DetalleConversacion({ ctx, canal, conversationId, onCambio }: { ctx: Re
                 void ejecutar(async () => {
                   await agregarNota(fetch, apiBaseUrl, token, propertyId, h.handoffId, nota.trim());
                   setNota("");
-                }, "Nota guardada.");
+                }, t("restaurantes.conversaciones.ok.nota"));
               }}
             >
-              <Input aria-label="Nueva nota" value={nota} maxLength={2000} onChange={(e) => setNota(e.target.value)} className="flex-1" />
+              <Input aria-label={t("restaurantes.conversaciones.notas.nueva")} value={nota} maxLength={2000} onChange={(e) => setNota(e.target.value)} className="flex-1" />
               <Button type="submit" variant="outline" disabled={ocupado || !nota.trim()}>
-                Agregar
+                {t("restaurantes.conversaciones.notas.agregar")}
+
               </Button>
             </form>
           </section>

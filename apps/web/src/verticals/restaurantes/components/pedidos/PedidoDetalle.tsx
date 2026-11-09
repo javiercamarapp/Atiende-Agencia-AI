@@ -4,7 +4,10 @@
 // asignado, la propina, la hora de recogida / programacion y el boton «Historial» (bitacora de transiciones).
 import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, ArrowLeft, Banknote, Bike, Clock, CreditCard, Globe, History, MapPin, MessageCircle, Mic, Phone, ShoppingCart, StickyNote, Store, Truck, User, Wallet } from "lucide-react";
-import { Button, DataTable, RegionCargando, StatusBadge, cn, formatMoney, statusTone } from "@atiende/ui";
+import { Button, DataTable, RegionCargando, StatusBadge, cn, formatMoney, statusTone, useT } from "@atiende/ui";
+import type { Clave } from "@atiende/ui";
+import { restaurantesComun } from "@atiende/ui/i18n/restaurantes/comun";
+import { restaurantesPedidos } from "@atiende/ui/i18n/restaurantes/pedidos";
 import { fechaAnioHoraEsMx, fechaCortaHoraEsMx, hora24EsMx } from "../../../../lib/formato-fecha.ts";
 import { etiquetaVenta, fetchOrder, fetchOrders, ORDER_STATUS_LABELS } from "../../lib/orders-client.ts";
 import type { OrderItem, OrderSummary } from "../../lib/orders-client.ts";
@@ -14,7 +17,14 @@ import "./mapa-entrega.css";
 
 const dinero = (n: number): string => `$${formatMoney(n)}`;
 
-const ETIQUETA_FUENTE: Record<OrderSummary["source"], string> = { voice: "Llamada", whatsapp: "WhatsApp", web: "Web", admin: "Capturado a mano" };
+const ETIQUETA_FUENTE: Record<OrderSummary["source"], Clave> = {
+  voice: "restaurantes.fuente.voice",
+  whatsapp: "restaurantes.fuente.whatsapp",
+  web: "restaurantes.fuente.web",
+  admin: "restaurantes.fuente.admin",
+};
+/** Formas de pago conocidas: se traducen; otra (dato libre) se muestra tal cual. */
+const ETIQUETA_PAGO: Readonly<Record<string, Clave>> = { efectivo: "restaurantes.pago.efectivo", tarjeta: "restaurantes.pago.tarjeta", transferencia: "restaurantes.pago.transferencia" };
 
 function IconoFuente({ source, className }: { readonly source: OrderSummary["source"]; readonly className: string }) {
   if (source === "voice") return <Mic className={className} strokeWidth={1.75} aria-hidden="true" />;
@@ -46,6 +56,7 @@ export interface PedidoDetalleProps {
 }
 
 export function PedidoDetalle({ apiBaseUrl, token, propertyId, orderId, repartidores, onVolver, onSelect, onHistorial }: PedidoDetalleProps) {
+  const t = useT(restaurantesComun, restaurantesPedidos);
   const [detalle, setDetalle] = useState<OrderSummary | null>(null);
   const [cargando, setCargando] = useState(true);
   const [errorDetalle, setErrorDetalle] = useState<string | null>(null);
@@ -60,7 +71,7 @@ export function PedidoDetalle({ apiBaseUrl, token, propertyId, orderId, repartid
     setErrorDetalle(null);
     fetchOrder(fetch, apiBaseUrl, token, propertyId, orderId)
       .then((o) => !cancelado && setDetalle(o))
-      .catch((err: unknown) => !cancelado && setErrorDetalle(err instanceof Error ? err.message : "No fue posible consultar el pedido."))
+      .catch((err: unknown) => !cancelado && setErrorDetalle(err instanceof Error ? err.message : t("restaurantes.pedidos.detalle.errorConsulta")))
       .finally(() => !cancelado && setCargando(false));
     return () => {
       cancelado = true;
@@ -97,18 +108,18 @@ export function PedidoDetalle({ apiBaseUrl, token, propertyId, orderId, repartid
     <div ref={raiz} tabIndex={-1} className="w-full min-w-0 space-y-4 outline-none" data-testid="pedido-detalle">
       <Button type="button" variant="ghost" size="sm" className="-ml-2 h-8 gap-1.5 text-sm text-muted-foreground hover:text-foreground" onClick={onVolver}>
         <ArrowLeft className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
-        Volver
+        {t("restaurantes.volver")}
       </Button>
 
       {cargando ? (
-        <RegionCargando ocupado etiqueta="Cargando el pedido" className="flex justify-center py-16" claseDs3="min-h-40" giro="h-6 w-6 text-muted-foreground" />
+        <RegionCargando ocupado etiqueta={t("restaurantes.pedidos.detalle.cargando")} className="flex justify-center py-16" claseDs3="min-h-40" giro="h-6 w-6 text-muted-foreground" />
       ) : errorDetalle || !detalle ? (
         <div role="alert" className="w-full rounded-2xl border border-destructive/30 bg-card p-5 text-center">
           <AlertTriangle className="mx-auto mb-3 h-8 w-8 text-destructive" aria-hidden="true" />
-          <p className="text-sm font-medium text-foreground">No se pudo cargar el pedido</p>
-          <p className="mt-1 text-xs text-muted-foreground">{errorDetalle ?? "Pedido no encontrado."}</p>
+          <p className="text-sm font-medium text-foreground">{t("restaurantes.pedidos.detalle.noCargo")}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{errorDetalle ?? t("restaurantes.pedidos.detalle.noEncontrado")}</p>
           <Button className="mt-4" variant="outline" onClick={() => setReintento((v) => v + 1)}>
-            Volver a intentar
+            {t("restaurantes.reintentar")}
           </Button>
         </div>
       ) : (
@@ -122,7 +133,7 @@ export function PedidoDetalle({ apiBaseUrl, token, propertyId, orderId, repartid
                 </StatusBadge>
                 <Button type="button" variant="ghost" size="xs" className="ml-auto" onClick={() => onHistorial(detalle)}>
                   <History className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
-                  Historial
+                  {t("restaurantes.historial")}
                 </Button>
               </div>
               <p className="mt-1 text-pill text-muted-foreground">
@@ -132,48 +143,48 @@ export function PedidoDetalle({ apiBaseUrl, token, propertyId, orderId, repartid
             </div>
 
             <div className="grid grid-cols-1 gap-4 text-ui min-[420px]:grid-cols-2 sm:grid-cols-3">
-              <Dato icono={<User className="h-4 w-4" aria-hidden="true" />} etiqueta="Cliente">
+              <Dato icono={<User className="h-4 w-4" aria-hidden="true" />} etiqueta={t("restaurantes.pedidos.detalle.cliente")}>
                 {detalle.customerName}
               </Dato>
-              <Dato icono={<Phone className="h-4 w-4" aria-hidden="true" />} etiqueta="Teléfono">
+              <Dato icono={<Phone className="h-4 w-4" aria-hidden="true" />} etiqueta={t("restaurantes.pedidos.detalle.telefono")}>
                 {detalle.customerPhone}
               </Dato>
-              <Dato icono={<IconoFuente source={detalle.source} className="h-4 w-4" />} etiqueta="Canal">
-                {ETIQUETA_FUENTE[detalle.source]}
+              <Dato icono={<IconoFuente source={detalle.source} className="h-4 w-4" />} etiqueta={t("restaurantes.pedidos.detalle.canal")}>
+                {t(ETIQUETA_FUENTE[detalle.source])}
               </Dato>
               {detalle.customerAddress && (
-                <Dato icono={<MapPin className="h-4 w-4" aria-hidden="true" />} etiqueta="Dirección de entrega" className="min-[420px]:col-span-2">
+                <Dato icono={<MapPin className="h-4 w-4" aria-hidden="true" />} etiqueta={t("restaurantes.pedidos.detalle.direccion")} className="min-[420px]:col-span-2">
                   {detalle.customerAddress}
                 </Dato>
               )}
               <Dato
                 icono={detalle.paymentMethod === "tarjeta" ? <CreditCard className="h-4 w-4" aria-hidden="true" /> : detalle.paymentMethod === "efectivo" ? <Banknote className="h-4 w-4" aria-hidden="true" /> : <Wallet className="h-4 w-4" aria-hidden="true" />}
-                etiqueta="Forma de pago"
+                etiqueta={t("restaurantes.pedidos.detalle.formaPago")}
               >
-                <span className="capitalize">{detalle.paymentMethod ?? "No registrada"}</span>
+                <span className="capitalize">{detalle.paymentMethod ? (ETIQUETA_PAGO[detalle.paymentMethod] ? t(ETIQUETA_PAGO[detalle.paymentMethod] as Clave) : detalle.paymentMethod) : t("restaurantes.pedidos.detalle.pagoNoRegistrado")}</span>
               </Dato>
               {detalle.canal && (
-                <Dato icono={<Truck className="h-4 w-4" aria-hidden="true" />} etiqueta="Entrega">
-                  {detalle.canal === "recoger" ? "Recoger en sucursal" : "Domicilio"}
+                <Dato icono={<Truck className="h-4 w-4" aria-hidden="true" />} etiqueta={t("restaurantes.pedidos.detalle.entrega")}>
+                  {t(detalle.canal === "recoger" ? "restaurantes.canal.recogerEnSucursal" : "restaurantes.canal.domicilio")}
                 </Dato>
               )}
               {detalle.assignedRepartidorId && (
-                <Dato icono={<Bike className="h-4 w-4" aria-hidden="true" />} etiqueta="Repartidor">
-                  {repartidor?.fullName || repartidor?.email || "Repartidor asignado"}
+                <Dato icono={<Bike className="h-4 w-4" aria-hidden="true" />} etiqueta={t("restaurantes.repartidor")}>
+                  {repartidor?.fullName || repartidor?.email || t("restaurantes.repartidorAsignado")}
                 </Dato>
               )}
               {detalle.estimatedDeliveryAt && (
-                <Dato icono={<Clock className="h-4 w-4" aria-hidden="true" />} etiqueta="Llegada estimada">
+                <Dato icono={<Clock className="h-4 w-4" aria-hidden="true" />} etiqueta={t("restaurantes.pedidos.detalle.llegadaEstimada")}>
                   {hora24EsMx(detalle.estimatedDeliveryAt)}
                 </Dato>
               )}
               {detalle.horaRecogida && (
-                <Dato icono={<Clock className="h-4 w-4" aria-hidden="true" />} etiqueta="Recoge a las">
+                <Dato icono={<Clock className="h-4 w-4" aria-hidden="true" />} etiqueta={t("restaurantes.pedidos.detalle.recogeA")}>
                   {hora24EsMx(detalle.horaRecogida)}
                 </Dato>
               )}
               {detalle.programadoPara && (
-                <Dato icono={<Clock className="h-4 w-4" aria-hidden="true" />} etiqueta="Programado para">
+                <Dato icono={<Clock className="h-4 w-4" aria-hidden="true" />} etiqueta={t("restaurantes.pedidos.detalle.programadoPara")}>
                   {fechaCortaHoraEsMx(detalle.programadoPara)}
                 </Dato>
               )}
@@ -181,33 +192,33 @@ export function PedidoDetalle({ apiBaseUrl, token, propertyId, orderId, repartid
 
             <div className="overflow-hidden rounded-xl border border-border">
               <DataTable<OrderItem>
-                etiqueta="Productos del pedido"
+                etiqueta={t("restaurantes.pedidos.detalle.productos")}
                 filas={detalle.items}
                 obtenerId={(it) => it.id}
                 paginacion={false}
                 vista="tabla"
-                vacio={{ mensaje: "Este pedido no tiene productos registrados." }}
+                vacio={{ mensaje: t("restaurantes.pedidos.detalle.sinProductos") }}
                 columnas={[
-                  { id: "producto", encabezado: "Producto", principal: true, celda: (it) => (
+                  { id: "producto", encabezado: t("restaurantes.pedidos.detalle.producto"), principal: true, celda: (it) => (
                     <span className="text-foreground">
                       {it.name}
                       {it.tortilla ? <span className="text-muted-foreground"> · {it.tortilla}</span> : null}
                     </span>
                   ) },
-                  { id: "cantidad", encabezado: "Cant.", alinear: "right", celda: (it) => <span className="tabular-nums text-foreground">{it.quantity}</span> },
-                  { id: "unitario", encabezado: "P. unit.", alinear: "right", celda: (it) => <span className="tabular-nums text-muted-foreground">{dinero(Number(it.price))}</span> },
-                  { id: "subtotal", encabezado: "Subtotal", alinear: "right", celda: (it) => <span className="font-medium tabular-nums text-foreground">{dinero(Number(it.price) * it.quantity)}</span> },
+                  { id: "cantidad", encabezado: t("restaurantes.pedidos.detalle.cantidad"), alinear: "right", celda: (it) => <span className="tabular-nums text-foreground">{it.quantity}</span> },
+                  { id: "unitario", encabezado: t("restaurantes.pedidos.detalle.unitario"), alinear: "right", celda: (it) => <span className="tabular-nums text-muted-foreground">{dinero(Number(it.price))}</span> },
+                  { id: "subtotal", encabezado: t("restaurantes.pedidos.detalle.subtotal"), alinear: "right", celda: (it) => <span className="font-medium tabular-nums text-foreground">{dinero(Number(it.price) * it.quantity)}</span> },
                 ]}
               />
               <div className="divide-y divide-dashed divide-border border-t border-border bg-muted/40">
                 {detalle.propina != null && (
                   <div className="flex items-center justify-between gap-3 px-3 py-2">
-                    <span className="font-mono text-eyebrow uppercase tracking-wide text-muted-foreground">Propina (no incluida en el total)</span>
+                    <span className="font-mono text-eyebrow uppercase tracking-wide text-muted-foreground">{t("restaurantes.pedidos.detalle.propina")}</span>
                     <span className="tabular-nums text-muted-foreground">{dinero(detalle.propina)}</span>
                   </div>
                 )}
                 <div className="flex items-center justify-between gap-3 px-3 py-2.5">
-                  <span className="font-mono text-eyebrow uppercase tracking-wide text-muted-foreground">Total</span>
+                  <span className="font-mono text-eyebrow uppercase tracking-wide text-muted-foreground">{t("restaurantes.pedidos.detalle.total")}</span>
                   <span className="font-display text-base font-semibold tabular-nums text-foreground" data-testid="detalle-total">
                     {dinero(Number(detalle.total))}
                   </span>
@@ -220,7 +231,7 @@ export function PedidoDetalle({ apiBaseUrl, token, propertyId, orderId, repartid
                 <StickyNote className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
                 <div className="min-w-0">
                   <p className="text-ui text-foreground">{detalle.notes}</p>
-                  <p className="text-eyebrow text-muted-foreground">Instrucciones especiales</p>
+                  <p className="text-eyebrow text-muted-foreground">{t("restaurantes.pedidos.detalle.instrucciones")}</p>
                 </div>
               </div>
             )}
@@ -230,20 +241,20 @@ export function PedidoDetalle({ apiBaseUrl, token, propertyId, orderId, repartid
                 <AlertTriangle className="pedido-incidencia-texto mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
                 <div className="min-w-0">
                   <p className="text-ui text-foreground">{detalle.incidentNote}</p>
-                  <p className="pedido-incidencia-texto text-eyebrow">Incidencia reportada</p>
+                  <p className="pedido-incidencia-texto text-eyebrow">{t("restaurantes.pedidos.detalle.incidencia")}</p>
                 </div>
               </div>
             )}
 
-            {detalle.deliveredAt && <p className="text-pill text-muted-foreground">Entregado el {fechaAnioHoraEsMx(detalle.deliveredAt)}</p>}
+            {detalle.deliveredAt && <p className="text-pill text-muted-foreground">{t("restaurantes.pedidos.detalle.entregadoEl", { fecha: fechaAnioHoraEsMx(detalle.deliveredAt) })}</p>}
           </div>
 
           <div className="space-y-2">
-            <p className="px-1 font-mono text-eyebrow uppercase tracking-[0.08em] text-muted-foreground">Pedidos recientes</p>
+            <p className="px-1 font-mono text-eyebrow uppercase tracking-[0.08em] text-muted-foreground">{t("restaurantes.pedidos.detalle.recientes")}</p>
             {cargandoRecientes ? (
-              <RegionCargando ocupado etiqueta="Cargando pedidos recientes" className="flex justify-center py-8" claseDs3="min-h-24" giro="h-5 w-5 text-muted-foreground" />
+              <RegionCargando ocupado etiqueta={t("restaurantes.pedidos.detalle.cargandoRecientes")} className="flex justify-center py-8" claseDs3="min-h-24" giro="h-5 w-5 text-muted-foreground" />
             ) : recientes.length === 0 ? (
-              <p className="px-1 text-pill text-muted-foreground">No hay más pedidos recientes.</p>
+              <p className="px-1 text-pill text-muted-foreground">{t("restaurantes.pedidos.detalle.sinRecientes")}</p>
             ) : (
               <div className="overflow-hidden rounded-2xl border border-border bg-card">
                 {recientes.map((r) => (

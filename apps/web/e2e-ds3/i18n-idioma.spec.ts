@@ -28,7 +28,7 @@ for (const consola of CONSOLAS) {
     await iniciarSesion(consola, "owner");
     await expect(page.locator("main#contenido-principal")).toBeVisible();
     await esperarSinCarga(page);
-    await expect(page.locator("html")).toHaveAttribute("lang", "es");
+    await expect(page.locator("html")).toHaveAttribute("lang", "es-MX");
     const capturar = async (idioma: "es" | "en") => {
       const carpeta = join(SALIDA, "i18n", consola);
       mkdirSync(carpeta, { recursive: true });
@@ -41,7 +41,7 @@ for (const consola of CONSOLAS) {
     await page.evaluate(() => window.localStorage.setItem("atiende-idioma", "en"));
     await page.reload();
     await expect(page.locator("main#contenido-principal")).toBeVisible();
-    await expect(page.locator("html")).toHaveAttribute("lang", "en");
+    await expect(page.locator("html")).toHaveAttribute("lang", "en-US");
     await capturar("en");
   });
 }

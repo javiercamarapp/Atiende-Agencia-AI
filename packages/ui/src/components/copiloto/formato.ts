@@ -64,13 +64,6 @@ export function nombreArchivoCsv(vertical: string | undefined, herramienta: stri
 }
 
 export type GrupoHistorial = "fijadas" | "hoy" | "ayer" | "semana" | "anteriores";
-export const ETIQUETA_GRUPO: Readonly<Record<GrupoHistorial, string>> = {
-  fijadas: "Fijadas",
-  hoy: "Hoy",
-  ayer: "Ayer",
-  semana: "Últimos 7 días",
-  anteriores: "Anteriores",
-};
 export const ORDEN_GRUPOS: readonly GrupoHistorial[] = ["fijadas", "hoy", "ayer", "semana", "anteriores"];
 
 /** Dia calendario (yyyy-mm-dd) de un instante en una zona horaria IANA. */

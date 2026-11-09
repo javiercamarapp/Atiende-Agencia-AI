@@ -13,6 +13,7 @@ import type { ReactNode } from "react";
 import { Navigate } from "react-router-dom";
 import {
   BellRing,
+  Building2,
   CalendarCheck,
   ClipboardCheck,
   ClipboardList,
@@ -118,7 +119,7 @@ const COPILOTO_ROLES: ReadonlySet<string> = new Set(["owner", "admin", "staff"])
 // UNI-6: categorías en el orden de Likida (Operación, Catálogo, Clientes y, solo owner/admin, Agente y Configuración) con
 // "Resumen" como raíz sin título. Mismos destinos y roles que antes: ningún link se agrega ni se quita, solo se reagrupan
 // (Agente de voz y los de gestión siguen detrás de STAFF_NAV_ROLES).
-function buildSections(t: Traductor, orgSlug: string, canSeeStaff: boolean, canSeeCopiloto: boolean, canSeePromociones = true, canSeeCfo = false, canSeeOperacion = false, canSeeAgregados = false): SidebarSection[] {
+export function buildSections(t: Traductor, orgSlug: string, canSeeStaff: boolean, canSeeCopiloto: boolean, canSeePromociones = true, canSeeCfo = false, canSeeOperacion = false, canSeeAgregados = false): SidebarSection[] {
   const base = `/restaurantes/${orgSlug}`;
   const sections: SidebarSection[] = [
     {
@@ -127,6 +128,8 @@ function buildSections(t: Traductor, orgSlug: string, canSeeStaff: boolean, canS
       // CHAT-08: el Copiloto ("Pregúntale a tus datos") va justo debajo de Resumen, como en las demás consolas (spec de diseño §203).
       items: [
         { to: base, label: t("nav.resumen"), icon: LayoutDashboard, end: true },
+        // Resumen general: todas las sucursales en una vista (mismo permiso que el CFO, `cfo.ver`: dueño/admin; el API responde 403 a los demás).
+        ...(canSeeCfo ? [{ to: `${base}/general`, label: t("nav.resumenGeneral"), icon: Building2 }] : []),
         ...(canSeeCopiloto ? [{ to: `${base}/copiloto`, label: t("nav.copiloto"), icon: Sparkles }] : []),
         // CFO-07: tablero financiero (solo owner/admin, `cfo.ver`; staff y repartidor no lo ven y el API les responde 403).
         ...(canSeeCfo ? [{ to: `${base}/cfo`, label: t("nav.cfo"), icon: LineChart }] : []),
@@ -290,6 +293,11 @@ export function RestaurantesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
       branchSelector={sucursalSelector("restaurantes-sucursal-activa")}
       mobileSelector={branches.length > 1 ? sucursalSelector("restaurantes-sucursal-activa-movil") : null}
       contentKey={propertyId}
+      guia={{
+        // Contenido diferido: solo se descarga con la bandera ds3 (GuiaDiferida).
+        cargar: () => import("./guia-restaurantes.ts").then((m) => ({ contenido: m.GUIA_RESTAURANTES, esenciales: m.esencialesRestaurantes(role) })),
+        primerosPasosHref: STAFF_NAV_ROLES.has(role) ? `/restaurantes/${orgSlug}/primeros-pasos` : undefined,
+      }}
     >
       {/* R-33: gate de onboarding (aterrizaje en "Primeros pasos" + banner en el Resumen) solo para owner/admin. */}
       <PuertaOnboarding apiBaseUrl={apiBaseUrl} token={session.token} propertyId={propertyId} orgSlug={orgSlug} role={role}>

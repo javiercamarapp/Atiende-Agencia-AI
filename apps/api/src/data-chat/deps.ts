@@ -8,6 +8,7 @@ import { rateLimit } from "@atiende/core-ratelimit";
 import type { TenancyEngine, TenantDbSession } from "@atiende/core-tenancy";
 import { isUndefinedColumnError, isUndefinedFunctionError, isUndefinedTableError, runWithSavepointFallback } from "@atiende/db";
 import type { ConversacionesRepository } from "./conversaciones.ts";
+import type { ValoracionesRepository } from "./valoraciones.ts";
 import { buildDataChatCache, createDataChatCacheStore } from "./cache.ts";
 import type { PinsRepository } from "./pins.ts";
 import { RESTAURANTES_DATA_CHAT_ROLE } from "../production/llm-gateway.ts";
@@ -40,6 +41,9 @@ export interface DataChatDeps {
   /** Repositorio de conversaciones guardadas (CHAT-04) sobre la sesion RLS del request. OPCIONAL: sin el se usa el de
    *  Postgres (`PostgresConversacionesRepository`); existe para inyectar uno en memoria en pruebas. */
   readonly conversaciones?: (db: TenantDbSession) => ConversacionesRepository;
+  /** Valoraciones «Útil / No fue útil» (migracion 0079) sobre la sesion RLS del request. OPCIONAL: sin el se usa el de Postgres; los tests
+   *  inyectan uno en memoria. */
+  readonly valoraciones?: (db: TenantDbSession) => ValoracionesRepository;
   /** MOD-12: activa los roles auxiliares del Copiloto (enrutador de turno, compuerta de escalamiento, titulos de conversaciones y compactacion de
    *  historial, todos `plataforma:*` y apagables desde el panel de interruptores). OPCIONAL: sin el (pruebas con un LLM guionado) el turno corre como
    *  siempre y no se hace ninguna llamada extra. `buildProductionDataChat` lo enciende. */

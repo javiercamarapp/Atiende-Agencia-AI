@@ -1,7 +1,9 @@
 // «Reportar incidencia» (repo suelto: ModalFormularioLateral -> aqui FormDialog): la nota es OBLIGATORIA. El pedido pasa a «Incidencia»
 // con esa nota (PATCH .../status con status:"problema" e incidentNote); el servidor avisa al staff igual que con una cancelacion.
 import { useEffect, useState } from "react";
-import { Button, FormDialog, FormField, Textarea, cn } from "@atiende/ui";
+import { Button, FormDialog, FormField, Textarea, cn, useT } from "@atiende/ui";
+import { restaurantesComun } from "@atiende/ui/i18n/restaurantes/comun";
+import { restaurantesPedidos } from "@atiende/ui/i18n/restaurantes/pedidos";
 import type { OrderSummary } from "../../lib/orders-client.ts";
 import { etiquetaFolio } from "../../lib/orders-client.ts";
 import "./mapa-entrega.css";
@@ -20,6 +22,7 @@ export function IncidenciaDialogo({
   readonly onCerrar: () => void;
   readonly onConfirmar: (order: OrderSummary, nota: string) => void;
 }) {
+  const t = useT(restaurantesComun, restaurantesPedidos);
   const [nota, setNota] = useState("");
   const [intentoVacio, setIntentoVacio] = useState(false);
   useEffect(() => {
@@ -41,17 +44,17 @@ export function IncidenciaDialogo({
     <FormDialog
       open={order !== null}
       onOpenChange={(abierto) => !abierto && onCerrar()}
-      titulo="Reportar incidencia"
+      titulo={t("restaurantes.pedidos.incidencia.titulo")}
       subtitulo={order ? `${etiquetaFolio(order)} — ${order.customerName}` : undefined}
       anchoClase="max-w-5xl"
       bloquearCierre={enCurso}
       footer={
         <div className="flex w-full gap-2">
           <Button type="button" variant="outline" className="flex-1 rounded-full" onClick={onCerrar} disabled={enCurso}>
-            Cancelar
+            {t("restaurantes.cancelar")}
           </Button>
           <Button type="button" className={cn("pedido-incidencia-confirmar flex-1 rounded-full")} onClick={enviar} loading={enCurso} disabled={enCurso}>
-            {enCurso ? "Reportando..." : "Reportar incidencia"}
+            {t(enCurso ? "restaurantes.pedidos.incidencia.reportando" : "restaurantes.pedidos.incidencia.titulo")}
           </Button>
         </div>
       }
@@ -62,8 +65,8 @@ export function IncidenciaDialogo({
             {error}
           </p>
         )}
-        <FormField label="¿Qué pasó?" required error={falta ? "Escribe qué pasó antes de reportar la incidencia." : undefined}>
-          <Textarea placeholder="Ej. dirección incorrecta, cliente no contesta, queja del cliente..." value={nota} onChange={(e) => setNota(e.target.value)} rows={4} />
+        <FormField label={t("restaurantes.pedidos.incidencia.quePaso")} required error={falta ? t("restaurantes.pedidos.incidencia.falta") : undefined}>
+          <Textarea placeholder={t("restaurantes.pedidos.incidencia.ejemplo")} value={nota} onChange={(e) => setNota(e.target.value)} rows={4} />
         </FormField>
       </div>
     </FormDialog>

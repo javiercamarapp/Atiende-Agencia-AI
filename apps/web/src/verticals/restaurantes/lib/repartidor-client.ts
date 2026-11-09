@@ -18,11 +18,15 @@
 import { apiBaseUrlFromRequestUrl, defaultBrowserStorage, withAuthRefresh, SessionExpiredError } from "../../../lib/authed-fetch.ts";
 import type { AuthedFetchContext, SessionExpiredEventDetail } from "../../../lib/authed-fetch.ts";
 import { clearSession, persistSession, readPersistedSession } from "../../../lib/auth-client.ts";
+import { traductorActivo } from "@atiende/ui";
+import { restaurantesChofer } from "@atiende/ui/i18n/restaurantes/chofer";
 import type { LoginSession } from "../../../lib/auth-client.ts";
 import { CABECERA_IDEMPOTENCIA, esquemaDeshacerEntregaSalida, esquemaEntregarSalida, esquemaEntregasChoferSalida, esquemaHoyChoferSalida, esquemaLlamarSalida, esquemaProblemaSalida } from "@atiende/domain-restaurantes/operacion";
 import type { DeshacerEntregaSalida, EntregarEntrada, EntregarSalida, EntregasChoferSalida, Esquema, HoyChoferSalida, LlamarSalida, ProblemaEntrada, ProblemaSalida } from "@atiende/domain-restaurantes/operacion";
 
 export { SessionExpiredError };
+
+const tr = traductorActivo(restaurantesChofer);
 
 /** Ronda 13 — hallazgo de auditoría (severidad ALTA, "Repartidor.tsx es el ÚNICO
  * consumidor autenticado de apps/web que no escucha SESSION_EXPIRED_EVENT"): la
@@ -123,7 +127,7 @@ async function fetchJson<T>(
   );
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as { message?: string; code?: string } | null;
-    throw new RepartidorClientError(body?.message ?? `No se pudo cargar ${url} (${res.status}).`, { status: res.status, ...(typeof body?.code === "string" ? { code: body.code } : {}) });
+    throw new RepartidorClientError(body?.message ?? tr("restaurantes.chofer.cliente.errorCarga", { url, status: String(res.status) }), { status: res.status, ...(typeof body?.code === "string" ? { code: body.code } : {}) });
   }
   return (await res.json()) as T;
 }
@@ -181,10 +185,10 @@ export async function pedirContrato<T>(fetchImpl: typeof fetch, url: string, tok
     crudo = await fetchJson<unknown>(fetchImpl, url, token, init);
   } catch (err) {
     if (err instanceof RepartidorClientError || err instanceof SessionExpiredError) throw err;
-    throw new RepartidorClientError("Sin conexión con el servidor.");
+    throw new RepartidorClientError(tr("restaurantes.chofer.cliente.sinConexion"));
   }
   const r = esquema.validar(crudo);
-  if (!r.ok) throw new RepartidorClientError("El servidor respondió con un formato inesperado. Intenta de nuevo.", { code: "respuesta_invalida" });
+  if (!r.ok) throw new RepartidorClientError(tr("restaurantes.chofer.cliente.formatoInesperado"), { code: "respuesta_invalida" });
   return r.valor;
 }
 

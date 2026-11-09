@@ -1,6 +1,6 @@
 // ds3 / lote 5.3 (movil < 768): valores de referencia en la hoja REAL `src/ds3/shell.css`. Solo AÑADE.
 import { describe, expect, it } from "vitest";
-import { valorCss } from "./ds3-shell-css-utils.ts";
+import { BLOQUES, valorCss } from "./ds3-shell-css-utils.ts";
 
 const MOVIL = "max-width: 767.98px";
 
@@ -56,5 +56,20 @@ describe("ds3 — movil", () => {
     expect(valorCss(".ds3-barra-inferior:has(.ds3-barra-preguntar) .ds3-barra-destino > span:not([aria-hidden])", "font-size", MOVIL)).toBe("11px");
     expect(valorCss(".ds3-barra-inferior.ds3-barra-inferior:has(.ds3-barra-preguntar) > ul", "gap", MOVIL)).toBe("0");
     expect(valorCss('.ds3-barra-inferior:has(.ds3-barra-preguntar [aria-current="page"]) .ds3-barra-mas.ds3-barra-mas[data-activo]', "background-color", MOVIL)).toBe("transparent");
+  });
+
+  // Auditoria R2 #3/#4: «Guía» de 44 en la cabecera movil y sin banners sobre el chat tambien en movil (antes la regla vivia en >= 768).
+  it("«Guía» de 44 con el marco de «Más»", () => {
+    expect(valorCss(".ds3-movil-guia.ds3-solo[hidden]", "width", MOVIL)).toBe("44px");
+    expect(valorCss(".ds3-movil-guia.ds3-solo[hidden]", "height", MOVIL)).toBe("44px");
+    expect(valorCss(".ds3-movil-guia.ds3-solo[hidden]", "border-radius", MOVIL)).toBe("12px");
+  });
+
+  it("los banners se ocultan en el chat en cualquier ancho (regla fuera de los @media)", () => {
+    for (const banner of ["banner-agregados-global", "banner-plan"]) {
+      const b = BLOQUES.find((x) => x.selector.includes(`.ds3-shell-marco[data-pantalla="chat"] [data-testid="${banner}"]`));
+      expect(b?.media).toBe("");
+      expect(b?.decl.display).toBe("none");
+    }
   });
 });

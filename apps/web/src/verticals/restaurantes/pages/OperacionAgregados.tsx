@@ -3,7 +3,9 @@
 // (plazo de 10 min), banner persistente + sonido de dos tonos cada 60 s mientras haya pendientes, titulo de la pestana parpadeante. Sondeo cada 15 s.
 // Sin datos de ejemplo: lee `GET admin/agregados`; sin la actualizacion de base de datos lo dice con claridad y no pinta nada falso.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, EstadoCargando, EstadoError, EstadoVacio, PageContainer, StatusBadge, Tabs, TabsList, TabsTrigger, notify, useConfirm } from "@atiende/ui";
+import { Button, EstadoCargando, EstadoError, EstadoVacio, PageContainer, PageHeader, StatusBadge, Tabs, TabsList, TabsTrigger, notify, useConfirm, useT } from "@atiende/ui";
+import { restaurantesAgregados } from "@atiende/ui/i18n/restaurantes/agregados";
+import { restaurantesOperacion } from "@atiende/ui/i18n/restaurantes/operacion";
 import type { ListaAgregados, RechazarAgregadoEntrada, ResolverAgregadoSalida, TarjetaAgregado as TarjetaAgregadoDato } from "@atiende/domain-restaurantes/operacion";
 import { Hourglass, ListChecks, Volume2, VolumeX, WifiOff } from "lucide-react";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
@@ -11,8 +13,8 @@ import { MotivoDialogo } from "../components/MotivoDialogo.tsx";
 import { TarjetaAgregado } from "../components/operacion/TarjetaAgregado.tsx";
 import { aceptarAgregado, fetchAgregados, marcarAgregadoVisto, rechazarAgregado } from "../lib/agregados-client.ts";
 import type { EstadoLista } from "../lib/agregados-client.ts";
-import { MENSAJE_AGREGADOS_NO_DISPONIBLES, OPCIONES_RECHAZO, ordenarAgregados, segundosVivos, textoPendientes, tituloConPendientes } from "../lib/agregados-presentacion.ts";
-import { AVISO_SONIDO_LIMITES, SILENCIO_MS, crearAlertaRepetida, vibrarAviso } from "../lib/alerta-pedido-nuevo.ts";
+import { OPCIONES_RECHAZO, ordenarAgregados, segundosVivos, textoPendientes, tituloConPendientes } from "../lib/agregados-presentacion.ts";
+import { SILENCIO_MS, crearAlertaRepetida, vibrarAviso } from "../lib/alerta-pedido-nuevo.ts";
 import { ErrorOperacion, nuevaLlave } from "../lib/operacion-client.ts";
 import { etiquetaActualizado, guardarSonido, leerSonido, reproducirAviso } from "../lib/sondeo-pedidos.ts";
 import { useSondeoPedidos } from "../lib/use-sondeo-pedidos.ts";
@@ -30,6 +32,7 @@ function almacenamiento(): Storage | null {
 }
 
 export function OperacionAgregadosPage({ apiBaseUrl, token, propertyId, orgSlug }: RestaurantesShellContext) {
+  const tr = useT(restaurantesOperacion, restaurantesAgregados);
   const [lista, setLista] = useState<ListaAgregados | null>(null);
   const [consultadoEnMs, setConsultadoEnMs] = useState<number>(() => Date.now());
   const [ultimaOk, setUltimaOk] = useState<number | null>(null);
@@ -68,8 +71,8 @@ export function OperacionAgregadosPage({ apiBaseUrl, token, propertyId, orgSlug 
       if (e instanceof TypeError) {
         // Fallo de red: se conserva lo ultimo visto y se avisa; sin nada previo que mostrar, la pantalla pide reintentar.
         setSinConexion(true);
-        setError(new Error("Sin conexión con el servidor. Revisa tu internet e inténtalo de nuevo."));
-      } else setError(e instanceof Error ? e : new Error("No se pudieron cargar los agregados."));
+        setError(new Error(tr("restaurantes.operacion.sinConexionServidor")));
+      } else setError(e instanceof Error ? e : new Error(tr("restaurantes.agregados.errorCarga")));
       throw e;
     }
   }, [apiBaseUrl, fetchImpl, pestana, propertyId, token]);
@@ -130,10 +133,10 @@ export function OperacionAgregadosPage({ apiBaseUrl, token, propertyId, orgSlug 
   }
 
   function avisarResultado(r: ResolverAgregadoSalida, accion: "aceptar" | "rechazar") {
-    if (r.resultado === "ya_resuelto") notify.info(`Ya lo resolvió ${r.agregado.resueltoPor ?? "otra persona"}. Se actualizó la lista.`);
-    else if (r.resultado === "no_aplicable") notify.warning("El pedido ya no admitía agregados (ya salió o se cerró). Se avisó al cliente que puede pedir aparte.");
-    else if (accion === "aceptar") notify.success("Agregado aceptado. Se avisó al cliente.");
-    else notify.success("Agregado rechazado. Se creó una tarea para devolver la llamada.");
+    if (r.resultado === "ya_resuelto") notify.info(tr("restaurantes.agregados.yaResuelto", { quien: r.agregado.resueltoPor ?? tr("restaurantes.agregados.otraPersona") }));
+    else if (r.resultado === "no_aplicable") notify.warning(tr("restaurantes.agregados.noAplicable"));
+    else if (accion === "aceptar") notify.success(tr("restaurantes.agregados.aceptado"));
+    else notify.success(tr("restaurantes.agregados.rechazado"));
   }
 
   async function ejecutar(t: TarjetaAgregadoDato, accion: "aceptar" | "rechazar", entrada?: RechazarAgregadoEntrada): Promise<boolean> {
@@ -154,7 +157,7 @@ export function OperacionAgregadosPage({ apiBaseUrl, token, propertyId, orgSlug 
         refrescar();
         return true;
       }
-      const mensaje = e instanceof ErrorOperacion ? e.message : "No hay conexión. La acción no se aplicó; vuelve a intentarlo.";
+      const mensaje = e instanceof ErrorOperacion ? e.message : tr("restaurantes.agregados.errorSinRed");
       notify.error(mensaje);
       setErrorDialogo(mensaje);
       return false;
@@ -172,10 +175,10 @@ export function OperacionAgregadosPage({ apiBaseUrl, token, propertyId, orgSlug 
   async function alAceptar(t: TarjetaAgregadoDato) {
     if (t.pedido.yaEnCocina) {
       const ok = await confirmar({
-        titulo: "El pedido ya está en preparación",
-        descripcion: "¿Confirmas que sí alcanza a agregarse? Si aceptas, el cliente recibe la confirmación con el nuevo total. El sistema NO reimprime la comanda: avisa tú a cocina de lo que se agregó.",
-        confirmar: "Sí, aceptar agregado",
-        cancelar: "Volver",
+        titulo: tr("restaurantes.agregados.enCocinaTitulo"),
+        descripcion: tr("restaurantes.agregados.enCocinaTexto"),
+        confirmar: tr("restaurantes.agregados.enCocinaSi"),
+        cancelar: tr("restaurantes.agregados.volver"),
       });
       if (!ok) return;
     }
@@ -185,8 +188,8 @@ export function OperacionAgregadosPage({ apiBaseUrl, token, propertyId, orgSlug 
   if (lista === null && error === null) {
     return (
       <PageContainer padding="none">
-        <h1 className="sr-only">Agregados por validar</h1>
-        <EstadoCargando variante="tarjeta" etiqueta="Cargando los agregados por validar…" />
+        <PageHeader titulo={tr("restaurantes.agregados.titulo")} />
+        <EstadoCargando variante="tarjeta" etiqueta={tr("restaurantes.agregados.cargando")} />
       </PageContainer>
     );
   }
@@ -194,9 +197,9 @@ export function OperacionAgregadosPage({ apiBaseUrl, token, propertyId, orgSlug 
     const noDisponible = error instanceof ErrorOperacion && (error.esNoDisponible || error.status === 503);
     return (
       <PageContainer padding="none">
-        <h1 className="sr-only">Agregados por validar</h1>
+        <PageHeader titulo={tr("restaurantes.agregados.titulo")} />
         {noDisponible ? (
-          <EstadoVacio icon={Hourglass} titulo="Agregados por validar" mensaje={MENSAJE_AGREGADOS_NO_DISPONIBLES} />
+          <EstadoVacio icon={Hourglass} titulo={tr("restaurantes.agregados.titulo")} mensaje={tr("restaurantes.agregados.noDisponible")} />
         ) : (
           <EstadoError mensaje={error.message} onReintentar={() => void cargar().catch(() => undefined)} />
         )}
@@ -207,29 +210,24 @@ export function OperacionAgregadosPage({ apiBaseUrl, token, propertyId, orgSlug 
   return (
     <PageContainer padding="none">
       <div className="mx-auto w-full min-w-0 max-w-3xl space-y-3 pb-6">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h1 className="sr-only">Agregados por validar</h1>
-          <span className="ml-auto text-sm text-muted-foreground" aria-live="off">
-            {etiquetaActualizado(ultimaOk, ahoraMs)}
-          </span>
-        </div>
+        <PageHeader titulo={tr("restaurantes.agregados.titulo")} meta={<span aria-live="off">{etiquetaActualizado(ultimaOk, ahoraMs)}</span>} />
 
         {sinConexion && (
           <div role="status" className="flex items-center gap-2 rounded-lg border-2 border-warning bg-warning-tint p-3 text-base text-warning">
             <WifiOff className="size-5 shrink-0" aria-hidden="true" />
-            Sin conexión — reintentando. Lo que ves puede estar desactualizado.
+            {tr("restaurantes.operacion.sinConexionReintentando")}
           </div>
         )}
         {error && lista !== null && !sinConexion && <EstadoError compacto mensaje={error.message} onReintentar={() => void cargar().catch(() => undefined)} />}
 
         {lista !== null && !lista.disponible ? (
-          <EstadoVacio icon={Hourglass} titulo="Agregados por validar" mensaje={MENSAJE_AGREGADOS_NO_DISPONIBLES} />
+          <EstadoVacio icon={Hourglass} titulo={tr("restaurantes.agregados.titulo")} mensaje={tr("restaurantes.agregados.noDisponible")} />
         ) : (
           <>
             {pendientes.length > 0 && (
               <div role="alert" data-testid="banner-agregados" className="space-y-2 rounded-lg border-2 border-primary bg-card p-3">
                 <p className="text-lg font-bold text-foreground">{textoPendientes(pendientes.length)}</p>
-                <p className="text-sm text-muted-foreground">El agente no confirma nada por su cuenta: acepta o rechaza para que el cliente reciba respuesta.</p>
+                <p className="text-sm text-muted-foreground">{tr("restaurantes.agregados.agenteNoConfirma")}</p>
                 {sonido && silenciadaHasta <= ahoraMs ? (
                   <Button
                     type="button"
@@ -240,44 +238,44 @@ export function OperacionAgregadosPage({ apiBaseUrl, token, propertyId, orgSlug 
                       setSilenciadaHasta(Date.now() + SILENCIO_MS);
                     }}
                   >
-                    Silenciar el sonido 5 minutos
+                    {tr("restaurantes.agregados.silenciar")}
                   </Button>
                 ) : null}
-                {sonido && silenciadaHasta > ahoraMs && <p className="text-sm text-muted-foreground">Sonido en silencio por 5 minutos. El aviso en pantalla sigue.</p>}
+                {sonido && silenciadaHasta > ahoraMs && <p className="text-sm text-muted-foreground">{tr("restaurantes.agregados.silenciado")}</p>}
               </div>
             )}
 
             <div className="space-y-2 rounded-lg border border-border bg-card p-3">
               {sonido ? (
                 <Button type="button" variant="outline" className="h-auto min-h-14 w-full whitespace-normal py-2 text-lg" onClick={desactivarSonido} iconLeft={<Volume2 className="size-5" aria-hidden="true" />}>
-                  Sonido activado · Desactivar
+                  {tr("restaurantes.operacion.sonidoActivado")}
                 </Button>
               ) : (
                 <Button type="button" className="h-auto min-h-14 w-full whitespace-normal py-2 text-lg" onClick={activarSonido} iconLeft={<VolumeX className="size-5" aria-hidden="true" />}>
-                  Activar sonido de agregados
+                  {tr("restaurantes.agregados.activarSonido")}
                 </Button>
               )}
-              <p className="text-sm text-muted-foreground">{AVISO_SONIDO_LIMITES}</p>
+              <p className="text-sm text-muted-foreground">{tr("restaurantes.operacion.avisoSonidoLimites")}</p>
             </div>
 
             <Tabs value={pestana} onValueChange={(v) => setPestana(v as EstadoLista)}>
               <TabsList className="grid h-auto w-full grid-cols-2 gap-1">
                 <TabsTrigger value="pendientes" className="h-12 text-base" data-testid="pestana-pendientes">
-                  Por validar
-                  <StatusBadge tone={pendientes.length > 0 ? "danger" : "neutral"} dot={false} className="ml-1.5 text-sm" aria-label={`${pendientes.length} por validar`}>
+                  {tr("restaurantes.agregados.porValidar")}
+                  <StatusBadge tone={pendientes.length > 0 ? "danger" : "neutral"} dot={false} className="ml-1.5 text-sm" aria-label={tr("restaurantes.agregados.porValidarAria", { n: pendientes.length })}>
                     {lista?.pendientes ?? pendientes.length}
                   </StatusBadge>
                 </TabsTrigger>
                 <TabsTrigger value="recientes" className="h-12 text-base" data-testid="pestana-recientes">
-                  Recientes
+                  {tr("restaurantes.agregados.recientes")}
                 </TabsTrigger>
               </TabsList>
             </Tabs>
 
             {tarjetas.length === 0 ? (
-              <EstadoVacio icon={ListChecks} titulo={pestana === "pendientes" ? "Nada por validar" : "Sin movimientos recientes"} mensaje={pestana === "pendientes" ? "No hay agregados esperando respuesta de la sucursal." : "No hay agregados de las últimas 24 horas."} />
+              <EstadoVacio icon={ListChecks} titulo={tr(pestana === "pendientes" ? "restaurantes.agregados.nadaPorValidar" : "restaurantes.agregados.sinRecientes")} mensaje={tr(pestana === "pendientes" ? "restaurantes.agregados.nadaPorValidarTexto" : "restaurantes.agregados.sinRecientesTexto")} />
             ) : (
-              <ul className="space-y-3" aria-label={pestana === "pendientes" ? "Agregados por validar" : "Agregados recientes"}>
+              <ul className="space-y-3" aria-label={tr(pestana === "pendientes" ? "restaurantes.agregados.titulo" : "restaurantes.agregados.listaRecientes")}>
                 {tarjetas.map((t) => (
                   <li key={t.id}>
                     <TarjetaAgregado
@@ -301,9 +299,10 @@ export function OperacionAgregadosPage({ apiBaseUrl, token, propertyId, orgSlug 
       <MotivoDialogo
         open={rechazando !== null}
         onOpenChange={(o) => !o && setRechazando(null)}
-        titulo={rechazando ? `Rechazar el agregado${rechazando.pedido.numero !== null ? ` al pedido #${rechazando.pedido.numero}` : ""}` : "Rechazar el agregado"}
-        subtitulo="Se avisa al cliente con una disculpa y se crea una tarea para devolverle la llamada."
-        textoConfirmar="Rechazar agregado"
+        titulo={rechazando && rechazando.pedido.numero !== null ? tr("restaurantes.agregados.rechazarTituloPedido", { numero: String(rechazando.pedido.numero) }) : tr("restaurantes.agregados.rechazarTitulo")}
+        subtitulo={tr("restaurantes.agregados.rechazarSub")}
+        textoConfirmar={tr("restaurantes.agregados.rechazarConfirmar")}
+
         tonoPeligro
         opciones={OPCIONES_RECHAZO}
         notaObligatoriaCon="otro"

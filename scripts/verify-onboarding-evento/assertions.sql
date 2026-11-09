@@ -1,4 +1,5 @@
--- Verifica, contra Postgres REAL (RLS + GRANT + auth.uid() reales), packages/db/migrations/0073_onboarding_evento.sql:
+-- Verifica, contra Postgres REAL (RLS + GRANT + auth.uid() reales), packages/db/migrations/0073_onboarding_evento.sql (y 0078: tipo
+-- 'metodos_pago_confirmados'):
 -- registrar_onboarding_evento (owner/admin y sistema escriben; staff, otra organizacion y anon no), idempotencia, lista cerrada de tipos,
 -- sucursal de otra organizacion, y lectura por RLS solo para owner/admin de la propia organizacion; sin escritura directa en la tabla.
 -- Convenciones del gate (scripts/verify-real-postgres-ci/run-gate.mjs): cada escenario es un begin/rollback; deberia_ser_N = ultima fila
@@ -132,6 +133,32 @@ rollback;
 begin;
 set local role anon;
 select count(*) as should_fail from core.onboarding_evento;
+rollback;
+
+\echo '16. (0078) owner de A confirma los metodos de pago de su sucursal: true -- OK'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f7320', true);
+select (case when core.registrar_onboarding_evento('00000000-0000-0000-0000-0000000f7300', 'restaurantes', 'metodos_pago_confirmados', '00000000-0000-0000-0000-0000000f7310', '{}'::jsonb) then 1 else 0 end)::int as deberia_ser_1;
+rollback;
+
+\echo '17. (0078) staff de A no confirma metodos de pago -- RECHAZADO'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f7321', true);
+select core.registrar_onboarding_evento('00000000-0000-0000-0000-0000000f7300', 'restaurantes', 'metodos_pago_confirmados', '00000000-0000-0000-0000-0000000f7310', '{}'::jsonb) as should_fail;
+rollback;
+
+\echo '18. (0078) owner de B no confirma por la sucursal de A -- RECHAZADO'
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000f7322', true);
+select core.registrar_onboarding_evento('00000000-0000-0000-0000-0000000f7300', 'restaurantes', 'metodos_pago_confirmados', '00000000-0000-0000-0000-0000000f7310', '{}'::jsonb) as should_fail;
+rollback;
+
+\echo '19. (0078) el CHECK acepta el tipo nuevo y sigue rechazando uno inventado -- RECHAZADO'
+begin;
+insert into core.onboarding_evento (organization_id, vertical, tipo) values ('00000000-0000-0000-0000-0000000f7300', 'restaurantes', 'tipo_inventado') returning id as should_fail;
 rollback;
 
 \echo ''

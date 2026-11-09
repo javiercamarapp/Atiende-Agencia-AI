@@ -1,17 +1,20 @@
 // Barra apilada «por canal» con etiquetas y conteos (el color nunca es la unica señal: cada tramo lleva su texto).
-import { Card, CardContent } from "@atiende/ui";
+import { Card, CardContent, useT } from "@atiende/ui";
+import { restaurantesOperacion } from "@atiende/ui/i18n/restaurantes/operacion";
 import type { CanalTurno } from "../../lib/turno-hoy.ts";
 
 const TRAMOS = ["bg-primary", "bg-info", "bg-success", "bg-warning", "bg-muted-foreground"] as const;
 const RELLENOS = ["fill-primary", "fill-info", "fill-success", "fill-warning", "fill-muted-foreground"] as const;
 
 export function BarraCanales({ canales }: { readonly canales: readonly CanalTurno[] }) {
+  const t = useT(restaurantesOperacion);
   return (
     <Card>
       <CardContent className="flex flex-col gap-3 p-4">
-        <h2 className="m-0 text-base font-semibold text-foreground">Pedidos por canal</h2>
+        <h2 className="m-0 text-base font-semibold text-foreground">{t("restaurantes.operacion.turno.porCanal")}</h2>
         {canales.length === 0 ? (
-          <p className="m-0 text-sm text-muted-foreground">Aún no hay pedidos en este corte, así que no hay canales que repartir.</p>
+          <p className="m-0 text-sm text-muted-foreground">{t("restaurantes.operacion.turno.porCanalVacio")}</p>
+
         ) : (
           <>
             {/* SVG con porcentajes como atributos (el guard prohibe `style` en linea): cada tramo empieza donde termina el anterior. */}

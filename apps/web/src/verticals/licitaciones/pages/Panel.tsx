@@ -41,7 +41,9 @@ import {
   StatCard,
   StatusBadge,
   TileLink,
+  useT,
 } from "@atiende/ui";
+import { licitacionesResumen } from "@atiende/ui/i18n/licitaciones/resumen";
 import { primerNombreOCorreo } from "../../../lib/greeting.ts";
 import { LicitacionesFijadosCopiloto } from "./Copiloto.tsx";
 import { fetchTenders } from "../lib/tenders-client.ts";
@@ -55,7 +57,7 @@ import type { KycResumen } from "../lib/kyc-69b-client.ts";
 import { fetchRenewalAlerts } from "../lib/renewal-radar-client.ts";
 import { fetchApprovedRates, fetchCompanyCapabilities, fetchCompanyDocuments, fetchCompanyExperience, fetchCompanySigners } from "../lib/company-data-client.ts";
 import type { CorridaSimple } from "../lib/resumen.ts";
-import { convocatoriasAbiertas, cierranEnVentana, corridaKyc, corridaSeguimiento, fechaLargaEnZona, plural, propuestasEnPreparacion, saludoEnZona, ultimaCorridaPorFuente, VENTANA_PLAZO_DIAS, zonaEfectiva } from "../lib/resumen.ts";
+import { convocatoriasAbiertas, cierranEnVentana, corridaKyc, corridaSeguimiento, fechaLargaEnZona, propuestasEnPreparacion, saludoEnZona, ultimaCorridaPorFuente, VENTANA_PLAZO_DIAS, zonaEfectiva } from "../lib/resumen.ts";
 import type { LicitacionesShellContext } from "../LicitacionesShell.tsx";
 
 /** Resultado de una lectura: valor, o null cuando fallo (la tarjeta lo muestra como "No se pudo leer"). */
@@ -81,7 +83,6 @@ interface Resumen {
 }
 
 const LECTURAS = 12;
-const SIN_LECTURA = "No se pudo leer";
 
 const ok = <T,>(r: PromiseSettledResult<T>): Medida<T> => (r.status === "fulfilled" ? r.value : null);
 
@@ -94,6 +95,8 @@ function enlazada(to: string, tarjeta: React.ReactNode) {
 }
 
 export function PanelPage({ apiBaseUrl, token, propertyId, orgSlug, staffFullName, staffEmail }: LicitacionesShellContext) {
+  const t = useT(licitacionesResumen);
+  const sinLectura = t("licitaciones.resumen.sinLectura");
   const [resumen, setResumen] = useState<Resumen | null>(null);
   const [recarga, setRecarga] = useState(0);
 
@@ -155,14 +158,14 @@ export function PanelPage({ apiBaseUrl, token, propertyId, orgSlug, staffFullNam
   if (!resumen) {
     return (
       <PageContainer padding="none" size="xl" className="gap-4 [&>*]:min-w-0">
-        <EstadoCargando variante="tarjeta" etiqueta="Cargando resumen…" />
+        <EstadoCargando variante="tarjeta" etiqueta={t("licitaciones.resumen.cargando")} />
       </PageContainer>
     );
   }
   if (resumen.fallidas >= LECTURAS) {
     return (
       <PageContainer padding="none" size="xl" className="gap-4 [&>*]:min-w-0">
-        <EstadoError mensaje="No se pudo cargar el resumen de licitaciones." onReintentar={() => setRecarga((n) => n + 1)} />
+        <EstadoError mensaje={t("licitaciones.resumen.error")} onReintentar={() => setRecarga((n) => n + 1)} />
       </PageContainer>
     );
   }
@@ -176,33 +179,39 @@ export function PanelPage({ apiBaseUrl, token, propertyId, orgSlug, staffFullNam
   /** KPI de dos capas: con dato = cifra; sin dato = "—" y "No se pudo leer" (nunca un cero). */
   const kpi = (clave: string, to: string, icon: React.ComponentType<{ className?: string; strokeWidth?: number | string }>, label: string, valor: number | string | null, nota: string) => (
     <div key={clave} className="min-w-0">
-      {enlazada(to, valor === null ? <StatCard icon={icon} label={label} value="" sinDato={SIN_LECTURA} /> : <StatCard icon={icon} label={label} value={String(valor)} nota={nota} />)}
+      {enlazada(to, valor === null ? <StatCard icon={icon} label={label} value="" sinDato={sinLectura} /> : <StatCard icon={icon} label={label} value={String(valor)} nota={nota} />)}
     </div>
   );
 
   const kpis = [
-    kpi("cierran", `${base}/convocatorias`, CalendarClock, `Cierran en ${VENTANA_PLAZO_DIAS} días`, proximas?.length ?? null, "plazo de presentación de propuestas"),
-    kpi("preparacion", `${base}/convocatorias`, FilePen, "Propuestas en preparación", enPreparacion, "convocatorias en preparación"),
-    kpi("recordatorios", `${base}/seguimiento`, BellRing, "Recordatorios de plazo", resumen.recordatoriosPendientes, "pendientes de reconocer"),
-    kpi("cambios", `${base}/seguimiento`, FileEdit, "Cambios de convocatoria", resumen.cambiosPendientes, "bases o anexos por revisar"),
-    kpi("renovaciones", `${base}/radar-renovaciones`, Radar, "Renovaciones por vencer", resumen.renovacionesPendientes, "alertas del radar sin reconocer"),
-    kpi("aprobar", `${base}/aprobaciones`, CheckCheck, "Datos por aprobar", resumen.aprobacionesPendientes, "documentos, tarifas, capacidades y experiencia"),
+    kpi("cierran", `${base}/convocatorias`, CalendarClock, t("licitaciones.resumen.kpi.cierran", { dias: VENTANA_PLAZO_DIAS }), proximas?.length ?? null, t("licitaciones.resumen.kpi.cierranNota")),
+    kpi("preparacion", `${base}/convocatorias`, FilePen, t("licitaciones.resumen.kpi.preparacion"), enPreparacion, t("licitaciones.resumen.kpi.preparacionNota")),
+    kpi("recordatorios", `${base}/seguimiento`, BellRing, t("licitaciones.resumen.kpi.recordatorios"), resumen.recordatoriosPendientes, t("licitaciones.resumen.kpi.recordatoriosNota")),
+    kpi("cambios", `${base}/seguimiento`, FileEdit, t("licitaciones.resumen.kpi.cambios"), resumen.cambiosPendientes, t("licitaciones.resumen.kpi.cambiosNota")),
+    kpi("renovaciones", `${base}/radar-renovaciones`, Radar, t("licitaciones.resumen.kpi.renovaciones"), resumen.renovacionesPendientes, t("licitaciones.resumen.kpi.renovacionesNota")),
+    kpi("aprobar", `${base}/aprobaciones`, CheckCheck, t("licitaciones.resumen.kpi.aprobar"), resumen.aprobacionesPendientes, t("licitaciones.resumen.kpi.aprobarNota")),
     kpi(
       "firmantes",
       `${base}/firmantes`,
       PenLine,
-      "Firmantes autorizados",
+      t("licitaciones.resumen.kpi.firmantes"),
       resumen.firmantesAutorizados,
-      resumen.firmantesAutorizados === 0 ? "sin firmante no se puede firmar una propuesta" : "pueden firmar propuestas",
+      resumen.firmantesAutorizados === 0 ? t("licitaciones.resumen.kpi.firmantesNinguno") : t("licitaciones.resumen.kpi.firmantesNota"),
     ),
-    kpi("fuentes", `${base}/fuentes`, Database, "Fuentes obsoletas", obsoletas === null || !resumen.fuentes ? null : `${obsoletas} de ${resumen.fuentes.length}`, "sin corrida exitosa dentro de su umbral"),
+    kpi(
+      "fuentes",
+      `${base}/fuentes`,
+      Database,
+      t("licitaciones.resumen.kpi.fuentes"),
+      obsoletas === null || !resumen.fuentes ? null : t("licitaciones.resumen.kpi.fuentesValor", { n: obsoletas, total: resumen.fuentes.length }),
+      t("licitaciones.resumen.kpi.fuentesNota"),
+    ),
   ];
 
   const abiertasN = abiertas?.length ?? null;
-  const subtitulo =
-    abiertasN === null
-      ? `${fechaLargaEnZona(ahora, resumen.zona)} · convocatorias no disponibles`
-      : `${fechaLargaEnZona(ahora, resumen.zona)} · ${plural(abiertasN, "convocatoria abierta", "convocatorias abiertas")}`;
+  const fechaHoy = fechaLargaEnZona(ahora, resumen.zona);
+  const abiertasTexto = abiertasN === null ? null : t("licitaciones.resumen.abiertas", { count: abiertasN });
+  const subtitulo = abiertasTexto === null ? t("licitaciones.resumen.subtituloSinDato", { fecha: fechaHoy }) : `${fechaHoy} · ${abiertasTexto}`;
 
   const corridasPorFuente = resumen.conectores && resumen.corridas ? ultimaCorridaPorFuente(resumen.conectores, resumen.corridas, resumen.zona) : null;
   const corridaDeKyc = resumen.kyc?.available ? corridaKyc(resumen.kyc.lista, resumen.zona) : null;
@@ -217,15 +226,19 @@ export function PanelPage({ apiBaseUrl, token, propertyId, orgSlug, staffFullNam
       </Link>
     );
   const sinBitacora = [
-    { nombre: "Extractor de requisitos", href: `${base}/convocatorias` },
-    { nombre: "Borrador de junta de aclaraciones", href: `${base}/convocatorias` },
-    { nombre: "WhatsApp", href: `${base}/whatsapp` },
+    { nombre: t("licitaciones.resumen.extractor"), href: `${base}/convocatorias` },
+    { nombre: t("licitaciones.resumen.junta"), href: `${base}/convocatorias` },
+    { nombre: t("licitaciones.resumen.whatsapp"), href: `${base}/whatsapp` },
   ];
 
   const descripcionIngesta =
-    resumen.fuentes === null ? "No se pudo leer la frescura de las fuentes." : obsoletas === 0 ? `${plural(resumen.fuentes.length, "fuente al día", "fuentes al día")}.` : `${plural(obsoletas ?? 0, "fuente obsoleta", "fuentes obsoletas")} de ${resumen.fuentes.length}.`;
+    resumen.fuentes === null
+      ? t("licitaciones.resumen.ingestaError")
+      : obsoletas === 0
+        ? t("licitaciones.resumen.fuentesAlDia", { count: resumen.fuentes.length })
+        : t("licitaciones.resumen.fuentesObsoletas", { count: obsoletas ?? 0, total: resumen.fuentes.length });
   const badgeIngesta =
-    resumen.fuentes === null || resumen.fuentes.length === 0 ? undefined : obsoletas === 0 ? <StatusBadge tone="success">Al día</StatusBadge> : <StatusBadge tone="warning">Obsoleta</StatusBadge>;
+    resumen.fuentes === null || resumen.fuentes.length === 0 ? undefined : obsoletas === 0 ? <StatusBadge tone="success">{t("licitaciones.resumen.alDia")}</StatusBadge> : <StatusBadge tone="warning">{t("licitaciones.resumen.obsoleta")}</StatusBadge>;
 
   return (
     <PageContainer padding="none" size="xl" className="[&>*]:min-w-0">
@@ -234,51 +247,51 @@ export function PanelPage({ apiBaseUrl, token, propertyId, orgSlug, staffFullNam
         nombre={primerNombreOCorreo(staffFullName, staffEmail)}
         subtitulo={subtitulo}
         frase={
-          abiertasN === null ? undefined : (
+          abiertasTexto === null ? undefined : (
             <>
-              {fechaLargaEnZona(ahora, resumen.zona)}: <strong>{plural(abiertasN, "convocatoria abierta", "convocatorias abiertas")}</strong>.
+              {fechaHoy}: <strong>{abiertasTexto}</strong>.
             </>
           )
         }
         // El odómetro se oculta bajo `sm` (como en Likida): en móvil la cifra viaja en el subtítulo.
-        destacado={<Odometro valor={abiertasN} digitos={Math.max(3, String(abiertasN ?? 0).length)} etiqueta="Convocatorias abiertas" tamano="md" sinDato={SIN_LECTURA} />}
+        destacado={<Odometro valor={abiertasN} digitos={Math.max(3, String(abiertasN ?? 0).length)} etiqueta={t("licitaciones.resumen.odometro")} tamano="md" sinDato={sinLectura} />}
         kpis={kpis}
         acciones={
           <>
-            <PillLink to={`${base}/convocatorias`}>Ver convocatorias</PillLink>
-            <PillLink to={`${base}/seguimiento`}>Ver seguimiento</PillLink>
+            <PillLink to={`${base}/convocatorias`}>{t("licitaciones.resumen.verConvocatorias")}</PillLink>
+            <PillLink to={`${base}/seguimiento`}>{t("licitaciones.resumen.verSeguimiento")}</PillLink>
           </>
         }
       >
-        <ResumenSeccion titulo="Orquestación de agentes">
-          <TileLink to={`${base}/fuentes`} icon={Database} titulo="Descubrimiento e ingesta" badge={badgeIngesta} descripcion={descripcionIngesta} />
-          <TileLink to={`${base}/convocatorias`} icon={FileSearch} titulo="Extractor de requisitos" descripcion="Se ejecuta desde cada convocatoria." />
-          <TileLink to={`${base}/convocatorias`} icon={Gavel} titulo="Borrador de junta de aclaraciones" descripcion="Se prepara desde cada convocatoria." />
+        <ResumenSeccion titulo={t("licitaciones.resumen.orquestacion")}>
+          <TileLink to={`${base}/fuentes`} icon={Database} titulo={t("licitaciones.resumen.ingesta")} badge={badgeIngesta} descripcion={descripcionIngesta} />
+          <TileLink to={`${base}/convocatorias`} icon={FileSearch} titulo={t("licitaciones.resumen.extractor")} descripcion={t("licitaciones.resumen.extractorNota")} />
+          <TileLink to={`${base}/convocatorias`} icon={Gavel} titulo={t("licitaciones.resumen.junta")} descripcion={t("licitaciones.resumen.juntaNota")} />
           <TileLink
             to={`${base}/seguimiento`}
             icon={Timer}
-            titulo="Alertas y recordatorios"
+            titulo={t("licitaciones.resumen.alertas")}
             descripcion={
               resumen.recordatoriosPendientes === null || resumen.cambiosPendientes === null
-                ? "No se pudo leer el seguimiento."
-                : `${plural(resumen.recordatoriosPendientes, "recordatorio pendiente", "recordatorios pendientes")} · ${plural(resumen.cambiosPendientes, "cambio por revisar", "cambios por revisar")}`
+                ? t("licitaciones.resumen.alertasError")
+                : `${t("licitaciones.resumen.recordatoriosPendientes", { count: resumen.recordatoriosPendientes })} · ${t("licitaciones.resumen.cambiosPorRevisar", { count: resumen.cambiosPendientes })}`
             }
           />
-          <TileLink to={`${base}/whatsapp`} icon={MessageCircle} titulo="WhatsApp" descripcion="Avisos de plazos, fallos y decisiones." />
-          <TileLink to={`${base}/kyc-69b`} icon={ShieldAlert} titulo="KYC proveedores (69-B)" descripcion="Consulta del listado del SAT." />
-          <TileLink to={`${base}/copiloto`} icon={Sparkles} titulo="Copiloto" descripcion="Pregúntale a tus datos de licitaciones." />
+          <TileLink to={`${base}/whatsapp`} icon={MessageCircle} titulo={t("licitaciones.resumen.whatsapp")} descripcion={t("licitaciones.resumen.whatsappNota")} />
+          <TileLink to={`${base}/kyc-69b`} icon={ShieldAlert} titulo={t("licitaciones.resumen.kyc")} descripcion={t("licitaciones.resumen.kycNota")} />
+          <TileLink to={`${base}/copiloto`} icon={Sparkles} titulo={t("licitaciones.resumen.copiloto")} descripcion={t("licitaciones.resumen.copilotoNota")} />
         </ResumenSeccion>
-        <ResumenSeccion titulo="Agentes — última corrida">
+        <ResumenSeccion titulo={t("licitaciones.resumen.ultimaCorrida")}>
           {corridasPorFuente === null ? (
             <p data-testid="corridas-sin-lectura" className="col-span-full flex items-center gap-1.5 text-xs text-muted-foreground">
               <Siren aria-hidden="true" className="size-3" strokeWidth={1.75} />
-              No se pudo leer el registro de corridas de la ingesta.
+              {t("licitaciones.resumen.corridasError")}
             </p>
           ) : (
-            corridasPorFuente.map((c) => <AgentRunCard key={c.source} nombre={`Ingesta · ${c.nombre}`} estado={c.estado} meta={c.meta} href={`${base}/fuentes`} />)
+            corridasPorFuente.map((c) => <AgentRunCard key={c.source} nombre={t("licitaciones.resumen.ingestaDe", { nombre: c.nombre })} estado={c.estado} meta={c.meta} href={`${base}/fuentes`} />)
           )}
-          {tarjetaCorrida("Alertas y recordatorios", `${base}/seguimiento`, corridaDeSeguimiento)}
-          {tarjetaCorrida("KYC proveedores (69-B)", `${base}/kyc-69b`, corridaDeKyc)}
+          {tarjetaCorrida(t("licitaciones.resumen.alertas"), `${base}/seguimiento`, corridaDeSeguimiento)}
+          {tarjetaCorrida(t("licitaciones.resumen.kyc"), `${base}/kyc-69b`, corridaDeKyc)}
           {sinBitacora.map((a) => (
             <Link key={a.nombre} to={a.href} className="block min-w-0 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
               <AgentRunCard nombre={a.nombre} />

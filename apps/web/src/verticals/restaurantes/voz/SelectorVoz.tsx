@@ -5,6 +5,8 @@
 // CSS (.voz-avatar-gira) en vez de framer-motion.
 import { useEffect, useRef, useState } from "react";
 import { CheckCircle2, PlayCircle, Search, XCircle } from "lucide-react";
+import { useT } from "@atiende/ui";
+import { restaurantesAgenteVoz } from "@atiende/ui/i18n/restaurantes/agenteVoz";
 import { CATALOGO_VOCES, filtrarVoces, urlMuestraVoz } from "../lib/voz-catalogo.ts";
 import type { VozCatalogo } from "../lib/voz-catalogo.ts";
 
@@ -56,6 +58,7 @@ function audioPorDefecto(url: string): MuestraAudio {
 }
 
 export function SelectorVoz({ vozId, onElegir, baseUrl, crearAudio = audioPorDefecto }: SelectorVozProps) {
+  const t = useT(restaurantesAgenteVoz);
   const [busqueda, setBusqueda] = useState("");
   const [voceandoId, setVoceandoId] = useState<string | null>(null);
   const [errorMuestra, setErrorMuestra] = useState<string | null>(null);
@@ -108,7 +111,7 @@ export function SelectorVoz({ vozId, onElegir, baseUrl, crearAudio = audioPorDef
       if (audioRef.current !== audio) return;
       audioRef.current = null;
       setVoceandoId(null);
-      setErrorMuestra(`La muestra de ${voz.nombre} todavía no está disponible.`);
+      setErrorMuestra(t("restaurantes.agenteVoz.selector.muestraNoDisponible", { nombre: voz.nombre }));
     };
     audioRef.current = audio;
     audio.onended = () => {
@@ -130,19 +133,17 @@ export function SelectorVoz({ vozId, onElegir, baseUrl, crearAudio = audioPorDef
     <div>
       <div className="flex items-center justify-between mb-1.5">
         <p className="text-sm font-medium text-foreground">
-          Voz — {filtradas.length}/{CATALOGO_VOCES.length} voces
+          {t("restaurantes.agenteVoz.selector.titulo", { n: String(filtradas.length), total: String(CATALOGO_VOCES.length) })}
         </p>
       </div>
-      <p className="text-xs text-muted-foreground mb-2">
-        Son las voces predefinidas de Gemini Live. No hay clonación ni diseño de voz, y las voces no vienen etiquetadas por acento: el acento se pide en el comportamiento del agente y conviene validarlo con una llamada de prueba.
-      </p>
+      <p className="text-xs text-muted-foreground mb-2">{t("restaurantes.agenteVoz.selector.nota")}</p>
       <div className="flex items-center gap-1.5 h-8 rounded-lg border border-border bg-card px-2.5 mb-2">
         <Search className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
         <input
           value={busqueda}
           onChange={(e) => setBusqueda(e.target.value)}
-          placeholder="Buscar por nombre o tono…"
-          aria-label="Buscar voz"
+          placeholder={t("restaurantes.agenteVoz.selector.buscar")}
+          aria-label={t("restaurantes.agenteVoz.selector.buscarEtiqueta")}
           className="w-full bg-transparent text-xs outline-none placeholder:text-muted-foreground"
         />
       </div>
@@ -151,7 +152,7 @@ export function SelectorVoz({ vozId, onElegir, baseUrl, crearAudio = audioPorDef
           {errorMuestra}
         </p>
       ) : null}
-      <ul className="rounded-xl border border-border divide-y divide-border max-h-72 overflow-auto" aria-label="Voces disponibles">
+      <ul className="rounded-xl border border-border divide-y divide-border max-h-72 overflow-auto" aria-label={t("restaurantes.agenteVoz.selector.lista")}>
         {filtradas.map((v) => {
           const elegida = vozId === v.id;
           const sonando = voceandoId === v.id;
@@ -160,7 +161,7 @@ export function SelectorVoz({ vozId, onElegir, baseUrl, crearAudio = audioPorDef
               <button
                 type="button"
                 onClick={() => alternarMuestra(v)}
-                aria-label={sonando ? `Detener la muestra de ${v.nombre}` : `Escuchar una muestra de ${v.nombre}`}
+                aria-label={t(sonando ? "restaurantes.agenteVoz.selector.detener" : "restaurantes.agenteVoz.selector.escuchar", { nombre: v.nombre })}
                 className={`relative w-8 h-8 rounded-full shrink-0 overflow-hidden flex items-center justify-center ${giroAvatar(v.id.charCodeAt(0) * 37, AVATARES_BASE)}`}
               >
                 <span
@@ -170,15 +171,15 @@ export function SelectorVoz({ vozId, onElegir, baseUrl, crearAudio = audioPorDef
                 />
                 <span className="relative z-10 text-primary-foreground">{sonando ? <XCircle className="w-3.5 h-3.5" /> : <PlayCircle className="w-3.5 h-3.5" />}</span>
               </button>
-              <button type="button" onClick={() => onElegir(v.id)} className="min-w-0 flex-1 text-left" aria-label={`Elegir la voz ${v.nombre}`}>
+              <button type="button" onClick={() => onElegir(v.id)} className="min-w-0 flex-1 text-left" aria-label={t("restaurantes.agenteVoz.selector.elegir", { nombre: v.nombre })}>
                 <span className="block text-sm text-foreground truncate">{v.nombre}</span>
                 <span className="block text-2xs text-muted-foreground truncate">{v.tono}</span>
               </button>
-              {elegida ? <CheckCircle2 className="w-4 h-4 text-primary shrink-0" aria-label="Voz elegida" /> : null}
+              {elegida ? <CheckCircle2 className="w-4 h-4 text-primary shrink-0" aria-label={t("restaurantes.agenteVoz.vozElegida")} /> : null}
             </li>
           );
         })}
-        {filtradas.length === 0 ? <li className="text-xs text-muted-foreground p-3">Sin resultados para esa búsqueda.</li> : null}
+        {filtradas.length === 0 ? <li className="text-xs text-muted-foreground p-3">{t("restaurantes.agenteVoz.selector.sinResultados")}</li> : null}
       </ul>
     </div>
   );

@@ -5,6 +5,11 @@
 // cuenta desde la salida y se pone rojo a los 90 min. Las constantes se redeclaran aqui (apps/web no importa codigo de los paquetes
 // domain-*) y una prueba las compara con las del contrato `@atiende/domain-restaurantes/operacion` para que no se desfasen.
 import type { CanalPedidoOperacion, EstadoPanel, Semaforo } from "@atiende/domain-restaurantes/operacion";
+import { etiquetasTraducidas, traductorActivo } from "@atiende/ui";
+import { restaurantesOperacion } from "@atiende/ui/i18n/restaurantes/operacion";
+
+const tr = traductorActivo(restaurantesOperacion);
+
 
 export const MINUTOS_PROMETIDOS: Readonly<Record<CanalPedidoOperacion, number>> = { domicilio: 65, recoger: 35 };
 export const FRACCION_AMARILLO = 0.7;
@@ -42,13 +47,15 @@ export function semaforoPedido(estado: EstadoPanel, canal: CanalPedidoOperacion,
   return color;
 }
 
-export const ETIQUETA_SEMAFORO: Readonly<Record<Semaforo, string>> = { verde: "A tiempo", amarillo: "Por vencer", rojo: "Atrasado" };
+/** Etiqueta del semaforo en el idioma activo (i18n): cada lectura traduce; en espanol, los textos de siempre. */
+export const ETIQUETA_SEMAFORO: Readonly<Record<Semaforo, string>> = etiquetasTraducidas<Semaforo>(["verde", "amarillo", "rojo"], (s) => `restaurantes.operacion.semaforo.${s}` as const, restaurantesOperacion);
 
 /** «12 min» / «1 h 05 min» (el texto acompana siempre al color: el color nunca es la unica senal). */
 export function textoMinutos(minutos: number): string {
   const m = Math.max(0, Math.floor(minutos));
-  if (m < 60) return `${m} min`;
+  if (m < 60) return tr("restaurantes.operacion.minutos", { min: m });
   const h = Math.floor(m / 60);
   const r = m % 60;
-  return `${h} h ${String(r).padStart(2, "0")} min`;
+  return tr("restaurantes.operacion.horasMinutos", { h, m: String(r).padStart(2, "0") });
+
 }

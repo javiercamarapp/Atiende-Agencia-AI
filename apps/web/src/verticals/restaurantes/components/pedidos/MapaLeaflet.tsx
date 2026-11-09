@@ -7,6 +7,8 @@
 import { useEffect, useRef, useState } from "react";
 import "leaflet/dist/leaflet.css";
 import type * as Leaflet from "leaflet";
+import { useT } from "@atiende/ui";
+import { restaurantesPedidos } from "@atiende/ui/i18n/restaurantes/pedidos";
 
 /** Desplazamiento fijo (~900 m) usado como «zona del cliente» simulada: no hay lat/lng real del cliente. */
 export const DESPLAZAMIENTO_CLIENTE_SIMULADO = { dLat: 0.0065, dLng: 0.006 } as const;
@@ -44,6 +46,7 @@ export default function MapaLeaflet({ sucursal, direccionCliente, repartidorNomb
   const lib = useRef<typeof Leaflet | null>(null);
   const mapa = useRef<Leaflet.Map | null>(null);
   const [listo, setListo] = useState(false);
+  const tr = useT(restaurantesPedidos);
 
   // El mapa se crea una vez.
   useEffect(() => {
@@ -80,7 +83,7 @@ export default function MapaLeaflet({ sucursal, direccionCliente, repartidorNomb
     const pin = (clase: string, emoji: string, tam: number) => L.divIcon({ className: "", html: `<div class="pedido-pin ${clase}">${emoji}</div>`, iconSize: [tam, tam], iconAnchor: [tam / 2, tam / 2] });
 
     const mSucursal = L.marker(origen, { icon: pin("pedido-pin-sucursal", "🏠", 30) }).addTo(m).bindTooltip(conTexto(sucursal.nombre), { direction: "top" });
-    const mCliente = L.marker(destino, { icon: pin("pedido-pin-cliente", "📍", 26) }).addTo(m).bindTooltip(conTexto(direccionCliente || "Dirección del cliente (simulada)"), { direction: "top" });
+    const mCliente = L.marker(destino, { icon: pin("pedido-pin-cliente", "📍", 26) }).addTo(m).bindTooltip(conTexto(direccionCliente || tr("restaurantes.pedidos.mapa.direccionSimulada")), { direction: "top" });
     const mRepartidor = L.marker(origen, { icon: pin("pedido-pin-repartidor", "🛵", 32) }).addTo(m).bindTooltip(conTexto(repartidorNombre), { direction: "top" });
     // Sin animacion: un fitBounds animado que sigue en vuelo cuando se desmonta el mapa lanza «_leaflet_pos» (pageerror) al cambiar de pestana.
     m.fitBounds(L.latLngBounds([origen, destino]), { padding: [40, 40], animate: false });
@@ -103,7 +106,7 @@ export default function MapaLeaflet({ sucursal, direccionCliente, repartidorNomb
       mCliente.remove();
       mRepartidor.remove();
     };
-  }, [listo, pedidoId, sucursal.lat, sucursal.lng, sucursal.nombre, direccionCliente, repartidorNombre, enCamino]);
+  }, [listo, pedidoId, sucursal.lat, sucursal.lng, sucursal.nombre, direccionCliente, repartidorNombre, enCamino, tr]);
 
-  return <div ref={contenedor} role="region" aria-label="Mapa de la entrega" data-testid="mapa-entrega-leaflet" className="pedido-mapa h-[360px] overflow-hidden rounded-xl border border-border" />;
+  return <div ref={contenedor} role="region" aria-label={tr("restaurantes.pedidos.mapa.aria")} data-testid="mapa-entrega-leaflet" className="pedido-mapa h-[360px] overflow-hidden rounded-xl border border-border" />;
 }

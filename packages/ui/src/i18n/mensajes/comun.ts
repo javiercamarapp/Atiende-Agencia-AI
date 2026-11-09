@@ -20,10 +20,14 @@ export const comun = {
   "comun.obligatorio": " (obligatorio)",
   "comun.cerrarAviso": "Cerrar aviso",
   "comun.migas": "Migas de pan",
-  "comun.error.titulo": "No se pudo cargar la información",
+  // Titulo del estado de error como el de Rovaq («No disponible ahora» + explicacion sin jerga + Reintentar; auditoria R2 #12).
+  "comun.error.titulo": "No disponible ahora",
   "comun.error.servidor": "Ocurrió un problema al conectar con el servidor. Verifica la conexión e inténtalo de nuevo.",
   "comun.error.integracion": "No se pudo conectar con {integracion}. Verifica la conexión e inténtalo de nuevo.",
   "comun.error.pendienteCredenciales": "{integracion} está pendiente de credenciales. Conecta la integración para ver datos reales aquí.",
   "comun.error.etiquetaPendiente": "Pendiente de credenciales",
+  "comun.error.explicacionTecnica": "No está disponible ahora. Vuelve a intentarlo en un momento.",
+  "comun.error.verDetalle": "Ver detalle técnico",
+  "comun.error.ocultarDetalle": "Ocultar detalle técnico",
   "comun.comoLeerEsto": "¿Cómo leer esto?",
 } as const satisfies ModuloEs;

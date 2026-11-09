@@ -1,11 +1,12 @@
 // CFO-07 · marco del apartado CFO (`/restaurantes/:orgSlug/cfo/*`): encabezado, barra de filtros fija (rango, sucursales, comparar, Total / Por
 // sucursal, Exportar), pestañas del registro `paginas.ts` y el drill-down a pedidos. El estado de los filtros vive en la URL
 // (`?desde&hasta&sucursales&comparar[&vista]`) para que un enlace comparta la vista. Fail-closed: sin `cfo.ver` (o con 403) no se pinta ninguna cifra.
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { SearchX } from "lucide-react";
 import type { FiltroPedidosDetalle } from "@atiende/domain-restaurantes/cfo";
-import { Callout, EstadoCargando, EstadoVacio, PageContainer, PageHeader, cn, notify } from "@atiende/ui";
+import { Callout, EstadoCargando, EstadoVacio, PageContainer, PageHeader, cn, notify, useT } from "@atiende/ui";
+import { restaurantesCfo } from "@atiende/ui/i18n/restaurantes/cfo";
 import { puedeEn } from "../lib/permisos.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 import { CfoExportarNoDisponibleError, descargarExportacionCfo, fetchAlcance, guardarArchivo, type ContextoCfo, type FormatoExportacionCfo } from "./cfo-client.ts";
@@ -30,6 +31,8 @@ export function CfoLayout(props: CfoLayoutProps) {
 }
 
 function CfoLayoutConAcceso({ apiBaseUrl, token, propertyId, orgSlug, role, fetchImpl, hoy }: CfoLayoutProps) {
+  const t = useT(restaurantesCfo);
+  const navRef = useRef<HTMLElement>(null);
   const [sp, setSp] = useSearchParams();
   const slugActual = (useParams()["*"] ?? "").split("/")[0] || SLUG_INICIAL_CFO;
   const hoyStr = useMemo(() => hoy ?? hoyLocal(), [hoy]);
@@ -65,7 +68,8 @@ function CfoLayoutConAcceso({ apiBaseUrl, token, propertyId, orgSlug, role, fetc
   const pagina = PAGINAS_CFO.find((p) => p.slug === slugActual) ?? null;
   // Con nueve pestañas la barra se desplaza: la activa siempre queda a la vista (también al entrar por un enlace).
   useEffect(() => {
-    document.querySelector("nav[aria-label='Secciones del CFO'] [aria-current=page]")?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+    // Por referencia y no por aria-label: el rotulo cambia con el idioma.
+    navRef.current?.querySelector("[aria-current=page]")?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
   }, [slugActual, carga.estado]);
   const disponibles = useMemo(() => new Set(PAGINAS_CFO.map((p) => p.slug)), []);
 
@@ -76,13 +80,13 @@ function CfoLayoutConAcceso({ apiBaseUrl, token, propertyId, orgSlug, role, fetc
     setExportando(formato);
     try {
       guardarArchivo(await descargarExportacionCfo(api, filtrosEf, pagina.vistaExportacion, formato));
-      notify.success(`Se exportó ${pagina.etiqueta} en ${formato === "xlsx" ? "Excel" : "PDF"}.`);
+      notify.success(t("restaurantes.cfo.exportado", { pagina: pagina.etiqueta, formato: formato === "xlsx" ? "Excel" : "PDF" }));
     } catch (err) {
       if (err instanceof CfoExportarNoDisponibleError) {
         setExportarOculto(true);
-        notify.error("La exportación todavía no está disponible en este despliegue.");
+        notify.error(t("restaurantes.cfo.exportarNoDisponible"));
       } else {
-        notify.error(err instanceof Error ? err.message : "No se pudo exportar.");
+        notify.error(err instanceof Error ? err.message : t("restaurantes.cfo.exportarError"));
       }
     } finally {
       setExportando(null);
@@ -92,11 +96,11 @@ function CfoLayoutConAcceso({ apiBaseUrl, token, propertyId, orgSlug, role, fetc
   return (
     <PageContainer padding="none" data-testid="cfo-layout">
       <PageHeader
-        titulo="CFO"
-        descripcion="Tus ventas, sucursales y estado de resultados en un solo lugar, con la procedencia de cada cifra."
-        meta={carga.estado === "listo" ? <span className="text-xs text-muted-foreground">{carga.datos.alcance.organizacionCompleta ? "Todas las sucursales de tu organización" : `Tus ${carga.datos.sucursales.length} sucursales`}</span> : undefined}
+        titulo={t("restaurantes.cfo.titulo")}
+        descripcion={t("restaurantes.cfo.descripcion")}
+        meta={carga.estado === "listo" ? <span className="text-xs text-muted-foreground">{carga.datos.alcance.organizacionCompleta ? t("restaurantes.cfo.todasOrganizacion") : t("restaurantes.cfo.tusSucursales", { n: carga.datos.sucursales.length })}</span> : undefined}
       />
-      <CargaCfoVista carga={carga} onReintentar={recargar} etiqueta="Cargando el CFO…">
+      <CargaCfoVista carga={carga} onReintentar={recargar} etiqueta={t("restaurantes.cfo.cargando")}>
         {(alcance) => {
           const paginaProps: CfoPaginaProps = { api, role, orgSlug, base, filtros: filtrosEf, alcance, setFiltros, abrirPedidos, pestanasDisponibles: disponibles };
           const Pagina = pagina?.componente;
@@ -112,10 +116,10 @@ function CfoLayoutConAcceso({ apiBaseUrl, token, propertyId, orgSlug, role, fetc
               />
               {descartadas && (
                 <Callout tone="warning" data-testid="cfo-sucursal-descartada">
-                  El enlace traía sucursales que no existen o que no puedes ver; se ignoraron y se muestra {validas && validas.length > 0 ? "solo lo que sí puedes ver" : "«Todas»"}.
+                  {t("restaurantes.cfo.sucursalDescartada", { lo: t(validas && validas.length > 0 ? "restaurantes.cfo.sucursalDescartadaSolo" : "restaurantes.cfo.sucursalDescartadaTodas") })}
                 </Callout>
               )}
-              <nav aria-label="Secciones del CFO" className="-mx-1 overflow-x-auto px-1">
+              <nav ref={navRef} aria-label={t("restaurantes.cfo.secciones")} className="-mx-1 overflow-x-auto px-1">
                 <ul className="flex min-w-max gap-1 border-b border-border">
                   {PAGINAS_CFO.map((p) => {
                     const activa = p.slug === slugActual;
@@ -140,17 +144,18 @@ function CfoLayoutConAcceso({ apiBaseUrl, token, propertyId, orgSlug, role, fetc
                 </ul>
               </nav>
               {Pagina ? (
-                <Suspense fallback={<EstadoCargando etiqueta="Cargando la sección…" />}>
+                <Suspense fallback={<EstadoCargando etiqueta={t("restaurantes.cfo.cargandoSeccion")} />}>
                   <Pagina {...paginaProps} />
                 </Suspense>
               ) : (
                 <EstadoVacio
                   icon={SearchX}
-                  titulo="Esta sección no existe"
-                  mensaje="La dirección no corresponde a ninguna sección del CFO."
+                  titulo={t("restaurantes.cfo.seccionNoExiste")}
+                  mensaje={t("restaurantes.cfo.seccionNoExisteMensaje")}
                   accion={
                     <Link to={`${base}/cfo/${SLUG_INICIAL_CFO}`} className="text-ui font-medium text-primary underline-offset-4 hover:underline">
-                      Ir al resumen del CFO
+                      {t("restaurantes.cfo.irResumen")}
+
                     </Link>
                   }
                 />

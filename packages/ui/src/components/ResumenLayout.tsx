@@ -9,9 +9,11 @@
 // los arma la pagina con datos reales de sus endpoints; una rejilla o una pildora sin contenido no
 // se pinta.
 import { useId, type ReactNode } from "react";
+import { RanuraAvisosPagina } from "./AvisoPagina";
 import { Link } from "react-router-dom";
 import { cn } from "../lib/utils";
-import { TEXTOS_DS3_CONTENIDO } from "./ds3-contenido-textos";
+import { useT } from "../i18n/proveedor";
+import { resumen } from "../i18n/mensajes/resumen.ts";
 import { Card } from "./ui/card";
 import { SectionLabel } from "./SectionLabel";
 
@@ -43,9 +45,9 @@ export interface ResumenLayoutProps {
    * odometro del destacado (Rovaq no tiene odometro; la cifra va en la frase y en la tira de KPI). Sin la bandera no se ve.
    */
   readonly frase?: ReactNode;
-  /** Eyebrow ds3 (MAYUSCULAS, = grupo del menu). Por omision «Resumen». Sin la bandera no se ve. */
+  /** Eyebrow ds3 (MAYUSCULAS, = grupo del menu). Por omision «Resumen» / «Overview» segun el idioma. Sin la bandera no se ve. */
   readonly eyebrow?: string;
-  /** ds3: H1 de la pagina (Rovaq: el nombre de la pagina, no el saludo). Por omision «Resumen». Sin la bandera no se ve. */
+  /** ds3: H1 de la pagina (Rovaq: el nombre de la pagina, no el saludo). Por omision «Resumen» / «Overview». Sin la bandera no se ve. */
   readonly titulo?: string;
   /** ds3: franja de estado de los datos bajo el encabezado. Vacia o ausente = no se pinta. Sin la bandera no se ve. */
   readonly estadoDatos?: readonly ResumenEstadoDato[];
@@ -76,8 +78,8 @@ export function ResumenLayout({
   nombre,
   subtitulo,
   frase,
-  eyebrow = "Resumen",
-  titulo = TEXTOS_DS3_CONTENIDO.resumen.titulo,
+  eyebrow: eyebrowProp,
+  titulo: tituloProp,
   estadoDatos,
   atencion,
   destacado,
@@ -86,6 +88,9 @@ export function ResumenLayout({
   children,
   className,
 }: ResumenLayoutProps) {
+  const t = useT(resumen);
+  const eyebrow = eyebrowProp ?? t("resumen.eyebrow");
+  const titulo = tituloProp ?? t("resumen.titulo");
   const hayCuerpo = hayContenido(kpis) || hayContenido(acciones) || hayContenido(children) || atencion !== undefined;
   const conFrase = hayContenido(frase);
   // Las piezas ds3 (eyebrow, frase) se pintan siempre y las muestra/oculta cifra.css bajo html[data-diseno="ds3"] (sin rama de JS);
@@ -115,8 +120,10 @@ export function ResumenLayout({
         </div>
         {hayContenido(destacado) && <div data-parte="destacado" className="flex shrink-0 items-center gap-2.5 sm:pt-1">{destacado}</div>}
       </div>
+      {/* Avisos globales del panel (AvisoPagina) debajo del encabezado del Resumen. */}
+      <RanuraAvisosPagina />
       {estadoDatos && estadoDatos.length > 0 && (
-        <dl hidden aria-label={TEXTOS_DS3_CONTENIDO.resumen.estadoDatos} data-parte="estado-datos" data-testid="resumen-estado-datos" className="ds3-solo">
+        <dl hidden aria-label={t("resumen.estadoDatos")} data-parte="estado-datos" data-testid="resumen-estado-datos" className="ds3-solo">
           {estadoDatos.map((d) => (
             <div key={d.etiqueta}>
               <dt>{d.etiqueta}:</dt>
@@ -140,14 +147,14 @@ export function ResumenLayout({
 /** «Requiere tu atención (n)» de Rovaq: lista de pendientes con punto de tono, detalle de una linea y cifra a la derecha. Solo ds3. */
 function ResumenAtencion({ items }: { readonly items: readonly ResumenAtencionItem[] }) {
   const id = useId();
-  const t = TEXTOS_DS3_CONTENIDO.resumen;
+  const t = useT(resumen);
   return (
     <section hidden aria-labelledby={id} data-parte="atencion" data-testid="resumen-atencion" className="ds3-solo">
       <h2 id={id}>
-        {t.atencion} <span data-parte="atencion-n">({items.length})</span>
+        {t("resumen.atencion")} <span data-parte="atencion-n">({items.length})</span>
       </h2>
       {items.length === 0 ? (
-        <p data-parte="atencion-vacia">{t.atencionVacia}</p>
+        <p data-parte="atencion-vacia">{t("resumen.atencionVacia")}</p>
       ) : (
         <ul>
           {items.map((it) => {

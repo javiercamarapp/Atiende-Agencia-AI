@@ -16,9 +16,18 @@ import type { consola } from "./consola.ts";
 import type { datos } from "./datos.ts";
 import type { nav } from "./nav.ts";
 import type { notif } from "./notif.ts";
+import type { ModulosRestaurantes } from "./restaurantes/index.ts";
+import type { ModulosRentas } from "./rentas/index.ts";
+import type { ModulosLicitaciones } from "./licitaciones/index.ts";
+import type { ModulosDespachos } from "./despachos/index.ts";
+import type { ModulosHoteles } from "./hoteles/index.ts";
+import type { ModulosCitas } from "./citas/index.ts";
+import type { ModulosSuperadmin } from "./superadmin/index.ts";
+import type { resumen } from "./resumen.ts";
 import type { rol } from "./rol.ts";
 import type { shell } from "./shell.ts";
 import type { waMeta } from "./waMeta.ts";
+import type { general } from "./general.ts";
 
 /**
  * Modulos que van en el bundle de arranque. Vacio a proposito: la entrada esta en su tope de bundle, asi que TODO modulo es
@@ -32,7 +41,14 @@ export const MODULOS = {} as const;
  * (`readonly <area>: typeof <area>` con `import type`). Quien lo usa lo pasa a `useT(<area>)` / `useI18n(<area>)`, que registra su
  * espanol en el render (fuera de React: `registrarModuloEs(<area>)`). El archivo del modulo NO tiene efectos al importarse.
  */
-interface ModulosDeArea {
+interface ModulosDeArea
+  extends ModulosRestaurantes,
+    ModulosSuperadmin,
+    ModulosCitas,
+    ModulosHoteles,
+    ModulosDespachos,
+    ModulosLicitaciones,
+    ModulosRentas {
   readonly comun: typeof comun;
   readonly nav: typeof nav;
   readonly shell: typeof shell;
@@ -41,6 +57,8 @@ interface ModulosDeArea {
   readonly notif: typeof notif;
   readonly datos: typeof datos;
   readonly waMeta: typeof waMeta;
+  readonly resumen: typeof resumen;
+  readonly general: typeof general;
 }
 
 type Modulos = typeof MODULOS & ModulosDeArea;

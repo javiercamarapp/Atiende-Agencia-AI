@@ -4,6 +4,7 @@ import { orgDe, VERTICALES } from "../mock-api/personas.ts";
 import { CONTRASENA_ACTUAL, TOKEN_RESTABLECER, TOKEN_VERIFICAR } from "../mock-api/fixtures/cuenta.ts";
 import { afirmarSinScrollHorizontal, afirmarUnSoloMain } from "../helpers/ds.ts";
 import { abrirDialogo, cerrarConCancelar, cerrarConEscape } from "../helpers/dialogos.ts";
+import { esperarAnimaciones } from "../helpers/esperas.ts";
 import { expect, test, URL_API } from "../helpers/fixtures.ts";
 
 test.describe("publicas @humo", () => {
@@ -13,6 +14,8 @@ test.describe("publicas @humo", () => {
     for (const v of VERTICALES) {
       await expect(page.locator(`a[href="/${v}/login"]`)).toBeVisible();
     }
+    // Alta autoservicio de restaurantes: CTA de registro.
+    await expect(page.locator('a[href="/restaurantes/registro"]')).toBeVisible();
     await afirmarUnSoloMain(page);
     vigilante.verificar();
   });
@@ -186,7 +189,7 @@ test.describe("publicas @humo", () => {
     await page.goto("/citas/login");
     await expect(page.getByRole("heading", { level: 1 })).toContainText("atiende citas");
     await afirmarSinScrollHorizontal(page);
-    await page.waitForTimeout(1300); // la entrada escalonada termina (login-entra)
+    await esperarAnimaciones(page); // la entrada escalonada termina (login-entra)
     await info.attach(`login-${info.project.name}.png`, { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
     await page.goto("/restablecer-no-existe");
     await afirmarSinScrollHorizontal(page);

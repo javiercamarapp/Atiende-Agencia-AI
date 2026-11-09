@@ -2,7 +2,7 @@
 // a una herramienta que EXISTE en `buildLicitacionesDataChatTools` (packages/domain-licitaciones/src/data-chat/catalog.ts):
 // convocatorias_abiertas, plazos_semaforo, go_no_go, propuestas_por_estado, fallos, renovaciones y preguntas_junta_pendientes.
 // Nada aqui son respuestas: solo preguntas que el servidor contesta con datos reales.
-import type { CopilotoConfigVertical } from "./tipos.ts";
+import type { CopilotoConfigIngles, CopilotoConfigVertical } from "./tipos.ts";
 
 export const SUGERENCIAS_COPILOTO_LICITACIONES: readonly string[] = [
   "¿Qué convocatorias vencen en los próximos 7 días?",
@@ -11,6 +11,47 @@ export const SUGERENCIAS_COPILOTO_LICITACIONES: readonly string[] = [
   "¿Cuántas propuestas tengo por estado?",
   "¿Qué preguntas de la junta de aclaraciones tengo pendientes?",
 ];
+
+/** Ingles de la config (i18n ES/EN): misma consulta directa por pregunta, textos de la portada y temas. */
+export const COPILOTO_LICITACIONES_EN: CopilotoConfigIngles = {
+  textos: {
+    titulo: "Ask your data",
+    subtitulo: "Your tenders, deadlines and proposals, with the figure the system already calculated.",
+    nota: "Answers only with figures already calculated on the server and tells you where they come from; if there's no data, it says so. It never makes up numbers.",
+    placeholder: "Ask about your tenders…",
+    fases: [
+      [0, "Understanding your question…"],
+      [2500, "Querying your data…"],
+      [8000, "Putting the answer together…"],
+      [20000, "Still working on this…"],
+    ],
+  },
+  temas: {
+    "Oportunidades": "Opportunities",
+    "Plazos y propuestas": "Deadlines and proposals",
+    "Resultados y contratos": "Awards and contracts",
+  },
+  preguntas: {
+    "¿Qué convocatorias vencen en los próximos 7 días?": "Which tenders close in the next 7 days?",
+    "¿Cómo va el semáforo de mis plazos?": "How does my deadline traffic light look?",
+    "¿Qué decisiones go/no-go tomé este mes?": "What go/no-go decisions did I make this month?",
+    "¿Cuántas propuestas tengo por estado?": "How many proposals do I have by status?",
+    "¿Qué preguntas de la junta de aclaraciones tengo pendientes?": "Which clarification-meeting questions are still pending?",
+    "¿Qué convocatorias tengo abiertas?": "Which tenders do I have open?",
+    "¿Qué fallos recibí este mes?": "What awards did I receive this month?",
+    "¿Qué contratos terminan su vigencia en los próximos 90 días?": "Which contracts expire in the next 90 days?",
+  },
+  etiquetasHerramienta: {
+    convocatorias_abiertas: "Reviewing open tenders",
+    plazos_semaforo: "Calculating the deadline traffic light",
+    go_no_go: "Reviewing go / no-go decisions",
+    propuestas_por_estado: "Counting proposals by status",
+    fallos: "Reviewing awards",
+    renovaciones: "Reviewing contract renewals",
+    preguntas_junta_pendientes: "Reviewing clarification-meeting questions",
+  },
+  textoSinAcceso: "Your role doesn't have access to the Copilot. Ask an administrator of your organization for access.",
+};
 
 export const COPILOTO_LICITACIONES: CopilotoConfigVertical = {
   vertical: "licitaciones",
@@ -75,4 +116,5 @@ export const COPILOTO_LICITACIONES: CopilotoConfigVertical = {
   },
   maxCaracteres: 600,
   textoSinAcceso: "Tu rol no tiene acceso al Copiloto. Pídele acceso a un administrador de tu organización.",
+  en: COPILOTO_LICITACIONES_EN,
 };

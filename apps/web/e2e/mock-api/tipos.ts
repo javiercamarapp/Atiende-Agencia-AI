@@ -56,6 +56,9 @@ export interface Peticion {
   readonly cabeceras: Readonly<Record<string, string | string[] | undefined>>;
   /** Estado mutable del escenario (aislado por prueba): fixtures lo usan para que un POST se refleje en el GET siguiente. */
   readonly estado: EstadoEscenario;
+  /** Estado de OTRO escenario. Solo para rutas publicas que crean una cuenta nueva (registro autoservicio): la cuenta nace en el
+   *  escenario de la prueba que la registra y la peticion sin sesion cae en "anon". Opcional: los dobles de vitest no lo necesitan. */
+  readonly estadoDeEscenario?: (escenario: string) => EstadoEscenario;
 }
 
 export interface EstadoEscenario {

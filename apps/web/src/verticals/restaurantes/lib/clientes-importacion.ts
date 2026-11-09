@@ -3,6 +3,10 @@
 // canales (10 digitos; +52 y 521 se aceptan; 11 digitos se rechaza) y la base vuelve a validar. Aqui solo se leen celdas y se arman
 // los renglones crudos; nada se manda hasta que la persona lo confirma. No dispara mensajes a nadie.
 import { unzipSync } from "fflate";
+import { etiquetasTraducidas, traductorActivo } from "@atiende/ui";
+import { restaurantesClientes } from "@atiende/ui/i18n/restaurantes/clientes";
+
+const tr = traductorActivo(restaurantesClientes);
 
 /** Mismo tope que el servidor (`IMPORTACION_MAX_FILAS`). */
 export const IMPORTACION_MAX_FILAS = 5000;
@@ -12,13 +16,12 @@ export const IMPORTACION_MAX_BYTES = 5 * 1024 * 1024;
 export const CAMPOS_IMPORTACION = ["telefono", "nombre", "direccion", "colonia", "notas"] as const;
 export type CampoImportacion = (typeof CAMPOS_IMPORTACION)[number];
 
-export const ETIQUETA_CAMPO: Readonly<Record<CampoImportacion, string>> = {
-  telefono: "Teléfono",
-  nombre: "Nombre",
-  direccion: "Dirección",
-  colonia: "Colonia",
-  notas: "Notas",
-};
+/** Etiqueta en el idioma activo (i18n): cada lectura traduce; en espanol, los textos de siempre. */
+export const ETIQUETA_CAMPO: Readonly<Record<CampoImportacion, string>> = etiquetasTraducidas<CampoImportacion>(
+  CAMPOS_IMPORTACION,
+  (c) => `restaurantes.clientes.campo.${c}` as const,
+  restaurantesClientes,
+);
 
 /** Indice de columna (0-based) por campo; `null` = no importar ese dato. */
 export type MapeoColumnas = Readonly<Record<CampoImportacion, number | null>>;
@@ -108,10 +111,10 @@ export function parsearXlsx(bytes: Uint8Array): string[][] {
   try {
     archivos = unzipSync(bytes, { filter: (f) => /^xl\/(sharedStrings\.xml|worksheets\/sheet1\.xml|workbook\.xml)$/.test(f.name) });
   } catch {
-    throw new ArchivoImportacionError("No se pudo abrir el archivo de Excel (.xlsx). Guárdalo de nuevo como .xlsx o expórtalo a CSV.");
+    throw new ArchivoImportacionError(tr("restaurantes.clientes.imp.xlsxNoAbre"));
   }
   const hoja = archivos["xl/worksheets/sheet1.xml"];
-  if (!hoja) throw new ArchivoImportacionError("El archivo de Excel no tiene una primera hoja legible. Expórtalo a CSV.");
+  if (!hoja) throw new ArchivoImportacionError(tr("restaurantes.clientes.imp.xlsxSinHoja"));
   const decodificar = (u: Uint8Array) => new TextDecoder("utf-8").decode(u);
   const parser = new DOMParser();
   const compartidas: string[] = [];
@@ -183,15 +186,16 @@ export function decodificarTexto(buffer: ArrayBuffer): string {
 }
 
 export async function leerArchivoClientes(file: File): Promise<ArchivoLeido> {
-  if (file.size > IMPORTACION_MAX_BYTES) throw new ArchivoImportacionError(`El archivo pesa más de ${IMPORTACION_MAX_BYTES / (1024 * 1024)} MB: divídelo en partes.`);
+  if (file.size > IMPORTACION_MAX_BYTES) throw new ArchivoImportacionError(tr("restaurantes.clientes.imp.muyGrande", { mb: IMPORTACION_MAX_BYTES / (1024 * 1024) }));
   const buffer = await file.arrayBuffer();
   const huella = await huellaSha256(buffer);
   const nombre = file.name;
   let filas: string[][];
   if (/\.xlsx$/i.test(nombre)) filas = parsearXlsx(new Uint8Array(buffer));
   else if (/\.(csv|txt|tsv)$/i.test(nombre) || /text\//i.test(file.type)) filas = parsearCsv(decodificarTexto(buffer));
-  else throw new ArchivoImportacionError("Formato no admitido: sube un .csv o un .xlsx. (Un .xls antiguo: guárdalo como .xlsx o CSV.)");
-  if (filas.length === 0) throw new ArchivoImportacionError("El archivo está vacío.");
+  else throw new ArchivoImportacionError(tr("restaurantes.clientes.imp.formato"));
+  if (filas.length === 0) throw new ArchivoImportacionError(tr("restaurantes.clientes.imp.vacio"));
+
   return { nombre, huella, filas };
 }
 

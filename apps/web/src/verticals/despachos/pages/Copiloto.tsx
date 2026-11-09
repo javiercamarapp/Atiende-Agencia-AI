@@ -5,9 +5,10 @@
 // llaman al backend: ven el estado "sin acceso" directo.
 import { useMemo } from "react";
 import { Lock } from "lucide-react";
-import { EstadoVacio, SeccionFijadosCopiloto } from "@atiende/ui";
+import { EstadoVacio, SeccionFijadosCopiloto, useIdiomaCopiloto } from "@atiende/ui";
 import { apiBaseUrlFromRequestUrl, withAuthRefresh } from "../../../lib/authed-fetch.ts";
 import { COPILOTO_DESPACHOS } from "../../../lib/copiloto/config/despachos.ts";
+import { textoSinAccesoEn } from "../../../lib/copiloto/config/idioma.ts";
 import { crearClienteFijados } from "../../../lib/copiloto/fijados.ts";
 import { consultarEstadoCopiloto, crearTransporteCopiloto } from "../../../lib/copiloto/transporte.ts";
 import type { CopilotoTransporteConfig } from "../../../lib/copiloto/transporte.ts";
@@ -20,10 +21,11 @@ import type { DespachosShellContext } from "../DespachosShell.tsx";
 export const COPILOTO_DESPACHOS_ROLES: ReadonlySet<string> = new Set(["admin", "contador", "auditor", "readonly"]);
 
 export function DespachosCopilotoPage(ctx: DespachosShellContext) {
+  const { t, idioma } = useIdiomaCopiloto();
   if (!COPILOTO_DESPACHOS_ROLES.has(ctx.role)) {
     return (
       <div className="p-4">
-        <EstadoVacio icon={Lock} titulo="Sin acceso" mensaje={COPILOTO_DESPACHOS.textoSinAcceso} />
+        <EstadoVacio icon={Lock} titulo={t("paginaSinAcceso")} mensaje={textoSinAccesoEn(COPILOTO_DESPACHOS, idioma)} />
       </div>
     );
   }

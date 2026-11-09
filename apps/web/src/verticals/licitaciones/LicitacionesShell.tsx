@@ -82,7 +82,7 @@ export { puedeVerPrivacidad };
 // consolas) — UNI-6: categorías en el orden de Likida (Oportunidades, Inteligencia, Organización) con "Resumen" como raíz sin
 // título; Staff solo para owner/admin. "Más" de la barra móvil lista TODOS (las mismas secciones del Sidebar), nada queda
 // inalcanzable en móvil.
-function buildSidebarSections(t: Traductor, orgSlug: string, puedeVerStaff: boolean, puedePrivacidad: boolean): SidebarSection[] {
+export function buildSidebarSections(t: Traductor, orgSlug: string, puedeVerStaff: boolean, puedePrivacidad: boolean): SidebarSection[] {
   const base = `/licitaciones/${orgSlug}`;
   return [
     {
@@ -185,6 +185,7 @@ export function LicitacionesShell({ apiBaseUrl, orgSlug, onRequireLogin, childre
       loggingOut={s.loggingOut}
       header={{ icon: <FileText className="size-[15px] text-muted-foreground" strokeWidth={1.75} />, title: t("consola.titulo", { vertical: t("consola.vertical.licitaciones"), nombre: orgSlug }), resumenTo: `/licitaciones/${orgSlug}/panel` }}
       contentKey={propertyId}
+      guia={{ cargar: () => import("./guia-licitaciones.ts").then((m) => ({ contenido: m.GUIA_LICITACIONES, esenciales: m.esencialesLicitaciones(role) })) }}
     >
       {children(contexto)}
     </VerticalShellConectado>

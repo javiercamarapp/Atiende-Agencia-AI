@@ -50,3 +50,15 @@ describe("hayOnboardingEvento", () => {
     await expect(sinTabla.query("select 1")).resolves.toEqual({ rows: [{ ok: 1 }] });
   });
 });
+
+describe("hayOnboardingEvento por sucursal (0078: metodos de pago)", () => {
+  it("con propertyId usa la consulta filtrada por sucursal; sin propertyId, la de toda la organizacion", async () => {
+    const porSucursal = new AbortAwareFakeSession([{ match: /and property_id = \$4::uuid/, respond: () => [{ hay: true }] }]);
+    expect(await hayOnboardingEvento(porSucursal, ORG, "restaurantes", "metodos_pago_confirmados", "00000000-0000-4000-8000-0000000000aa")).toBe(true);
+    const deOrganizacion = new AbortAwareFakeSession([
+      { match: /and property_id = \$4::uuid/, respond: () => [{ hay: true }] },
+      { match: /from core\.onboarding_evento/, respond: () => [{ hay: false }] },
+    ]);
+    expect(await hayOnboardingEvento(deOrganizacion, ORG, "restaurantes", "prueba_agente_whatsapp")).toBe(false);
+  });
+});

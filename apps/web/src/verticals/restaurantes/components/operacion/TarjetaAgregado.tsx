@@ -1,6 +1,8 @@
 // Tarjeta de un agregado por validar (panel movil del operador): pedido original + lo que el cliente quiere agregar + cronometro con color + Aceptar / Rechazar.
 // Presentacional: no hace red. Botones >= 56 dp (h-14), desactivados mientras se procesa. El color del cronometro nunca es la unica senal (icono + texto).
-import { Button, Card, CardContent, StatusBadge, cn, formatMoney } from "@atiende/ui";
+import { Button, Card, CardContent, StatusBadge, cn, formatMoney, useT } from "@atiende/ui";
+import { restaurantesAgregados } from "@atiende/ui/i18n/restaurantes/agregados";
+import { restaurantesComun } from "@atiende/ui/i18n/restaurantes/comun";
 import type { StatusTone } from "@atiende/ui";
 import type { TarjetaAgregado as TarjetaAgregadoDato } from "@atiende/domain-restaurantes/operacion";
 import { AlertTriangle, CheckCircle2, Clock, MessageCircle, PhoneCall, Store } from "lucide-react";
@@ -21,6 +23,7 @@ export interface TarjetaAgregadoProps {
 }
 
 export function TarjetaAgregado({ tarjeta: t, segundos, ocupado, alAceptar, alRechazar }: TarjetaAgregadoProps) {
+  const tr = useT(restaurantesComun, restaurantesAgregados);
   const abierta = t.estado === "pendiente";
   // Pasados 20 min la solicitud YA es terminal aunque el tick de 5 min no la haya cerrado en la base (el servidor tambien la cerraria al intentar decidir): no se puede aceptar ni rechazar.
   const vencida = abierta && (t.estadoEfectivo === "vencido" || nivelDeSegundos(segundos) === "vencido");
@@ -35,12 +38,12 @@ export function TarjetaAgregado({ tarjeta: t, segundos, ocupado, alAceptar, alRe
       <CardContent className="space-y-3 p-4">
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div className="min-w-0">
-            <h3 className="text-xl font-bold text-foreground">Pedido {folio}</h3>
+            <h3 className="text-xl font-bold text-foreground">{tr("restaurantes.agregados.tarjeta.pedido", { folio })}</h3>
             <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
               <Store className="size-4 shrink-0" aria-hidden="true" />
-              <span className="truncate">{t.sucursal ?? "Sucursal"}</span>
+              <span className="truncate">{t.sucursal ?? tr("restaurantes.agregados.tarjeta.sucursal")}</span>
               <span aria-hidden="true">·</span>
-              <span>{t.canal === "llamada" ? "Llamada" : "WhatsApp"}</span>
+              <span>{t.canal === "llamada" ? tr("restaurantes.agregados.tarjeta.llamada") : tr("restaurantes.fuente.whatsapp")}</span>
             </p>
           </div>
           {abierta ? (
@@ -61,24 +64,24 @@ export function TarjetaAgregado({ tarjeta: t, segundos, ocupado, alAceptar, alRe
           </p>
         )}
 
-        <section aria-label="Pedido original" className="space-y-1 rounded-md bg-muted/40 p-3">
+        <section aria-label={tr("restaurantes.agregados.tarjeta.pedidoOriginal")} className="space-y-1 rounded-md bg-muted/40 p-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h4 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Pedido original</h4>
+            <h4 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">{tr("restaurantes.agregados.tarjeta.pedidoOriginal")}</h4>
             <StatusBadge tone="neutral" dot={false} className="text-sm">
               {ETIQUETA_ESTADO_PEDIDO[t.pedido.estado] ?? t.pedido.estado} · {horaEsMx(t.pedido.creadoEn)}
             </StatusBadge>
           </div>
-          <p className="text-base text-foreground">{t.pedido.renglones.map((r) => `${r.cantidad}× ${r.nombre}`).join(", ") || "Sin renglones"}</p>
-          <p className="text-base font-medium text-foreground">Total ${formatMoney(t.pedido.total)}</p>
+          <p className="text-base text-foreground">{t.pedido.renglones.map((r) => `${r.cantidad}× ${r.nombre}`).join(", ") || tr("restaurantes.agregados.tarjeta.sinRenglones")}</p>
+          <p className="text-base font-medium text-foreground">{tr("restaurantes.agregados.tarjeta.total", { total: formatMoney(t.pedido.total) })}</p>
           {abierta && t.pedido.yaEnCocina && (
             <p role="note" className="rounded-md border border-warning p-2 text-sm text-warning">
-              Este pedido ya está en cocina: el agregado puede no alcanzar a salir junto con él. Aceptarlo NO reimprime la comanda; avisa a cocina.
+              {tr("restaurantes.agregados.tarjeta.yaEnCocina")}
             </p>
           )}
         </section>
 
-        <section aria-label="Lo que quiere agregar" className="space-y-1 rounded-md border-2 border-primary p-3">
-          <h4 className="text-sm font-semibold uppercase tracking-wide text-primary">Lo que quiere agregar</h4>
+        <section aria-label={tr("restaurantes.agregados.tarjeta.quiereAgregar")} className="space-y-1 rounded-md border-2 border-primary p-3">
+          <h4 className="text-sm font-semibold uppercase tracking-wide text-primary">{tr("restaurantes.agregados.tarjeta.quiereAgregar")}</h4>
           <ul className="space-y-0.5">
             {t.agregado.renglones.map((r, i) => (
               <li key={`${r.nombre}-${i}`} className="flex items-baseline justify-between gap-2 text-base text-foreground">
@@ -89,9 +92,10 @@ export function TarjetaAgregado({ tarjeta: t, segundos, ocupado, alAceptar, alRe
               </li>
             ))}
           </ul>
-          {t.agregado.nota && <p className="text-sm text-muted-foreground">Nota del cliente: {t.agregado.nota}</p>}
+          {t.agregado.nota && <p className="text-sm text-muted-foreground">{tr("restaurantes.agregados.tarjeta.notaCliente", { nota: t.agregado.nota })}</p>}
           <p className="text-lg font-bold text-foreground">
-            Nuevo total: ${formatMoney(t.agregado.nuevoTotal)} <span className="text-sm font-normal text-muted-foreground">(antes ${formatMoney(t.agregado.nuevoTotal - t.agregado.total)})</span>
+            {tr("restaurantes.agregados.tarjeta.nuevoTotal", { total: formatMoney(t.agregado.nuevoTotal) })}
+            <span className="text-sm font-normal text-muted-foreground">{tr("restaurantes.agregados.tarjeta.antes", { total: formatMoney(t.agregado.nuevoTotal - t.agregado.total) })}</span>
           </p>
         </section>
 
@@ -101,17 +105,17 @@ export function TarjetaAgregado({ tarjeta: t, segundos, ocupado, alAceptar, alRe
             <div className="flex gap-2">
               {llamar && (
                 <Button asChild variant="outline" className="h-12">
-                  <a href={llamar} aria-label={`Llamar a ${t.cliente.nombre}`}>
+                  <a href={llamar} aria-label={tr("restaurantes.agregados.tarjeta.llamarA", { nombre: t.cliente.nombre })}>
                     <PhoneCall className="mr-1.5 size-4" aria-hidden="true" />
-                    Llamar
+                    {tr("restaurantes.agregados.tarjeta.llamar")}
                   </a>
                 </Button>
               )}
               {whatsapp && (
                 <Button asChild variant="outline" className="h-12">
-                  <a href={whatsapp} target="_blank" rel="noopener noreferrer" aria-label={`Escribir por WhatsApp a ${t.cliente.nombre}`}>
+                  <a href={whatsapp} target="_blank" rel="noopener noreferrer" aria-label={tr("restaurantes.agregados.tarjeta.whatsappA", { nombre: t.cliente.nombre })}>
                     <MessageCircle className="mr-1.5 size-4" aria-hidden="true" />
-                    WhatsApp
+                    {tr("restaurantes.fuente.whatsapp")}
                   </a>
                 </Button>
               )}
@@ -121,15 +125,16 @@ export function TarjetaAgregado({ tarjeta: t, segundos, ocupado, alAceptar, alRe
 
         {vencida ? (
           <p role="status" data-testid="agregado-vencido" className="rounded-md border-2 border-danger p-3 text-base font-medium text-danger">
-            Esta solicitud ya venció (pasaron más de 20 minutos) y no se puede aceptar ni rechazar. Se cierra sola; ofrécele al cliente un pedido aparte.
+            {tr("restaurantes.agregados.tarjeta.vencida")}
           </p>
         ) : abierta ? (
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <Button type="button" className="h-14 text-lg" loading={ocupado} disabled={ocupado} aria-label={`Aceptar agregado al pedido ${folio}`} onClick={() => alAceptar(t)}>
-              Aceptar agregado
+            <Button type="button" className="h-14 text-lg" loading={ocupado} disabled={ocupado} aria-label={tr("restaurantes.agregados.tarjeta.aceptarAria", { folio })} onClick={() => alAceptar(t)}>
+              {tr("restaurantes.agregados.tarjeta.aceptar")}
             </Button>
-            <Button type="button" variant="danger" className="h-14 text-lg" disabled={ocupado} aria-label={`Rechazar agregado al pedido ${folio}`} onClick={() => alRechazar(t)}>
-              Rechazar
+            <Button type="button" variant="danger" className="h-14 text-lg" disabled={ocupado} aria-label={tr("restaurantes.agregados.tarjeta.rechazarAria", { folio })} onClick={() => alRechazar(t)}>
+              {tr("restaurantes.agregados.tarjeta.rechazar")}
+
             </Button>
           </div>
         ) : (

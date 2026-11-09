@@ -1,5 +1,9 @@
 // Funciones puras del Resumen de restaurantes (saludo en la zona de la sucursal, delta honesto, fecha de la
 // ultima conversacion). Aparte de Dashboard.tsx para probarlas sin DOM.
+import { localeActivo, traductorActivo } from "@atiende/ui";
+import { restaurantesResumen } from "@atiende/ui/i18n/restaurantes/resumen";
+
+const tr = traductorActivo(restaurantesResumen);
 /** Misma forma que el `delta` de `StatCard` (@atiende/ui no exporta el tipo por nombre). */
 export interface DeltaKpi {
   readonly pct: number;
@@ -26,15 +30,12 @@ export function horaEnZona(fecha: Date, zona: string | null): number {
   return fecha.getHours();
 }
 
-/** "Buenos dias" / "Buenas tardes" / "Buenas noches" segun la hora de la SUCURSAL (misma regla que `saludoPorHora`). */
-export function saludoEnZona(
-  fecha: Date,
-  zona: string | null,
-): "Buenos días" | "Buenas tardes" | "Buenas noches" {
+/** "Buenos dias" / "Buenas tardes" / "Buenas noches" (en el idioma activo) segun la hora de la SUCURSAL (misma regla que `saludoPorHora`). */
+export function saludoEnZona(fecha: Date, zona: string | null): string {
   const hora = horaEnZona(fecha, zona);
-  if (hora >= 5 && hora < 12) return "Buenos días";
-  if (hora >= 12 && hora < 20) return "Buenas tardes";
-  return "Buenas noches";
+  if (hora >= 5 && hora < 12) return tr("restaurantes.resumen.saludo.manana");
+  if (hora >= 12 && hora < 20) return tr("restaurantes.resumen.saludo.tarde");
+  return tr("restaurantes.resumen.saludo.noche");
 }
 
 /** Variacion contra el periodo anterior: `null` = no hay base (la tarjeta dice "sin periodo comparable"), nunca un 0 % inventado. */
@@ -43,7 +44,7 @@ export function deltaDe(pct: number | null | undefined): DeltaKpi | null {
   return { pct: Math.round(pct * 10) / 10, bueno: pct >= 0 };
 }
 
-/** "2 oct, 14:05" en la zona de la sucursal; fecha invalida = null (no se pinta nada). */
+/** "2 oct, 14:05" en la zona de la sucursal (locale activo: es-MX / en-US); fecha invalida = null (no se pinta nada). */
 export function cuandoEnZona(iso: string, zona: string | null): string | null {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
@@ -55,11 +56,11 @@ export function cuandoEnZona(iso: string, zona: string | null): string | null {
   };
   try {
     return new Intl.DateTimeFormat(
-      "es-MX",
+      localeActivo(),
       zona ? { ...opciones, timeZone: zona } : opciones,
     ).format(d);
   } catch {
-    return new Intl.DateTimeFormat("es-MX", opciones).format(d);
+    return new Intl.DateTimeFormat(localeActivo(), opciones).format(d);
   }
 }
 

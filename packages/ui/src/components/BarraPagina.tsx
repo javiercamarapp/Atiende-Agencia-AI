@@ -21,10 +21,15 @@ export interface BarraPaginaProps {
    * consola). Se pinta por CSS (data-titulo) y solo con la bandera; sin ella no se ve ni cambia el texto de la barra.
    */
   readonly tituloDs3?: string;
+  /**
+   * ds3: si el nombre ds3 (`tituloDs3`) hace de nivel 1. Por omision, igual que `comoH1`. El `VerticalShell` pasa `false`: bajo ds3 el nivel 1
+   * de una pagina sin <h1> es su encabezado de respaldo dentro del contenido (antetitulo + nombre), no la barra.
+   */
+  readonly comoH1Ds3?: boolean;
   readonly className?: string;
 }
 
-export function BarraPagina({ icon, title, acciones, comoH1 = false, tituloDs3, className }: BarraPaginaProps) {
+export function BarraPagina({ icon, title, acciones, comoH1 = false, tituloDs3, comoH1Ds3 = comoH1, className }: BarraPaginaProps) {
   return (
     <header data-testid="barra-pagina" className={cn("flex items-center justify-between h-11 px-5 gap-3 shrink-0 border-b border-border bg-card", className)}>
       <div className="ds3-cabecera-titulo flex items-center gap-2 text-ui font-medium min-w-0 text-foreground">
@@ -33,7 +38,7 @@ export function BarraPagina({ icon, title, acciones, comoH1 = false, tituloDs3, 
           {title}
         </p>
         {tituloDs3 ? (
-          <p hidden data-titulo={tituloDs3} role={comoH1 ? "heading" : undefined} aria-level={comoH1 ? 1 : undefined} className="ds3-solo ds3-cabecera-titulo-ds3 truncate" />
+          <p hidden data-titulo={tituloDs3} role={comoH1Ds3 ? "heading" : undefined} aria-level={comoH1Ds3 ? 1 : undefined} className="ds3-solo ds3-cabecera-titulo-ds3 truncate" />
         ) : null}
       </div>
       {acciones ? <div className="ds3-cabecera-acciones flex items-center gap-2 shrink-0">{acciones}</div> : null}

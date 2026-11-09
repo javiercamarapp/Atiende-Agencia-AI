@@ -106,6 +106,7 @@ describe("RestaurantesShell — nav móvil (hallazgo ALTA)", () => {
     const hoja = document.body.querySelector('[role="dialog"]')!;
     expect([...hoja.querySelectorAll("a")].map((a) => a.textContent)).toEqual([
       "Resumen",
+      "Resumen general", // todas las sucursales en una vista (owner/admin: cfo.ver)
       "Copiloto",
       "CFO", // CFO-07 (owner/admin: cfo.ver)
       "Agregados", // 099: agregados por validar (pedidos.agregados), primero de Operación
@@ -142,10 +143,10 @@ describe("RestaurantesShell — nav móvil (hallazgo ALTA)", () => {
     expect(categoriasSidebar(root)).toEqual(["Operación", "Catálogo", "Clientes", "Agente", "Configuración"]);
     // Abre la primera categoria; "Resumen" (raiz) esta siempre, sin boton ni titulo.
     expect(categoriasAbiertas(root)).toEqual(["Operación"]);
-    expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", "CFO", "Agregados", "Pedidos", "Comandas al POS", "Conversaciones", "Turnos", "Historial", "Cierre del día"]);
+    expect(linksSidebar(root)).toEqual(["Resumen", "Resumen general", "Copiloto", "CFO", "Agregados", "Pedidos", "Comandas al POS", "Conversaciones", "Turnos", "Historial", "Cierre del día"]);
     abrirCategoria(root, "Catálogo");
     expect(categoriasAbiertas(root)).toEqual(["Catálogo"]);
-    expect(linksSidebar(root)).toEqual(["Resumen", "Copiloto", "CFO", "Productos", "Promociones"]);
+    expect(linksSidebar(root)).toEqual(["Resumen", "Resumen general", "Copiloto", "CFO", "Productos", "Promociones"]);
     expect(tarjetaUsuario(root)).toEqual({ nombre: "Manager Demo", rol: "Propietario" });
   });
 
@@ -169,6 +170,8 @@ describe("RestaurantesShell — nav móvil (hallazgo ALTA)", () => {
     expect(linksSidebar(rendered.container).slice(0, 2)).toEqual(["Resumen", "Copiloto"]);
     // CFO-07: el CFO es de owner/admin (`cfo.ver`): el staff no ve la entrada (el API le responde 403 igualmente).
     expect(linksSidebar(rendered.container)).not.toContain("CFO");
+    // El Resumen general usa las cifras del CFO: mismo permiso (`cfo.ver`), el staff no ve la entrada.
+    expect(linksSidebar(rendered.container)).not.toContain("Resumen general");
     // R-16: sin la categoria Configuración, el staff alcanza "Mis avisos" desde Operación (la misma pagina que owner/admin ven en Configuración).
     expect(linksSidebar(rendered.container)).toContain("Avisos");
   });

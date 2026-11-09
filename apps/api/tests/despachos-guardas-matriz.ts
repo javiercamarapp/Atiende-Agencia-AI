@@ -44,6 +44,7 @@ export const ESCRITURAS_PERSONALES_DEL_CHAT: readonly string[] = [
   "PATCH /chat-datos/pins/:pinId",
   "DELETE /chat-datos/pins/:pinId",
   "POST /chat-datos/conversaciones/:conversationId/reporte",
+  "PUT /chat-datos/conversaciones/:conversationId/mensajes/:seq/valoracion", // «Útil / No fue útil» de SU respuesta
 ];
 
 /** Rutas que, ademas del rol, exigen un segundo factor reciente (D-30, x-step-up-token, alcance despachos_sensitive). */
@@ -228,6 +229,9 @@ export const MATRIZ_GUARDAS: Readonly<Record<string, AccesoRuta>> = {
   "DELETE /chat-datos/pins/:pinId": TODOS,
   "GET /chat-datos/pins/:pinId/resultado": TODOS,
   "POST /chat-datos/conversaciones/:conversationId/reporte": TODOS,
+  "PUT /chat-datos/conversaciones/:conversationId/mensajes/:seq/valoracion": TODOS,
+  // solo conteos; la funcion SQL ademas exige owner/admin de la organizacion
+  "GET /chat-datos/valoraciones/resumen": TODOS,
   "POST /chat-datos/adjuntos": TODOS,
   // rutas de nivel organizacion (`/v1/despachos/:orgSlug/...`)
   "GET /v1/despachos/:orgSlug/admin/branches": TODOS,

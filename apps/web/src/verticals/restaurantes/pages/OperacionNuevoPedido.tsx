@@ -3,7 +3,8 @@
 // (`cotizar`), y consentimiento de WhatsApp obligatorio y explicito. Privacidad: de un cliente existente solo se indica que existe y se muestran las COLONIAS guardadas
 // (en llamadas no hay remitente que valide el numero): nombre y direccion completa los captura el encargado a mano, nunca se leen ni se precargan.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, ConfirmDialog, EstadoCargando, EstadoError, FormField, Input, PageContainer, StatusBadge, Switch, Textarea, formatMoney, notify } from "@atiende/ui";
+import { Button, ConfirmDialog, EstadoCargando, EstadoError, FormField, Input, PageContainer, PageHeader, StatusBadge, Switch, Textarea, formatMoney, notify, useT } from "@atiende/ui";
+import { restaurantesCaptura } from "@atiende/ui/i18n/restaurantes/captura";
 import type { RespuestaCotizar, RespuestaCrearPedido } from "@atiende/domain-restaurantes/operacion";
 import { AlertTriangle, CheckCircle2, Clock } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -32,6 +33,7 @@ function Opciones<T extends string>({ etiqueta, valor, opciones, alCambiar }: { 
 }
 
 export function OperacionNuevoPedidoPage({ apiBaseUrl, token, propertyId, orgSlug }: RestaurantesShellContext) {
+  const t = useT(restaurantesCaptura);
   const [form, setForm] = useState<FormularioCaptura>(() => formularioVacio(propertyId));
   const [productos, setProductos] = useState<readonly Product[] | null>(null);
   const [errorProductos, setErrorProductos] = useState<string | null>(null);
@@ -63,7 +65,7 @@ export function OperacionNuevoPedidoPage({ apiBaseUrl, token, propertyId, orgSlu
     setErrorProductos(null);
     fetchProducts(fetchImpl, apiBaseUrl, token, propertyId)
       .then(setProductos)
-      .catch((e: unknown) => setErrorProductos(e instanceof Error ? e.message : "No se pudo cargar el menú."));
+      .catch((e: unknown) => setErrorProductos(e instanceof Error ? e.message : t("restaurantes.captura.errorMenu")));
   }, [apiBaseUrl, fetchImpl, propertyId, token]);
   useEffect(() => cargarProductos(), [cargarProductos]);
 
@@ -111,7 +113,7 @@ export function OperacionNuevoPedidoPage({ apiBaseUrl, token, propertyId, orgSlu
         .catch((e: unknown) => {
           if (!vigente) return;
           if (e instanceof ErrorOperacion && e.code === "fuera_de_cobertura") setFueraCobertura(true);
-          setErrorCotizar(e instanceof Error ? e.message : "No se pudo calcular el total.");
+          setErrorCotizar(e instanceof Error ? e.message : t("restaurantes.captura.errorTotal"));
         })
         .finally(() => vigente && setCotizando(false));
     }, 500);
@@ -139,12 +141,12 @@ export function OperacionNuevoPedidoPage({ apiBaseUrl, token, propertyId, orgSlu
       const r = await capturarPedido(fetchImpl, apiBaseUrl, token, propertyId, cuerpo, intento.current.llave);
       intento.current = null;
       setResultado(r);
-      notify.success(`Pedido #${r.pedido.numero} guardado.`);
+      notify.success(t("restaurantes.captura.guardado", { numero: String(r.pedido.numero) }));
     } catch (e) {
       if (e instanceof ErrorOperacion && e.status === 409 && e.code === "pedido_duplicado_reciente") setDuplicado(true);
       else {
         if (e instanceof ErrorOperacion && e.status >= 400 && e.status < 500) intento.current = null;
-        notify.error(e instanceof ErrorOperacion ? e.message : "No hay conexión. El pedido no se guardó; vuelve a tocar Guardar.");
+        notify.error(e instanceof ErrorOperacion ? e.message : t("restaurantes.captura.errorSinRed"));
       }
     } finally {
       setEnviando(false);
@@ -163,17 +165,17 @@ export function OperacionNuevoPedidoPage({ apiBaseUrl, token, propertyId, orgSlu
     return (
       <PageContainer padding="none">
         <div className="mx-auto w-full max-w-2xl space-y-3 pb-6" role="status" data-testid="pedido-guardado">
-          <h1 className="text-xl font-bold text-foreground">Pedido #{resultado.pedido.numero} guardado</h1>
+          <h1 className="text-xl font-bold text-foreground">{t("restaurantes.captura.guardadoTitulo", { numero: String(resultado.pedido.numero) })}</h1>
           <p className="flex items-center gap-2 text-lg text-foreground">
             <CheckCircle2 className="size-5" aria-hidden="true" />
-            Total ${formatMoney(resultado.pedido.total)} · {resultado.pedido.estado === "pending" ? "pendiente de aceptar" : "ya en preparación"}
+            {t("restaurantes.captura.guardadoTotal", { total: formatMoney(resultado.pedido.total), estado: t(resultado.pedido.estado === "pending" ? "restaurantes.captura.pendienteAceptar" : "restaurantes.captura.yaEnPreparacion") })}
           </p>
           <p className={`rounded-lg border-2 p-3 text-base ${resultado.aviso.estado === "omitido" ? "border-warning bg-warning-tint text-warning" : "border-border text-foreground"}`}>{aviso.charAt(0).toUpperCase() + aviso.slice(1)}.</p>
           <Button type="button" className="h-14 w-full text-lg" onClick={reiniciar}>
-            Capturar otro pedido
+            {t("restaurantes.captura.capturarOtro")}
           </Button>
           <Button asChild variant="outline" className="h-14 w-full text-lg">
-            <Link to={`/restaurantes/${orgSlug}/operacion`}>Ir a la cola</Link>
+            <Link to={`/restaurantes/${orgSlug}/operacion`}>{t("restaurantes.captura.irCola")}</Link>
           </Button>
         </div>
       </PageContainer>
@@ -184,12 +186,12 @@ export function OperacionNuevoPedidoPage({ apiBaseUrl, token, propertyId, orgSlu
   return (
     <PageContainer padding="none">
       <div className="mx-auto w-full max-w-3xl space-y-4 pb-4">
+        <PageHeader titulo={t("restaurantes.captura.titulo")} />
         <div className="flex items-center justify-between gap-2">
-          <h1 className="sr-only">Nuevo pedido</h1>
         </div>
 
-        <FormField label="Cómo entró el pedido">
-          <div className="grid grid-cols-3 gap-2" role="group" aria-label="Cómo entró el pedido">
+        <FormField label={t("restaurantes.captura.comoEntro")}>
+          <div className="grid grid-cols-3 gap-2" role="group" aria-label={t("restaurantes.captura.comoEntro")}>
             {CANALES_CAPTURA.map((c) => (
               <Button key={c} type="button" className="h-12 text-base" variant={form.canalCaptura === c ? "default" : "outline"} aria-pressed={form.canalCaptura === c} onClick={() => cambiar({ canalCaptura: c })}>
                 {ETIQUETA_CANAL_CAPTURA[c]}
@@ -198,16 +200,16 @@ export function OperacionNuevoPedidoPage({ apiBaseUrl, token, propertyId, orgSlu
           </div>
         </FormField>
 
-        <FormField label="Teléfono del cliente" required hint="10 dígitos">
+        <FormField label={t("restaurantes.captura.telefono")} required hint={t("restaurantes.captura.telefonoAyuda")}>
           <Input type="tel" inputMode="tel" autoComplete="off" className="h-12 text-lg" value={form.telefono} onChange={(e) => cambiar({ telefono: e.target.value })} />
         </FormField>
         {cliente && (
           <div role="status" className="space-y-2 rounded-lg border border-border bg-card p-3 text-base" data-testid="cliente-existente">
-            <p className="font-medium text-foreground">Cliente existente</p>
-            <p className="text-muted-foreground">Pídele su nombre y su dirección completa y captúralos a mano; no se leen ni se precargan.</p>
+            <p className="font-medium text-foreground">{t("restaurantes.captura.clienteExistente")}</p>
+            <p className="text-muted-foreground">{t("restaurantes.captura.clienteExistenteAyuda")}</p>
             {cliente.colonias.length > 0 && (
               <>
-                <p className="text-muted-foreground">Colonias que tiene registradas (toca la que confirme):</p>
+                <p className="text-muted-foreground">{t("restaurantes.captura.colonias")}</p>
                 <div className="flex flex-wrap gap-2">
                   {cliente.colonias.map((c) => (
                     <Button key={c} type="button" variant="outline" className="h-14" onClick={() => cambiar({ colonia: c })}>
@@ -219,57 +221,57 @@ export function OperacionNuevoPedidoPage({ apiBaseUrl, token, propertyId, orgSlu
             )}
           </div>
         )}
-        {busquedaFallo && <p className="text-sm text-muted-foreground">No se pudo buscar al cliente; captura sus datos a mano.</p>}
+        {busquedaFallo && <p className="text-sm text-muted-foreground">{t("restaurantes.captura.busquedaFallo")}</p>}
 
-        <FormField label="Nombre" required>
+        <FormField label={t("restaurantes.captura.nombre")} required>
           <Input autoComplete="off" className="h-12 text-lg" value={form.nombre} maxLength={120} onChange={(e) => cambiar({ nombre: e.target.value })} />
         </FormField>
 
-        <Opciones etiqueta="Entrega" valor={form.canal} opciones={[{ valor: "domicilio", texto: "Domicilio" }, { valor: "recoger", texto: "Recoger" }]} alCambiar={(canal) => cambiar({ canal })} />
+        <Opciones etiqueta={t("restaurantes.captura.entrega")} valor={form.canal} opciones={[{ valor: "domicilio", texto: t("restaurantes.captura.domicilio") }, { valor: "recoger", texto: t("restaurantes.captura.recoger") }]} alCambiar={(canal) => cambiar({ canal })} />
 
         {esDomicilio && (
           <>
-            <FormField label="Dirección completa (confírmala con el cliente)" required>
+            <FormField label={t("restaurantes.captura.direccion")} required>
               <Input autoComplete="off" className="h-12 text-lg" value={form.direccion} maxLength={240} onChange={(e) => cambiar({ direccion: e.target.value })} />
             </FormField>
-            <FormField label="Colonia">
+            <FormField label={t("restaurantes.captura.colonia")}>
               <Input autoComplete="off" className="h-12 text-lg" value={form.colonia} maxLength={120} onChange={(e) => cambiar({ colonia: e.target.value })} />
             </FormField>
-            <FormField label="Indicaciones de entrega" hint="Opcional: portón, referencias">
+            <FormField label={t("restaurantes.captura.indicaciones")} hint={t("restaurantes.captura.indicacionesAyuda")}>
               <Textarea rows={2} maxLength={240} className="text-base" value={form.indicaciones} onChange={(e) => cambiar({ indicaciones: e.target.value })} />
             </FormField>
           </>
         )}
 
-        <section aria-label="Productos" className="space-y-2">
-          <h2 className="text-lg font-semibold text-foreground">Productos</h2>
-          {productos === null && errorProductos === null && <EstadoCargando variante="tarjeta" etiqueta="Cargando el menú…" />}
+        <section aria-label={t("restaurantes.captura.productos")} className="space-y-2">
+          <h2 className="text-lg font-semibold text-foreground">{t("restaurantes.captura.productos")}</h2>
+          {productos === null && errorProductos === null && <EstadoCargando variante="tarjeta" etiqueta={t("restaurantes.captura.cargandoMenu")} />}
           {errorProductos !== null && <EstadoError compacto mensaje={errorProductos} onReintentar={cargarProductos} />}
           {productos !== null && <SelectorProductos productos={productos} lineas={form.lineas} alCambiar={(lineas) => cambiar({ lineas })} />}
         </section>
 
-        <section aria-label="Pago" className="space-y-2">
-          <h2 className="text-lg font-semibold text-foreground">Pago</h2>
-          <Opciones etiqueta="Forma de pago" valor={form.forma} opciones={[{ valor: "efectivo", texto: "Efectivo" }, { valor: "tarjeta", texto: "Tarjeta" }]} alCambiar={(forma) => cambiar({ forma })} />
+        <section aria-label={t("restaurantes.captura.pago")} className="space-y-2">
+          <h2 className="text-lg font-semibold text-foreground">{t("restaurantes.captura.pago")}</h2>
+          <Opciones etiqueta={t("restaurantes.captura.formaPago")} valor={form.forma} opciones={[{ valor: "efectivo", texto: t("restaurantes.captura.efectivo") }, { valor: "tarjeta", texto: t("restaurantes.captura.tarjeta") }]} alCambiar={(forma) => cambiar({ forma })} />
           {form.forma === "efectivo" && (
-            <FormField label="Paga con" hint="Opcional: billete con el que paga">
+            <FormField label={t("restaurantes.captura.pagaCon")} hint={t("restaurantes.captura.pagaConAyuda")}>
               <Input inputMode="decimal" className="h-12 text-lg" value={form.pagaCon} onChange={(e) => cambiar({ pagaCon: e.target.value.replace(/[^0-9.,]/g, "") })} />
             </FormField>
           )}
         </section>
 
         <div aria-live="polite" className="space-y-2" data-testid="resumen-total">
-          {cotizando && <p className="text-base text-muted-foreground">Calculando el total…</p>}
+          {cotizando && <p className="text-base text-muted-foreground">{t("restaurantes.captura.calculando")}</p>}
           {cotizacion && (
             <div className="rounded-lg border border-border bg-card p-3">
-              <p className="text-2xl font-bold text-foreground">Total ${formatMoney(cotizacion.cotizacion.total)}</p>
+              <p className="text-2xl font-bold text-foreground">{t("restaurantes.captura.total", { total: formatMoney(cotizacion.cotizacion.total) })}</p>
               <p className="text-base text-muted-foreground">
-                Subtotal ${formatMoney(cotizacion.cotizacion.subtotal)}
-                {cotizacion.cotizacion.envio > 0 ? ` · envío $${formatMoney(cotizacion.cotizacion.envio)}` : ""}
+                {t("restaurantes.captura.subtotal", { subtotal: formatMoney(cotizacion.cotizacion.subtotal) })}
+                {cotizacion.cotizacion.envio > 0 ? t("restaurantes.captura.envio", { envio: formatMoney(cotizacion.cotizacion.envio) }) : ""}
               </p>
               <p className="mt-1 flex items-center gap-1.5 text-base text-foreground">
                 <Clock className="size-4" aria-hidden="true" />
-                Tiempo estimado {cotizacion.cotizacion.tiempoEstimadoMin[0]}–{cotizacion.cotizacion.tiempoEstimadoMin[1]} min
+                {t("restaurantes.captura.tiempoEstimado", { min: String(cotizacion.cotizacion.tiempoEstimadoMin[0] ?? ""), max: String(cotizacion.cotizacion.tiempoEstimadoMin[1] ?? "") })}
               </p>
             </div>
           )}
@@ -277,12 +279,12 @@ export function OperacionNuevoPedidoPage({ apiBaseUrl, token, propertyId, orgSlu
             <div role="alert" className="rounded-lg border-2 border-destructive bg-destructive-tint p-3 text-base text-destructive">
               <p className="flex items-center gap-1.5 font-semibold">
                 <AlertTriangle className="size-5" aria-hidden="true" />
-                Fuera de cobertura
+                {t("restaurantes.captura.fueraCobertura")}
               </p>
-              <p>Esa dirección no está dentro de la zona de reparto.</p>
+              <p>{t("restaurantes.captura.fueraCoberturaTexto")}</p>
               {cotizacion?.cobertura.sucursalAlterna && (
                 <p>
-                  Sugiere la sucursal {cotizacion.cobertura.sucursalAlterna.nombre} ({cotizacion.cobertura.sucursalAlterna.telefono}).
+                  {t("restaurantes.captura.sucursalAlterna", { nombre: cotizacion.cobertura.sucursalAlterna.nombre, telefono: cotizacion.cobertura.sucursalAlterna.telefono })}
                 </p>
               )}
             </div>
@@ -294,7 +296,7 @@ export function OperacionNuevoPedidoPage({ apiBaseUrl, token, propertyId, orgSlu
 
         {/* Toda la fila es el objetivo tactil (>= 56 dp): el interruptor solo mide 24x40 px y el panel se usa con el pulgar. */}
         <label htmlFor="confirmar-ya" className="flex min-h-14 cursor-pointer items-center justify-between gap-3 rounded-lg border border-border bg-card p-3 text-base text-foreground">
-          <span>Confirmar ya (pasa directo a preparación)</span>
+          <span>{t("restaurantes.captura.confirmarYa")}</span>
           <Switch id="confirmar-ya" checked={form.confirmarYa} onCheckedChange={(confirmarYa) => cambiar({ confirmarYa })} />
         </label>
 
@@ -302,13 +304,13 @@ export function OperacionNuevoPedidoPage({ apiBaseUrl, token, propertyId, orgSlu
           {falta.length > 0 && (
             <p className="text-sm text-muted-foreground" data-testid="faltantes">
               <StatusBadge tone="warning" dot={false} className="mr-1.5 text-sm">
-                Falta
+                {t("restaurantes.captura.falta")}
               </StatusBadge>
               {falta.join(" · ")}
             </p>
           )}
           <Button type="button" className="h-14 w-full text-lg" disabled={falta.length > 0 || enviando} loading={enviando} onClick={() => void guardar()}>
-            {form.consentimiento === false ? "Guardar sin aviso" : "Guardar y avisar"}
+            {t(form.consentimiento === false ? "restaurantes.captura.guardarSinAviso" : "restaurantes.captura.guardarYAvisar")}
           </Button>
         </div>
       </div>
@@ -316,10 +318,11 @@ export function OperacionNuevoPedidoPage({ apiBaseUrl, token, propertyId, orgSlu
       <ConfirmDialog
         open={duplicado}
         onOpenChange={setDuplicado}
-        titulo="¿Es un pedido repetido?"
-        descripcion="Hay un pedido de este mismo teléfono con los mismos productos de hace menos de 10 minutos. Guárdalo solo si el cliente pidió otra vez."
-        confirmar="Sí, guardar otro"
-        cancelar="No, revisar"
+        titulo={t("restaurantes.captura.repetidoTitulo")}
+        descripcion={t("restaurantes.captura.repetidoTexto")}
+        confirmar={t("restaurantes.captura.repetidoConfirmar")}
+        cancelar={t("restaurantes.captura.repetidoCancelar")}
+
         onConfirm={async () => {
           setDuplicado(false);
           await guardar(true);

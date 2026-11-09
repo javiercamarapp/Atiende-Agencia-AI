@@ -6,25 +6,27 @@
 //
 // Se formatea en la zona del negocio (default de plataforma `America/Mexico_City`, igual que `fechaHoraEsMx`), NO en la del
 // navegador: a las 7 p. m. de Ciudad de Mexico el UTC ya es "mañana" y un navegador en otra zona mostraria otro dia.
+import { idiomaActivo, localeActivo } from "@atiende/ui";
+
 export function fechaCortaEsMx(fecha: Date = new Date(), zonaHoraria: string = "America/Mexico_City"): string {
-  return fecha.toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric", timeZone: zonaHoraria });
+  return fecha.toLocaleDateString(localeActivo(), { day: "numeric", month: "short", year: "numeric", timeZone: zonaHoraria });
 }
 
 // Fecha y hora real de un timestamp (con hora), en la zona del negocio ("2 oct 2026, 8:15 p.m."). Compartida por la
 // cuenta de staff (sesiones, vinculos de Google) para no repetir un toLocaleString por pantalla.
 export function fechaHoraEsMx(iso: string | Date, zonaHoraria: string = "America/Mexico_City"): string {
-  return new Date(iso).toLocaleString("es-MX", { timeZone: zonaHoraria, dateStyle: "medium", timeStyle: "short" });
+  return new Date(iso).toLocaleString(localeActivo(), { timeZone: zonaHoraria, dateStyle: "medium", timeStyle: "short" });
 }
 
 // Solo la hora de un timestamp, en la zona del negocio ("8:15 p.m.").
 export function horaEsMx(iso: string | Date, zonaHoraria: string = "America/Mexico_City"): string {
-  return new Date(iso).toLocaleTimeString("es-MX", { timeZone: zonaHoraria, timeStyle: "short" });
+  return new Date(iso).toLocaleTimeString(localeActivo(), { timeZone: zonaHoraria, timeStyle: "short" });
 }
 
 // Hora de un timestamp en 24 horas ("20:15"), en la zona del negocio: la que muestran las burbujas del chat de prueba del agente de WhatsApp
 // (igual que el widget original). Intl.DateTimeFormat con hourCycle h23: la medianoche es "00:05", nunca "24:05".
 export function hora24EsMx(fecha: Date | string, zonaHoraria: string | undefined = "America/Mexico_City"): string {
-  return new Intl.DateTimeFormat("es-MX", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: zonaHoraria }).format(new Date(fecha));
+  return new Intl.DateTimeFormat(localeActivo(), { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: zonaHoraria }).format(new Date(fecha));
 }
 
 // --- Fechas de "solo día" (columnas `date` de Postgres: "YYYY-MM-DD", sin ---
@@ -97,8 +99,19 @@ export function parseFechaSolo(fecha: string): Date {
   return new Date(`${fecha}T00:00:00Z`);
 }
 
-const FECHA_SOLO_FORMATTER_CORTA = new Intl.DateTimeFormat("es-MX", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
-const FECHA_SOLO_FORMATTER_LARGA = new Intl.DateTimeFormat("es-MX", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
+// Por locale (i18n): es-MX con la consola en espanol -- lo de siempre -- y en-US en ingles. Se crean una vez por locale.
+const FECHA_SOLO_FORMATTERS = new Map<string, { readonly corta: Intl.DateTimeFormat; readonly larga: Intl.DateTimeFormat }>();
+function formatadoresFechaSolo(locale: string): { readonly corta: Intl.DateTimeFormat; readonly larga: Intl.DateTimeFormat } {
+  let f = FECHA_SOLO_FORMATTERS.get(locale);
+  if (!f) {
+    f = {
+      corta: new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }),
+      larga: new Intl.DateTimeFormat(locale, { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }),
+    };
+    FECHA_SOLO_FORMATTERS.set(locale, f);
+  }
+  return f;
+}
 
 /**
  * Formatea una fecha de solo-día ("YYYY-MM-DD", p. ej. `fechaVencimiento`,
@@ -129,7 +142,7 @@ export function formatFechaSolo(fecha: string | null | undefined, variante: "cor
   // Round-trip: si el día de calendario que V8 realmente guardó no coincide con el
   // `soloDia` pedido, la fecha no era posible -- nunca se formatea.
   if (instante.toISOString().slice(0, 10) !== soloDia) return "—";
-  const formatter = variante === "larga" ? FECHA_SOLO_FORMATTER_LARGA : FECHA_SOLO_FORMATTER_CORTA;
+  const formatter = formatadoresFechaSolo(localeActivo())[variante];
   return formatter.format(instante);
 }
 
@@ -213,21 +226,23 @@ export function sumarDiasFechaSolo(fecha: string, dias: number): string {
 
 // --- Fechas del tablero de Pedidos (UNI-R1) -- mismo formato que el repo original ("8 oct, 14:58") ---
 // Hora de 24 h y mes corto, en la zona del negocio. Intl en vez de toLocale*String para no sumar llamadas al
-// baseline del guard de formato unico; el locale sigue siendo es-MX.
+// baseline del guard de formato unico. Locale activo (i18n): es-MX en espanol; en ingles en-US y mes antes del dia ("Oct 8, 14:58").
 function partesFecha(iso: string | Date, zonaHoraria: string, conAnio: boolean): { dia: string; mes: string; anio: string; hora: string; minuto: string } {
-  const partes = new Intl.DateTimeFormat("es-MX", { timeZone: zonaHoraria, day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(iso));
+  const partes = new Intl.DateTimeFormat(localeActivo(), { timeZone: zonaHoraria, day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(iso));
   const dato = (tipo: string): string => partes.find((p) => p.type === tipo)?.value ?? "";
   return { dia: dato("day"), mes: dato("month").replace(/\.$/, ""), anio: conAnio ? dato("year") : "", hora: dato("hour"), minuto: dato("minute") };
 }
 
+const diaMes = (f: { readonly dia: string; readonly mes: string }): string => (idiomaActivo() === "en" ? `${f.mes} ${f.dia}` : `${f.dia} ${f.mes}`);
+
 /** "8 oct, 14:58" (dia, mes corto y hora de 24 h en la zona del negocio). */
 export function fechaCortaHoraEsMx(iso: string | Date, zonaHoraria: string = "America/Mexico_City"): string {
   const f = partesFecha(iso, zonaHoraria, false);
-  return `${f.dia} ${f.mes}, ${f.hora}:${f.minuto}`;
+  return `${diaMes(f)}, ${f.hora}:${f.minuto}`;
 }
 
 /** "8 oct 2026, 14:58". */
 export function fechaAnioHoraEsMx(iso: string | Date, zonaHoraria: string = "America/Mexico_City"): string {
   const f = partesFecha(iso, zonaHoraria, true);
-  return `${f.dia} ${f.mes} ${f.anio}, ${f.hora}:${f.minuto}`;
+  return idiomaActivo() === "en" ? `${f.mes} ${f.dia}, ${f.anio}, ${f.hora}:${f.minuto}` : `${f.dia} ${f.mes} ${f.anio}, ${f.hora}:${f.minuto}`;
 }

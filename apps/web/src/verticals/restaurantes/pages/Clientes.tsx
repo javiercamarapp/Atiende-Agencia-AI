@@ -16,17 +16,19 @@ import {
   EstadoCargando,
   EstadoError,
   EstadoVacio,
-  FormField,
   Input,
   Label,
   Selector,
   PageContainer,
+  PageHeader,
   SectionLabel,
   StatCard,
   StatusBadge,
   formatMoney,
   statusTone,
+  useT,
 } from "@atiende/ui";
+import { restaurantesClientes } from "@atiende/ui/i18n/restaurantes/clientes";
 import { Crown, Receipt, Repeat, Search, Upload, Users } from "lucide-react";
 import { fetchBranches } from "../dashboard-client.ts";
 import type { BranchOption } from "../dashboard-client.ts";
@@ -47,6 +49,7 @@ function diasDesde(iso: string | null): number | null {
 }
 
 export function ClientesListPage({ apiBaseUrl, token, propertyId, orgSlug, role }: RestaurantesShellContext) {
+  const t = useT(restaurantesClientes);
   const [search, setSearch] = useState("");
   const [nivel, setNivel] = useState<CustomerTier | "">("");
   const [frecuencia, setFrecuencia] = useState<FrecuenciaCliente | "">("");
@@ -108,7 +111,7 @@ export function ClientesListPage({ apiBaseUrl, token, propertyId, orgSlug, role 
         setNextCursor(page.nextCursor);
         setFiltrosDisponibles(page.filtrosDisponibles !== false);
       })
-      .catch((err: unknown) => !cancelado && setError(err instanceof Error ? err.message : "No se pudieron cargar los clientes."));
+      .catch((err: unknown) => !cancelado && setError(err instanceof Error ? err.message : t("restaurantes.clientes.errorCargar")));
     return () => {
       cancelado = true;
     };
@@ -122,7 +125,7 @@ export function ClientesListPage({ apiBaseUrl, token, propertyId, orgSlug, role 
       setCustomers((previos) => [...(previos ?? []), ...page.customers]);
       setNextCursor(page.nextCursor);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudieron cargar más clientes.");
+      setError(err instanceof Error ? err.message : t("restaurantes.clientes.errorCargarMas"));
     } finally {
       setCargandoMas(false);
     }
@@ -133,27 +136,41 @@ export function ClientesListPage({ apiBaseUrl, token, propertyId, orgSlug, role 
 
   return (
     <PageContainer padding="none">
-      <h1 className="sr-only">Clientes</h1>
+      <PageHeader
+        titulo={t("restaurantes.clientes.titulo")}
+        acciones={
+          <>
+            {puedeImportar && (
+              <Button type="button" size="sm" variant="outline" onClick={() => setImportando(true)}>
+                <Upload className="mr-1 h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
+                {t("restaurantes.clientes.importar")}
+              </Button>
+            )}
+            {/* R-17: exporta TODOS los clientes que coinciden con la búsqueda vigente (no solo los 50 en pantalla). Solo owner/admin. */}
+            <BotonExportar role={role} token={token} urlPara={(formato) => urlExportarClientes(apiBaseUrl, propertyId, formato, search || undefined)} />
+          </>
+        }
+      />
 
       {k && (
-        <section aria-label="Resumen de la cartera" className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(210px,1fr))]" data-testid="cartera-kpis">
-          <StatCard icon={Users} label="Clientes" value={String(k.total ?? 0)} nota="Cartera total" variante="neutra" />
-          <StatCard icon={Repeat} label="Recurrentes" value={String(k.recurrentes ?? 0)} nota="2 pedidos o más" variante="neutra" />
+        <section aria-label={t("restaurantes.clientes.kpis.aria")} className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(210px,1fr))]" data-testid="cartera-kpis">
+          <StatCard icon={Users} label={t("restaurantes.clientes.kpis.clientes")} value={String(k.total ?? 0)} nota={t("restaurantes.clientes.kpis.carteraTotal")} variante="neutra" />
+          <StatCard icon={Repeat} label={t("restaurantes.clientes.kpis.recurrentes")} value={String(k.recurrentes ?? 0)} nota={t("restaurantes.clientes.kpis.recurrentesNota")} variante="neutra" />
           <StatCard
             icon={Receipt}
-            label="Ticket promedio"
+            label={t("restaurantes.clientes.kpis.ticket")}
             value={k.ticketPromedio === null || k.ticketPromedio === undefined ? "—" : `$${formatMoney(k.ticketPromedio)}`}
-            nota={k.ticketPromedio === null || k.ticketPromedio === undefined ? "Aún no hay pedidos" : "Pedidos vigentes"}
+            nota={t(k.ticketPromedio === null || k.ticketPromedio === undefined ? "restaurantes.clientes.kpis.sinPedidos" : "restaurantes.clientes.kpis.pedidosVigentes")}
             variante="neutra"
           />
           <StatCard
             icon={Crown}
-            label="Cliente más frecuente"
-            value={k.masFrecuente ? `${k.masFrecuente.pedidos} pedidos` : "—"}
+            label={t("restaurantes.clientes.kpis.masFrecuente")}
+            value={k.masFrecuente ? t("restaurantes.clientes.kpis.nPedidos", { n: k.masFrecuente.pedidos }) : "—"}
             nota={
               k.masFrecuente
-                ? `${k.masFrecuente.nombre ?? "Sin nombre"} (${k.masFrecuente.telefonoEnmascarado})${k.masFrecuente.diasDesdeUltimoPedido === null ? "" : ` · último pedido hace ${k.masFrecuente.diasDesdeUltimoPedido} d`}`
-                : "Nadie ha pedido todavía"
+                ? `${k.masFrecuente.nombre ?? t("restaurantes.clientes.sinNombre")} (${k.masFrecuente.telefonoEnmascarado})${k.masFrecuente.diasDesdeUltimoPedido === null ? "" : t("restaurantes.clientes.kpis.ultimoPedidoHace", { dias: k.masFrecuente.diasDesdeUltimoPedido })}`
+                : t("restaurantes.clientes.kpis.nadie")
             }
             variante="neutra"
           />
@@ -161,16 +178,16 @@ export function ClientesListPage({ apiBaseUrl, token, propertyId, orgSlug, role 
       )}
       <section aria-labelledby="clientes-distribucion-titulo" className="flex flex-wrap items-center gap-2" data-testid="distribucion-tier">
         <SectionLabel as="h2" id="clientes-distribucion-titulo">
-          Toda la cartera · distribución por nivel
+          {t("restaurantes.clientes.distribucion.titulo")}
         </SectionLabel>
         {distribucion === null && (
           <span role="status" className="text-xs text-muted-foreground">
-            Cargando…
+            {t("restaurantes.clientes.distribucion.cargando")}
           </span>
         )}
         {distribucion === "error" && (
           <span role="status" className="text-xs text-muted-foreground">
-            Distribución no disponible por ahora.
+            {t("restaurantes.clientes.distribucion.noDisponible")}
           </span>
         )}
         {distribucion !== null && distribucion !== "error" && (
@@ -181,114 +198,95 @@ export function ClientesListPage({ apiBaseUrl, token, propertyId, orgSlug, role 
                 {CUSTOMER_TIER_META[n].label} · {distribucion[n]}
               </StatusBadge>
             ))}
-            {distribucion.withoutTier > 0 && <span className="text-xs text-muted-foreground">Sin nivel todavía: {distribucion.withoutTier}</span>}
-            {distribucion.metric === "sin_datos" && <span className="text-xs text-muted-foreground">Aún no hay pedidos para clasificar.</span>}
+            {distribucion.withoutTier > 0 && <span className="text-xs text-muted-foreground">{t("restaurantes.clientes.distribucion.sinNivel", { n: distribucion.withoutTier })}</span>}
+            {distribucion.metric === "sin_datos" && <span className="text-xs text-muted-foreground">{t("restaurantes.clientes.distribucion.sinDatos")}</span>}
             {distribucion.metric === "frecuencia" && (
               <span className="text-xs text-muted-foreground" data-testid="distribucion-tier-nota">
-                El nivel se calcula por frecuencia de pedidos (aún hay pocos con gasto): «sin nivel» y los niveles no suman el total de la cartera.
+                {t("restaurantes.clientes.distribucion.porFrecuencia")}
               </span>
             )}
-            <span className="text-xs text-muted-foreground">No cambia con los filtros de abajo.</span>
+            <span className="text-xs text-muted-foreground">{t("restaurantes.clientes.distribucion.noCambia")}</span>
           </>
         )}
       </section>
       {kpis && !kpis.disponible && (
-        <Callout tone="neutral" titulo="Resumen de cartera no disponible aún" data-testid="cartera-kpis-sin-migracion">
-          Requiere la migración 054 de restaurantes en esta base de datos.
+        <Callout tone="neutral" titulo={t("restaurantes.clientes.kpisNoDisponible")} data-testid="cartera-kpis-sin-migracion">
+          {t("restaurantes.clientes.requiereMigracion")}
         </Callout>
       )}
 
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="w-full max-w-xs">
-            <Label htmlFor="restaurantes-clientes-buscar" className="mb-1.5 block text-xs text-muted-foreground">
-              Buscar
-            </Label>
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" strokeWidth={1.75} />
-              <Input
-                id="restaurantes-clientes-buscar"
-                placeholder="Buscar por nombre o teléfono…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-9"
-              />
-            </div>
+      {/* Filtros en una sola linea de pildoras (Rovaq); las etiquetas quedan para lectores de pantalla. */}
+      <div role="group" aria-label={t("restaurantes.clientes.filtrosAria")} className="flex flex-wrap items-center gap-2">
+        <div className="w-full max-w-xs">
+          <Label htmlFor="restaurantes-clientes-buscar" className="sr-only">
+            {t("restaurantes.clientes.buscar")}
+          </Label>
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" strokeWidth={1.75} />
+            <Input
+              id="restaurantes-clientes-buscar"
+              placeholder={t("restaurantes.clientes.buscarPlaceholder")}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="rounded-full pl-9"
+            />
           </div>
-          <FormField label="Nivel">
-            <Selector id="restaurantes-clientes-nivel" size="sm" value={nivel} onChange={(e) => setNivel(e.target.value as CustomerTier | "")} wrapperClassName="w-auto min-w-36">
-              <option value="">Todos los niveles</option>
-              {NIVELES.map((n) => (
-                <option key={n} value={n}>
-                  {CUSTOMER_TIER_META[n].label}
-                </option>
-              ))}
-            </Selector>
-          </FormField>
-          <FormField label="Frecuencia">
-            <Selector id="restaurantes-clientes-frecuencia" size="sm" value={frecuencia} onChange={(e) => setFrecuencia(e.target.value as FrecuenciaCliente | "")} wrapperClassName="w-auto min-w-40">
-              <option value="">Cualquiera</option>
-              <option value="una_vez">Con 1 pedido</option>
-              <option value="recurrentes">Recurrentes (2 o más)</option>
-            </Selector>
-          </FormField>
-          <FormField label="Sin pedir en">
-            <Selector id="restaurantes-clientes-inactivo" size="sm" value={String(inactivoDias)} onChange={(e) => setInactivoDias(e.target.value === "" ? "" : Number(e.target.value))} wrapperClassName="w-auto min-w-36">
-              <option value="">Cualquier momento</option>
-              {DIAS_SIN_PEDIR.map((d) => (
-                <option key={d} value={d}>
-                  {d} días
-                </option>
-              ))}
-            </Selector>
-          </FormField>
-          {sucursales.length > 1 && (
-            <FormField label="Sucursal">
-              <Selector id="restaurantes-clientes-sucursal" size="sm" value={branchId} onChange={(e) => setBranchId(e.target.value)} wrapperClassName="w-auto min-w-40">
-                <option value="">Todas las sucursales</option>
-                {sucursales.map((b) => (
-                  <option key={b.propertyId} value={b.propertyId}>
-                    {b.name}
-                  </option>
-                ))}
-              </Selector>
-            </FormField>
-          )}
         </div>
-        <div className="flex items-end gap-2">
-          {puedeImportar && (
-            <Button type="button" size="sm" variant="outline" onClick={() => setImportando(true)}>
-              <Upload className="mr-1 h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
-              Importar clientes
-            </Button>
-          )}
-          {/* R-17: exporta TODOS los clientes que coinciden con la búsqueda vigente (no solo los 50 en pantalla). Solo owner/admin. */}
-          <BotonExportar role={role} token={token} urlPara={(formato) => urlExportarClientes(apiBaseUrl, propertyId, formato, search || undefined)} />
-        </div>
+        <Selector id="restaurantes-clientes-nivel" aria-label={t("restaurantes.clientes.filtro.nivel")} size="sm" value={nivel} onChange={(e) => setNivel(e.target.value as CustomerTier | "")} wrapperClassName="w-auto" className="rounded-full">
+          <option value="">{t("restaurantes.clientes.filtro.todosNiveles")}</option>
+          {NIVELES.map((n) => (
+            <option key={n} value={n}>
+              {CUSTOMER_TIER_META[n].label}
+            </option>
+          ))}
+        </Selector>
+        <Selector id="restaurantes-clientes-frecuencia" aria-label={t("restaurantes.clientes.filtro.frecuencia")} size="sm" value={frecuencia} onChange={(e) => setFrecuencia(e.target.value as FrecuenciaCliente | "")} wrapperClassName="w-auto" className="rounded-full">
+          <option value="">{t("restaurantes.clientes.filtro.cualquiera")}</option>
+          <option value="una_vez">{t("restaurantes.clientes.filtro.unaVez")}</option>
+          <option value="recurrentes">{t("restaurantes.clientes.filtro.recurrentes")}</option>
+        </Selector>
+        <Selector id="restaurantes-clientes-inactivo" aria-label={t("restaurantes.clientes.filtro.sinPedirEn")} size="sm" value={String(inactivoDias)} onChange={(e) => setInactivoDias(e.target.value === "" ? "" : Number(e.target.value))} wrapperClassName="w-auto" className="rounded-full">
+          <option value="">{t("restaurantes.clientes.filtro.cualquierMomento")}</option>
+          {DIAS_SIN_PEDIR.map((d) => (
+            <option key={d} value={d}>
+              {t("restaurantes.clientes.filtro.dias", { d })}
+            </option>
+          ))}
+        </Selector>
+        {sucursales.length > 1 && (
+          <Selector id="restaurantes-clientes-sucursal" aria-label={t("restaurantes.clientes.filtro.sucursal")} size="sm" value={branchId} onChange={(e) => setBranchId(e.target.value)} wrapperClassName="w-auto" className="rounded-full">
+            <option value="">{t("restaurantes.clientes.filtro.todasSucursales")}</option>
+            {sucursales.map((b) => (
+              <option key={b.propertyId} value={b.propertyId}>
+                {b.name}
+              </option>
+            ))}
+          </Selector>
+        )}
       </div>
 
       {!filtrosDisponibles && (
-        <Callout tone="neutral" titulo="Filtros de cartera no disponibles aún" data-testid="clientes-filtros-sin-migracion">
-          Los filtros por nivel, frecuencia, días sin pedir y sucursal requieren la migración 054 de restaurantes en esta base de datos.
+        <Callout tone="neutral" titulo={t("restaurantes.clientes.filtrosNoDisponibles")} data-testid="clientes-filtros-sin-migracion">
+          {t("restaurantes.clientes.filtrosRequieren")}
         </Callout>
       )}
       {error && <EstadoError mensaje={error} onReintentar={() => setVersion((v) => v + 1)} />}
-      {!customers && !error && <EstadoCargando etiqueta="Cargando clientes…" />}
-      {customers && customers.length === 0 && filtrosDisponibles && <EstadoVacio mensaje={hayFiltros ? "Ningún cliente coincide con estos filtros." : "Todavía no hay clientes: aparecen con su primer pedido o al importar tu cartera."} />}
+      {!customers && !error && <EstadoCargando etiqueta={t("restaurantes.clientes.cargando")} />}
+      {customers && customers.length === 0 && filtrosDisponibles && <EstadoVacio mensaje={t(hayFiltros ? "restaurantes.clientes.vacioFiltros" : "restaurantes.clientes.vacio")} />}
 
       {customers && customers.length > 0 && (
         <section aria-labelledby="clientes-lista-titulo" className="flex flex-col gap-2">
           <h2 id="clientes-lista-titulo" className="sr-only">
-            Lista de clientes
+            {t("restaurantes.clientes.lista")}
           </h2>
           <SectionLabel as="p" className="px-1">
-            <span data-testid="clientes-total">{customers.length} cliente{customers.length === 1 ? "" : "s"}{nextCursor ? " (hay más)" : " en total"}</span>
+            <span data-testid="clientes-total">{t(nextCursor ? "restaurantes.clientes.totalHayMas" : "restaurantes.clientes.totalEnTotal", { count: customers.length })}</span>
           </SectionLabel>
           <Card className="overflow-hidden p-0">
             <ul className="m-0 list-none divide-y divide-dashed divide-border p-0">
               {customers.map((c) => {
                 const dias = diasDesde(c.lastOrderAt);
-                const resumenPedidos = `${c.orderCount} pedido${c.orderCount === 1 ? "" : "s"} · ${dias === null ? "aún no ha pedido" : dias === 0 ? "pidió hoy" : `hace ${dias} d`}`;
+                const resumenPedidos = `${t("restaurantes.clientes.pedidos", { count: c.orderCount })} · ${dias === null ? t("restaurantes.clientes.aunNoPide") : dias === 0 ? t("restaurantes.clientes.pidioHoy") : t("restaurantes.clientes.haceDias", { dias })}`;
                 return (
                   <li key={c.id}>
                     <Link
@@ -321,7 +319,8 @@ export function ClientesListPage({ apiBaseUrl, token, propertyId, orgSlug, role 
       {nextCursor && (
         <div className="flex justify-center">
           <Button type="button" size="sm" variant="outline" onClick={() => void verMas()} loading={cargandoMas}>
-            Ver más clientes
+            {t("restaurantes.clientes.verMas")}
+
           </Button>
         </div>
       )}

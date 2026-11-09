@@ -3,6 +3,11 @@
 import type { AlcanceVista, FiltroPedidosDetalle } from "@atiende/domain-restaurantes/cfo";
 import type { ContextoCfo } from "./cfo-client.ts";
 import type { FiltrosCfo } from "./filtros-url.ts";
+import { traductorActivo } from "@atiende/ui";
+import type { Clave } from "@atiende/ui";
+import { restaurantesCfo } from "@atiende/ui/i18n/restaurantes/cfo";
+
+const tr = traductorActivo(restaurantesCfo);
 
 export interface CfoPaginaProps {
   readonly api: ContextoCfo;
@@ -65,25 +70,37 @@ export function aplicarDrill(sp: URLSearchParams, filtro: FiltroPedidosDetalle):
   return out;
 }
 
-const DIAS = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"] as const;
-const ESTADOS: Readonly<Record<string, string>> = { cancelado: "Cancelados", entregado: "Entregados", completado: "Completados", no_recogido: "No recogidos" };
+const ESTADOS: Readonly<Record<string, Clave>> = {
+  cancelado: "restaurantes.cfo.drill.cancelado",
+  entregado: "restaurantes.cfo.drill.entregado",
+  completado: "restaurantes.cfo.drill.completado",
+  no_recogido: "restaurantes.cfo.drill.no_recogido",
+};
+const DIAS: readonly Clave[] = ["restaurantes.cfo.dia.1", "restaurantes.cfo.dia.2", "restaurantes.cfo.dia.3", "restaurantes.cfo.dia.4", "restaurantes.cfo.dia.5", "restaurantes.cfo.dia.6", "restaurantes.cfo.dia.7"];
 
-/** Texto legible de cada llave activa del filtro (para el encabezado de la lista de pedidos). */
+/** Texto legible (en el idioma activo) de cada llave activa del filtro (para el encabezado de la lista de pedidos). */
 export function describirFiltro(f: FiltroPedidosDetalle): string[] {
   const out: string[] = [];
-  if (f.canal) out.push(f.canal === "domicilio" ? "A domicilio" : f.canal === "recoger" ? "Para recoger" : `Canal ${f.canal}`);
-  if (f.source) out.push(`Origen: ${f.source === "voice" ? "voz" : f.source === "whatsapp" ? "WhatsApp" : f.source}`);
-  if (f.status) out.push(ESTADOS[f.status] ?? `Estado ${f.status}`);
-  if (f.payment_method) out.push(f.payment_method === "efectivo" ? "Pagados en efectivo" : f.payment_method === "tarjeta" ? "Pagados con tarjeta" : `Pago ${f.payment_method}`);
-  if (f.producto_ref) out.push("De un producto");
-  if (f.es_venta === true) out.push("Solo ventas");
-  if (f.es_compensacion === true) out.push("Compensaciones");
-  if (f.con_descuento === true) out.push("Con descuento");
-  if (f.entrega_tarde === true) out.push("Entrega tardía");
-  if (f.dow_negocio !== undefined) out.push(`Día: ${DIAS[f.dow_negocio - 1] ?? f.dow_negocio}`);
-  if (f.hora_local !== undefined) out.push(`Hora: ${f.hora_local} h`);
+  if (f.canal) out.push(f.canal === "domicilio" ? tr("restaurantes.cfo.drill.domicilio") : f.canal === "recoger" ? tr("restaurantes.cfo.drill.recoger") : tr("restaurantes.cfo.drill.canal", { canal: f.canal }));
+  if (f.source) out.push(tr("restaurantes.cfo.drill.origen", { origen: f.source === "voice" ? tr("restaurantes.cfo.drill.voz") : f.source === "whatsapp" ? "WhatsApp" : f.source }));
+  if (f.status) {
+    const clave = ESTADOS[f.status];
+    out.push(clave ? tr(clave) : tr("restaurantes.cfo.drill.estado", { estado: f.status }));
+  }
+  if (f.payment_method) out.push(f.payment_method === "efectivo" ? tr("restaurantes.cfo.drill.efectivo") : f.payment_method === "tarjeta" ? tr("restaurantes.cfo.drill.tarjeta") : tr("restaurantes.cfo.drill.pago", { pago: f.payment_method }));
+  if (f.producto_ref) out.push(tr("restaurantes.cfo.drill.producto"));
+  if (f.es_venta === true) out.push(tr("restaurantes.cfo.drill.soloVentas"));
+  if (f.es_compensacion === true) out.push(tr("restaurantes.cfo.drill.compensaciones"));
+  if (f.con_descuento === true) out.push(tr("restaurantes.cfo.drill.conDescuento"));
+  if (f.entrega_tarde === true) out.push(tr("restaurantes.cfo.drill.entregaTarde"));
+  if (f.dow_negocio !== undefined) {
+    const dia = DIAS[f.dow_negocio - 1];
+    out.push(tr("restaurantes.cfo.drill.dia", { dia: dia ? tr(dia) : f.dow_negocio }));
+  }
+  if (f.hora_local !== undefined) out.push(tr("restaurantes.cfo.drill.hora", { hora: f.hora_local }));
   return out;
 }
+
 
 /**
  * La acción de un hallazgo trae una ruta relativa (`/cfo/ventas?sucursal=…&desde=…&hasta=…[&status=…]`). Devuelve el enlace

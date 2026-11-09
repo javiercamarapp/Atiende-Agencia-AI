@@ -4,13 +4,20 @@
 // bitacora (apps/api/.../restaurantes/admin-avisos.ts); el servidor y la base re-validan quien puede editar a quien.
 import { useEffect, useState } from "react";
 import { BellRing } from "lucide-react";
-import { Button, Card, CardContent, Checkbox, DataTable, EstadoCargando, EstadoError, EstadoVacio, Input, PageContainer, StatusBadge, Switch } from "@atiende/ui";
+import { Button, Card, CardContent, Checkbox, DataTable, EstadoCargando, EstadoError, EstadoVacio, Input, PageContainer, PageHeader, StatusBadge, Switch, useT } from "@atiende/ui";
+import type { Clave } from "@atiende/ui";
+import { restaurantesAvisos } from "@atiende/ui/i18n/restaurantes/avisos";
 import { fetchAvisos, guardarPreferenciaAviso, guardarUmbralEntrega } from "../lib/avisos-client.ts";
 import type { AvisosWire, MiembroAvisosWire, PreferenciaAvisoWire } from "../lib/avisos-client.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 
 const ADMINS: ReadonlySet<string> = new Set(["owner", "admin"]);
-const ROLE_LABELS: Record<string, string> = { owner: "Dueño", admin: "Administrador", staff: "Staff (gestión)", repartidor: "Repartidor" };
+const ROLE_LABELS: Readonly<Record<string, Clave>> = {
+  owner: "restaurantes.avisos.rol.owner",
+  admin: "restaurantes.avisos.rol.admin",
+  staff: "restaurantes.avisos.rol.staff",
+  repartidor: "restaurantes.avisos.rol.repartidor",
+};
 
 function mensaje(err: unknown, porDefecto: string): string {
   return err instanceof Error ? err.message : porDefecto;
@@ -21,6 +28,7 @@ function reemplazar(lista: readonly PreferenciaAvisoWire[], tipo: string, parche
 }
 
 export function AvisosStaffPage({ apiBaseUrl, token, propertyId, role, staffEmail }: RestaurantesShellContext) {
+  const t = useT(restaurantesAvisos);
   const esAdmin = ADMINS.has(role);
   const [datos, setDatos] = useState<AvisosWire | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -39,7 +47,7 @@ export function AvisosStaffPage({ apiBaseUrl, token, propertyId, role, staffEmai
         setError(null);
         setMinutos(Object.fromEntries((d.umbrales ?? []).map((u) => [u.propertyId, u.entregaTardiaMin === null ? "" : String(u.entregaTardiaMin)])));
       } catch (err) {
-        if (!cancelado) setError(mensaje(err, "No se pudieron cargar los avisos."));
+        if (!cancelado) setError(mensaje(err, t("restaurantes.avisos.error.cargar")));
       }
     })();
     return () => {
@@ -68,9 +76,9 @@ export function AvisosStaffPage({ apiBaseUrl, token, propertyId, role, staffEmai
           equipo: miembro && d.equipo ? d.equipo.map((m) => (m.userId === miembro.userId ? { ...m, preferencias: reemplazar(m.preferencias, tipo, siguiente) } : m)) : d.equipo,
         };
       });
-      setEstado({ tono: "ok", texto: "Cambio guardado." });
+      setEstado({ tono: "ok", texto: t("restaurantes.avisos.ok.cambio") });
     } catch (err) {
-      setEstado({ tono: "error", texto: mensaje(err, "No se pudo guardar el cambio.") });
+      setEstado({ tono: "error", texto: mensaje(err, t("restaurantes.avisos.error.cambio")) });
     } finally {
       setOcupado(null);
     }
@@ -82,13 +90,13 @@ export function AvisosStaffPage({ apiBaseUrl, token, propertyId, role, staffEmai
     setEstado(null);
     try {
       // Vacio o con letras NO es 0: se rechaza antes de llamar al servidor.
-      if (!/^\d+$/.test(texto)) throw new Error("Escribe los minutos como un número entero.");
+      if (!/^\d+$/.test(texto)) throw new Error(t("restaurantes.avisos.error.minutosEntero"));
       const valor = Number(texto);
       await guardarUmbralEntrega(fetch, apiBaseUrl, token, propertyId, { propertyId: sucursalId, minutos: valor });
-      setEstado({ tono: "ok", texto: "Tiempo de gracia guardado." });
+      setEstado({ tono: "ok", texto: t("restaurantes.avisos.ok.gracia") });
       setVersion((n) => n + 1);
     } catch (err) {
-      setEstado({ tono: "error", texto: mensaje(err, "No se pudo guardar el tiempo de gracia.") });
+      setEstado({ tono: "error", texto: mensaje(err, t("restaurantes.avisos.error.gracia")) });
     } finally {
       setOcupado(null);
     }
@@ -96,15 +104,13 @@ export function AvisosStaffPage({ apiBaseUrl, token, propertyId, role, staffEmai
 
   return (
     <PageContainer padding="none">
-      <header>
-        <h1 className="sr-only">Avisos</h1>
-        <p className="m-0 text-ui text-muted-foreground">Elige qué avisos recibes en la campana y en Notificaciones. Si apagas uno, dejas de recibirlo; el resto sigue igual.</p>
-      </header>
+      <PageHeader titulo={t("restaurantes.avisos.titulo")} />
+      <p className="m-0 text-ui text-muted-foreground">{t("restaurantes.avisos.intro")}</p>
 
       {error && <EstadoError mensaje={error} onReintentar={() => setVersion((n) => n + 1)} />}
       {!error && datos === null && <EstadoCargando lineas={3} />}
       {!error && datos && !datos.disponible && (
-        <EstadoVacio icon={BellRing} titulo="Avisos no disponibles aún" mensaje="Los avisos por persona todavía no están habilitados en esta base de datos. Mientras tanto recibes todos." />
+        <EstadoVacio icon={BellRing} titulo={t("restaurantes.avisos.noDisponible.titulo")} mensaje={t("restaurantes.avisos.noDisponible.mensaje")} />
       )}
 
       {!error && datos && datos.disponible && (
@@ -115,8 +121,8 @@ export function AvisosStaffPage({ apiBaseUrl, token, propertyId, role, staffEmai
             </p>
           )}
 
-          <section className="flex flex-col gap-2" aria-label="Mis avisos">
-            <p className="m-0 text-sm font-semibold text-foreground">Mis avisos</p>
+          <section className="flex flex-col gap-2" aria-label={t("restaurantes.avisos.mios")}>
+            <p className="m-0 text-sm font-semibold text-foreground">{t("restaurantes.avisos.mios")}</p>
             <Card>
               <CardContent className="flex flex-col divide-y divide-line2 p-0">
                 {datos.eventos.map((e) => {
@@ -131,13 +137,13 @@ export function AvisosStaffPage({ apiBaseUrl, token, propertyId, role, staffEmai
                       <div className="flex items-center gap-4 text-xs text-foreground">
                         {e.sonidoAplica && (
                           <Checkbox
-                            label="Sonido en el navegador"
+                            label={t("restaurantes.avisos.sonido")}
                             checked={encendido && (p?.sonido ?? true)}
                             disabled={!encendido || ocupado === `yo:${e.tipo}`}
                             onChange={(ev) => void cambiar(e.tipo, { sonido: ev.target.checked })}
                           />
                         )}
-                        <Switch aria-label={`Avisarme: ${e.etiqueta}`} checked={encendido} disabled={ocupado === `yo:${e.tipo}`} onCheckedChange={(v) => void cambiar(e.tipo, { enabled: v })} />
+                        <Switch aria-label={t("restaurantes.avisos.avisarme", { aviso: e.etiqueta })} checked={encendido} disabled={ocupado === `yo:${e.tipo}`} onCheckedChange={(v) => void cambiar(e.tipo, { enabled: v })} />
                       </div>
                     </div>
                   );
@@ -147,34 +153,34 @@ export function AvisosStaffPage({ apiBaseUrl, token, propertyId, role, staffEmai
           </section>
 
           {esAdmin && datos.equipo && (
-            <section className="flex flex-col gap-2" aria-label="Avisos del equipo">
-              <p className="m-0 text-sm font-semibold text-foreground">Avisos del equipo</p>
+            <section className="flex flex-col gap-2" aria-label={t("restaurantes.avisos.equipo")}>
+              <p className="m-0 text-sm font-semibold text-foreground">{t("restaurantes.avisos.equipo")}</p>
               <p className="m-0 text-xs text-muted-foreground">
-                Enciende o apaga cada aviso por persona. Un administrador no puede cambiar los de un dueño; el servidor lo rechaza aunque la casilla aparezca aquí.
+                {t("restaurantes.avisos.equipoIntro")}
               </p>
               {datos.equipo.length === 0 ? (
-                <EstadoVacio mensaje="Todavía no hay personas en el equipo." />
+                <EstadoVacio mensaje={t("restaurantes.avisos.equipoVacio")} />
               ) : (
                 <Card>
                   <CardContent className="p-0">
                     <DataTable<MiembroAvisosWire>
-                      etiqueta="Avisos por persona del equipo"
+                      etiqueta={t("restaurantes.avisos.tabla")}
                       filas={datos.equipo}
                       obtenerId={(m) => m.userId}
                       paginacion={false}
                       columnas={[
                         {
                           id: "persona",
-                          encabezado: "Persona",
+                          encabezado: t("restaurantes.avisos.persona"),
                           principal: true,
                           celda: (m) => (
                             <div>
                               <p className="m-0 text-sm font-semibold text-foreground">{m.fullName || m.email}</p>
                               <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
                                 <StatusBadge tone="neutral" dot={false}>
-                                  {ROLE_LABELS[m.verticalRole] ?? m.verticalRole}
+                                  {ROLE_LABELS[m.verticalRole] ? t(ROLE_LABELS[m.verticalRole] as Clave) : m.verticalRole}
                                 </StatusBadge>
-                                {m.email === staffEmail && <span>tú</span>}
+                                {m.email === staffEmail && <span>{t("restaurantes.avisos.tu")}</span>}
                               </div>
                             </div>
                           ),
@@ -188,7 +194,7 @@ export function AvisosStaffPage({ apiBaseUrl, token, propertyId, role, staffEmai
                             const bloqueado = role === "admin" && m.verticalRole === "owner" && m.email !== staffEmail;
                             return (
                               <Checkbox
-                                aria-label={`${e.etiqueta} para ${m.fullName || m.email}`}
+                                aria-label={t("restaurantes.avisos.para", { aviso: e.etiqueta, persona: m.fullName || m.email })}
                                 checked={p?.enabled ?? true}
                                 disabled={bloqueado || ocupado === `${m.userId}:${e.tipo}`}
                                 onChange={(ev) => void cambiar(e.tipo, { enabled: ev.target.checked }, m)}
@@ -205,14 +211,13 @@ export function AvisosStaffPage({ apiBaseUrl, token, propertyId, role, staffEmai
           )}
 
           {esAdmin && datos.umbrales && (
-            <section className="flex flex-col gap-2" aria-label="Entrega tardía por sucursal">
-              <p className="m-0 text-sm font-semibold text-foreground">Entrega tardía por sucursal</p>
+            <section className="flex flex-col gap-2" aria-label={t("restaurantes.avisos.tardia")}>
+              <p className="m-0 text-sm font-semibold text-foreground">{t("restaurantes.avisos.tardia")}</p>
               <p className="m-0 text-xs text-muted-foreground">
-                Un pedido en preparación o en camino se avisa como tardío cuando pasa su hora prometida (la del repartidor asignado o la de recoger). Si no tiene una, se cuentan estos minutos
-                desde que se creó o desde su hora programada. Sin configurar son {datos.umbralDefectoMin} minutos.
+                {t("restaurantes.avisos.tardiaIntro", { min: datos.umbralDefectoMin })}
               </p>
               {datos.umbrales.length === 0 ? (
-                <EstadoVacio mensaje="Todavía no hay sucursales activas." />
+                <EstadoVacio mensaje={t("restaurantes.avisos.sinSucursales")} />
               ) : (
                 <div className="flex flex-col gap-2">
                   {datos.umbrales.map((u) => (
@@ -220,13 +225,13 @@ export function AvisosStaffPage({ apiBaseUrl, token, propertyId, role, staffEmai
                       <CardContent className="flex flex-wrap items-center justify-between gap-3 p-3">
                         <div>
                           <p className="m-0 text-sm font-semibold text-foreground">{u.nombre}</p>
-                          <p className="m-0 mt-0.5 text-xs text-muted-foreground">{u.entregaTardiaMin === null ? `Sin configurar (${datos.umbralDefectoMin} min)` : `${u.entregaTardiaMin} min`}</p>
+                          <p className="m-0 mt-0.5 text-xs text-muted-foreground">{u.entregaTardiaMin === null ? t("restaurantes.avisos.sinConfigurar", { min: datos.umbralDefectoMin }) : t("restaurantes.avisos.min", { min: u.entregaTardiaMin })}</p>
                         </div>
                         <div className="flex items-center gap-2">
                           <Input
                             type="number"
                             inputMode="numeric"
-                            aria-label={`Minutos de gracia en ${u.nombre}`}
+                            aria-label={t("restaurantes.avisos.graciaAria", { sucursal: u.nombre })}
                             min={datos.umbralMin ?? 10}
                             max={datos.umbralMax ?? 240}
                             step={1}
@@ -236,7 +241,8 @@ export function AvisosStaffPage({ apiBaseUrl, token, propertyId, role, staffEmai
                             className="w-24"
                           />
                           <Button type="button" size="sm" variant="outline" loading={ocupado === `umbral:${u.propertyId}`} onClick={() => void guardarUmbral(u.propertyId)}>
-                            Guardar
+                            {t("restaurantes.avisos.guardar")}
+
                           </Button>
                         </div>
                       </CardContent>

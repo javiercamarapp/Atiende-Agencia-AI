@@ -9,19 +9,21 @@
 // solo react/react-dom/react-router-dom), mismo aislamiento que ya mantiene
 // auth-client.ts al no importar tipos de @atiende/core-auth. Los valores deben
 // mantenerse en sync con `STATS_PERIODS` de packages/domain-restaurantes/src/kpis.ts.
-import { formatMoney as formatMoneyUi } from "@atiende/ui";
+import { etiquetasTraducidas, formatMoney as formatMoneyUi } from "@atiende/ui";
+import { restaurantesResumen } from "@atiende/ui/i18n/restaurantes/resumen";
 
 export type StatsPeriod = "today" | "7" | "30" | "90" | "180" | "365" | "historico";
 
-export const PERIOD_OPTIONS: ReadonlyArray<{ id: StatsPeriod; label: string }> = [
-  { id: "today", label: "Hoy" },
-  { id: "7", label: "7 días" },
-  { id: "30", label: "1 mes" },
-  { id: "90", label: "3 meses" },
-  { id: "180", label: "6 meses" },
-  { id: "365", label: "1 año" },
-  { id: "historico", label: "Histórico" },
-];
+const PERIODOS: readonly StatsPeriod[] = ["today", "7", "30", "90", "180", "365", "historico"];
+const ETIQUETAS_PERIODO = etiquetasTraducidas<StatsPeriod>(PERIODOS, (p) => `restaurantes.resumen.periodo.${p}` as const, restaurantesResumen);
+
+/** `label` se traduce en cada lectura al idioma activo (i18n); en espanol, «Hoy», «7 días»… como siempre. */
+export const PERIOD_OPTIONS: ReadonlyArray<{ readonly id: StatsPeriod; readonly label: string }> = PERIODOS.map((id) => ({
+  id,
+  get label() {
+    return ETIQUETAS_PERIODO[id];
+  },
+}));
 
 export interface BranchOption {
   readonly propertyId: string;

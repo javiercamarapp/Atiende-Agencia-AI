@@ -30,11 +30,16 @@ import {
   Input,
   Selector,
   PageContainer,
+  PageHeader,
   StatusBadge,
   statusTone,
+  etiquetasTraducidas,
+  localeActivo,
   useConfirm,
+  useT,
 } from "@atiende/ui";
 import type { StatusTone } from "@atiende/ui";
+import { restaurantesStaff } from "@atiende/ui/i18n/restaurantes/staff";
 import { Smartphone, UserPlus, UserRoundCog } from "lucide-react";
 import {
   createStaffInvite,
@@ -53,12 +58,17 @@ import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 
 const STAFF_INVITE_ROLES: ReadonlySet<string> = new Set(["owner", "admin"]);
 
-const ROLE_LABELS: Record<StaffVerticalRole, string> = {
-  owner: "Dueño",
-  admin: "Administrador",
-  staff: "Staff (gestión)",
-  repartidor: "Repartidor",
-};
+// Etiquetas en el idioma activo (i18n): cada lectura traduce; en espanol, los textos de siempre.
+const ROLE_LABELS: Readonly<Record<StaffVerticalRole, string>> = etiquetasTraducidas<StaffVerticalRole>(
+  ["owner", "admin", "staff", "repartidor"],
+  (r) => `restaurantes.staff.rol.${r}` as const,
+  restaurantesStaff,
+);
+const ESTADO_INVITACION = etiquetasTraducidas<"pending" | "accepted" | "revoked" | "expired">(
+  ["pending", "accepted", "revoked", "expired"],
+  (s) => `restaurantes.staff.estado.${s}` as const,
+  restaurantesStaff,
+);
 
 const ROLE_OPTIONS: readonly StaffVerticalRole[] = ["admin", "staff", "repartidor", "owner"];
 
@@ -70,14 +80,12 @@ const INVITE_STATUS_TONE: Readonly<Record<string, StatusTone>> = {
 };
 
 function statusLabel(status: string): string {
-  if (status === "pending") return "Pendiente";
-  if (status === "accepted") return "Aceptada";
-  if (status === "revoked") return "Revocada";
-  if (status === "expired") return "Expirada";
+  if (status === "pending" || status === "accepted" || status === "revoked" || status === "expired") return ESTADO_INVITACION[status];
   return status;
 }
 
 export function StaffPage({ apiBaseUrl, token, propertyId, role, staffEmail }: RestaurantesShellContext) {
+  const t = useT(restaurantesStaff);
   const canManage = STAFF_INVITE_ROLES.has(role);
   const { confirmar, dialogo } = useConfirm();
 
@@ -134,7 +142,7 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role, staffEmail }: R
         setMembers(await fetchOrgMembers(fetch, apiBaseUrl, token, propertyId));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo cargar el staff.");
+      setError(err instanceof Error ? err.message : t("restaurantes.staff.errorCargar"));
     }
   }
 
@@ -145,7 +153,7 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role, staffEmail }: R
       const updated = await updateStaffRole(fetch, apiBaseUrl, token, propertyId, memberId, nextRole);
       setMembers((prev) => (prev ? prev.map((m) => (m.id === memberId ? updated : m)) : prev));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo cambiar el rol de ese staff.");
+      setError(err instanceof Error ? err.message : t("restaurantes.staff.errorRol"));
     } finally {
       setSavingRoleId(null);
     }
@@ -161,10 +169,10 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role, staffEmail }: R
   // barrera.
   async function handleRemove(member: OrgMember) {
     const ok = await confirmar({
-      titulo: `Dar de baja a ${member.fullName}`,
-      descripcion: "Pierde acceso a esta organización de inmediato.",
+      titulo: t("restaurantes.staff.bajaTitulo", { nombre: member.fullName }),
+      descripcion: t("restaurantes.staff.bajaDesc"),
       tono: "danger",
-      confirmar: "Dar de baja",
+      confirmar: t("restaurantes.staff.darDeBaja"),
     });
     if (!ok) return;
     setRemovingId(member.id);
@@ -173,7 +181,7 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role, staffEmail }: R
       await removeStaffMember(fetch, apiBaseUrl, token, propertyId, member.id);
       setMembers((prev) => (prev ? prev.filter((m) => m.id !== member.id) : prev));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo dar de baja a ese staff.");
+      setError(err instanceof Error ? err.message : t("restaurantes.staff.errorBaja"));
     } finally {
       setRemovingId(null);
     }
@@ -189,7 +197,7 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role, staffEmail }: R
 
   async function handleCreate() {
     if (!email.trim()) {
-      setErrorCorreo("Escribe el correo de la persona a invitar.");
+      setErrorCorreo(t("restaurantes.staff.errorCorreo"));
       return;
     }
     setErrorCorreo(null);
@@ -204,7 +212,7 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role, staffEmail }: R
       setDialogoInvitar(false);
       await load();
     } catch (err) {
-      setErrorInvitar(err instanceof Error ? err.message : "No se pudo crear la invitación.");
+      setErrorInvitar(err instanceof Error ? err.message : t("restaurantes.staff.errorInvitacion"));
     } finally {
       setCreating(false);
     }
@@ -212,10 +220,10 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role, staffEmail }: R
 
   async function handleRevoke(invite: StaffInvite) {
     const ok = await confirmar({
-      titulo: `Revocar la invitación de ${invite.email}`,
-      descripcion: "La persona ya no podrá aceptarla con el token que recibió.",
+      titulo: t("restaurantes.staff.revocarTitulo", { correo: invite.email }),
+      descripcion: t("restaurantes.staff.revocarDesc"),
       tono: "danger",
-      confirmar: "Revocar",
+      confirmar: t("restaurantes.staff.revocar"),
     });
     if (!ok) return;
     const inviteId = invite.id;
@@ -226,7 +234,7 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role, staffEmail }: R
       if (lastCreated?.id === inviteId) setLastCreated(null);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo revocar la invitación.");
+      setError(err instanceof Error ? err.message : t("restaurantes.staff.errorRevocar"));
     } finally {
       setRevokingId(null);
     }
@@ -234,28 +242,37 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role, staffEmail }: R
 
   return (
     <PageContainer padding="none">
-      <h1 className="sr-only">Staff</h1>
+      <PageHeader
+        titulo={t("restaurantes.staff.titulo")}
+        acciones={
+          canManage ? (
+            <Button type="button" onClick={abrirInvitar}>
+              <UserPlus />
+              {t("restaurantes.staff.invitar")}
+            </Button>
+          ) : undefined
+        }
+      />
 
       {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
 
       {!canManage && (
-        <Callout tone="info">Invitar o revocar staff está reservado a dueños y administradores. Con tu rol actual ({role}) solo puedes ver a los repartidores ya activos.</Callout>
+        <Callout tone="info">{t("restaurantes.staff.soloLectura", { rol: role })}</Callout>
       )}
 
-      {canManage && (
-        <div className="flex justify-end">
-          <Button type="button" onClick={abrirInvitar}>
-            <UserPlus />
-            Invitar a alguien
-          </Button>
-        </div>
-      )}
 
       {canManage && lastCreated && (
-        <Callout tone="success" titulo={`Invitación creada para ${lastCreated.email} (${ROLE_LABELS[lastCreated.verticalRole]})`}>
+        <Callout tone="success" titulo={t("restaurantes.staff.invitacionCreada", { correo: lastCreated.email, rol: ROLE_LABELS[lastCreated.verticalRole] })}>
           <p className="m-0 mb-1.5 text-xs text-muted-foreground">
-            Compártele este token — solo se muestra una vez. Debe pegarlo en <code className="rounded bg-muted px-1 py-0.5 font-mono">/aceptar-invitacion</code> junto con su nombre y una
-            contraseña.
+            {t("restaurantes.staff.compartirToken")}
+            <code className="rounded bg-muted px-1 py-0.5 font-mono">
+              {
+                // i18n-ignorar: es la ruta de la pantalla, no texto.
+                "/aceptar-invitacion"
+              }
+            </code>
+
+            {t("restaurantes.staff.compartirTokenFin")}
           </p>
           <code className="block break-all rounded-md border border-border bg-card px-2.5 py-2 font-mono text-xs text-foreground">{lastCreated.inviteToken}</code>
         </Callout>
@@ -263,9 +280,9 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role, staffEmail }: R
 
       {canManage && (
         <section className="flex flex-col gap-2">
-          <p className="m-0 text-sm font-semibold text-foreground">Invitaciones pendientes</p>
-          {!invites && !error && <EstadoCargando etiqueta="Cargando invitaciones…" />}
-          {invites && invites.length === 0 && <EstadoVacio mensaje="No hay ninguna invitación pendiente." />}
+          <p className="m-0 text-sm font-semibold text-foreground">{t("restaurantes.staff.pendientes")}</p>
+          {!invites && !error && <EstadoCargando etiqueta={t("restaurantes.staff.cargandoInvitaciones")} />}
+          {invites && invites.length === 0 && <EstadoVacio mensaje={t("restaurantes.staff.sinInvitaciones")} />}
           {invites && invites.length > 0 && (
             <div className="flex flex-col gap-2">
               {invites.map((inv) => (
@@ -276,7 +293,7 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role, staffEmail }: R
                       <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
                         <StatusBadge tone="neutral" dot={false}>{ROLE_LABELS[inv.verticalRole]}</StatusBadge>
                         <StatusBadge tone={statusTone(INVITE_STATUS_TONE, inv.status)}>{statusLabel(inv.status)}</StatusBadge>
-                        <span>· expira {new Date(inv.expiresAt).toLocaleString("es-MX")}</span>
+                        <span>{t("restaurantes.staff.expira", { fecha: new Date(inv.expiresAt).toLocaleString(localeActivo()) })}</span>
                       </div>
                     </div>
                     <Button
@@ -286,7 +303,7 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role, staffEmail }: R
                       onClick={() => void handleRevoke(inv)}
                       loading={revokingId === inv.id}
                     >
-                      Revocar
+                      {t("restaurantes.staff.revocar")}
                     </Button>
                   </CardContent>
                 </Card>
@@ -298,13 +315,10 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role, staffEmail }: R
 
       {canManage && (
         <section className="flex flex-col gap-2">
-          <p className="m-0 text-sm font-semibold text-foreground">Staff activo</p>
-          <p className="m-0 text-xs text-muted-foreground">
-            Cambia el rol de un staff ya aceptado, o dalo de baja por completo. No puedes tocar a alguien con más alcance que el tuyo, ni cambiar tu propio rol, ni darte de baja
-            a ti mismo, ni dejar la organización sin ningún dueño — el servidor lo rechaza aunque la opción aparezca aquí.
-          </p>
-          {!members && !error && <EstadoCargando etiqueta="Cargando staff…" />}
-          {members && members.length === 0 && <EstadoVacio mensaje="Todavía no hay ningún staff aceptado en esta organización." />}
+          <p className="m-0 text-sm font-semibold text-foreground">{t("restaurantes.staff.activo")}</p>
+          <p className="m-0 text-xs text-muted-foreground">{t("restaurantes.staff.activoAyuda")}</p>
+          {!members && !error && <EstadoCargando etiqueta={t("restaurantes.staff.cargandoStaff")} />}
+          {members && members.length === 0 && <EstadoVacio mensaje={t("restaurantes.staff.sinStaff")} />}
           {members && members.length > 0 && (
             <div className="flex flex-col gap-2">
               {members.map((m) => {
@@ -318,7 +332,7 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role, staffEmail }: R
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
                         <Selector
-                          aria-label={`Rol de ${m.fullName}`}
+                          aria-label={t("restaurantes.staff.rolDe", { nombre: m.fullName })}
                           value={m.verticalRole}
                           disabled={savingRoleId === m.id}
                           onChange={(e) => void handleRoleChange(m.id, e.target.value as StaffVerticalRole)}
@@ -337,9 +351,9 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role, staffEmail }: R
                           onClick={() => void handleRemove(m)}
                           loading={removingId === m.id}
                           disabled={esUnoMismo}
-                          title={esUnoMismo ? "No puedes darte de baja a ti mismo." : undefined}
+                          title={esUnoMismo ? t("restaurantes.staff.noTiMismo") : undefined}
                         >
-                          Dar de baja
+                          {t("restaurantes.staff.darDeBaja")}
                         </Button>
                       </div>
                     </CardContent>
@@ -352,9 +366,9 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role, staffEmail }: R
       )}
 
       <section className="flex flex-col gap-2">
-        <p className="m-0 text-sm font-semibold text-foreground">Repartidores activos</p>
-        {!repartidores && !error && <EstadoCargando etiqueta="Cargando repartidores…" />}
-        {repartidores && repartidores.length === 0 && <EstadoVacio mensaje="Todavía no hay ningún repartidor aceptado en esta organización." />}
+        <p className="m-0 text-sm font-semibold text-foreground">{t("restaurantes.staff.repartidoresActivos")}</p>
+        {!repartidores && !error && <EstadoCargando etiqueta={t("restaurantes.staff.cargandoRepartidores")} />}
+        {repartidores && repartidores.length === 0 && <EstadoVacio mensaje={t("restaurantes.staff.sinRepartidores")} />}
         {repartidores && repartidores.length > 0 && (
           <div className="flex flex-col gap-2">
             {repartidores.map((r) => (
@@ -368,13 +382,13 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role, staffEmail }: R
                     {telefonos && (
                       <Button type="button" variant="outline" size="sm" onClick={() => setTelefonoDe(r)}>
                         <Smartphone />
-                        {telefonos.has(r.id) ? `Celular ${telefonos.get(r.id)}` : "Celular de acceso"}
+                        {telefonos.has(r.id) ? t("restaurantes.staff.celularValor", { telefono: telefonos.get(r.id) ?? "" }) : t("restaurantes.staff.celularAcceso")}
                       </Button>
                     )}
                     {canManage && (
                       <Button type="button" variant="outline" size="sm" onClick={() => setPerfilDe(r)}>
                         <UserRoundCog />
-                        Perfil
+                        {t("restaurantes.staff.perfil")}
                       </Button>
                     )}
                   </div>
@@ -387,20 +401,21 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role, staffEmail }: R
       <FormDialog
         open={dialogoInvitar}
         onOpenChange={setDialogoInvitar}
-        titulo="Invitar a alguien nuevo"
-        subtitulo="Le llega un token para crear su cuenta con el rol que elijas."
+        titulo={t("restaurantes.staff.invitarNuevo")}
+        subtitulo={t("restaurantes.staff.invitarSub")}
         anchoClase="max-w-2xl"
         onGuardar={() => void handleCreate()}
         guardando={creating}
-        textoBotonGuardar="Invitar"
+        textoBotonGuardar={t("restaurantes.staff.invitarBoton")}
         bloquearCierre={creating}
       >
         <div className="grid gap-3">
           {errorInvitar && <Callout tone="danger">{errorInvitar}</Callout>}
-          <FormField label="Correo" required error={errorCorreo}>
-            <Input type="email" placeholder="correo@ejemplo.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+          <FormField label={t("restaurantes.staff.correo")} required error={errorCorreo}>
+            <Input type="email" placeholder={t("restaurantes.staff.correoEjemplo")} value={email} onChange={(e) => setEmail(e.target.value)} />
           </FormField>
-          <FormField label="Rol" hint="No podrás dar de alta a alguien con más alcance que el tuyo — el servidor lo rechaza (403) aunque el rol aparezca en esta lista.">
+          <FormField label={t("restaurantes.staff.rol")} hint={t("restaurantes.staff.rolAyuda")}>
+
             <Selector value={verticalRole} onChange={(e) => setVerticalRole(e.target.value as StaffVerticalRole)}>
               {ROLE_OPTIONS.map((r) => (
                 <option key={r} value={r}>

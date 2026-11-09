@@ -4,7 +4,9 @@
 // "Costo LLM promedio por pedido" es un promedio del periodo, no el costo real de cada pedido. Sin dato = "—" con su razón.
 import { useCallback, useEffect, useState } from "react";
 import { Activity, CheckCheck, DollarSign, Headset, MessageSquare, MessageSquareWarning, Send, ShoppingBag, TrendingUp, Wrench } from "lucide-react";
-import { Callout, Card, CardContent, CardHeader, CardTitle, DataTable, EstadoCargando, EstadoError, EstadoVacio, Selector, PageContainer, StatCard, Tabs, TabsContent, TabsList, TabsTrigger } from "@atiende/ui";
+import { Callout, Card, CardContent, CardHeader, CardTitle, DataTable, EstadoCargando, EstadoError, EstadoVacio, Selector, PageContainer, PageHeader, StatCard, Tabs, TabsContent, TabsList, TabsTrigger, traductorActivo, useT } from "@atiende/ui";
+import type { Clave } from "@atiende/ui";
+import { restaurantesIndicadoresWhatsapp } from "@atiende/ui/i18n/restaurantes/indicadoresWhatsapp";
 import { ConocimientoNegocio } from "../components/ConocimientoNegocio.tsx";
 import { fetchWhatsappKpi } from "../lib/whatsapp-kpi-client.ts";
 import type { WhatsappEntrega, WhatsappEntregaDiaSerie, WhatsappKpi, WhatsappKpiDiaSerie, WhatsappKpiResumen } from "../lib/whatsapp-kpi-client.ts";
@@ -15,44 +17,47 @@ import { WidgetWhatsApp } from "../preview/WidgetWhatsApp.tsx";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 
 const ROLES_INDICADORES: ReadonlySet<string> = new Set(["owner", "admin"]);
-const PERIODOS: readonly { readonly dias: number; readonly etiqueta: string }[] = [
-  { dias: 7, etiqueta: "Últimos 7 días" },
-  { dias: 14, etiqueta: "Últimos 14 días" },
-  { dias: 30, etiqueta: "Últimos 30 días" },
-  { dias: 60, etiqueta: "Últimos 60 días" },
+const PERIODOS: readonly { readonly dias: number; readonly clave: Clave }[] = [
+  { dias: 7, clave: "restaurantes.indicadoresWhatsapp.periodo.7" },
+  { dias: 14, clave: "restaurantes.indicadoresWhatsapp.periodo.14" },
+  { dias: 30, clave: "restaurantes.indicadoresWhatsapp.periodo.30" },
+  { dias: 60, clave: "restaurantes.indicadoresWhatsapp.periodo.60" },
 ];
+
+const tr = traductorActivo(restaurantesIndicadoresWhatsapp);
 
 /** Por qué no hay costo por pedido (cada razón es real y distinta; nunca un 0 inventado). */
 function razonSinCostoPorPedido(r: WhatsappKpiResumen): string | null {
   if (r.costoLlmPorPedidoCentavosMxn !== null) return null;
-  if (r.orgEsDemo) return "Organización de demostración: su costo LLM mezcla el widget público con uso real y no se muestra.";
-  if (r.pedidosOrg === null) return "Solo se muestra con acceso a toda la organización: el costo LLM no se separa por sucursal.";
-  if (r.pedidosOrg === 0) return "Sin pedidos de WhatsApp en el periodo.";
-  return "Falta el tipo de cambio de algún día para convertir a pesos.";
+  if (r.orgEsDemo) return tr("restaurantes.indicadoresWhatsapp.sinCosto.demo");
+  if (r.pedidosOrg === null) return tr("restaurantes.indicadoresWhatsapp.sinCosto.soloOrg");
+  if (r.pedidosOrg === 0) return tr("restaurantes.indicadoresWhatsapp.sinCosto.sinPedidos");
+  return tr("restaurantes.indicadoresWhatsapp.sinCosto.tipoCambio");
 }
 
 function razonSinCostoTotal(r: WhatsappKpiResumen): string | null {
   if (r.costoLlmOrgCentavosMxn !== null) return null;
-  if (r.orgEsDemo) return "Organización de demostración: no se muestra el costo.";
-  if (r.pedidosOrg === null) return "Solo se muestra con acceso a toda la organización.";
-  return "Falta el tipo de cambio de algún día para convertir a pesos.";
+  if (r.orgEsDemo) return tr("restaurantes.indicadoresWhatsapp.sinCosto.demoTotal");
+  if (r.pedidosOrg === null) return tr("restaurantes.indicadoresWhatsapp.sinCosto.soloOrgTotal");
+  return tr("restaurantes.indicadoresWhatsapp.sinCosto.tipoCambio");
 }
 
 /** Motivos de fallo de entrega (los mismos codigos que guarda la base). Texto de la plataforma, nunca del cliente. */
-const MOTIVOS_FALLO: Readonly<Record<string, string>> = {
-  fuera_de_ventana: "Fuera de la ventana de 24 h",
-  fuera_de_ventana_plantilla_sin_usar: "Fuera de la ventana de 24 h, con plantilla disponible sin usar",
-  numero_no_entregable: "Número no entregable",
-  plantilla: "Plantilla pausada o con parámetros incorrectos",
-  limite_marketing: "Límite de mensajes de marketing",
-  otro: "Otro motivo",
+const MOTIVOS_FALLO: Readonly<Record<string, Clave>> = {
+  fuera_de_ventana: "restaurantes.indicadoresWhatsapp.fallo.fuera_de_ventana",
+  fuera_de_ventana_plantilla_sin_usar: "restaurantes.indicadoresWhatsapp.fallo.fuera_de_ventana_plantilla_sin_usar",
+  numero_no_entregable: "restaurantes.indicadoresWhatsapp.fallo.numero_no_entregable",
+  plantilla: "restaurantes.indicadoresWhatsapp.fallo.plantilla",
+  limite_marketing: "restaurantes.indicadoresWhatsapp.fallo.limite_marketing",
+  otro: "restaurantes.indicadoresWhatsapp.fallo.otro",
 };
 
 function EntregaAvisos({ entrega }: { readonly entrega: WhatsappEntrega | undefined }) {
+  const t = useT(restaurantesIndicadoresWhatsapp);
   if (!entrega || !entrega.disponible) {
     return (
       <Callout tone="info" data-testid="entrega-no-disponible">
-        Entrega de avisos de pedido: no disponible aún. Requiere la actualización de base de datos pendiente (migración 066); mientras tanto no se muestran cifras.
+        {t("restaurantes.indicadoresWhatsapp.entrega.noDisponible")}
       </Callout>
     );
   }
@@ -61,44 +66,46 @@ function EntregaAvisos({ entrega }: { readonly entrega: WhatsappEntrega | undefi
   return (
     <div className="space-y-2.5" data-testid="entrega-avisos">
       <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-        <StatCard icon={Send} label="Avisos de pedido enviados" value={String(r.enviados)} nota="Estados del pedido por WhatsApp que Meta aceptó" />
+        <StatCard icon={Send} label={t("restaurantes.indicadoresWhatsapp.entrega.enviados")} value={String(r.enviados)} nota={t("restaurantes.indicadoresWhatsapp.entrega.enviadosNota")} />
         <StatCard
           icon={CheckCheck}
-          label="Tasa de entrega"
+          label={t("restaurantes.indicadoresWhatsapp.entrega.tasa")}
           value={formatoPct(r.entregaPct)}
-          {...(r.entregaPct === null ? { sinDato: "Sin avisos enviados en el periodo." } : { nota: `${r.entregados} de ${r.enviados} llegaron al teléfono del cliente${r.sinEstado > 0 ? ` · ${r.sinEstado} sin confirmación todavía` : ""}` })}
+          {...(r.entregaPct === null
+            ? { sinDato: t("restaurantes.indicadoresWhatsapp.entrega.sinEnviados") }
+            : { nota: `${t("restaurantes.indicadoresWhatsapp.entrega.tasaNota", { entregados: r.entregados, enviados: r.enviados })}${r.sinEstado > 0 ? t("restaurantes.indicadoresWhatsapp.entrega.sinConfirmacion", { n: r.sinEstado }) : ""}` })}
         />
         <StatCard
           icon={MessageSquare}
-          label="Tasa de lectura"
+          label={t("restaurantes.indicadoresWhatsapp.entrega.lectura")}
           value={formatoPct(r.lecturaPct)}
-          {...(r.lecturaPct === null ? { sinDato: "Todavía no hay avisos entregados." } : { nota: `${r.leidos} de ${r.entregados} entregados fueron leídos; quien desactivó la confirmación de lectura no cuenta` })}
+          {...(r.lecturaPct === null ? { sinDato: t("restaurantes.indicadoresWhatsapp.entrega.sinEntregados") } : { nota: t("restaurantes.indicadoresWhatsapp.entrega.lecturaNota", { leidos: r.leidos, entregados: r.entregados }) })}
         />
-        <StatCard icon={MessageSquareWarning} label="Avisos no entregados" value={String(r.fallidos)} nota="Meta reportó fallo; el cliente no los recibió" />
+        <StatCard icon={MessageSquareWarning} label={t("restaurantes.indicadoresWhatsapp.entrega.fallidos")} value={String(r.fallidos)} nota={t("restaurantes.indicadoresWhatsapp.entrega.fallidosNota")} />
       </div>
       {motivos.length > 0 ? (
         <p className="text-xs text-muted-foreground" data-testid="entrega-motivos">
-          Motivos de fallo: {motivos.map(([motivo, n]) => `${MOTIVOS_FALLO[motivo] ?? MOTIVOS_FALLO.otro} (${n})`).join(" · ")}.
+          {t("restaurantes.indicadoresWhatsapp.entrega.motivos", { lista: motivos.map(([motivo, n]) => `${t(MOTIVOS_FALLO[motivo] ?? "restaurantes.indicadoresWhatsapp.fallo.otro")} (${n})`).join(" · ") })}
         </p>
       ) : null}
       <Card>
         <CardHeader className="p-3 pb-2">
-          <CardTitle>Entrega de avisos por día</CardTitle>
+          <CardTitle>{t("restaurantes.indicadoresWhatsapp.entrega.porDia")}</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           <DataTable<WhatsappEntregaDiaSerie>
-            etiqueta="Entrega de avisos de pedido por día"
+            etiqueta={t("restaurantes.indicadoresWhatsapp.entrega.tablaEtiqueta")}
             filas={[...entrega.serie].reverse()}
             obtenerId={(d) => d.fecha}
             atributosFila={(d) => ({ "data-dia-entrega": d.fecha })}
-            vacio={{ titulo: "Sin días con datos", mensaje: "Todavía no hay avisos de pedido enviados en este periodo." }}
+            vacio={{ titulo: t("restaurantes.indicadoresWhatsapp.sinDias"), mensaje: t("restaurantes.indicadoresWhatsapp.entrega.sinDiasTexto") }}
             paginacion={false}
             columnas={[
-              { id: "dia", encabezado: "Día", principal: true, celda: (d) => formatoDia(d.fecha) },
-              { id: "enviados", encabezado: "Enviados", alinear: "right", className: "tabular-nums", celda: (d) => d.enviados },
-              { id: "entregados", encabezado: "Entregados", alinear: "right", className: "tabular-nums", celda: (d) => d.entregados },
-              { id: "leidos", encabezado: "Leídos", alinear: "right", className: "tabular-nums", celda: (d) => d.leidos },
-              { id: "fallidos", encabezado: "No entregados", alinear: "right", className: "tabular-nums", celda: (d) => d.fallidos },
+              { id: "dia", encabezado: t("restaurantes.indicadoresWhatsapp.col.dia"), principal: true, celda: (d) => formatoDia(d.fecha) },
+              { id: "enviados", encabezado: t("restaurantes.indicadoresWhatsapp.col.enviados"), alinear: "right", className: "tabular-nums", celda: (d) => d.enviados },
+              { id: "entregados", encabezado: t("restaurantes.indicadoresWhatsapp.col.entregados"), alinear: "right", className: "tabular-nums", celda: (d) => d.entregados },
+              { id: "leidos", encabezado: t("restaurantes.indicadoresWhatsapp.col.leidos"), alinear: "right", className: "tabular-nums", celda: (d) => d.leidos },
+              { id: "fallidos", encabezado: t("restaurantes.indicadoresWhatsapp.col.noEntregados"), alinear: "right", className: "tabular-nums", celda: (d) => d.fallidos },
             ]}
           />
         </CardContent>
@@ -108,6 +115,7 @@ function EntregaAvisos({ entrega }: { readonly entrega: WhatsappEntrega | undefi
 }
 
 export function IndicadoresWhatsappPage({ apiBaseUrl, token, propertyId, role, nombreSucursal, fetchImpl }: RestaurantesShellContext & { readonly fetchImpl?: typeof fetch }) {
+  const t = useT(restaurantesIndicadoresWhatsapp);
   const puedeVer = ROLES_INDICADORES.has(role);
   const [dias, setDias] = useState(14);
   const [datos, setDatos] = useState<Carga<WhatsappKpi>>({ estado: "cargando" });
@@ -123,7 +131,7 @@ export function IndicadoresWhatsappPage({ apiBaseUrl, token, propertyId, role, n
         const kpi = await fetchWhatsappKpi(fetchImpl ?? fetch, apiBaseUrl, token, propertyId, dias);
         if (!cancelado) setDatos({ estado: "listo", datos: kpi });
       } catch (err) {
-        if (!cancelado) setDatos(desdeError(err, "No se pudieron cargar los indicadores del agente de WhatsApp."));
+        if (!cancelado) setDatos(desdeError(err, t("restaurantes.indicadoresWhatsapp.errorCarga")));
       }
     })();
     return () => {
@@ -135,47 +143,50 @@ export function IndicadoresWhatsappPage({ apiBaseUrl, token, propertyId, role, n
     <>
     {/* pb-24: el globo flotante «Probar conversación» (fixed, 56 px + 24 px de margen) no debe tapar el ultimo texto de la pagina. */}
     <PageContainer padding="none" className={puedeVer ? "pb-24" : undefined}>
-      <header className="flex min-w-0 items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="font-display truncate text-xl font-semibold">Indicadores del agente de WhatsApp</h1>
-          <p className="mt-1 truncate text-ui text-muted-foreground">Conversaciones, pedidos, handoff y costo del agente, por día local de la sucursal.</p>
-        </div>
-        {puedeVer ? (
-          <div className="shrink-0">
-            <label htmlFor="periodo-whatsapp" className="sr-only">
-              Periodo
-            </label>
-            <Selector id="periodo-whatsapp" value={String(dias)} onChange={(e) => setDias(Number(e.target.value))}>
-              {PERIODOS.map((p) => (
-                <option key={p.dias} value={p.dias}>
-                  {p.etiqueta}
-                </option>
-              ))}
-            </Selector>
-          </div>
-        ) : null}
-      </header>
+      <PageHeader
+        titulo={t("restaurantes.indicadoresWhatsapp.titulo")}
+        descripcion={t("restaurantes.indicadoresWhatsapp.subtitulo")}
+        acciones={
+          puedeVer ? (
+            <>
+              <label htmlFor="periodo-whatsapp" className="sr-only">
+                {t("restaurantes.indicadoresWhatsapp.periodo")}
+              </label>
+              <Selector id="periodo-whatsapp" value={String(dias)} onChange={(e) => setDias(Number(e.target.value))} wrapperClassName="w-auto" className="rounded-full">
+                {PERIODOS.map((p) => (
+                  <option key={p.dias} value={p.dias}>
+                    {t(p.clave)}
+                  </option>
+                ))}
+              </Selector>
+            </>
+          ) : undefined
+        }
+      />
 
       {!puedeVer ? (
         <Callout tone="info">
-          Solo los roles <strong className="text-foreground">owner</strong>/<strong className="text-foreground">admin</strong> ven los indicadores del agente — tu rol actual es{" "}
+          {t("restaurantes.indicadoresWhatsapp.soloRoles")}
+          {/* // i18n-ignorar: «owner» y «admin» son los nombres tecnicos del rol, iguales en los dos idiomas */}
+          <strong className="text-foreground">owner</strong>/<strong className="text-foreground">admin</strong>
+          {t("restaurantes.indicadoresWhatsapp.soloRolesFin")}{" "}
           <strong className="text-foreground">{role}</strong>.
         </Callout>
       ) : (
         <Tabs defaultValue="general" className="flex flex-col gap-3">
           <TabsList className="self-start">
-            <TabsTrigger value="general">General</TabsTrigger>
-            <TabsTrigger value="herramientas">Herramientas</TabsTrigger>
-            <TabsTrigger value="conocimiento">Base de conocimiento</TabsTrigger>
+            <TabsTrigger value="general">{t("restaurantes.indicadoresWhatsapp.tab.general")}</TabsTrigger>
+            <TabsTrigger value="herramientas">{t("restaurantes.indicadoresWhatsapp.tab.herramientas")}</TabsTrigger>
+            <TabsTrigger value="conocimiento">{t("restaurantes.indicadoresWhatsapp.tab.conocimiento")}</TabsTrigger>
           </TabsList>
           <TabsContent value="general" className="mt-0">
             {datos.estado === "cargando" ? (
-              <EstadoCargando etiqueta="Cargando indicadores…" />
+              <EstadoCargando etiqueta={t("restaurantes.indicadoresWhatsapp.cargando")} />
             ) : datos.estado === "no_disponible" ? (
               <EstadoVacio
                 icon={Activity}
-                titulo="Indicadores no disponibles todavía"
-                mensaje="Los indicadores del agente de WhatsApp aún no están activos en este negocio (requieren la actualización de base de datos pendiente). Cuando lo estén, aquí verás conversaciones, conversión a pedido, handoff y costo por día."
+                titulo={t("restaurantes.indicadoresWhatsapp.noDisponibleTitulo")}
+                mensaje={t("restaurantes.indicadoresWhatsapp.noDisponibleTexto")}
               />
             ) : datos.estado === "error" ? (
               <EstadoError mensaje={datos.mensaje} onReintentar={reintentar} />
@@ -186,8 +197,8 @@ export function IndicadoresWhatsappPage({ apiBaseUrl, token, propertyId, role, n
           <TabsContent value="herramientas" className="mt-0">
             <EstadoVacio
               icon={Wrench}
-              titulo="Uso de herramientas: no disponible aún"
-              mensaje="Requiere registrar cada llamada a una herramienta del agente de WhatsApp (buscar producto, cotizar, crear pedido…). Hoy solo el agente de voz guarda ese conteo; por eso aquí no se inventan cifras. Cuando exista el registro verás cuántas veces usó cada herramienta y su latencia."
+              titulo={t("restaurantes.indicadoresWhatsapp.herramientasTitulo")}
+              mensaje={t("restaurantes.indicadoresWhatsapp.herramientasTexto")}
             />
           </TabsContent>
           <TabsContent value="conocimiento" className="mt-0">
@@ -203,80 +214,84 @@ export function IndicadoresWhatsappPage({ apiBaseUrl, token, propertyId, role, n
 }
 
 function Contenido({ kpi }: { readonly kpi: WhatsappKpi }) {
+  const t = useT(restaurantesIndicadoresWhatsapp);
   const r = kpi.resumen;
   const sinCostoPorPedido = razonSinCostoPorPedido(r);
   const sinCostoTotal = razonSinCostoTotal(r);
   return (
     <div className="space-y-2.5" data-testid="indicadores-whatsapp">
       <p className="text-xs text-muted-foreground">
-        Del {formatoDia(kpi.desde)} al {formatoDia(kpi.hasta)} (zona {kpi.zonaHoraria}). Cifras agregadas de esta sucursal: no incluyen teléfonos ni mensajes ni el tráfico del widget de demostración.
+        {t("restaurantes.indicadoresWhatsapp.rango", { desde: formatoDia(kpi.desde), hasta: formatoDia(kpi.hasta), zona: kpi.zonaHoraria })}
       </p>
 
       {r.orgEsDemo ? (
         <Callout tone="info" data-testid="aviso-demo">
-          Esta organización es de demostración: su costo LLM mezcla el widget público con uso real, por eso no se muestra.
+          {t("restaurantes.indicadoresWhatsapp.avisoDemo")}
         </Callout>
       ) : null}
 
       <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
-        <StatCard icon={MessageSquare} label="Conversaciones nuevas" value={String(r.conversaciones)} nota="Clientes que escribieron por primera vez a esta sucursal" />
+        <StatCard icon={MessageSquare} label={t("restaurantes.indicadoresWhatsapp.kpi.conversaciones")} value={String(r.conversaciones)} nota={t("restaurantes.indicadoresWhatsapp.kpi.conversacionesNota")} />
         <StatCard
           icon={ShoppingBag}
-          label="Conversión a pedido"
+          label={t("restaurantes.indicadoresWhatsapp.kpi.conversion")}
           value={formatoPct(r.conversionPct)}
-          {...(r.conversionPct === null ? { sinDato: "Sin conversaciones nuevas en el periodo." } : { nota: `${r.conversacionesConPedido} de ${r.conversaciones} conversaciones nuevas terminaron en pedido` })}
+          {...(r.conversionPct === null
+            ? { sinDato: t("restaurantes.indicadoresWhatsapp.kpi.sinConversaciones") }
+            : { nota: t("restaurantes.indicadoresWhatsapp.kpi.conversionNota", { con: r.conversacionesConPedido, total: r.conversaciones }) })}
         />
         <StatCard
           icon={Headset}
-          label="Tasa de handoff a una persona"
+          label={t("restaurantes.indicadoresWhatsapp.kpi.handoff")}
           value={formatoPct(r.handoffPct)}
-          {...(r.handoffPct === null ? { sinDato: "Sin conversaciones nuevas en el periodo." } : { nota: `${r.conversacionesConHandoff} de ${r.conversaciones} conversaciones nuevas pidieron a una persona` })}
+          {...(r.handoffPct === null
+            ? { sinDato: t("restaurantes.indicadoresWhatsapp.kpi.sinConversaciones") }
+            : { nota: t("restaurantes.indicadoresWhatsapp.kpi.handoffNota", { con: r.conversacionesConHandoff, total: r.conversaciones }) })}
         />
-        <StatCard icon={TrendingUp} label="Pedidos de WhatsApp" value={String(r.pedidos)} nota={`Sin cancelados · ${r.handoffs} solicitudes de una persona`} />
+        <StatCard icon={TrendingUp} label={t("restaurantes.indicadoresWhatsapp.kpi.pedidos")} value={String(r.pedidos)} nota={t("restaurantes.indicadoresWhatsapp.kpi.pedidosNota", { n: r.handoffs })} />
         <StatCard
           icon={DollarSign}
-          label="Costo LLM promedio por pedido"
+          label={t("restaurantes.indicadoresWhatsapp.kpi.costoPedido")}
           value={formatoMxn(r.costoLlmPorPedidoCentavosMxn)}
-          {...(sinCostoPorPedido ? { sinDato: sinCostoPorPedido } : { nota: "Promedio del periodo de toda la organización; no es el costo real de cada pedido" })}
+          {...(sinCostoPorPedido ? { sinDato: sinCostoPorPedido } : { nota: t("restaurantes.indicadoresWhatsapp.kpi.costoPedidoNota") })}
         />
         <StatCard
           icon={DollarSign}
-          label="Costo LLM del agente (organización)"
+          label={t("restaurantes.indicadoresWhatsapp.kpi.costoOrg")}
           value={formatoMxn(r.costoLlmOrgCentavosMxn)}
-          {...(sinCostoTotal ? { sinDato: sinCostoTotal } : { nota: `Todas las sucursales, ${r.pedidosOrg ?? 0} pedidos de WhatsApp` })}
+          {...(sinCostoTotal ? { sinDato: sinCostoTotal } : { nota: t("restaurantes.indicadoresWhatsapp.kpi.costoOrgNota", { n: r.pedidosOrg ?? 0 }) })}
         />
       </div>
 
       <Card>
         <CardHeader className="p-3 pb-2">
-          <CardTitle>Por día</CardTitle>
+          <CardTitle>{t("restaurantes.indicadoresWhatsapp.porDia")}</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           <DataTable<WhatsappKpiDiaSerie>
-            etiqueta="Indicadores del agente de WhatsApp por día"
+            etiqueta={t("restaurantes.indicadoresWhatsapp.tablaEtiqueta")}
             filas={[...kpi.serie].reverse()}
             obtenerId={(d) => d.fecha}
             atributosFila={(d) => ({ "data-dia": d.fecha })}
-            vacio={{ titulo: "Sin días con datos", mensaje: "Todavía no hay actividad del agente de WhatsApp en este periodo." }}
+            vacio={{ titulo: t("restaurantes.indicadoresWhatsapp.sinDias"), mensaje: t("restaurantes.indicadoresWhatsapp.sinDiasTexto") }}
             paginacion={false}
             columnas={[
-              { id: "dia", encabezado: "Día", principal: true, celda: (d) => formatoDia(d.fecha) },
-              { id: "conversaciones", encabezado: "Conversaciones", alinear: "right", className: "tabular-nums", celda: (d) => d.conversaciones },
-              { id: "conversion", encabezado: "Conversión", alinear: "right", className: "tabular-nums", celda: (d) => formatoPct(d.conversionPct) },
-              { id: "handoff", encabezado: "Handoff", alinear: "right", className: "tabular-nums", celda: (d) => formatoPct(d.handoffPct) },
-              { id: "pedidos", encabezado: "Pedidos", alinear: "right", className: "tabular-nums", celda: (d) => d.pedidos },
-              { id: "costo", encabezado: "Costo LLM / pedido", alinear: "right", className: "tabular-nums", celda: (d) => formatoMxn(d.costoLlmPorPedidoCentavosMxn) },
+              { id: "dia", encabezado: t("restaurantes.indicadoresWhatsapp.col.dia"), principal: true, celda: (d) => formatoDia(d.fecha) },
+              { id: "conversaciones", encabezado: t("restaurantes.indicadoresWhatsapp.col.conversaciones"), alinear: "right", className: "tabular-nums", celda: (d) => d.conversaciones },
+              { id: "conversion", encabezado: t("restaurantes.indicadoresWhatsapp.col.conversion"), alinear: "right", className: "tabular-nums", celda: (d) => formatoPct(d.conversionPct) },
+              { id: "handoff", encabezado: t("restaurantes.indicadoresWhatsapp.col.handoff"), alinear: "right", className: "tabular-nums", celda: (d) => formatoPct(d.handoffPct) },
+              { id: "pedidos", encabezado: t("restaurantes.indicadoresWhatsapp.col.pedidos"), alinear: "right", className: "tabular-nums", celda: (d) => d.pedidos },
+              { id: "costo", encabezado: t("restaurantes.indicadoresWhatsapp.col.costo"), alinear: "right", className: "tabular-nums", celda: (d) => formatoMxn(d.costoLlmPorPedidoCentavosMxn) },
             ]}
           />
         </CardContent>
       </Card>
 
-      <h2 className="font-display pt-1 text-base font-semibold">Entrega de avisos de pedido</h2>
+      <h2 className="font-display pt-1 text-base font-semibold">{t("restaurantes.indicadoresWhatsapp.entregaTitulo")}</h2>
       <EntregaAvisos entrega={kpi.entrega} />
 
       <p className="text-xs text-muted-foreground" data-testid="notas-definiciones">
-        Definiciones: una conversación nueva cuenta en el día local del primer mensaje del cliente a esta sucursal (un cliente que ya existía y vuelve a escribir no suma). La conversión y el handoff se miden sobre esas mismas conversaciones nuevas. Los pedidos son los de
-        canal WhatsApp no cancelados creados ese día. El costo LLM viene de un registro diario de toda la organización (no por conversación ni por sucursal) y no incluye los modelos de apoyo de la plataforma. La entrega y la lectura cuentan los avisos de estado de pedido por WhatsApp según los estados que reporta Meta (un aviso en el día local de su envío); un aviso sin estado todavía no cuenta como entregado.
+        {t("restaurantes.indicadoresWhatsapp.definiciones")}
       </p>
     </div>
   );

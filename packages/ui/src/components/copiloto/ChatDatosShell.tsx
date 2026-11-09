@@ -42,6 +42,7 @@ export function ChatDatosShell({
   conversacionInicial,
   onConversacionCambia,
   zonaHoraria,
+  preguntaInicial,
   ahora = () => new Date(),
 }: ChatDatosShellProps) {
   const copiloto = useCopiloto({
@@ -120,12 +121,12 @@ export function ChatDatosShell({
     if (!cfg || enviando) return;
     const ext = archivo.name.toLowerCase().match(/\.[a-z0-9]+$/)?.[0] ?? "";
     const permitidas = cfg.accept.split(",").map((x) => x.trim().toLowerCase());
-    if (!permitidas.includes(ext)) return setAvisoAdjunto(`Solo puedo leer archivos ${permitidas.join(", ")}.`);
-    if (archivo.size === 0) return setAvisoAdjunto("El archivo está vacío.");
-    if (archivo.size > cfg.maxBytes) return setAvisoAdjunto(`El archivo supera los ${Math.round(cfg.maxBytes / (1024 * 1024))} MB.`);
+    if (!permitidas.includes(ext)) return setAvisoAdjunto(t("adjuntoTipos", { ext: permitidas.join(", ") }));
+    if (archivo.size === 0) return setAvisoAdjunto(t("adjuntoVacio"));
+    if (archivo.size > cfg.maxBytes) return setAvisoAdjunto(t("adjuntoGrande", { mb: Math.round(cfg.maxBytes / (1024 * 1024)) }));
     setAvisoAdjunto(null);
     setCategoriasVisibles(false);
-    copiloto.enviar(`Adjunté «${archivo.name.slice(0, 80)}»`, undefined, archivo);
+    copiloto.enviar(t("adjunte", { nombre: archivo.name.slice(0, 80) }), undefined, archivo);
   };
 
   const preguntar = (pregunta: string, directa?: CopilotoDirecta) => {
@@ -137,6 +138,16 @@ export function ChatDatosShell({
   };
   // Chips, tarjetas y sugerencias alternas: si el servidor puede resolverlos sin modelo (consulta directa), van por esa ruta.
   const preguntarChip = (pregunta: string) => preguntar(pregunta, directas?.[pregunta.trim()]);
+
+  // Pregunta que llega desde otra pantalla (p. ej. el Resumen general): se envia UNA vez al montar, como si se escribiera, y solo en un
+  // chat nuevo (abrir una conversacion guardada nunca le agrega un turno). Pasa por el mismo `preguntar` (tope de caracteres y directas).
+  const preguntaInicialEnviada = useRef(false);
+  useEffect(() => {
+    if (preguntaInicialEnviada.current || !preguntaInicial || conversacionInicial) return;
+    preguntaInicialEnviada.current = true;
+    preguntarChip(preguntaInicial);
+    // Solo al montar: la pregunta inicial no se reenvia si el padre vuelve a pintar.
+  }, []);
 
   const hilo = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -191,15 +202,15 @@ export function ChatDatosShell({
         {!hayConversacion ? <CopilotoPortada textos={textos} compacta={panel} /> : null}
 
         {hayConversacion ? (
-          <div ref={hilo} data-ds3-hilo="" role="log" aria-live="polite" aria-label="Conversación con el Copiloto" className={`w-full ${panel ? "max-w-full" : "max-w-2xl"} space-y-5 mb-6`}>
+          <div ref={hilo} data-ds3-hilo="" role="log" aria-live="polite" aria-label={t("conversacionAria")} className={`w-full ${panel ? "max-w-full" : "max-w-2xl"} space-y-5 mb-6`}>
             {abriendo ? (
               <p className="text-sm text-muted-foreground" role="status">
-                Abriendo conversación…
+                {t("abriendo")}
               </p>
             ) : null}
             {errorAbrir ? (
               <p className="text-xs text-destructive" role="alert">
-                No se pudo abrir esa conversación; tus chats siguen guardados. Intenta de nuevo desde el historial.
+                {t("errorAbrir")}
               </p>
             ) : null}
             {mensajes.map((m) => (

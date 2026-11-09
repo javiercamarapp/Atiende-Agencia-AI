@@ -2,11 +2,17 @@
 // equivalente de `admin/ui/formato-preset.ts` de Likida. Un preset de texto en vez de un callback para que
 // la pagina que arma la tarjeta solo pase datos; todos formatean con separador de miles `es-MX` y NUNCA
 // calculan ni redondean dinero (solo muestran la cifra que el backend ya calculo).
+import { idiomaActivo } from "../i18n/activo.ts";
+import { crearFormatos } from "../i18n/formato.ts";
+
 export type FormatoPreset = "numero" | "entero" | "mxn" | "usd" | "usd4" | "porcentaje" | "porcentajeSigno";
 
-/** Miles es-MX con decimales fijos: el formateador numerico canonico (lo reutilizan los presets y <Cifra>, lib/cifra.ts). */
+/**
+ * Miles con decimales fijos: el formateador numerico canonico (lo reutilizan los presets y <Cifra>, lib/cifra.ts). Delega en
+ * `crearFormatos(idiomaActivo())` (i18n, P2-4): es-MX en espanol -- byte a byte lo de siempre -- y en-US con la consola en ingles.
+ */
 export function numeroEsMx(v: number, decimales: number): string {
-  return v.toLocaleString("es-MX", { minimumFractionDigits: decimales, maximumFractionDigits: decimales });
+  return crearFormatos(idiomaActivo()).numero(v, { minimumFractionDigits: decimales, maximumFractionDigits: decimales });
 }
 
 function miles(v: number, decimales: 0 | 2 | 4): string {
@@ -31,6 +37,6 @@ export function resolverFormato(preset: FormatoPreset = "numero"): (v: number) =
       return (v) => miles(Math.round(v), 0);
     case "numero":
     default:
-      return (v) => v.toLocaleString("es-MX", { maximumFractionDigits: 2 });
+      return (v) => crearFormatos(idiomaActivo()).numero(v, { maximumFractionDigits: 2 });
   }
 }

@@ -9,6 +9,7 @@
 //   GET/PATCH/DELETE <baseUrl>/conversaciones/:id
 //   POST <baseUrl>/pins { conversationId, seq, bloque }   (fijar; el servidor deriva herramienta y argumentos del mensaje guardado)
 //   POST <baseUrl>/conversaciones/:id/reporte?seq=N -> application/pdf (reporte del mensaje; "Descargar PDF")
+//   PUT  <baseUrl>/conversaciones/:id/mensajes/:seq/valoracion { util, motivo? }   («Útil / No fue útil», migracion 0079)
 //   POST <baseUrl>/adjuntos { nombre, contenidoBase64 } -> perfil del archivo (CSV / Excel / PDF analizado en el servidor; no se guarda)
 //
 // Reglas: el cliente solo manda la pregunta y el `conversationId` ("new" la primera vez, el uuid despues); el alcance
@@ -16,6 +17,9 @@
 // `CopilotoStatus` honesto. `fetchImpl` es inyectable (las pruebas nunca tocan la red).
 import {
   CopilotoErrorTransporte,
+  leerIdioma,
+  traductorCopiloto,
+  type ClaveCopiloto,
   type ConversacionCompleta,
   type ConversacionResumen,
   type CopilotoBloque,
@@ -30,7 +34,10 @@ import {
 
 export const MAX_HISTORIAL_LOCAL = 12;
 export const MAX_CARACTERES_TURNO = 600;
-export const TEXTO_SIN_ACCESO = "Tu rol no tiene acceso al Copiloto. Pídele acceso al dueño.";
+/** Texto del 403 en espanol (las pruebas lo comparan); en tiempo de ejecucion sale en el idioma de la consola (`tr`). */
+export const TEXTO_SIN_ACCESO = traductorCopiloto("es")("errSinAcceso");
+/** Mensajes del transporte en el idioma de la consola en el momento del fallo (ES/EN). */
+const tr = (clave: ClaveCopiloto): string => traductorCopiloto(leerIdioma())(clave);
 /** Adjuntar archivo: lo que el servidor sabe leer y su tope (el mismo de `ADJUNTO_MAX_BYTES` en apps/api). */
 export const ADJUNTOS_CONFIG = { accept: ".csv,.tsv,.txt,.xlsx,.pdf", maxBytes: 5 * 1024 * 1024 } as const;
 
@@ -69,9 +76,9 @@ function descargarEnNavegador(blob: Blob, nombre: string): void {
 
 /** Mensaje legible de un fallo al pedir el reporte (el servidor manda `{ code, message }`; nunca se muestra un 500 crudo). */
 async function errorReporte(res: Response): Promise<Error> {
-  if (res.status === 403) return new Error(TEXTO_SIN_ACCESO);
-  if (res.status === 404) return new Error("No encontré esa conversación. Puede que ya se haya borrado.");
-  if (res.status === 429) return new Error("Pediste muchos reportes en poco tiempo. Espera unos minutos e inténtalo de nuevo.");
+  if (res.status === 403) return new Error(tr("errSinAcceso"));
+  if (res.status === 404) return new Error(tr("errConversacionNoExiste"));
+  if (res.status === 429) return new Error(tr("errReportesMuchos"));
   if (res.status === 422) {
     try {
       const json: unknown = await res.json();
@@ -81,8 +88,8 @@ async function errorReporte(res: Response): Promise<Error> {
     }
     return new Error("Esta respuesta no tiene cifras para armar un reporte.");
   }
-  if (res.status === 503) return new Error("Los reportes todavía no están disponibles para tu cuenta.");
-  return new Error("No pude generar el reporte en este momento. Inténtalo de nuevo en unos minutos.");
+  if (res.status === 503) return new Error(tr("errReportesNoDisponibles"));
+  return new Error(tr("errReporte"));
 }
 
 export type EstadoCopiloto =
@@ -175,7 +182,7 @@ export function parsearLinea(linea: string): CopilotoEvento | null {
     return {
       t: "error",
       status: normalizarStatus(v["status"]),
-      mensaje: typeof v["mensaje"] === "string" && v["mensaje"] ? v["mensaje"] : "No pude completar la consulta en este momento. Inténtalo de nuevo en un momento.",
+      mensaje: typeof v["mensaje"] === "string" && v["mensaje"] ? v["mensaje"] : tr("errConsulta"),
       ...(typeof v["reintentarEnSeg"] === "number" ? { reintentarEnSeg: v["reintentarEnSeg"] } : {}),
     };
   }
@@ -224,10 +231,10 @@ function reintentarEn(res: Response): number | undefined {
 }
 
 function errorHttp(res: Response): CopilotoErrorTransporte {
-  if (res.status === 403) return new CopilotoErrorTransporte("forbidden", TEXTO_SIN_ACCESO);
-  if (res.status === 429) return new CopilotoErrorTransporte("rate_limited", "Has hecho muchas preguntas en poco tiempo. Espera unos minutos e inténtalo de nuevo.", reintentarEn(res));
-  if (res.status === 400) return new CopilotoErrorTransporte("invalid_input", "No pude entender esa pregunta. Reescríbela e inténtalo de nuevo.");
-  return new CopilotoErrorTransporte("unavailable", "No pude consultar tus datos en este momento. Inténtalo de nuevo en unos minutos.");
+  if (res.status === 403) return new CopilotoErrorTransporte("forbidden", tr("errSinAcceso"));
+  if (res.status === 429) return new CopilotoErrorTransporte("rate_limited", tr("errMuchasPreguntas"), reintentarEn(res));
+  if (res.status === 400) return new CopilotoErrorTransporte("invalid_input", tr("errNoEntendi"));
+  return new CopilotoErrorTransporte("unavailable", tr("errDatos"));
 }
 
 export function crearTransporteCopiloto(cfg: CopilotoTransporteConfig): CopilotoTransporteVertical {
@@ -266,7 +273,7 @@ function crearTransporteCompleto(cfg: CopilotoTransporteConfig): CopilotoTranspo
       return await conAuth(hacer);
     } catch (e) {
       if (esAbort(e)) throw e;
-      throw new CopilotoErrorTransporte("unavailable", "No pude conectar con el servidor. Revisa tu conexión e inténtalo de nuevo.");
+      throw new CopilotoErrorTransporte("unavailable", tr("errConexion"));
     }
   }
 
@@ -279,14 +286,14 @@ function crearTransporteCompleto(cfg: CopilotoTransporteConfig): CopilotoTranspo
     );
     if (res.status === 413) throw new CopilotoErrorTransporte("invalid_input", "El archivo supera los 5 MB.");
     // Los avisos de `invalid_input` muestran el texto del error tal cual (el de `unavailable`/`rate_limited` es generico y hablaria de "preguntas").
-    if (res.status === 404 || res.status === 503) throw new CopilotoErrorTransporte("invalid_input", "Adjuntar archivos todavía no está disponible en tu cuenta.");
-    if (res.status === 429) throw new CopilotoErrorTransporte("invalid_input", "Adjuntaste muchos archivos en poco tiempo. Espera unos minutos e inténtalo de nuevo.");
+    if (res.status === 404 || res.status === 503) throw new CopilotoErrorTransporte("invalid_input", tr("errAdjuntosNoDisponibles"));
+    if (res.status === 429) throw new CopilotoErrorTransporte("invalid_input", tr("errAdjuntosMuchos"));
     if (!res.ok) throw errorHttp(res);
     let json: unknown;
     try {
       json = await res.json();
     } catch {
-      throw new CopilotoErrorTransporte("unavailable", "La respuesta del servidor no se pudo leer. Inténtalo de nuevo.");
+      throw new CopilotoErrorTransporte("unavailable", tr("errIlegible"));
     }
     const respuesta = normalizarRespuesta(json);
     onEvento({ t: "fin", respuesta });
@@ -333,7 +340,7 @@ function crearTransporteCompleto(cfg: CopilotoTransporteConfig): CopilotoTranspo
         try {
           json = await res.json();
         } catch {
-          throw new CopilotoErrorTransporte("unavailable", "La respuesta del servidor no se pudo leer. Inténtalo de nuevo.");
+          throw new CopilotoErrorTransporte("unavailable", tr("errIlegible"));
         }
         const respuesta = normalizarRespuesta(json);
         const conv = esObjeto(json) && typeof json["conversationId"] === "string" ? json["conversationId"] : undefined;
@@ -343,12 +350,12 @@ function crearTransporteCompleto(cfg: CopilotoTransporteConfig): CopilotoTranspo
           await leerNdjson(res.body, alEvento, senal);
         } catch (e) {
           if (esAbort(e)) throw e;
-          throw new CopilotoErrorTransporte("unavailable", "Se cortó la conexión mientras respondía. Inténtalo de nuevo.");
+          throw new CopilotoErrorTransporte("unavailable", tr("errCortada"));
         }
       }
 
       if (fallo && !fin) throw new CopilotoErrorTransporte(fallo.status, fallo.mensaje, fallo.reintentarEnSeg);
-      if (!fin) throw new CopilotoErrorTransporte("unavailable", "La respuesta llegó incompleta. Inténtalo de nuevo.");
+      if (!fin) throw new CopilotoErrorTransporte("unavailable", tr("errIncompleta"));
 
       if (!fin.conversacionId && fin.respuesta.status === "ok") {
         hilo = [...hilo, { role: "user" as const, text: pregunta }, { role: "assistant" as const, text: fin.respuesta.text }].slice(-MAX_HISTORIAL_LOCAL);
@@ -364,7 +371,7 @@ function crearTransporteCompleto(cfg: CopilotoTransporteConfig): CopilotoTranspo
       const items: ConversacionResumen[] = [];
       for (const c of json["conversaciones"] as unknown[]) {
         if (!esObjeto(c) || typeof c["id"] !== "string" || typeof c["actualizadaEn"] !== "string") continue;
-        items.push({ id: c["id"], titulo: typeof c["titulo"] === "string" ? c["titulo"] : "Conversación", actualizadaEn: c["actualizadaEn"] });
+        items.push({ id: c["id"], titulo: typeof c["titulo"] === "string" ? c["titulo"] : tr("conversacionSinTitulo"), actualizadaEn: c["actualizadaEn"] });
       }
       return items;
     },
@@ -373,7 +380,7 @@ function crearTransporteCompleto(cfg: CopilotoTransporteConfig): CopilotoTranspo
       const res = await llamar((t) => cfg.fetchImpl(idUrl(id), { headers: cabecera(t), signal: senal }));
       if (!res.ok) throw errorHttp(res);
       const json: unknown = await res.json();
-      if (!esObjeto(json) || typeof json["id"] !== "string" || !Array.isArray(json["mensajes"])) throw new CopilotoErrorTransporte("unavailable", "Conversación inválida.");
+      if (!esObjeto(json) || typeof json["id"] !== "string" || !Array.isArray(json["mensajes"])) throw new CopilotoErrorTransporte("unavailable", tr("errConversacionInvalida"));
       const mensajes: CopilotoMensaje[] = [];
       for (const m of json["mensajes"] as unknown[]) {
         if (!esObjeto(m) || (m["role"] !== "user" && m["role"] !== "assistant") || typeof m["text"] !== "string") continue;
@@ -390,7 +397,7 @@ function crearTransporteCompleto(cfg: CopilotoTransporteConfig): CopilotoTranspo
           ...(seq !== undefined ? { seq } : {}),
         });
       }
-      return { id: json["id"], titulo: typeof json["titulo"] === "string" ? json["titulo"] : "Conversación", mensajes };
+      return { id: json["id"], titulo: typeof json["titulo"] === "string" ? json["titulo"] : tr("conversacionSinTitulo"), mensajes };
     },
 
     async fijar(id, seq, bloque) {
@@ -409,13 +416,25 @@ function crearTransporteCompleto(cfg: CopilotoTransporteConfig): CopilotoTranspo
     async descargarPdf(id, seq) {
       const res = await llamar((t) => cfg.fetchImpl(`${idUrl(id)}/reporte?seq=${encodeURIComponent(String(seq))}`, { method: "POST", headers: cabecera(t) }));
       if (!res.ok) throw await errorReporte(res);
-      if (!(res.headers.get("content-type") ?? "").includes("application/pdf")) throw new Error("La respuesta del servidor no es un PDF. Inténtalo de nuevo.");
+      if (!(res.headers.get("content-type") ?? "").includes("application/pdf")) throw new Error(tr("errNoEsPdf"));
       const blob = await res.blob();
       (cfg.guardarArchivo ?? descargarEnNavegador)(blob, nombreArchivoPdf(res));
     },
 
     async borrar(id) {
       const res = await llamar((t) => cfg.fetchImpl(idUrl(id), { method: "DELETE", headers: cabecera(t) }));
+      if (!res.ok) throw errorHttp(res);
+    },
+
+    async valorar(id, seq, valoracion) {
+      const res = await llamar((t) =>
+        cfg.fetchImpl(`${idUrl(id)}/mensajes/${encodeURIComponent(String(seq))}/valoracion`, {
+          method: "PUT",
+          headers: cabecera(t, { "content-type": "application/json" }),
+          body: JSON.stringify({ util: valoracion.util, ...(valoracion.util ? {} : { motivo: valoracion.motivo ?? null }) }),
+        }),
+      );
+      // 503 = la base todavia no tiene la 0079; 404 = mensaje ajeno o ya borrado. El boton muestra el error y deja reintentar.
       if (!res.ok) throw errorHttp(res);
     },
   };

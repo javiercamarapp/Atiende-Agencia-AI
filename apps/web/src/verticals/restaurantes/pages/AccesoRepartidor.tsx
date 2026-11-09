@@ -6,7 +6,8 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { Link } from "react-router-dom";
-import { Button, EstadoCargando, EstadoVacio, FormField, Input } from "@atiende/ui";
+import { Button, EstadoCargando, EstadoVacio, FormField, Input, useT } from "@atiende/ui";
+import { restaurantesAccesoChofer } from "@atiende/ui/i18n/restaurantes/accesoChofer";
 import { MarcoPublico } from "../../../components/MarcoPublico.tsx";
 import { decideLandingPath, persistSession } from "../../../lib/auth-client.ts";
 import type { LoginSession } from "../../../lib/auth-client.ts";
@@ -27,7 +28,8 @@ export interface AccesoRepartidorProps {
 type Fase = "comprobando" | "no_disponible" | "celular" | "codigo";
 
 export function AccesoRepartidorPage({ apiBaseUrl, onLoggedIn, fetchImpl, storage }: AccesoRepartidorProps) {
-  useDocumentTitle("Acceso de repartidores");
+  const t = useT(restaurantesAccesoChofer);
+  useDocumentTitle(t("restaurantes.accesoChofer.tituloDocumento"));
   const f = fetchImpl ?? fetch;
   const [fase, setFase] = useState<Fase>("comprobando");
   const [celularTexto, setCelularTexto] = useState("");
@@ -91,7 +93,7 @@ export function AccesoRepartidorPage({ apiBaseUrl, onLoggedIn, fetchImpl, storag
     if (enviando) return;
     const nacional = normalizarCelular(celularTexto);
     if (!nacional) {
-      setErrorCelular("Escribe tu celular de 10 dígitos, por ejemplo 999 123 4567.");
+      setErrorCelular(t("restaurantes.accesoChofer.celularInvalido"));
       return;
     }
     setCelular(nacional);
@@ -103,7 +105,7 @@ export function AccesoRepartidorPage({ apiBaseUrl, onLoggedIn, fetchImpl, storag
 
   async function reenviar() {
     if (!celular || enviando || espera > 0) return;
-    if (await pedirCodigo(celular)) setAviso("Te mandamos otro código. El anterior ya no sirve.");
+    if (await pedirCodigo(celular)) setAviso(t("restaurantes.accesoChofer.reenviado"));
   }
 
   async function entrar(event: FormEvent<HTMLFormElement>) {
@@ -111,7 +113,7 @@ export function AccesoRepartidorPage({ apiBaseUrl, onLoggedIn, fetchImpl, storag
     if (verificando || !celular) return;
     const codigo = normalizarCodigo(codigoTexto);
     if (!codigo) {
-      setErrorCodigo("Escribe el código de 6 dígitos que te llegó por WhatsApp.");
+      setErrorCodigo(t("restaurantes.accesoChofer.codigoInvalido"));
       return;
     }
     setVerificando(true);
@@ -134,21 +136,21 @@ export function AccesoRepartidorPage({ apiBaseUrl, onLoggedIn, fetchImpl, storag
 
   if (fase === "comprobando") {
     return (
-      <MarcoPublico titulo="Entrar con tu celular">
-        <EstadoCargando etiqueta="Un momento…" />
+      <MarcoPublico titulo={t("restaurantes.accesoChofer.titulo")}>
+        <EstadoCargando etiqueta={t("restaurantes.accesoChofer.unMomento")} />
       </MarcoPublico>
     );
   }
 
   if (fase === "no_disponible") {
     return (
-      <MarcoPublico titulo="Entrar con tu celular">
+      <MarcoPublico titulo={t("restaurantes.accesoChofer.titulo")}>
         <EstadoVacio
-          titulo="Todavía no está disponible"
-          mensaje="El acceso con celular aún no está activo. Entra con tu correo o pídele ayuda a tu encargado."
+          titulo={t("restaurantes.accesoChofer.noDisponibleTitulo")}
+          mensaje={t("restaurantes.accesoChofer.noDisponibleTexto")}
           accion={
             <Button asChild variant="outline" className="h-14 w-full text-base">
-              <Link to="/restaurantes/login">Entrar con correo</Link>
+              <Link to="/restaurantes/login">{t("restaurantes.accesoChofer.entrarCorreo")}</Link>
             </Button>
           }
         />
@@ -158,9 +160,9 @@ export function AccesoRepartidorPage({ apiBaseUrl, onLoggedIn, fetchImpl, storag
 
   if (fase === "celular") {
     return (
-      <MarcoPublico titulo="Entrar con tu celular" descripcion="Te mandamos un código por WhatsApp. Solo para repartidores.">
+      <MarcoPublico titulo={t("restaurantes.accesoChofer.titulo")} descripcion={t("restaurantes.accesoChofer.descripcion")}>
         <form onSubmit={(e) => void enviarCelular(e)} className="flex flex-col gap-4" noValidate>
-          <FormField label="Tu celular" hint="10 dígitos, el mismo que le diste a tu encargado." error={errorCelular ?? undefined} required>
+          <FormField label={t("restaurantes.accesoChofer.celular")} hint={t("restaurantes.accesoChofer.celularAyuda")} error={errorCelular ?? undefined} required>
             <Input
               ref={campoCelular}
               type="tel"
@@ -173,20 +175,23 @@ export function AccesoRepartidorPage({ apiBaseUrl, onLoggedIn, fetchImpl, storag
             />
           </FormField>
           <Button type="submit" loading={enviando} className="h-14 w-full text-base">
-            Enviarme el código
+            {t("restaurantes.accesoChofer.enviarCodigo")}
           </Button>
         </form>
         <Link to="/restaurantes/login" className="inline-flex min-h-14 items-center justify-center text-sm underline underline-offset-2 text-foreground">
-          Soy encargado o administrador: entrar con correo
+          {t("restaurantes.accesoChofer.soyEncargado")}
         </Link>
       </MarcoPublico>
     );
   }
 
   return (
-    <MarcoPublico titulo="Escribe tu código" descripcion={celular ? `Si el ${formatearCelular(celular)} está registrado, te llegó un código de 6 dígitos por WhatsApp. Dura 5 minutos.` : undefined}>
+    <MarcoPublico
+      titulo={t("restaurantes.accesoChofer.codigoTitulo")}
+      descripcion={celular ? t("restaurantes.accesoChofer.codigoDescripcion", { celular: formatearCelular(celular) }) : undefined}
+    >
       <form onSubmit={(e) => void entrar(e)} className="flex flex-col gap-4" noValidate>
-        <FormField label="Código de 6 dígitos" error={errorCodigo ?? undefined} required>
+        <FormField label={t("restaurantes.accesoChofer.codigo")} error={errorCodigo ?? undefined} required>
           <Input
             ref={campoCodigo}
             type="text"
@@ -202,10 +207,10 @@ export function AccesoRepartidorPage({ apiBaseUrl, onLoggedIn, fetchImpl, storag
           />
         </FormField>
         <p id={idAyudaCodigo} className="sr-only">
-          Escribe los seis dígitos que recibiste por WhatsApp.
+          {t("restaurantes.accesoChofer.codigoAyuda")}
         </p>
         <Button type="submit" loading={verificando} className="h-14 w-full text-base">
-          Entrar
+          {t("restaurantes.accesoChofer.entrar")}
         </Button>
       </form>
       <div aria-live="polite" className="min-h-5 text-sm text-muted-foreground">
@@ -213,7 +218,7 @@ export function AccesoRepartidorPage({ apiBaseUrl, onLoggedIn, fetchImpl, storag
       </div>
       <div className="flex flex-col gap-1">
         <Button type="button" variant="outline" onClick={() => void reenviar()} disabled={enviando || espera > 0} className="h-14 w-full text-base">
-          {espera > 0 ? `Pedir otro código en ${espera} s` : "Pedir otro código"}
+          {espera > 0 ? t("restaurantes.accesoChofer.reenviarEn", { s: espera }) : t("restaurantes.accesoChofer.reenviar")}
         </Button>
         <button
           type="button"
@@ -224,7 +229,7 @@ export function AccesoRepartidorPage({ apiBaseUrl, onLoggedIn, fetchImpl, storag
           }}
           className="inline-flex min-h-14 items-center justify-center text-sm underline underline-offset-2 text-foreground"
         >
-          Cambiar mi número
+          {t("restaurantes.accesoChofer.cambiarNumero")}
         </button>
       </div>
     </MarcoPublico>
