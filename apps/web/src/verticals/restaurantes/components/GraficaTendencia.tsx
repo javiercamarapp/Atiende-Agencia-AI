@@ -46,7 +46,6 @@ export function GraficaTendencia({
     return (
       <p role="status" data-testid="tendencia-sin-datos" className="py-10 text-center text-xs text-faint">
         {t("restaurantes.resumen.sinDatosPeriodo")}
-
       </p>
     );
   }

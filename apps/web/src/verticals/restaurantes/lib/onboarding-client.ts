@@ -1,5 +1,7 @@
 // R-33 -- cliente del checklist de onboarding (solo lectura, owner/admin): GET /v1/restaurantes/:propertyId/admin/onboarding.
 // El estado de cada punto lo calcula el servidor con datos reales; aqui nunca se inventa ni se marca nada a mano.
+import { etiquetasTraducidas } from "@atiende/ui";
+import { restaurantesOnboarding } from "@atiende/ui/i18n/restaurantes/onboarding";
 import { fetchJson } from "./admin-client.ts";
 
 export type OnboardingEstado = "hecho" | "parcial" | "pendiente" | "externo";
@@ -52,14 +54,18 @@ export function omitirGate(orgSlug: string): void {
   }
 }
 
-export const RESPONSABLE_LABEL: Record<OnboardingResponsable, string> = {
-  plataforma: "Plataforma",
-  dueno: "Dueño",
-  meta: "Meta (WhatsApp Business)",
-  distribuidor_pos: "Distribuidor del POS",
-};
+/** Etiquetas en el idioma activo (i18n): cada lectura traduce; en espanol, los textos de siempre. */
+export const RESPONSABLE_LABEL: Readonly<Record<OnboardingResponsable, string>> = etiquetasTraducidas<OnboardingResponsable>(
+  ["plataforma", "dueno", "meta", "distribuidor_pos"],
+  (r) => `restaurantes.onboarding.responsable.${r}` as const,
+  restaurantesOnboarding,
+);
+export const ESTADO_LABEL: Readonly<Record<OnboardingEstado, string>> = etiquetasTraducidas<OnboardingEstado>(
+  ["hecho", "parcial", "pendiente", "externo"],
+  (e) => `restaurantes.onboarding.estado.${e}` as const,
+  restaurantesOnboarding,
+);
 
-export const ESTADO_LABEL: Record<OnboardingEstado, string> = { hecho: "Listo", parcial: "Parcial", pendiente: "Pendiente", externo: "Depende de un tercero" };
 
 export async function fetchOnboarding(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string): Promise<OnboardingChecklist> {
   const body = await fetchJson<OnboardingChecklist>(fetchImpl, `${apiBaseUrl}/v1/restaurantes/${propertyId}/admin/onboarding`, token);

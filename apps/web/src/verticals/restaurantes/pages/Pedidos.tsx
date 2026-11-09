@@ -12,7 +12,6 @@ import { useEffect, useRef, useState } from "react";
 import { Package, Truck, CalendarClock } from "lucide-react";
 import { EstadoError, PageContainer, RegionCargando, StatusBadge, TicketCocinaDialog, cn, construirTicketCocina, imprimirTicketsCocina, notify, pedidosPorImprimir, useT } from "@atiende/ui";
 import type { Clave, TicketCocina } from "@atiende/ui";
-
 import { restaurantesComun } from "@atiende/ui/i18n/restaurantes/comun";
 import { restaurantesPedidos } from "@atiende/ui/i18n/restaurantes/pedidos";
 import { fetchAvisos, sonidoPedidoNuevoPermitido } from "../lib/avisos-client.ts";

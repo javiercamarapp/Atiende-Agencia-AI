@@ -66,8 +66,7 @@ export function IncidenciaDialogo({
           </p>
         )}
         <FormField label={t("restaurantes.pedidos.incidencia.quePaso")} required error={falta ? t("restaurantes.pedidos.incidencia.falta") : undefined}>
-          <Textarea placeholder={t("restaurantes.pedidos.incidencia.ejemplo")}
- value={nota} onChange={(e) => setNota(e.target.value)} rows={4} />
+          <Textarea placeholder={t("restaurantes.pedidos.incidencia.ejemplo")} value={nota} onChange={(e) => setNota(e.target.value)} rows={4} />
         </FormField>
       </div>
     </FormDialog>

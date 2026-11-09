@@ -262,8 +262,7 @@ function AccionesTicket({ order, impreso, onImprimir, onVistaPrevia, onHistorial
       <Button type="button" size="sm" variant="ghost" className={BOTON_ICONO} aria-label={t("restaurantes.pedidos.fila.vistaPrevia")} title={t("restaurantes.pedidos.fila.vistaPreviaTicket")} onClick={() => onVistaPrevia(order)}>
         <Eye className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
       </Button>
-      <Button type="button" size="sm" variant="ghost" className={BOTON_ICONO} aria-label={t("restaurantes.historial")} title={t("restaurantes.pedidos.fila.historialPedido")}
- onClick={() => onHistorial(order)}>
+      <Button type="button" size="sm" variant="ghost" className={BOTON_ICONO} aria-label={t("restaurantes.historial")} title={t("restaurantes.pedidos.fila.historialPedido")} onClick={() => onHistorial(order)}>
         <History className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
       </Button>
     </span>

@@ -1,0 +1,32 @@
+import type { Traduccion } from "../../../tipos.ts";
+import type { restaurantesOnboarding } from "../../restaurantes/onboarding.ts";
+
+export const restaurantesOnboardingEn: Traduccion<typeof restaurantesOnboarding> = {
+  "restaurantes.onboarding.responsable.plataforma": "Platform",
+  "restaurantes.onboarding.responsable.dueno": "Owner",
+  "restaurantes.onboarding.responsable.meta": "Meta (WhatsApp Business)",
+  "restaurantes.onboarding.responsable.distribuidor_pos": "POS distributor",
+  "restaurantes.onboarding.estado.hecho": "Done",
+  "restaurantes.onboarding.estado.parcial": "Partial",
+  "restaurantes.onboarding.estado.pendiente": "Pending",
+  "restaurantes.onboarding.estado.externo": "Depends on a third party",
+  "restaurantes.onboarding.error.cargar": "Couldn't load the checklist.",
+  "restaurantes.onboarding.titulo": "Getting started",
+  "restaurantes.onboarding.actualizar": "Refresh",
+  "restaurantes.onboarding.revisando": "Checking your setup…",
+  "restaurantes.onboarding.listo": "Ready to operate",
+  "restaurantes.onboarding.faltan": "Required items missing",
+  "restaurantes.onboarding.irPanel": "Go to the dashboard anyway",
+  "restaurantes.onboarding.puntosListos": "{hechos} of {total} items done",
+  "restaurantes.onboarding.obligatoriosPendientes": " · {n} required item(s) pending.",
+  "restaurantes.onboarding.punto": ".",
+  "restaurantes.onboarding.calculo": " Status is calculated from your business's real data.",
+  "restaurantes.onboarding.operaConPedidos": " Your business is already taking orders: this doesn't block the dashboard.",
+  "restaurantes.onboarding.obligatorio": "(required)",
+  "restaurantes.onboarding.faltaEn": "Missing in: {lista}",
+  "restaurantes.onboarding.loCierra": "Owner of this step: {responsable}",
+  "restaurantes.onboarding.irPantalla": "Go to screen",
+  "restaurantes.onboarding.puerta.titulo": "Required setup items are missing",
+  "restaurantes.onboarding.puerta.ver": "View getting started",
+  "restaurantes.onboarding.puerta.pendientes": "{n} required item(s) pending before you can operate with peace of mind.",
+};

@@ -49,6 +49,13 @@ const variables = (m: Mensaje | undefined): string[] => [...new Set(textos(m).fl
 const IGUALES_PERMITIDOS = new Set<string>([
   "Español (ES)",
   "English (EN)",
+  // Zonas horarias: nombre propio de la ciudad + su id IANA.
+  "Tijuana (America/Tijuana)",
+  "Chihuahua (America/Chihuahua)",
+  "Hermosillo (America/Hermosillo)",
+  "Meta (WhatsApp Business)",
+
+
   // Siglas y nombres propios que se dicen igual en ingles.
   "CFO",
   "CFDI",
