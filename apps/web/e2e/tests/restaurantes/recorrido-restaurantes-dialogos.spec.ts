@@ -103,7 +103,7 @@ test.describe("restaurantes: dialogos, Cancelar y Escape nunca ejecutan @recorri
 
   test("Copiloto > Borrar chat: Cancelar y Escape no borran; confirmar hace un DELETE", async ({ page, mock, vigilante }) => {
     await ir(page, "/copiloto");
-    await page.getByRole("button", { name: "¿Cuánto vendí esta semana?" }).click();
+    await page.getByRole("button", { name: "¿Cuánto vendí por día en los últimos 7 días?" }).click();
     await expect(page.getByText("En los últimos 7 días vendiste")).toBeVisible();
     await page.getByRole("button", { name: "Historial de chats" }).click();
     const panel = page.getByRole("dialog", { name: "Historial de chats" });

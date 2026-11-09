@@ -126,6 +126,13 @@ export const INTEGRATIONS: readonly IntegrationDefinition[] = [
       "Cifrado AES-256-GCM en reposo de la dirección exacta, el código de acceso y las indicaciones de cada unidad (routes/verticals/rentas/acceso-huesped.ts, migración rentas 028). Opcional para arrancar: sin RENTAS_ACCESS_KEY, leer o guardar instrucciones responde 503 explícito 'no disponible: falta RENTAS_ACCESS_KEY' (nunca texto plano) y la liberación al huésped no entrega nada y queda como error del cron. Perder la llave vuelve ilegibles las instrucciones ya cifradas.",
     variables: ["RENTAS_ACCESS_KEY"],
   },
+  {
+    id: "whatsapp-credenciales-por-organizacion",
+    nombre: "WhatsApp — credenciales de Meta por organización (llave de cifrado)",
+    habilita:
+      "Varias apps de Meta a la vez (migración 0090): token de usuario de sistema y secreto de app de cada organización cifrados con AES-256-GCM en reposo; el envío elige el token por el número remitente y el webhook verifica la firma contra la app correcta (whatsapp-credenciales/, docs/WHATSAPP-CREDENCIALES-POR-ORGANIZACION.md). Opcional: sin WHATSAPP_CREDENTIALS_KEY todo sigue con WHATSAPP_ACCESS_TOKEN/WHATSAPP_APP_SECRET de plataforma y la pantalla del superadmin responde 'no disponible'. Perder la llave vuelve ilegibles las credenciales guardadas (se vuelven a capturar).",
+    variables: ["WHATSAPP_CREDENTIALS_KEY"],
+  },
 
   // ---- Google ----
   {
@@ -357,6 +364,8 @@ export const OPERATIONAL_ENV_VARS: readonly string[] = [
   "HOTELES_IDENTITY_KEY_VERSION",
   // Rn-29 -- version de la llave del cifrado del acceso de rentas (default 1): metadato por fila para la rotacion futura.
   "RENTAS_ACCESS_KEY_VERSION",
+  // Credenciales de Meta por organizacion (0090) -- version de la llave (default 1), escrita en cada sobre para la rotacion futura.
+  "WHATSAPP_CREDENTIALS_KEY_VERSION",
   "OPENROUTER_COUNTRY_OF_RESIDENCE",
   // Gateway LLM: modelos por rol (JSON); OPENROUTER_ZDR ya no apaga nada (ZDR obligatorio en todas las rutas). Ver docs/LLM-GATEWAY.md.
   "LLM_MODELS_JSON",
