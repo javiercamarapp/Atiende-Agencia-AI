@@ -27,6 +27,9 @@ import {
   FolioCerradoError,
   FolioCierreSaldoError,
   tryEnqueueGuestEmail,
+  pesosACentavos,
+  MontoInvalidoError,
+  type Centavos,
   type ChargeConcept,
   type ChargeRecord,
   type PaymentRecord,
@@ -492,6 +495,16 @@ export function hotelesFoliosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const folioId = c.req.param("folioId");
     const raw = await readJsonCapped<PaymentBody>(c.req.raw, 4 * 1024);
     const monto = requirePositiveNumber(raw.monto, "monto");
+    // `monto` llega en PESOS (2 decimales, lo mismo que guarda hoteles.payment.amount). Se
+    // convierte a centavos aquí, una sola vez y validado: un tercer decimal es un 400, nunca un
+    // redondeo silencioso entre lo cobrado y lo registrado.
+    let montoCentavos: Centavos;
+    try {
+      montoCentavos = pesosACentavos(monto);
+    } catch (err) {
+      if (err instanceof MontoInvalidoError) throw Errors.validation("monto: se esperaban pesos con máximo 2 decimales.");
+      throw err;
+    }
     if (raw.metodo !== "efectivo" && raw.metodo !== "transferencia" && raw.metodo !== "tarjeta") {
       throw Errors.validation("metodo: se esperaba efectivo|transferencia|tarjeta.");
     }
@@ -536,7 +549,7 @@ export function hotelesFoliosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
           if (lockedStatus === null) throw Errors.notFound("Folio no encontrado.");
           if (lockedStatus !== "abierto") throw Errors.conflict("El folio está cerrado: no admite nuevos pagos.");
           const paymentResult = await deps.hotelesPaymentsPort.charge({
-            amount: monto,
+            amountCentavos: montoCentavos,
             currency: "MXN",
             paymentMethodToken: tokenPago!,
             idempotencyKey: `${organizationId}:${folioId}:${idempotencyKey}`,
@@ -547,9 +560,17 @@ export function hotelesFoliosRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
         }
 
         const created = await repo.insertPayment({ organizationId, propertyId, folioId, amount: monto, method: metodo, status, externalRef, tokenRef });
-        return { status: 201, body: { id: created.id, monto, metodo, estado: status } };
+        // Un PaymentIntent que quedó en requires_action (3DS) o processing NO es dinero cobrado: se
+        // registra como 'pendiente' (fuera del saldo, del corte nocturno y del complemento de pago,
+        // que solo cuentan 'capturado') y se responde 202, no 201, para que recepción no lo trate
+        // como pagado. `requiereAccion` + `referenciaExterna` dicen qué cobro hay que confirmar.
+        const pendiente = status === "pendiente";
+        return {
+          status: pendiente ? 202 : 201,
+          body: { id: created.id, monto, metodo, estado: status, requiereAccion: pendiente, referenciaExterna: metodo === "tarjeta" ? externalRef : referenciaExterna },
+        };
       });
-      return c.json(result.body as object, result.status as 201);
+      return c.json(result.body as object, result.status as 201 | 202);
     } catch (err) {
       if (err instanceof IdempotencyConflictError) throw Errors.idempotencyConflict();
       throw err;

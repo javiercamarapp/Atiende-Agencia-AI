@@ -69,7 +69,8 @@ Vercel/Supabase, todos declaran `permissions: contents: read` (con las dos excep
 
 - `codeql.yml` — CodeQL (`javascript-typescript`, `build-mode: none`, suite `security-extended`) en cada PR, en
   cada push a `main` y los lunes 09:17 UTC. El job de análisis agrega `security-events: write` (necesario para
-  subir resultados); en un PR desde un fork el token es de solo lectura, el análisis corre y la subida se omite.
+  subir resultados) y `actions: read` (la acción lee la corrida en curso al subir el SARIF; sin él falla con
+  "Resource not accessible by integration"); en un PR desde un fork el token es de solo lectura, el análisis corre y la subida se omite.
   No activar a la vez el "default setup" de code scanning desde la UI (hoy está sin configurar).
 - `clock-guard.yml` — guard anti-bombas de tiempo: `npm run test:clock-guard` (config
   `vitest.clock-guard.config.ts`, 19 specs con relojes simulados: `hoyFechaNegocio`, `servidor-hoy` de
