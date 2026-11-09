@@ -183,6 +183,19 @@ describe("antetitulo = grupo del menu, con texto real", () => {
     expect(qa("main p").filter((p) => p.textContent === "")).toEqual([]);
   });
 
+  // R2 #6: los items de la seccion raiz (CFO, Agenda, Panel...) no tienen categoria; antes heredaban el titulo oculto «Resumen».
+  it("un item de la seccion raiz que no es el Resumen no hereda «Resumen» como antetitulo", () => {
+    rendered = shell("/v/demo/copiloto/hilo", <PageHeader titulo="Copiloto" />);
+    expect(q('[data-testid="eyebrow-pagina"]')).toBeNull();
+    expect(q('[data-testid="encabezado-eyebrow-derivado"]')).toBeNull();
+    expect(rendered.container.textContent).not.toMatch(/^Resumen$/m);
+  });
+
+  it("el antetitulo es la categoria del item activo", () => {
+    rendered = shell("/v/demo/staff", <PageHeader titulo="Staff" />);
+    expect(q('[data-testid="encabezado-eyebrow-derivado"]')!.textContent).toBe("Configuración");
+  });
+
   it("ningun antetitulo del encabezado queda vacio", () => {
     rendered = shell("/v/demo/staff", <PageHeader titulo="Staff" />);
     for (const p of qa(".ds3-encabezado-eyebrow, .ds3-eyebrow-pagina")) expect(p.textContent!.trim()).not.toBe("");
