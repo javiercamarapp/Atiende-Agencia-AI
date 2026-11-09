@@ -11,7 +11,8 @@
 // manual `x-atiende-internal-secret` que ya usaban los tests/invocaciones
 // manuales — mismo secreto (`INTERNAL_SECRET`), dos formas de mandarlo.
 import { Hono } from "hono";
-import { runConfirmacionCitaCore } from "@atiende/domain-citas";
+import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
+import { runConfirmacionCitaCore, zonedDateStr } from "@atiende/domain-citas";
 import type { CitasRepository, EventoRecordatorioFallido } from "@atiende/domain-citas";
 import { emitirNotificacion } from "@atiende/db";
 import { Errors } from "../../../errors.ts";
@@ -76,12 +77,14 @@ export function citasRemindersRoutes(deps: AppDeps): Hono {
       // Aviso in-app (campana): una por organizacion por dia con el CONTEO de recordatorios de 24 h que no salieron (error interno o sin
       // canal), a gerencia/duenos (sin rol de vertical extra). Una transaccion por organizacion; una emision fallida (o la base sin
       // 0039) nunca cambia el barrido, la respuesta ni el latido. El conteo no lleva datos del cliente ni de la cita.
-      const hoy = new Date().toISOString().slice(0, 10);
+      // "Por dia" = dia LOCAL de la organizacion (no el dia UTC: a las 18:00 de Merida cambia de dia UTC y el mismo aviso se repetiria).
+      const ahora = new Date();
+      const hoyDe = (organizationId: string): string => zonedDateStr(ahora, resolverZonaHorariaNegocio(organizations.find((o) => o.id === organizationId)?.timezone));
       const sinEnviarPorOrg = new Map<string, number>();
       for (const e of notificationEvents) sinEnviarPorOrg.set(e.organizationId, (sinEnviarPorOrg.get(e.organizationId) ?? 0) + 1);
       for (const [organizationId, cantidad] of sinEnviarPorOrg) {
         await deps.engine
-          .withAppSession({ userId: null }, (db) => emitirNotificacion(db, { evento: "citas.recordatorio.fallido", organizationId, clave: `${organizationId}:${hoy}`, parametros: { cantidad } }))
+          .withAppSession({ userId: null }, (db) => emitirNotificacion(db, { evento: "citas.recordatorio.fallido", organizationId, clave: `${organizationId}:${hoyDe(organizationId)}`, parametros: { cantidad } }))
           .catch(() => undefined);
       }
 
@@ -89,13 +92,13 @@ export function citasRemindersRoutes(deps: AppDeps): Hono {
       // la plantilla aprobada (el correo cubre cuando el cliente dejo uno). Mismo criterio best-effort que el aviso de arriba; sin datos del cliente.
       for (const [organizationId, cantidad] of sinPlantillaPorOrg) {
         await deps.engine
-          .withAppSession({ userId: null }, (db) => emitirNotificacion(db, { evento: "citas.whatsapp.sin_plantilla", organizationId, clave: `${organizationId}:appointment.reminder_24h:${hoy}`, parametros: { cantidad } }))
+          .withAppSession({ userId: null }, (db) => emitirNotificacion(db, { evento: "citas.whatsapp.sin_plantilla", organizationId, clave: `${organizationId}:appointment.reminder_24h:${hoyDe(organizationId)}`, parametros: { cantidad } }))
           .catch(() => undefined);
       }
 
       // C-16 -- avisos in-app del ciclo (por confirmar, recordatorios agotados, escalaciones sin seguimiento): una transaccion por organizacion,
       // best-effort (ver avisos-ciclo.ts); no altera la respuesta ni el latido.
-      await emitirAvisosDeCitas(deps, organizations.map((o) => o.id));
+      await emitirAvisosDeCitas(deps, organizations, ahora);
 
       const response = c.json({ ok: failures.length === 0, tenants_checked: organizations.length, processed, sent, sent_email: sentEmail, sin_plantilla: [...sinPlantillaPorOrg.values()].reduce((a, b) => a + b, 0), notification_events: notificationEvents, failures });
       if (failures.length > 0) {

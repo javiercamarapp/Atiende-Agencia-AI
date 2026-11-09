@@ -9,9 +9,11 @@
 //   * Nunca cambia la respuesta ni el latido del cron: cualquier fallo se traga (los avisos son best-effort).
 //   * Base sin migrar: `systemAvisosResumen` (029) devuelve null dentro de un SAVEPOINT y no se emite nada; `emitirNotificacion` (0039) devuelve
 //     "no_disponible" por el mismo camino. Ninguno aborta la transaccion.
-//   * Dedupe: "por confirmar" y "escalaciones sin seguimiento" una por dia; "recordatorios agotados" usa como clave el instante del ULTIMO
+//   * Dedupe: "por confirmar" y "escalaciones sin seguimiento" una por dia LOCAL del negocio; "recordatorios agotados" usa como clave el instante del ULTIMO
 //     agotado, asi que solo vuelve a avisar cuando aparece uno nuevo (no repite el mismo conteo todos los dias).
+import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import { emitirNotificacion } from "@atiende/db";
+import { zonedDateStr } from "@atiende/domain-citas";
 import type { AppDeps } from "../../../deps.ts";
 
 export interface ResumenAvisosCiclo {
@@ -19,10 +21,15 @@ export interface ResumenAvisosCiclo {
   readonly emitidas: number;
 }
 
-export async function emitirAvisosDeCitas(deps: Pick<AppDeps, "engine" | "citasRepo">, organizationIds: readonly string[], ahora: Date = new Date()): Promise<ResumenAvisosCiclo> {
-  const hoy = ahora.toISOString().slice(0, 10);
+/** Una organizacion y su zona horaria (la que `listActiveOrganizations` ya trae). Un id suelto usa la zona por omision de la plataforma. */
+export type OrganizacionDeAvisos = string | { readonly id: string; readonly timezone?: string | null };
+
+export async function emitirAvisosDeCitas(deps: Pick<AppDeps, "engine" | "citasRepo">, organizaciones: readonly OrganizacionDeAvisos[], ahora: Date = new Date()): Promise<ResumenAvisosCiclo> {
   let emitidas = 0;
-  for (const organizationId of organizationIds) {
+  for (const org of organizaciones) {
+    const organizationId = typeof org === "string" ? org : org.id;
+    // "Una vez por dia" es el dia LOCAL del negocio: con el dia UTC el mismo aviso se repetia a las 18:00 de Merida (medianoche UTC).
+    const hoy = zonedDateStr(ahora, resolverZonaHorariaNegocio(typeof org === "string" ? null : org.timezone));
     try {
       emitidas += await deps.engine.withAppSession({ userId: null }, async (db) => {
         const resumen = await deps.citasRepo(db).systemAvisosResumen(organizationId);
@@ -46,5 +53,5 @@ export async function emitirAvisosDeCitas(deps: Pick<AppDeps, "engine" | "citasR
       // best-effort: una organizacion con un error real no frena a las demas ni toca la respuesta del cron.
     }
   }
-  return { organizaciones: organizationIds.length, emitidas };
+  return { organizaciones: organizaciones.length, emitidas };
 }
