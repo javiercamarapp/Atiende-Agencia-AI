@@ -691,7 +691,7 @@ export interface AppDeps {
    *  superadmin y organizacion con la sesion del caller; el webhook de cobro con `withAppSession({ userId: null })`.
    *  OPCIONAL: ausente -> las rutas responden `disponible: false`/503 (ver routes/cobro-planes.ts). */
   readonly cobroPlanesRepo?: (db: TenantDbSession) => CobroPlanesRepository;
-  /** Stripe por plan, uso reportado, cobranza y cola de CFDI (0083). Fabrica por sesion; ausente -> rutas en 503/no disponible. */
+  /** Stripe por plan, uso reportado, cobranza y cola de CFDI (0106). Fabrica por sesion; ausente -> rutas en 503/no disponible. */
   readonly cobroStripeRepo?: (db: TenantDbSession) => CobroStripeRepository;
   /** Cliente HTTP de Stripe para la suscripcion por plan; null/ausente sin STRIPE_SECRET_KEY (503 honesto). */
   readonly stripePlanClient?: StripePlanClient | null;

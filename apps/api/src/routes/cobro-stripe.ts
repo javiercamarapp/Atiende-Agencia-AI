@@ -1,4 +1,4 @@
-// Stripe ligado al plan (0083):
+// Stripe ligado al plan (0106):
 //   PUT  /superadmin/planes/:id/stripe-precios/:componente   (step-up) lista permitida; el precio se valida contra Stripe
 //   POST /billing/checkout-plan                              owner/admin o superadmin: Checkout con los precios del plan, IVA y
 //                                                            periodo anclado al dia 1 (autoservicio con tarjeta)
@@ -18,7 +18,7 @@ import { readJsonCapped, requestActor } from "../http-security.ts";
 import { traducirErrorSeguridad } from "./superadmin-mfa.ts";
 import type { AppDeps } from "../deps.ts";
 
-const NO_DISPONIBLE = "El cobro por plan con Stripe todavía no está disponible en este despliegue (falta la migración 0083_cobro_stripe_cobranza_cfdi).";
+const NO_DISPONIBLE = "El cobro por plan con Stripe todavía no está disponible en este despliegue (falta la migración 0106_cobro_stripe_cobranza_cfdi).";
 const SIN_STRIPE = "Stripe no está configurado en este entorno (falta STRIPE_SECRET_KEY).";
 const SIN_IVA = "Falta STRIPE_IVA_TAX_RATE_ID (la tasa de IVA 16 % de Stripe): sin ella no se cobra, para no emitir facturas sin IVA.";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;

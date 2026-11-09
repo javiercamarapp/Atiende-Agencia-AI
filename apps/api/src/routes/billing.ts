@@ -152,7 +152,7 @@ const HANDLED_EVENT_TYPES = new Set([
   "customer.subscription.created",
   "customer.subscription.updated",
   "customer.subscription.deleted",
-  // Cobro por plan (0083): cobranza de pagos fallidos, CFDI de la factura pagada y reporte final del uso medido.
+  // Cobro por plan (0106): cobranza de pagos fallidos, CFDI de la factura pagada y reporte final del uso medido.
   "invoice.paid",
   "invoice.payment_failed",
   "invoice.created",
@@ -325,7 +325,7 @@ export async function crearCheckoutDeOrganizacion(deps: AppDeps, callerId: strin
     throw err;
   }
 
-  // Lista permitida (0083): con la migracion aplicada, el `priceId` debe ser uno de los precios fijos del plan de la
+  // Lista permitida (0106): con la migracion aplicada, el `priceId` debe ser uno de los precios fijos del plan de la
   // organizacion (cuota fija o sucursal). Antes llegaba como texto libre. Sin la migracion se conserva el camino anterior.
   if (deps.cobroStripeRepo) {
     const repo = deps.cobroStripeRepo;

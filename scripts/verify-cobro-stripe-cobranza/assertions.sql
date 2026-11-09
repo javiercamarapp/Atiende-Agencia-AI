@@ -1,4 +1,4 @@
--- Stripe por plan, uso reportado, cobranza y cola de CFDI (packages/db/migrations/0083) contra Postgres REAL.
+-- Stripe por plan, uso reportado, cobranza y cola de CFDI (packages/db/migrations/0106) contra Postgres REAL.
 -- Alias `should_fail` = debe terminar en ERROR; `_deberia_ser_N` = valor esperado. Datos ficticios.
 -- Sujetos: c401 owner de A, c402 owner de B, c403 superadmin. Organizaciones A y B (restaurantes).
 \set ON_ERROR_STOP off

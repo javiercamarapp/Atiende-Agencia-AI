@@ -1,5 +1,5 @@
 // Repositorio de Stripe por plan, uso reportado, cobranza y cola de CFDI -- puerto contra las funciones `security definer` de
-// packages/db/migrations/0083_cobro_stripe_cobranza_cfdi.sql. `callerId = null` = sesion de SISTEMA (webhook y cron).
+// packages/db/migrations/0106_cobro_stripe_cobranza_cfdi.sql. `callerId = null` = sesion de SISTEMA (webhook y cron).
 // Base sin migrar (42883/42P01/42703): `availability: "not_migrated"` bajo SAVEPOINT, nunca 500 ni exito simulado.
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { isMigrationPendingError } from "./sql-errors.ts";

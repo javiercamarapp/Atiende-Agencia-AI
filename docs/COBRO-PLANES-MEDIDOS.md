@@ -79,7 +79,7 @@ Las instrucciones exactas están en la cabecera de cada migración (drop de func
 
 Orden de despliegue: código → `20240101000912_0104_*` → `20240101000913_204_*` → `20240101000914_0105_*`. Rollback: cabecera de cada migración.
 
-## Stripe, cobranza y CFDI (0083)
+## Stripe, cobranza y CFDI (0106)
 
 - **Lista permitida de precios** (`core.plan_stripe_precio`): por plan y componente (`cuota_fija`, `sucursal`, `alta`, `minuto_voz_excedente`, `conversacion_wa_excedente`). `PUT /superadmin/planes/:id/stripe-precios/:componente` (step-up) valida el precio contra Stripe: activo, en MXN, recurrente y mayor que $0. El alta es de pago único y los excedentes son precios **medidos** ligados a un meter. `POST /billing/checkout` (el de antes) ya solo acepta precios de esta lista.
 - **Autoservicio con tarjeta**: `POST /billing/checkout-plan`. La sucursal se cobra por cantidad, los medidos van sin cantidad y el alta entra solo en la primera factura. El IVA usa `STRIPE_IVA_TAX_RATE_ID`; sin esa variable, responde 503. El periodo se ancla al día 1 en la zona del negocio, así que el periodo de Stripe coincide con el mes que se mide.
@@ -99,4 +99,4 @@ Configuración en Stripe (la hace una persona; no la toca ninguna migración):
 5. Habilitar la transferencia bancaria (SPEI) en la cuenta.
 6. Suscribir el webhook a `invoice.paid`, `invoice.payment_failed` e `invoice.created`.
 
-Orden de despliegue: código, después `20240101000705_0083_*` y después la configuración de Stripe de arriba.
+Orden de despliegue: código, después `20240101000915_0106_*` y después la configuración de Stripe de arriba.

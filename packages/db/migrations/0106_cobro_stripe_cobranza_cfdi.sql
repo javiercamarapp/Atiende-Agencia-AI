@@ -1,5 +1,5 @@
--- 0083: Stripe ligado al plan (lista permitida de precios), reporte de uso medido, cobranza de pagos fallidos y gancho de
--- CFDI de la suscripcion. Requiere 0080-0082.
+-- 0106: Stripe ligado al plan (lista permitida de precios), reporte de uso medido, cobranza de pagos fallidos y gancho de
+-- CFDI de la suscripcion. Requiere 0103-0105.
 --
 -- A) core.plan_stripe_precio: LISTA PERMITIDA de precios de Stripe por plan y componente. El checkout y la suscripcion por
 --    SPEI solo usan precios de aqui (antes `priceId` llegaba como texto libre). Componentes:
