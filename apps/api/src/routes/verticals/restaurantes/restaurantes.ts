@@ -36,6 +36,7 @@ import { restaurantesResumenConfigRoutes } from "./resumen-config.ts";
 import { restaurantesAdminAgregadosRoutes } from "./admin-agregados.ts";
 import { restaurantesAjustesAgenteRoutes, restaurantesAjustesLlamadaInternoRoutes } from "./ajustes-agente.ts";
 import { restaurantesVozAdminRoutes } from "./voz-admin.ts";
+import { restaurantesVozClonacionRoutes } from "./voz-clonacion.ts";
 import { restaurantesAgentePreviewRoutes } from "./agente-preview.ts";
 import { restaurantesVozInternoRoutes } from "./voz-interno.ts";
 import { restaurantesVozLlamadaRoutes } from "./voz-llamada.ts";
@@ -108,6 +109,8 @@ export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   // Voz propia (migración 025): config por sucursal, preview, conversaciones (panel) y registrador
   // de sistema del servicio de voz — ver el comentario de cabecera de voz-admin.ts/voz-interno.ts.
   app.route("/", restaurantesVozAdminRoutes(deps));
+  // Clonacion de la voz telefonica (ElevenLabs IVC, migracion 103): la llave vive solo en la API; sin ella 503 honesto.
+  app.route("/", restaurantesVozClonacionRoutes(deps));
   // «Probar agente» del panel: chat de prueba SIN efectos (modo preview del registro de tools), sin persistir la conversacion.
   app.route("/", restaurantesAgentePreviewRoutes(deps));
   app.route("/", restaurantesVozInternoRoutes(deps));

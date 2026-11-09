@@ -226,3 +226,43 @@ export async function fetchConversacionesVoz(fetchImpl: typeof fetch, apiBaseUrl
 export async function fetchConversacionVoz(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, conversationId: string): Promise<ConversacionVoz> {
   return conversacionDesdeWire(await pedir<ConversacionWire>(fetchImpl, `${base(apiBaseUrl, propertyId)}/conversaciones/${encodeURIComponent(conversationId)}`, token, { method: "GET" }));
 }
+
+/** Topes de la clonación (los mismos que valida la API en `POST .../admin/voz/clonar`). */
+export const CLONAR_MUESTRAS_MIN = 2;
+export const CLONAR_MUESTRAS_MAX = 5;
+export const CLONAR_BYTES_MAX = 4 * 1024 * 1024;
+
+export interface ClonarVozInput {
+  readonly nombre: string;
+  readonly muestras: readonly Blob[];
+  readonly quitarRuido: boolean;
+  readonly consentimiento: boolean;
+}
+
+/**
+ * Sube las muestras a NUESTRA API (multipart); la API llama al proveedor con su llave (nunca llega al navegador) y guarda la voz
+ * clonada como voz telefónica de la sucursal. Devuelve el id guardado. 404/503 = `VozNoDisponibleError` (sin llave o base sin la 103).
+ */
+export async function clonarVoz(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, input: ClonarVozInput): Promise<{ readonly vozTelefono: string }> {
+  const url = `${base(apiBaseUrl, propertyId)}/clonar`;
+  const armar = () => {
+    const form = new FormData();
+    form.append("nombre", input.nombre);
+    form.append("quitarRuido", input.quitarRuido ? "true" : "false");
+    form.append("consentimiento", input.consentimiento ? "true" : "false");
+    input.muestras.forEach((m, i) => form.append("muestras", m, `muestra-${i + 1}.${(m.type.split("/")[1] ?? "webm").split(";")[0]}`));
+    return form;
+  };
+  // Sin content-type a mano: el navegador pone el boundary del multipart.
+  const res = await withAuthRefresh(fetchImpl, apiBaseUrlFromRequestUrl(url), defaultAuthCtx(), token, (t) => fetchImpl(url, { method: "POST", headers: { authorization: `Bearer ${t}` }, body: armar() }));
+  if (esNoDisponible(res.status)) {
+    // El 503 de la API dice qué falta («requiere ELEVENLABS_API_KEY…», «requiere la migración 103»): se muestra tal cual.
+    const err = new VozNoDisponibleError(res.status);
+    err.message = await readWriteErrorMessage(res, err.message);
+    throw err;
+  }
+  if (!res.ok) throw new RestaurantesAdminError(await readWriteErrorMessage(res, `No se pudo clonar la voz (${res.status}).`));
+  const w = (await res.json()) as { vozTelefono?: unknown };
+  if (typeof w.vozTelefono !== "string") throw new RestaurantesAdminError("La API no devolvió la voz clonada.");
+  return { vozTelefono: w.vozTelefono };
+}

@@ -12,7 +12,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { KeyboardEvent } from "react";
 import { BookOpen, CheckCircle2, Circle, PlayCircle, Wrench } from "lucide-react";
-import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, EstadoVacio, PageContainer, Selector, Textarea, VistaPreviaLlamada, StatusBadge, useAccionesBarra, useMarcoShell } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, EstadoVacio, PageContainer, Selector, Textarea, VistaPreviaLlamada, StatusBadge, useAccionesBarra, useMarcoShell, useT } from "@atiende/ui";
 import { VozNoDisponibleError, crearSesionPreviewVoz, ejecutarHerramientaPreviewVoz, fetchConversacionesVoz, fetchConversacionVoz, fetchSaludVoz, fetchVozConfig, updateVozConfig } from "../lib/voz-client.ts";
 import { pedidoSimuladoDe } from "../lib/voz-client.ts";
 import type { ConversacionVoz, PedidoSimulado, VozConfig, VozConfigInput } from "../lib/voz-client.ts";
@@ -31,6 +31,8 @@ import { ResumenKpisVoz } from "../voz/ResumenKpisVoz.tsx";
 import { PestanaIndicadores } from "../voz/PestanaIndicadores.tsx";
 import { GloboLlamada } from "../voz/GloboLlamada.tsx";
 import { SelectorVoz } from "../voz/SelectorVoz.tsx";
+import { TarjetaVozTelefono, esVozClonada } from "../voz/TarjetaVozTelefono.tsx";
+import { vozClon } from "@atiende/ui/i18n/vozClon";
 import { ConocimientoNegocio } from "../components/ConocimientoNegocio.tsx";
 import type { MuestraAudio } from "../voz/SelectorVoz.tsx";
 import { useSesionVoz } from "../../../lib/voz/useSesionVoz.ts";
@@ -90,6 +92,7 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, role, nombreSucur
   const [vistaPrevia, setVistaPrevia] = useState(false);
   const [version, setVersion] = useState(0);
   const marco = useMarcoShell();
+  const t = useT(vozClon);
   // «Vista previa» vive en la barra superior de la página (escritorio), como en el original; en móvil (sin esa barra) queda el botón del encabezado de la página.
   const botonVistaPrevia = useMemo(
     () => (
@@ -240,8 +243,21 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, role, nombreSucur
                           {v.nombre} — {v.estilo}
                         </option>
                       ))}
+                      {esVozClonada(borrador.vozTelefono) ? <option value={borrador.vozTelefono}>{t("vozClon.opcionClonada")}</option> : null}
                     </Selector>
                     <p className="mt-1 text-xs text-muted-foreground">Es la voz con la que el agente contesta el teléfono. La vista previa del panel usa la voz de arriba.</p>
+                    <TarjetaVozTelefono
+                      vozTelefono={borrador.vozTelefono ?? null}
+                      puedeClonar={role === "owner" || role === "admin"}
+                      apiBaseUrl={apiBaseUrl}
+                      token={token}
+                      propertyId={propertyId}
+                      onClonada={(id) => {
+                        // La API ya la guardó: se refleja en lo guardado y en el borrador (no queda como cambio pendiente).
+                        setGuardado((g) => ({ ...g, vozTelefono: id }));
+                        setBorrador((b) => ({ ...b, vozTelefono: id }));
+                      }}
+                    />
                   </>
                 ) : (
                   <p role="note" data-testid="aviso-voz-telefono" className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">

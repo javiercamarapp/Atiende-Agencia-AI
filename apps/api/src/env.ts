@@ -179,6 +179,9 @@ export interface ApiEnv {
   /** `VOZ_CASCADA_V2_HABILITADA`: interruptor de la cascada v2 (apagado por omision); aqui solo alimenta el estado honesto del panel. */
   readonly cascadaV2Habilitada?: boolean;
   readonly voicePreviewTokenSecret?: string | null;
+  /** `ELEVENLABS_API_KEY`: en la API solo la usa la clonacion de la voz telefonica (`POST .../admin/voz/clonar`). Opcional: sin ella la ruta
+   *  responde 503 "no disponible aun". Debe ser la MISMA cuenta que usa el worker de voz (la voz clonada vive en esa cuenta). Nunca se manda al navegador. */
+  readonly elevenLabsApiKey?: string | null;
   readonly llmProviders: {
     /** PROVEEDOR PRIMARIO Y UNICO POR DEFECTO: OpenRouter (`providers/openrouter.ts`). Basta la llave:
      * los modelos por rol salen de la tabla versionada de `production/llm-models.ts` (defaults
@@ -275,6 +278,7 @@ export function loadApiEnv(): ApiEnv {
     deepgramApiKey: process.env.DEEPGRAM_API_KEY || null,
     cascadaV2Habilitada: ["1", "true", "si", "sí"].includes((process.env.VOZ_CASCADA_V2_HABILITADA ?? "").trim().toLowerCase()),
     voicePreviewTokenSecret: process.env.VOICE_PREVIEW_TOKEN_SECRET || null,
+    elevenLabsApiKey: process.env.ELEVENLABS_API_KEY || null,
     llmProviders: {
       openrouter: process.env.OPENROUTER_API_KEY
         ? {

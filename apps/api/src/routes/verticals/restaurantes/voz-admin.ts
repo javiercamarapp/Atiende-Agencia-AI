@@ -3,6 +3,7 @@
 //   GET  .../admin/voz/catalogo                 catálogo estático de las 30 voces + salud del proveedor
 //   GET  .../admin/voz/config                   configuración de voz (vacío honesto si no hay / base sin migrar)
 //   PUT  .../admin/voz/config                   reemplaza la configuración completa
+//   (la clonación de la voz telefónica vive en voz-clonacion.ts: POST .../admin/voz/clonar)
 //   POST .../admin/voz/preview/sesion           emite la sesión de preview (token efímero)
 //   POST .../admin/voz/preview/:sesionId/herramienta   relevo de UNA herramienta del agente en modo preview (sin efectos)
 //   GET  .../admin/voz/conversaciones           listado paginado de conversaciones
@@ -70,12 +71,20 @@ interface ConfigBody {
   readonly vozTelefono?: unknown;
 }
 
-/** `undefined` = el cliente no la manda (se conserva); null = la de la plataforma; texto = una voz del catalogo telefonico. */
-function parseVozTelefono(raw: unknown): string | null | undefined {
+/** `undefined` = el cliente no la manda (se conserva); null = la de la plataforma; texto = una voz del catalogo telefonico o la que ESA
+ * sucursal ya tiene guardada (una voz clonada con `POST .../admin/voz/clonar`). Nunca un id arbitrario: una voz clonada solo entra a la base
+ * por la ruta de clonacion, con el id que devuelve el proveedor. */
+function parseVozTelefono(raw: unknown, guardada: string | null): string | null | undefined {
   if (raw === undefined) return undefined;
   if (raw === null) return null;
-  if (!esVozTelefono(raw)) throw Errors.validation("vozTelefono: debe ser una voz del catálogo telefónico (GET .../admin/voz/catalogo, campo vocesTelefono) o null.");
+  if (typeof raw === "string" && guardada !== null && raw === guardada) return raw;
+  if (!esVozTelefono(raw)) throw Errors.validation("vozTelefono: debe ser una voz del catálogo telefónico (GET .../admin/voz/catalogo, campo vocesTelefono), la voz clonada de esta sucursal o null.");
   return raw;
+}
+
+/** La voz guardada no es del catalogo: es una voz clonada de la sucursal. */
+function esVozClonada(valor: string | null): boolean {
+  return valor !== null && !esVozTelefono(valor);
 }
 
 /** PUT reemplaza la configuración COMPLETA: cada campo es obligatorio para que un cliente
@@ -183,7 +192,7 @@ export function restaurantesVozAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
     const repo = vozRepo(c);
     const lectura = await repo.getConfig(propertyId);
     const telefono = repo.getVozTelefono ? await repo.getVozTelefono(propertyId) : { disponible: false, valor: null };
-    return c.json({ ...serializeConfig(lectura.valor, lectura.disponible), vozTelefono: telefono.valor, vozTelefonoDisponible: telefono.disponible });
+    return c.json({ ...serializeConfig(lectura.valor, lectura.disponible), vozTelefono: telefono.valor, vozTelefonoDisponible: telefono.disponible, vozTelefonoClonada: esVozClonada(telefono.valor) });
   });
 
   app.put(configPath, async (c) => {
@@ -191,8 +200,9 @@ export function restaurantesVozAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
     const { organizationId, propertyId } = await resolverSucursal(c);
     const cuerpo = await readJsonCapped<ConfigBody>(c.req.raw, 32 * 1024);
     const pedida = parseConfig(cuerpo);
-    const vozTelefonoPedida = parseVozTelefono(cuerpo.vozTelefono);
     const repo = vozRepo(c);
+    const telefonoGuardado = cuerpo.vozTelefono !== undefined && repo.getVozTelefono ? (await repo.getVozTelefono(propertyId)).valor : null;
+    const vozTelefonoPedida = parseVozTelefono(cuerpo.vozTelefono, telefonoGuardado);
     const anterior = await repo.getConfig(propertyId);
     // Un cliente anterior a la bandera del saludo (053) no la manda: se conserva lo guardado en vez de pisarla con el valor por omision.
     const nueva: VozConfigEntrada = pedida.mensajeInicialInterrumpible === undefined ? { ...pedida, mensajeInicialInterrumpible: anterior.valor.mensajeInicialInterrumpible !== false } : pedida;
@@ -228,7 +238,7 @@ export function restaurantesVozAdminRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv>
       antes: anterior.disponible && anterior.valor.configurada ? resumenConfig(anterior.valor) : null,
       despues: vozTelefonoPedida === undefined ? resumenConfig(guardada) : JSON.stringify({ ...JSON.parse(resumenConfig(guardada)), vozTelefono: vozTelefonoPedida }),
     });
-    return c.json({ ...serializeConfig(guardada, true), vozTelefono: telefono.valor, vozTelefonoDisponible: telefono.disponible });
+    return c.json({ ...serializeConfig(guardada, true), vozTelefono: telefono.valor, vozTelefonoDisponible: telefono.disponible, vozTelefonoClonada: esVozClonada(telefono.valor) });
   });
 
   app.post(previewPath, async (c) => {
