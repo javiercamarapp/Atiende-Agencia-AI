@@ -18,6 +18,7 @@ import type {
   AcceptStaffInviteInput,
   AcceptStaffInviteResult,
   BillingWebhookEventMark,
+  BillingWebhookTxRepository,
   BillingWebhookEventSummaryRow,
   BillingWebhookLogFilters,
   BillingWebhookLogPage,
@@ -63,7 +64,7 @@ export interface SeedOrganization {
    *  `listAllOrganizationsForSuperadmin` los necesita de verdad. */
   readonly status?: "trial" | "active" | "suspended";
   readonly createdAt?: string;
-  /** `core.organization.diseno` (0060): ausente/null = diseno actual. */
+  /** `core.organization.diseno` (0060; default `ds3` desde 0076). El web ya no lo lee: solo viaja en la sesion. */
   readonly diseno?: string | null;
 }
 
@@ -806,6 +807,27 @@ export class InMemoryCoreRepository implements CoreRepository, CoreStaffReposito
 
   async sealBillingEntityOrder(entityId: string, createdUnix: number): Promise<void> {
     this.billingEntityOrder.set(entityId, createdUnix);
+  }
+
+  /** Emula el ROLLBACK de la transacción real: si `fn` lanza, la marca de visto, el sello de
+   *  orden y el estado de billing vuelven a como estaban antes de empezar. */
+  async withBillingWebhookTransaction<T>(fn: (tx: BillingWebhookTxRepository) => Promise<T>): Promise<T> {
+    const vistos = new Map(this.seenBillingWebhookEventIds);
+    const orden = new Map(this.billingEntityOrder);
+    const billing = new Map(this.organizationBilling);
+    try {
+      return await fn(this);
+    } catch (err) {
+      for (const [destino, copia] of [
+        [this.seenBillingWebhookEventIds, vistos],
+        [this.billingEntityOrder, orden],
+        [this.organizationBilling, billing],
+      ] as const) {
+        (destino as Map<string, unknown>).clear();
+        for (const [k, v] of copia as Map<string, unknown>) (destino as Map<string, unknown>).set(k, v);
+      }
+      throw err;
+    }
   }
 
   // ---- /superadmin/facturacion — ver el contrato completo en

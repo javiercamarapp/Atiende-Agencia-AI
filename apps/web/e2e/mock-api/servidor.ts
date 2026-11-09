@@ -8,13 +8,13 @@
 // Las peticiones sin sesion (login, magic link) caen en el escenario "anon".
 //
 // Canal de control (solo 127.0.0.1): GET /__mock/salud, GET|DELETE /__mock/escenarios/:id/peticiones,
-// POST /__mock/escenarios/:id/config ({ latenciaMs, fallas }), POST /__mock/escenarios/:id/reiniciar.
+// POST /__mock/escenarios/:id/config ({ latenciaMs, fallas, guiaPrimerIngreso }), POST /__mock/escenarios/:id/reiniciar.
 import { createServer } from "node:http";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import { esRespuestaMarcada, fallo } from "./respuestas.ts";
 import { leerToken } from "./tokens.ts";
 import { rutasAuth } from "./fixtures/auth.ts";
-import { agregarNotificacion } from "./fixtures/comun.ts";
+import { agregarNotificacion, GUIA_PRIMER_INGRESO } from "./fixtures/comun.ts";
 import { todasLasRutas } from "./fixtures/indice.ts";
 import type { EstadoEscenario, Falla, RegistroPeticion, Ruta } from "./tipos.ts";
 
@@ -188,8 +188,9 @@ export function iniciarServidor(opciones: OpcionesServidor): Promise<ServidorSim
       lista.push(dato.agregar);
       return enviar(res, 200, { ok: true, total: lista.length }, origen);
     }
-    const cuerpo = ((await leerCuerpo(req)) ?? {}) as { latenciaMs?: number; fallas?: Falla[]; agregarFallas?: Falla[] };
+    const cuerpo = ((await leerCuerpo(req)) ?? {}) as { latenciaMs?: number; fallas?: Falla[]; agregarFallas?: Falla[]; guiaPrimerIngreso?: boolean };
     if (typeof cuerpo.latenciaMs === "number") e.latenciaMs = Math.max(0, cuerpo.latenciaMs);
+    if (typeof cuerpo.guiaPrimerIngreso === "boolean") e.datos.set(GUIA_PRIMER_INGRESO, cuerpo.guiaPrimerIngreso);
     if (Array.isArray(cuerpo.fallas)) e.fallas = cuerpo.fallas.map((f) => ({ ...f, restantes: f.veces ?? 0 }));
     if (Array.isArray(cuerpo.agregarFallas)) e.fallas.push(...cuerpo.agregarFallas.map((f) => ({ ...f, restantes: f.veces ?? 0 })));
     return enviar(res, 200, { ok: true, latenciaMs: e.latenciaMs, fallas: e.fallas.length }, origen);

@@ -49,8 +49,8 @@ export {
 } from "./lib/arranque.js";
 export { CLAVE_IDIOMA, IDIOMAS, IDIOMA_CAMBIO_EVENTO, guardarIdioma, leerIdioma, type Idioma } from "./lib/idioma.js";
 export { ThemeBoot, useTemaGlobal } from "./components/ThemeBoot.js";
-export { aplicarTema, aplicarBanderaDiseno, leerTema, sincronizarDisenoOrganizacion, type Tema } from "./lib/tema.js";
-export { DISENO_DS3, disenoPorDefecto, leerDisenoDs3 } from "./lib/diseno.js";
+export { aplicarTema, aplicarBanderaDiseno, leerTema, type Tema } from "./lib/tema.js";
+export { DISENO_DS3, disenoLegadoActivo, leerDisenoDs3 } from "./lib/diseno.js";
 export { StatCard, TrendStatCard, type StatCardSello, type StatCardVariante } from "./components/StatCard.js";
 export { EstadoVacio, VarianteEstadoVacioProvider } from "./components/EstadoVacio.js";
 export { EstadoError } from "./components/EstadoError.js";

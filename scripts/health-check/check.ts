@@ -53,7 +53,8 @@ async function unIntento(base: string, o: Required<Pick<OpcionesSalud, "timeoutM
   return { ok: true, detalle: `200 ok en ${ms} ms`, ...(typeof cuerpo.crons === "string" ? { crons: cuerpo.crons } : {}) };
 }
 
-function explicarCrons(estado: string): string {
+/** Texto de causa para un valor de `crons` distinto de "ok" (lo reutiliza scripts/smoke-post-deploy). */
+export function explicarCrons(estado: string): string {
   if (estado === "sin_latido") return "crons SIN LATIDO: al menos un cron de alta frecuencia nunca dejo latido (el scheduler no esta corriendo; revisa CRON_SECRET = INTERNAL_SECRET y el plan Pro en Vercel)";
   if (estado === "atrasados") return "crons ATRASADOS: algun cron lleva mas de 3 veces su cadencia sin dejar latido";
   if (estado === "sin_medir") return "crons SIN MEDIR: no se pudo leer la tabla de latidos (migracion pendiente o error de la base)";
