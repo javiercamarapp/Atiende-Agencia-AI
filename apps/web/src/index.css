@@ -7,3 +7,5 @@
 @import "@atiende/ui/ds3-shell.css";
 /* ds3: «Pregúntale a tus datos» (chat, historial en Drawer, temas, «Cómo se calculó»); solo bajo html[data-diseno="ds3"]. */
 @import "@atiende/ui/ds3-copiloto.css";
+/* ds3: componentes de contenido (Resumen, antetitulo, controles, tarjetas, tablas, error, «Cómo se calculó»); solo bajo html[data-diseno="ds3"]. */
+@import "@atiende/ui/ds3-contenido.css";

@@ -13,7 +13,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SESSION_EXPIRED_EVENT } from "./authed-fetch.ts";
 import type { SessionExpiredEventDetail } from "./authed-fetch.ts";
 import type { LoginSession, SessionStorageLike } from "./auth-client.ts";
-import { useDisenoOrganizacion } from "./useDisenoOrganizacion.ts";
 
 export interface VerticalBranch {
   readonly propertyId: string;
@@ -87,9 +86,6 @@ export function useVerticalSession<B extends VerticalBranch>({ adapter, apiBaseU
   const [intento, setIntento] = useState(0);
   // Guarda sincrona: dos llamadas en el mismo tick (doble clic) verian ambas `loggingOut === false` en el closure.
   const cerrandoSesion = useRef(false);
-
-  // Diseno de la organizacion activa (ds3 por organizacion): lo recuerda para el primer pintado y recarga si cambio.
-  useDisenoOrganizacion(session, orgSlug);
 
   useEffect(() => {
     const s = adapter.readSession(window.localStorage);
