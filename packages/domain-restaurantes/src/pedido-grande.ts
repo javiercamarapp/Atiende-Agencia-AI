@@ -16,8 +16,17 @@ import type { PersistedOrderItem } from "./types.ts";
 export const PEDIDO_GRANDE_TOTAL_MXN = 4000;
 /** Kilos a partir de los cuales un pedido es grande. */
 export const PEDIDO_GRANDE_KG = 5;
-/** Total (MXN) a partir del cual es grande si el numero no tiene historial y paga en efectivo. */
+/** Total (MXN) a partir del cual es grande si el numero no tiene historial y paga en efectivo (valor por omision; ver `umbralSinHistorialEfectivoMxn`). */
 export const PEDIDO_GRANDE_SIN_HISTORIAL_EFECTIVO_MXN = 2500;
+
+/** Variable de entorno que ajusta ese umbral (decision del dueno pendiente: $2,500 o $4,000). Entero 500-20000; ausente o invalida = 2500. No es credencial. */
+export const PEDIDO_GRANDE_SIN_HISTORIAL_EFECTIVO_ENV = "PM_PEDIDO_GRANDE_SIN_HISTORIAL_EFECTIVO_MXN";
+export function umbralSinHistorialEfectivoMxn(env: Readonly<Record<string, string | undefined>> = process.env): number {
+  const crudo = String(env[PEDIDO_GRANDE_SIN_HISTORIAL_EFECTIVO_ENV] ?? "").trim();
+  if (!/^\d+$/.test(crudo)) return PEDIDO_GRANDE_SIN_HISTORIAL_EFECTIVO_MXN;
+  const n = Number(crudo);
+  return n >= 500 && n <= 20000 ? n : PEDIDO_GRANDE_SIN_HISTORIAL_EFECTIVO_MXN;
+}
 
 /** Ventana (ms) en la que los pedidos recientes del mismo numero se SUMAN al evaluar el umbral: partir un pedido grande en varios chicos
  * dentro de la misma conversacion no lo evade, y los pedidos de esa ventana tampoco cuentan como "historial" del numero. */
@@ -69,7 +78,7 @@ export function evaluarPedidoGrande(args: {
 }): MotivoPedidoGrande | null {
   if (args.total > PEDIDO_GRANDE_TOTAL_MXN) return "total";
   if (args.pesoKg > PEDIDO_GRANDE_KG) return "peso";
-  if (args.sinHistorial && args.pagaEfectivo && args.total > PEDIDO_GRANDE_SIN_HISTORIAL_EFECTIVO_MXN) return "sin_historial_efectivo";
+  if (args.sinHistorial && args.pagaEfectivo && args.total > umbralSinHistorialEfectivoMxn()) return "sin_historial_efectivo";
   return null;
 }
 
@@ -99,7 +108,7 @@ export function resumenPedidoGrande(args: {
   /** Total de ESTE pedido cuando `total` ya incluye pedidos anteriores de la misma conversacion (pedido partido en dos). */
   readonly totalDeEstePedido?: number;
 }): string {
-  const motivo = args.motivo === "total" ? `total de $${args.total.toFixed(2)} (mas de $${PEDIDO_GRANDE_TOTAL_MXN})` : args.motivo === "peso" ? `${args.pesoKg} kg (mas de ${PEDIDO_GRANDE_KG} kg)` : `numero sin historial que paga en efectivo, total de $${args.total.toFixed(2)} (mas de $${PEDIDO_GRANDE_SIN_HISTORIAL_EFECTIVO_MXN})`;
+  const motivo = args.motivo === "total" ? `total de $${args.total.toFixed(2)} (mas de $${PEDIDO_GRANDE_TOTAL_MXN})` : args.motivo === "peso" ? `${args.pesoKg} kg (mas de ${PEDIDO_GRANDE_KG} kg)` : `numero sin historial que paga en efectivo, total de $${args.total.toFixed(2)} (mas de $${umbralSinHistorialEfectivoMxn()})`;
   const renglones = args.items.map((i) => `${i.quantity} x ${i.name}`).join("; ");
   const acumulado = args.pedidosPrevios && args.pedidosPrevios > 0 ? ` Suma ${args.pedidosPrevios} pedido(s) previo(s) del mismo numero en las ultimas ${PEDIDO_GRANDE_VENTANA_ACUMULADO_MS / 3_600_000} h.` : "";
   const previo = args.totalDeEstePedido !== undefined && args.totalDeEstePedido < args.total ? ` (este pedido: $${args.totalDeEstePedido.toFixed(2)}; el resto son pedidos anteriores del mismo numero)` : "";

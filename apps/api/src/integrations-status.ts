@@ -371,6 +371,8 @@ export const OPERATIONAL_ENV_VARS: readonly string[] = [
   "WHATSAPP_TURNO_ASINCRONO",
   // Ventana de silencio (ms, 500-10000; ausente = 2500) de la espera de rafagas deslizante del turno asincrono de WhatsApp de restaurantes. No es credencial.
   "WHATSAPP_RAFAGA_SILENCIO_MS",
+  // Umbral (MXN, entero 500-20000; ausente = 2500) de pedido grande cuando el numero no tiene historial y paga en efectivo (perfil PM). Decision del dueno. No es credencial.
+  "PM_PEDIDO_GRANDE_SIN_HISTORIAL_EFECTIVO_MXN",
 ];
 
 /** Unión de toda variable "conocida" por este inventario (integraciones +
