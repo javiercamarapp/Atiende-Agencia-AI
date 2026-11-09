@@ -16,6 +16,7 @@ import type {
   AltaPropiedadRepository,
   LoginChoferRepository,
   OrgFichaRepository,
+  OnboardingProgresoRepository,
   FichasAgenteRepository,
   ContratosRepository,
   PlataformaPrivacidadRepository,
@@ -80,6 +81,7 @@ import type { ReportadorErrores } from "./observabilidad/errores-sentry.ts";
 import type { SuperadminCopilotoDeps } from "./superadmin-copiloto/deps.ts";
 import type { LlmRouteConfig } from "./production/llm-models.ts";
 import type { SaludMetaDeps } from "./salud/salud-meta.ts";
+import type { WhatsAppMetaDeps } from "./whatsapp-credenciales/index.ts";
 
 /** Todo lo que las rutas necesitan, inyectado — nunca construido dentro de una ruta.
  * En tests, `coreRepo`/`restaurantesRepo`/`hotelesRepo`/`rentasRepo` son los
@@ -629,6 +631,12 @@ export interface AppDeps {
    *  `undefined` sin `WHATSAPP_ACCESS_TOKEN` o sin gateway LLM: el webhook conserva el comportamiento anterior (pedir al cliente que escriba, con el
    *  motivo en un log sin PII). Opcional (`?:`) para no tocar los fixtures existentes. */
   readonly notasDeVoz?: PuertoNotasDeVoz;
+  /** Credenciales de Meta por organizacion (migracion 0090): un numero asignado a una app propia descarga sus notas de voz con el token de ESA app.
+   *  Construye el puerto para un token (en produccion, con el mismo gateway LLM que `notasDeVoz`). Ausente = esos numeros no transcriben. */
+  readonly notasDeVozConToken?: (accessToken: string) => PuertoNotasDeVoz;
+  /** Credenciales de Meta por organizacion (varias apps a la vez, migracion 0090): cifrador y resolutor por numero. `undefined` sin
+   *  WHATSAPP_CREDENTIALS_KEY: envio, firma del webhook y verify token siguen solo con las variables de plataforma (comportamiento anterior). */
+  readonly whatsappMeta?: WhatsAppMetaDeps;
   /** Suscripción SaaS propia de Atiende a sus organizaciones clientes (auditoría
    * de 22 rubros, hallazgo P1 #6) -- `@atiende/billing::StripeClient` real
    * (Checkout Sessions per-seat, ver `production/saas-billing-stripe-port.ts`
@@ -701,6 +709,10 @@ export interface AppDeps {
    *  sesion; cada fuente corre bajo su propio SAVEPOINT. El aviso 'organizacion lista' es SOLO-SISTEMA (cron de mantenimiento, sesion propia).
    *  OPCIONAL: ausente o migracion sin aplicar -> `disponible: false` (200) o campos null con su razon, nunca un 500. */
   readonly orgFichaRepo?: (db: TenantDbSession) => OrgFichaRepository;
+  /** ds3 «Guía»: progreso del recorrido guiado por persona (packages/db/migrations/0075_onboarding_progreso.sql, routes/onboarding-progreso.ts).
+   *  Fabrica por sesion de la persona. OPCIONAL: ausente o migracion sin aplicar -> `disponible: false` (200) y la guia sigue con el
+   *  progreso del navegador, nunca un 500. */
+  readonly onboardingProgresoRepo?: (db: TenantDbSession) => OnboardingProgresoRepository;
   /** Alta del equipo inicial de una organizacion por un superadmin: invitar, reenviar, revocar y leer miembros/invitaciones (SA-L-26 minimo;
    *  ver packages/db/migrations/0053_superadmin_alta_equipo.sql y routes/superadmin-organizaciones-equipo.ts). Fabrica por sesion del caller;
    *  `aceptacionParaSistema` es SOLO-SISTEMA (sesion propia en POST /auth/accept-invite). OPCIONAL: ausente o migracion sin aplicar -> la

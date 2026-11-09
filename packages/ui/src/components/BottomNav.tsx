@@ -2,10 +2,12 @@ import { useEffect, useState, type ComponentType, type ReactNode } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { Bell, Ellipsis, LogOut, MessageCircle } from "lucide-react";
 import { cn } from "../lib/utils";
+import { useT } from "../i18n/proveedor";
 import type { SidebarPiePildora, SidebarSection, SidebarUser } from "./Sidebar";
 import { SelectorIdioma } from "./SelectorIdioma";
 import { ThemeSelector } from "./ThemeSelector";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "./ui/sheet";
+import { shell } from "../i18n/mensajes/shell.ts";
 
 type IconType = ComponentType<{ className?: string; strokeWidth?: number | string }>;
 
@@ -98,6 +100,7 @@ const claseTituloGrupo = "mb-1.5 px-2.5 py-1 font-mono text-2xs uppercase tracki
  */
 export function BottomNav({ items, moreSections, pie, cuenta, preguntar }: BottomNavProps) {
   const [masAbierto, setMasAbierto] = useState(false);
+  const t = useT(shell);
   useTecladoAbierto();
   useEffect(() => {
     const abrir = () => setMasAbierto(true);
@@ -116,7 +119,7 @@ export function BottomNav({ items, moreSections, pie, cuenta, preguntar }: Botto
   const masConAvisos = pildoras.some((p) => p.indicador);
   return (
     <nav
-      aria-label="Navegación móvil"
+      aria-label={t("shell.navMovil")}
       className="ds3-barra-inferior md:hidden fixed inset-x-0 bottom-0 z-40 border-t border-border bg-card safe-area-bottom pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]"
     >
       <ul className="flex">
@@ -143,7 +146,7 @@ export function BottomNav({ items, moreSections, pie, cuenta, preguntar }: Botto
               {({ isActive }) => (
                 <>
                   <MessageCircle aria-hidden="true" className="size-[22px]" strokeWidth={isActive ? 2.25 : 1.75} />
-                  <span className={cn("max-w-full truncate px-1 text-xs", isActive ? "font-semibold" : "font-medium")}>Preguntar</span>
+                  <span className={cn("max-w-full truncate px-1 text-xs", isActive ? "font-semibold" : "font-medium")}>{t("shell.preguntar")}</span>
                 </>
               )}
             </NavLink>
@@ -156,12 +159,12 @@ export function BottomNav({ items, moreSections, pie, cuenta, preguntar }: Botto
               onClick={() => setMasAbierto(true)}
               aria-haspopup="dialog"
               aria-expanded={masAbierto}
-              aria-label={masConAvisos ? "Más, con avisos sin leer" : undefined}
+              aria-label={masConAvisos ? t("shell.masConAvisos") : undefined}
               data-activo={masActivo ? "" : undefined}
               className={cn("ds3-barra-destino ds3-barra-mas w-full", claseDestino, masActivo ? "text-primary" : "text-muted-foreground")}
             >
               <Ellipsis aria-hidden="true" className="size-[22px]" strokeWidth={masActivo ? 2.25 : 1.75} />
-              <span className={cn("max-w-full truncate px-1 text-xs", masActivo ? "font-semibold" : "font-medium")}>Más</span>
+              <span className={cn("max-w-full truncate px-1 text-xs", masActivo ? "font-semibold" : "font-medium")}>{t("shell.mas")}</span>
               {masConAvisos && <span data-testid="mas-indicador" aria-hidden="true" className="absolute right-[calc(50%-18px)] top-2 size-1.5 rounded-full bg-destructive" />}
             </button>
           </li>
@@ -174,8 +177,8 @@ export function BottomNav({ items, moreSections, pie, cuenta, preguntar }: Botto
             className="ds3-hoja-mas max-h-[80dvh] overflow-y-auto rounded-t-2xl bg-card px-4 pt-6 pb-[calc(2rem+var(--safe-area-bottom))]"
           >
             <SheetHeader className="mb-2 pr-11">
-              <SheetTitle>Más secciones</SheetTitle>
-              <SheetDescription className="sr-only">Todas las secciones del panel</SheetDescription>
+              <SheetTitle>{t("shell.masSecciones")}</SheetTitle>
+              <SheetDescription className="sr-only">{t("shell.masSeccionesDescripcion")}</SheetDescription>
             </SheetHeader>
             {(moreSections ?? []).map((section) => (
               <div key={section.title} className="mt-3">
@@ -201,7 +204,7 @@ export function BottomNav({ items, moreSections, pie, cuenta, preguntar }: Botto
             ))}
             {pildoras.length > 0 && (
               <div className="mt-3">
-                <p className={claseTituloGrupo}>Cuenta</p>
+                <p className={claseTituloGrupo}>{t("shell.cuenta")}</p>
                 <div className="flex flex-col">
                   {pildoras.map((p) => (
                     <PildoraCuenta key={p.label} pildora={p} onNavegar={alCerrar} />
@@ -222,6 +225,7 @@ function BloqueCuentaMas({ cuenta }: { cuenta: NonNullable<BottomNavProps["cuent
   const { user, onLogout, loggingOut = false } = cuenta;
   const nombre = user?.nombre?.trim() || user?.email || "";
   const rol = user?.rolEtiqueta ?? user?.rol;
+  const t = useT(shell);
   return (
     <div hidden data-testid="mas-cuenta" className="ds3-solo ds3-hoja-mas-cuenta mt-3 border-t border-border pt-3">
       <div className="ds3-hoja-mas-ajustes flex flex-col gap-2">
@@ -233,7 +237,7 @@ function BloqueCuentaMas({ cuenta }: { cuenta: NonNullable<BottomNavProps["cuent
           {(nombre.charAt(0) || "A").toUpperCase()}
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-ui font-medium">{nombre || "Sin sesión"}</span>
+          <span className="block truncate text-ui font-medium">{nombre || t("shell.sinSesion")}</span>
           {rol ? <span className="block truncate text-2xs uppercase text-faint">{rol}</span> : null}
         </span>
         <button
@@ -243,7 +247,7 @@ function BloqueCuentaMas({ cuenta }: { cuenta: NonNullable<BottomNavProps["cuent
           className="ds3-hoja-mas-salir inline-flex h-11 shrink-0 items-center gap-1.5 rounded-lg border border-border px-3 text-ui font-medium text-foreground-2"
         >
           <LogOut aria-hidden="true" className="size-4" strokeWidth={1.75} />
-          {loggingOut ? "Saliendo…" : "Salir"}
+          {loggingOut ? t("shell.saliendo") : t("shell.salir")}
         </button>
       </div>
     </div>
@@ -251,6 +255,7 @@ function BloqueCuentaMas({ cuenta }: { cuenta: NonNullable<BottomNavProps["cuent
 }
 
 function PildoraCuenta({ pildora, onNavegar }: { pildora: SidebarPiePildora; onNavegar: () => void }) {
+  const t = useT(shell);
   const Icono = pildora.icon;
   const contenido = (
     <>
@@ -260,7 +265,7 @@ function PildoraCuenta({ pildora, onNavegar }: { pildora: SidebarPiePildora; onN
     </>
   );
   const clase = cn(claseFilaHoja, "w-full text-foreground hover:bg-muted-foreground/10");
-  const etiqueta = pildora.indicador ? `${pildora.label}, con avisos sin leer` : undefined;
+  const etiqueta = pildora.indicador ? t("shell.conAvisos", { etiqueta: pildora.label }) : undefined;
   if (pildora.to) {
     return (
       <NavLink to={pildora.to} onClick={onNavegar} aria-label={etiqueta} className={clase}>
@@ -303,8 +308,9 @@ export interface CampanaMovilProps {
  * selector y el menu de cuenta, con contador de sin leer. Enlace a la pagina de notificaciones. Sin la bandera existe oculta.
  */
 export function CampanaMovil({ to, contador, hayNoLeidas = false }: CampanaMovilProps) {
+  const t = useT(shell);
   const n = typeof contador === "number" && contador > 0 ? contador : 0;
-  const etiqueta = n > 0 ? `Notificaciones: ${n} sin leer` : hayNoLeidas ? "Notificaciones: hay avisos sin leer" : "Notificaciones";
+  const etiqueta = n > 0 ? t("shell.notificacionesSinLeer", { n }) : hayNoLeidas ? t("shell.notificacionesConAvisos") : t("shell.notificaciones");
   return (
     <NavLink
       hidden

@@ -30,6 +30,7 @@ import { superadminResumenRoutes } from "./routes/superadmin-resumen.ts";
 import { superadminAccionesRoutes } from "./routes/superadmin-acciones.ts";
 import { superadminMfaRoutes } from "./routes/superadmin-mfa.ts";
 import { superadminInterruptoresRoutes } from "./routes/superadmin-interruptores.ts";
+import { superadminWhatsappMetaRoutes } from "./routes/superadmin-whatsapp-meta.ts";
 import { superadminOrganizacionesRoutes } from "./routes/superadmin-organizaciones.ts";
 import { superadminOrganizacionesFichaRoutes } from "./routes/superadmin-organizaciones-ficha.ts";
 import { superadminOrganizacionesEquipoRoutes } from "./routes/superadmin-organizaciones-equipo.ts";
@@ -49,6 +50,7 @@ import { superadminCerebroRoutes } from "./routes/superadmin-cerebro.ts";
 import { superadminCopilotoRoutes } from "./routes/superadmin-copiloto.ts";
 import { privacidadOrgRoutes } from "./routes/privacidad-org.ts";
 import { notificationsRoutes } from "./routes/notifications.ts";
+import { onboardingProgresoRoutes } from "./routes/onboarding-progreso.ts";
 import { billingRoutes } from "./routes/billing.ts";
 import { restaurantesPublicRoutes } from "./routes/verticals/restaurantes/public.ts";
 import { restaurantesDemoWidgetRoutes } from "./routes/verticals/restaurantes/demo-widget.ts";
@@ -152,10 +154,14 @@ export function buildApp(deps: AppDeps): Hono {
   app.route("/", superadminZonaCfoRoutes(deps));
   app.route("/", superadminPrivacidadRoutes(deps));
   app.route("/", superadminSupresionRoutes(deps));
+  // Credenciales de Meta por organizacion (varias apps de WhatsApp a la vez, migracion 0090).
+  app.route("/", superadminWhatsappMetaRoutes(deps));
   app.route("/", superadminCerebroRoutes(deps));
   app.route("/", superadminCopilotoRoutes(deps));
   app.route("/", privacidadOrgRoutes(deps));
   app.route("/", notificationsRoutes(deps));
+  // ds3 «Guía»: progreso del recorrido guiado por persona (comun a las verticales y a la consola de plataforma).
+  app.route("/", onboardingProgresoRoutes(deps));
   app.route("/", billingRoutes(deps));
   app.route("/", restaurantesPublicRoutes(deps));
   // R-19: widget de chat WhatsApp para demos (sin Meta), solo organizaciones marcadas como demo.

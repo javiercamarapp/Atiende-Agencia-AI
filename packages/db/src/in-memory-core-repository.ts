@@ -63,7 +63,7 @@ export interface SeedOrganization {
    *  `listAllOrganizationsForSuperadmin` los necesita de verdad. */
   readonly status?: "trial" | "active" | "suspended";
   readonly createdAt?: string;
-  /** `core.organization.diseno` (0060): ausente/null = diseno actual. */
+  /** `core.organization.diseno` (0060; default `ds3` desde 0076). El web ya no lo lee: solo viaja en la sesion. */
   readonly diseno?: string | null;
 }
 

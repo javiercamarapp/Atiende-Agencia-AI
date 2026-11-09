@@ -1,0 +1,118 @@
+/*
+ * ds3 / componentes de contenido (paridad Rovaq, PARIDAD-ATIENDE-ROVAQ §R1): Resumen, antetitulo, paleta de controles, tarjetas,
+ * tablas, aviso de error e (i) «Cómo se calculó». Hoja aparte de shell.css para que los carriles no se pisen.
+ *
+ * Reglas de esta hoja (las vigila packages/ui/tests/ds3-contenido-css.spec.ts):
+ *  - TODO va bajo `html[data-diseno="ds3"]`: sin la bandera ninguna regla coincide y produccion queda igual.
+ *  - Solo tokens (hsl(var(--x))); ningun color literal.
+ *  - Los elementos nuevos llegan con `hidden` + `ds3-solo` (shell.css los muestra como bloque); aqui solo se les da forma.
+ *  - Valores en px de Rovaq (la raiz ya es de 16 px, #742).
+ */
+
+/* ---- 1. Resumen (Rovaq «Hoy») ------------------------------------------------------------------------------------
+ * H1 = nombre de la pagina 20/600/-0.5; el saludo (<h1> del diseno actual) se apaga. Franja de estado de los datos en una tarjeta de 1 px con
+ * pares «etiqueta: valor» en una linea que se envuelve. «Requiere tu atención (n)»: tarjeta con filas de punto + texto + cifra.
+ */
+html[data-diseno="ds3"] .ds3-resumen h1[data-parte="titulo"] { display: none; }
+html[data-diseno="ds3"] .ds3-resumen [data-parte="titulo-ds3"] {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-sans);
+  font-size: 20px;
+  line-height: 26px;
+  font-weight: 600;
+  letter-spacing: -0.5px;
+  color: hsl(var(--foreground));
+}
+
+html[data-diseno="ds3"] .ds3-resumen [data-parte="estado-datos"].ds3-solo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 24px;
+  margin: 12px 0;
+  padding: 10px 14px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 12px;
+  background-color: hsl(var(--card));
+  font-size: 12px;
+  line-height: 18px;
+}
+html[data-diseno="ds3"] .ds3-resumen [data-parte="estado-datos"] > div { display: flex; gap: 6px; min-width: 0; }
+html[data-diseno="ds3"] .ds3-resumen [data-parte="estado-datos"] dt { color: hsl(var(--muted-foreground)); }
+html[data-diseno="ds3"] .ds3-resumen [data-parte="estado-datos"] dd { margin: 0; font-weight: 600; color: hsl(var(--foreground)); font-variant-numeric: tabular-nums; }
+
+html[data-diseno="ds3"] .ds3-resumen [data-parte="atencion"].ds3-solo {
+  padding: 14px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 12px;
+  background-color: hsl(var(--card));
+}
+html[data-diseno="ds3"] .ds3-resumen [data-parte="atencion"] h2 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+}
+html[data-diseno="ds3"] .ds3-resumen [data-parte="atencion-n"] { font-weight: 400; color: hsl(var(--muted-foreground)); }
+html[data-diseno="ds3"] .ds3-resumen [data-parte="atencion-vacia"] { margin: 0; font-size: 13px; line-height: 19.5px; color: hsl(var(--muted-foreground)); }
+html[data-diseno="ds3"] .ds3-resumen [data-parte="atencion"] ul { margin: 0; padding: 0; list-style: none; }
+html[data-diseno="ds3"] .ds3-resumen [data-parte="atencion"] li + li { border-top: 1px solid hsl(var(--border)); }
+html[data-diseno="ds3"] .ds3-resumen [data-parte="atencion"] li > :is(a, div) {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 9px 0;
+  color: inherit;
+  text-decoration: none;
+}
+html[data-diseno="ds3"] .ds3-resumen [data-parte="atencion"] li > a:hover [data-parte="atencion-titulo"] { text-decoration: underline; text-underline-offset: 3px; }
+html[data-diseno="ds3"] .ds3-resumen [data-parte="atencion-punto"] {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  margin-top: 6px;
+  border-radius: 9999px;
+  background-color: hsl(var(--warning-ink));
+}
+html[data-diseno="ds3"] .ds3-resumen li[data-tono="alto"] [data-parte="atencion-punto"] { background-color: hsl(var(--danger-ink)); }
+html[data-diseno="ds3"] .ds3-resumen li[data-tono="info"] [data-parte="atencion-punto"] { background-color: hsl(var(--foreground)); }
+html[data-diseno="ds3"] .ds3-resumen [data-parte="atencion-texto"] { display: flex; flex: 1 1 auto; flex-direction: column; min-width: 0; }
+html[data-diseno="ds3"] .ds3-resumen [data-parte="atencion-titulo"] { font-size: 13px; line-height: 19px; font-weight: 500; color: hsl(var(--foreground)); }
+html[data-diseno="ds3"] .ds3-resumen [data-parte="atencion-detalle"] {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 18px;
+  color: hsl(var(--muted-foreground));
+}
+html[data-diseno="ds3"] .ds3-resumen [data-parte="atencion-valor"] {
+  flex-shrink: 0;
+  font-size: 13px;
+  line-height: 19px;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- 2. Antetitulo de la pagina (= grupo del menu) ----------------------------------------------------------------
+ * El shell lo pinta antes de cada pagina; se apaga si la pagina ya trae el suyo (PageHeader o ResumenLayout) y en el chat, que en
+ * Rovaq no lleva encabezado. Mismo estilo que el antetitulo del PageHeader: 12/600 MAYUSCULAS, tracking 0.72 px, muted.
+ */
+html[data-diseno="ds3"] .ds3-eyebrow-pagina.ds3-solo {
+  margin: 0 0 2px;
+  font-size: 12px;
+  line-height: 16.8px;
+  font-weight: 600;
+  letter-spacing: 0.72px;
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground));
+}
+html[data-diseno="ds3"] .ds3-eyebrow-pagina.ds3-solo:has(+ .ds3-shell-pagina :is(.ds3-encabezado, .ds3-resumen)),
+html[data-diseno="ds3"] .ds3-shell-marco[data-pantalla="chat"] .ds3-eyebrow-pagina.ds3-solo {
+  display: none;
+}
