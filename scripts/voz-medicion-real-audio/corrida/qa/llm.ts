@@ -3,11 +3,20 @@ export const gasto = { usd: 0, calls: 0 };
 const MODEL = process.env.QA_MODEL ?? "openai/gpt-6-luna";
 export async function chat(messages: { role: string; content: string }[], opts: { max?: number; json?: boolean; model?: string } = {}): Promise<string> {
   for (let i = 0; i < 4; i++) {
-    const r = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    // Tope por peticion (r3: dos llamadas del E2E se colgaron 34-37 min esperando al cliente simulado): un timeout cuenta como intento fallido.
+    let r: Response;
+    try {
+      r = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      signal: AbortSignal.timeout(Number(process.env.QA_CHAT_TIMEOUT_MS ?? 45_000)),
       method: "POST",
       headers: { authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`, "content-type": "application/json" },
       body: JSON.stringify({ model: opts.model ?? MODEL, messages, max_tokens: opts.max ?? 1500, reasoning: { effort: "low" }, usage: { include: true }, provider: { data_collection: "deny" }, ...(opts.json ? { response_format: { type: "json_object" } } : {}) }),
     });
+    } catch (err) {
+      if (i === 3) throw err;
+      await new Promise((s) => setTimeout(s, 1500 * (i + 1)));
+      continue;
+    }
     if (!r.ok) { if (i === 3) throw new Error(`openrouter ${r.status} ${(await r.text()).slice(0, 200)}`); await new Promise((s) => setTimeout(s, 1500 * (i + 1))); continue; }
     const j = (await r.json()) as { choices: { message: { content: string } }[]; usage?: { cost?: number } };
     gasto.usd += j.usage?.cost ?? 0; gasto.calls++;

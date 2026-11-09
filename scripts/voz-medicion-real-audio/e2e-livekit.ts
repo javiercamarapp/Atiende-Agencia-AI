@@ -292,7 +292,9 @@ for (const e of ESCENARIOS) {
   const phone = `521999${String(randomInt(1000000, 10000000))}`; const ph10 = phone.slice(-10);
   const ev0 = eventos.length; const rec: any = { id: e.id, titulo: e.titulo, rep: REP, ruido: NIVEL_RUIDO, snrDb: SNR_CAMA };
   const el0 = await creditosEl(); const cj0 = gasto.usd; const carga0 = loadavg()[0]!; const api0 = erroresApi; const tp0 = performance.now();
-  let ll: any; try { ll = await correrLlamada(e, phone); } catch (x) { rec.excepcion = true; rec.infra = { motivo: "excepcion", erroresApi: erroresApi - api0 }; rec.veredicto = "FALLA"; rec.motivo = String((x as Error).message).slice(0, 300); results.push(rec); guardar(); console.log("EXCEPCION", e.id, rec.motivo); continue; }
+  // Tope por llamada (r3: 2 llamadas colgadas 34-37 min): pasado este tiempo la llamada es una excepcion del arnes y se reintenta en el bloque.
+  const topeLlamadaMs = Number(process.env.VOZA_TOPE_LLAMADA_MS ?? 12 * 60_000);
+  let ll: any; try { ll = await Promise.race([correrLlamada(e, phone), new Promise<never>((_, no) => setTimeout(() => no(new Error(`tope_llamada_${topeLlamadaMs}ms`)), topeLlamadaMs).unref())]); } catch (x) { rec.excepcion = true; rec.infra = { motivo: "excepcion", erroresApi: erroresApi - api0 }; rec.veredicto = "FALLA"; rec.motivo = String((x as Error).message).slice(0, 300); results.push(rec); guardar(); console.log("EXCEPCION", e.id, rec.motivo); continue; }
   await esperar(4000); const el1 = await creditosEl();
   // Costo por componente que el worker registro en la API local (core.usage_cost_event de la base efimera): solo los eventos nuevos de esta llamada.
   const costoRows = (await s.pool.query("select id::text, proveedor, unidad, cantidad::float cantidad, costo_micro_usd::float micro, costo_estimado from core.usage_cost_event")).rows.filter((x: any) => !costosVistos.has(x.id));
