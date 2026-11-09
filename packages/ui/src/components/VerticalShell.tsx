@@ -424,14 +424,22 @@ export function VerticalShell({
           {/* ds3: encabezado de respaldo de las pantallas sin PageHeader ni ResumenLayout (que traen el suyo): antetitulo (= categoria del
               menu) y, si la pagina no pinta ningun <h1>, el nombre de la pantalla como nivel 1 (20/600), juntos y ANTES de los avisos
               (auditoria R2 #5). ds3/contenido.css lo apaga cuando la pagina ya tiene encabezado y en el chat, y apaga el nombre cuando la
-              pagina trae su propio <h1>. Texto real: nunca un <p> vacio. Fuera de la pagina para no tocar su contenido. */}
+              pagina trae su propio <h1> visible (uno sr-only no cuenta: ~31 pantallas lo usan porque el nombre visible era el de la barra). Texto real: nunca un <p> vacio. Fuera de la pagina para no tocar su contenido. */}
           <header hidden data-testid="encabezado-shell" className="ds3-solo ds3-encabezado-shell">
             {grupoNav ? (
               <p hidden data-testid="eyebrow-pagina" className="ds3-solo ds3-eyebrow-pagina">
                 {grupoNav}
               </p>
             ) : null}
-            <p role="heading" aria-level={1} data-testid="encabezado-shell-titulo" className="ds3-encabezado-shell-titulo truncate font-display text-xl font-semibold text-foreground">
+            {/* Nivel 1 solo si la pagina no trae <h1>. Si trae uno solo para lectores de pantalla (sr-only: el nombre visible era el de la
+                barra), aqui se ve el nombre pero queda fuera del arbol accesible para no duplicar el nivel 1. */}
+            <p
+              role={sinH1 ? "heading" : undefined}
+              aria-level={sinH1 ? 1 : undefined}
+              aria-hidden={sinH1 ? undefined : true}
+              data-testid="encabezado-shell-titulo"
+              className="ds3-encabezado-shell-titulo truncate font-display text-xl font-semibold text-foreground"
+            >
               {tituloDs3}
             </p>
           </header>
