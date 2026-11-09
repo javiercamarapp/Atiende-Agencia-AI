@@ -59,6 +59,10 @@ export async function esperarSinCarga(page: Page): Promise<void> {
     undefined,
     { timeout: 20_000 },
   );
+  // La capa de arranque (logo a pantalla completa, html[data-arranque]) tapa la pagina hasta soltarse (600 ms estables + 170 ms de
+  // fundido): sin esperarla, la captura y el medidor ven el logo y no la pantalla.
+  await page.waitForFunction(() => document.documentElement.dataset["arranque"] === "suelto", undefined, { timeout: 20_000 });
+  await page.waitForTimeout(200);
 }
 
 export interface ResultadoMedida {
