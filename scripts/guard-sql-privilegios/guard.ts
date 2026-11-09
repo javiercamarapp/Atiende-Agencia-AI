@@ -189,25 +189,50 @@ function dividirNivelSuperior(s: string, sep = ","): string[] {
   return partes;
 }
 
+// Recorre desde el final los sufijos de arreglo `[]`/`[N]` (con espacios). Lineal: sin expresiones regulares con
+// cuantificadores anidados (CodeQL js/redos; una entrada de 50k caracteres termina en microsegundos).
+function separarSufijoArreglo(t: string): { readonly base: string; readonly dimensiones: number } {
+  let fin = t.length;
+  let dimensiones = 0;
+  for (;;) {
+    let i = fin - 1;
+    while (i >= 0 && t[i] === " ") i--;
+    if (i < 0 || t[i] !== "]") break;
+    i--;
+    while (i >= 0 && (t[i] === " " || (t[i]! >= "0" && t[i]! <= "9"))) i--;
+    if (i < 0 || t[i] !== "[") break;
+    fin = i;
+    dimensiones++;
+  }
+  return { base: t.slice(0, fin), dimensiones };
+}
+
 export function normalizarTipo(tipo: string): string {
   let t = tipo.trim().toLowerCase().replace(/\s+/g, " ");
-  let arreglo = "";
-  const m = /((?:\s*\[\s*\d*\s*\])+)$/.exec(t);
-  if (m) {
-    arreglo = "[]".repeat((m[1]!.match(/\[/g) ?? []).length);
-    t = t.slice(0, m.index).trim();
-  }
-  t = t.replace(/\s*\(.*\)\s*$/, "").trim(); // numeric(12,2) -> numeric, varchar(20) -> character varying
+  const { base, dimensiones } = separarSufijoArreglo(t);
+  t = base.trim();
+  // numeric(12,2) -> numeric, varchar(20) -> character varying: corta desde el primer «(» si el tipo termina en «)».
+  const abre = t.indexOf("(");
+  if (abre !== -1 && t.endsWith(")")) t = t.slice(0, abre).trim();
   t = t.replace(/"/g, "");
   t = ALIAS_TIPOS[t] ?? t;
-  return t + arreglo;
+  return t + "[]".repeat(dimensiones);
+}
+
+// Quita `default …` / `= …` del final de un argumento (lineal: busca el primer separador a nivel de palabra).
+function quitarDefault(a: string): string {
+  const igual = a.indexOf("=");
+  const def = / default /i.exec(` ${a} `);
+  const cortes = [igual === -1 ? -1 : igual, def ? def.index - 1 : -1].filter((x) => x >= 0);
+  if (cortes.length === 0) return a;
+  return a.slice(0, Math.min(...cortes)).trim();
 }
 
 // Un argumento de `create function`: [modo] [nombre] tipo [default …]. Devuelve null si es OUT (no forma
 // parte de la identidad de la función).
 export function tipoDeArgumento(arg: string): string | null {
   let a = arg.trim().replace(/\s+/g, " ");
-  a = a.replace(/\s+(default\s+|=\s*).*$/i, "");
+  a = quitarDefault(a);
   const modo = /^(in|out|inout|variadic)\s+/i.exec(a);
   if (modo) {
     if (modo[1]!.toLowerCase() === "out") return null;
