@@ -36,27 +36,42 @@ import { intentarCancelacionConAutopiloto, registrarQuejaConAutopiloto } from ".
 import type { AutopilotoTurnoHooks } from "./autopiloto-turno.ts";
 import type { AgregadosHook } from "../agregados/tipos.ts";
 import { asistentePidioConfirmarResumen, bloqueCotizacionVigente, QUOTE_TTL_MS, resumenMostradoEnHistorial } from "../agent-tools/order-flow.ts";
-import { cierreMaquinaActiva, clasificarRespuestaCierre, componerRespuestaConResumen, corregirHoraDeRecogidaEnRespuesta, estadoDeCierre } from "../agent-tools/cierre-maquina.ts";
+import { cierreMaquinaActiva, clasificarRespuestaCierre, componerRespuestaConResumen, corregirHoraDeRecogidaEnRespuesta, datosDeCierreDeContexto, estadoDeCierre, pagoConVistoBuenoAlResumen, type DatosDeCierre } from "../agent-tools/cierre-maquina.ts";
 import { MENSAJE_PEDIDO_GRANDE_PENDIENTE, executeAgentToolSafely, toolDefinitionsForChannel } from "../agent-tools/registry.ts";
+import type { AgentToolOutcome } from "../agent-tools/registry.ts";
 import { planCierreDeterminista } from "../agent-tools/cierre-determinista.ts";
-import { bloqueCantidadNoMultiplo, bloqueProductoNoManejado } from "../unidades-pm.ts";
+import { loteAdmiteResumenSinVuelta, type LlamadaDelLote } from "./cerebro-v2/resumen-sin-vuelta.ts";
+import { bloqueCantidadNoMultiplo, bloqueGringasYMestizasComoOrdenes, bloqueProductoNoManejado } from "../unidades-pm.ts";
 import { bloquePedidoPendienteTrasFalla } from "./falla-pendiente.ts";
-import { CONTADOR_AGENTE_UMBRAL, COPY_ESCALACION_CONTADOR, contarAgente, pideRepetir } from "./contadores-agente.ts";
+import { CONTADOR_AGENTE_UMBRAL, COPY_ESCALACION_CONTADOR, contarAgente, pareceSoloNombre, pideRepetir } from "./contadores-agente.ts";
 import { bloqueDatosYaConsultados } from "./datos-ya-consultados.ts";
-import { BLOQUE_CONTEXTO_PRECARGADO, intercambioPrecargado, precargarBusquedas, resultadoClientePrecargado } from "./contexto-precargado.ts";
+import { BLOQUE_CONTEXTO_PRECARGADO, BLOQUE_CONTEXTO_PRECARGADO_V2, PRECARGA_V2_TOPE_MS, coloniaDelMensaje, firmaDeLecturaPrecargable, intercambioPrecargado, mensajeParaPrecargaV2, mensajeSinColonia, precargarBusquedas, resultadoClientePrecargado } from "./contexto-precargado.ts";
 import type { ConversationMessage, RestaurantesRepository } from "../repository.ts";
 import type { PedidoParaComanda, ResultadoEncolarPedido } from "../softrestaurant/outbox-service.ts";
 import { aperturaConExcepciones, estaAbiertoAhora, evaluarUltimoPedido, fraseUltimoPedido, horaLegible, tieneUltimoPedidoPorTipo } from "../horarios.ts";
 import { evaluarDomicilioSucursal } from "../domicilio-sucursal.ts";
 import { MOTIVOS_ESCALACION_DESACTIVABLES } from "../types.ts";
-import type { Branch, BranchSummary, CanalPedido, CustomerLookupResult, Order, PerfilAgenteWhatsApp, WhatsAppAgentConfigInput } from "../types.ts";
+import type { Branch, BranchSummary, CanalPedido, CustomerLookupResult, KnownZone, Order, PerfilAgenteWhatsApp, WhatsAppAgentConfigInput } from "../types.ts";
+import { matchKnownZone } from "../reglas-pedido.ts";
 import { FUNCION_MAX_MS, MARGEN_CIERRE_TURNO_MS, mensajesSinResponder } from "./inbound.ts";
 import { latestDeliveryPin, latestSharedLocation } from "./location.ts";
-import { PEDIDO_GRANDE_TOTAL_MXN, evaluarPedidoGrande, pesoTotalKg, resumenPedidoGrande } from "../pedido-grande.ts";
+import { evaluarPedidoGrande, pesoTotalKg, resumenPedidoGrande, umbralesPedidoGrande } from "../pedido-grande.ts";
 import { confirmacionDePedido } from "./confirmacion-pedido.ts";
 import { normalizarFormatoWhatsApp } from "./formato-whatsapp.ts";
 import { afirmaCambioRegistrado, afirmaPedidoProgramado, afirmaPedidoRegistrado, normalizarParaClasificar, CAMBIO_AVISADO_SIN_REGISTRAR, CAMBIO_SIN_REGISTRAR_OFRECE_AVISO, corregirPromesaDeHorarioNocturno, porcentajePropinaDichoPorElCliente, afirmaHaberAvisado, afirmaSoloRegistroDePedido, branchAlreadyKnown, classifyHighRiskIntent, classifyHighRiskIntentInMessages, contextoDeCliente, esperaDetalleDeQueja, noEsDetalleDeQueja, QUEJA_DETALLE_RECIBIDO, QUEJA_PREGUNTA_DETALLE, quejaTraeDetalle, respuestaDeQuejaConDetalle, enforcePendingQuestion, enforceQuotedTotal, knownAmountsOfQuote, quitarAfirmacionDeAviso, quitarAfirmacionDePedidoRegistrado, quitarCortesiaNoRespaldada, quitarPromesaDeDinero, reemplazarFugaDePrompt, contieneFugaDePrompt, RESPUESTA_SIN_FUGA } from "./guards.ts";
 import { COPY_LLAMADA_NO_RECIBIDA, COPY_LLAMADA_REPETIDA, COPY_SI_REPETIDO_SIN_REGISTRAR, MARCA_SI_SIN_REGISTRAR, esAvisoDeLlamada } from "./prompt-pm-paquete-c.ts";
+import { decidirAntesDelModelo, respuestaFinalV2 } from "./cerebro-v2/antes-del-modelo.ts";
+import { enforcePromoPolicy, stripUnpromptedTip } from "./cerebro-v2/politicas-pm.ts";
+import { PM_POLICY_RULES_V2, adaptarPromptPmV2 } from "./cerebro-v2/prompt-v2.ts";
+import { cambioSoloDeFormaDePago } from "./cerebro-v2/pago.ts";
+import { normalizePhone } from "../phone.ts";
+import { consultasDeMenuParaPromesa, corregirPromesaSinBuscar, crearFallidoTrasHerramienta, guardiaTextoFinal, MOTIVO_PEDIDO_NO_REGISTRADO, promesaDeProductoSinBuscar, quitarAlgoMasRepetido, siguienteCrearFallido, type CrearPedidoFallido } from "./cerebro-v2/texto-final.ts";
+import { alergiasSemanticasDelTurno, esTextoEnIngles } from "./cerebro-v2/salud.ts";
+import { clasificadorAlergiaPorGateway, clasificadorApartePorGateway } from "./cerebro-v2/clasificadores-gateway.ts";
+import { herramientaParaElHilo, hiloDelSuelto } from "./cerebro-v2/hilo-herramientas.ts";
+import { cambioNoAplicadoEnTurno, plazoClasificadorPedidoAparte, type EntradaIntencionPedidoAparte, type IntencionPedidoAparte } from "./cerebro-v2/pedido-aparte.ts";
+import type { HerramientaDelHilo } from "../repository.ts";
+import { buscarEnCatalogo } from "./cerebro-v2/busqueda.ts";
 import { PM_AGENT_NAME_POR_OMISION, PM_COPY, buildPmSystemPrompt, saludoPorHora } from "./perfil-pm.ts";
 import { bloqueConocimientoPrompt, listarConocimientoVigente } from "../conocimiento/dominio.ts";
 import type { WhatsAppTurnHandler } from "./turn-handler.ts";
@@ -296,8 +311,9 @@ export async function bloqueConocimientoDelTurno(repo: RestaurantesRepository, o
   }
 }
 
-export function buildSystemPrompt(config: WhatsAppLlmAgentConfig, branches: readonly BranchSummary[], customer: CustomerLookupResult, now: Date, entryBranch: Branch | null = null, conocimientoBloque = "", estadoSucursalAhora = "", agregadosActivos = false): string {
-  return `${buildSystemPromptBase(config, branches, customer, now, entryBranch, conocimientoBloque, estadoSucursalAhora, agregadosActivos)}\n\n${NOTA_DE_VOZ_RULES}`;
+/** `prefijoEstable`: lo que depende del reloj va al final (cache de prompt del proveedor); el cerebro v2 lo pasa siempre, el resto solo con `WHATSAPP_PROMPT_PREFIJO_ESTABLE`. */
+export function buildSystemPrompt(config: WhatsAppLlmAgentConfig, branches: readonly BranchSummary[], customer: CustomerLookupResult, now: Date, entryBranch: Branch | null = null, conocimientoBloque = "", estadoSucursalAhora = "", agregadosActivos = false, prefijoEstable = false): string {
+  return `${buildSystemPromptBase(config, branches, customer, now, entryBranch, conocimientoBloque, estadoSucursalAhora, agregadosActivos, prefijoEstable)}\n\n${NOTA_DE_VOZ_RULES}`;
 }
 
 /**
@@ -347,7 +363,7 @@ export async function estadoSucursalParaPrompt(repo: RestaurantesRepository, bra
   }
 }
 
-function buildSystemPromptBase(config: WhatsAppLlmAgentConfig, branches: readonly BranchSummary[], customer: CustomerLookupResult, now: Date, entryBranch: Branch | null, conocimientoBloque: string, estadoSucursalAhora: string, agregadosActivos = false): string {
+function buildSystemPromptBase(config: WhatsAppLlmAgentConfig, branches: readonly BranchSummary[], customer: CustomerLookupResult, now: Date, entryBranch: Branch | null, conocimientoBloque: string, estadoSucursalAhora: string, agregadosActivos = false, prefijoEstable = false): string {
   if (config.perfil === "taqueria_pm") {
     const { fechaHora, dia } = fechaHoraLocal(config.timezone, now);
     return buildPmSystemPrompt({
@@ -368,7 +384,7 @@ function buildSystemPromptBase(config: WhatsAppLlmAgentConfig, branches: readonl
       pedidoGrandeTexto: config.largeOrderText ?? null,
       urlFacturacion: config.invoiceUrl ?? null,
       conocimientoBloque,
-      ...(prefijoEstableActivo() ? { prefijoEstable: true } : {}),
+      ...(prefijoEstable || prefijoEstableActivo() ? { prefijoEstable: true } : {}),
       ...(agregadosActivos ? { agregadosActivos: true } : {}),
     });
   }
@@ -505,6 +521,11 @@ export interface WhatsAppLlmAgentOptions {
   /** Ajustes del agente de la organizacion (modelo elegido y temperatura efectiva). Ausente o `null` = el modelo y la temperatura de siempre. Nunca debe
    * lanzar: un fallo aqui no puede tumbar el turno (el llamador degrada a los valores de siempre). */
   readonly leerAjustes?: (organizationId: string) => Promise<{ readonly modelo: string | null; readonly temperatura: number } | null>;
+  /** Cerebro v2 (migracion 190): bandera por organizacion. Ausente o error de lectura = apagada (el agente de siempre). */
+  readonly leerCerebroV2?: (organizationId: string) => Promise<boolean>;
+  /** Cerebro v2: rol del gateway (con escalera ZDR) de los clasificadores del suelto («¿aparte?» y alergia semantica); en produccion
+   *  `restaurantes:whatsapp_clasificador` (actividad `clasificacion_whatsapp`). Ausente = sin clasificadores (solo regex; pedido aparte en modo R24). */
+  readonly clasificadorRole?: string;
   /** Autopiloto: cancelaciones gestionadas por el agente (detras de la bandera por organizacion) y quejas ligadas al pedido. Ausente = comportamiento anterior. */
   readonly autopiloto?: AutopilotoTurnoHooks;
   /** Agregados por validar (migracion 099): habilita `solicitar_agregado_pedido` con solicitud real y la regla del prompt que lo manda usar. Ausente = el agente escala como siempre. */
@@ -576,6 +597,8 @@ function toLlmHistory(messages: readonly ConversationMessage[]): LlmMessage[] {
 /** 30 s de funcion menos el margen de cierre menos ~6 s para la ultima llamada al LLM que arranque antes del tope. */
 /** R11-05a: tope de herramientas que se EJECUTAN por respuesta del modelo (las demas reciben un resultado de error para mantener el protocolo). */
 export const MAX_HERRAMIENTAS_POR_RESPUESTA = 8;
+/** Cerebro v2: retraso por omision del hedging Luna -> Haiku (ms) cuando WHATSAPP_LLM_HEDGE_MS no esta definida. */
+export const HEDGE_CEREBRO_V2_MS = 4_000;
 /** R11-10: piso del tope de tiempo de una llamada al proveedor, para que una llamada legitima y rapida no se corte por un presupuesto casi agotado. */
 export const PISO_TOPE_LLAMADA_LLM_MS = 500;
 /** PM-R21: tope duro de vueltas con hedging por turno (cada una duplica la llamada al modelo; el costo del perdedor se liquida al estimado). */
@@ -626,6 +649,9 @@ export function prefijoEstableActivo(env: Readonly<Record<string, string | undef
   const v = (env.WHATSAPP_PROMPT_PREFIJO_ESTABLE ?? "").trim().toLowerCase();
   return v === "1" || v === "true" || v === "on" || v === "si";
 }
+
+/** C3 PED-22: el cambio de forma de pago solo toca un pedido creado en las ultimas 3 horas (el mismo pedido de la conversacion, no uno de otro dia). */
+const VENTANA_CAMBIO_DE_PAGO_MS = 3 * 60 * 60 * 1000;
 
 /** R21: interruptor de entorno del cierre del «si» en una sola vuelta del modelo. Encendido salvo `0`, `false`, `off` o `no`. */
 export function cierreUnaVueltaActivo(env: Readonly<Record<string, string | undefined>> = process.env): boolean {
@@ -692,16 +718,35 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
     motivoEscalacion: string | null;
     motivoEscaladaDeRol: "fallo_crear_pedido" | null;
     /** Solo con `contextoPrecargado` encendido: que llamadas hizo el servidor antes de la primera vuelta. */
-    precargado: { cliente: boolean; productos: number } | null;
+    precargado: { cliente: boolean; productos: number; sucursal?: boolean } | null;
+    /** Cerebro v2: el resumen de cotizar_pedido salio del servidor sin otra llamada al modelo (ver `resumenSinVuelta`). */
+    resumenDelServidor: boolean;
   }
 
   async function ejecutarTurno(
-    { organizationId, phone, messages, customer, propertyId: entryPropertyId, messageId, finTurnoMs, modo, previewCustomerId, configBorrador }: Entrada,
+    { organizationId, phone, messages, customer, propertyId: entryPropertyId, messageId, finTurnoMs, turnoAsincrono, modo, previewCustomerId, configBorrador }: Entrada,
     tele: Telemetria,
   ): Promise<Salida> {
       // Una llamada al LLM que ARRANCA justo antes del tope todavia tarda lo suyo: el presupuesto por omision deja
       // `MARGEN_CIERRE_TURNO_MS` + una llamada lenta de holgura bajo los 30 s de la funcion.
-      const deadline = Math.min(Date.now() + turnBudgetMs, finTurnoMs ?? Number.POSITIVE_INFINITY);
+      // Turno asincrono: Meta ya tiene su 200 y la funcion vive 60 s; el tope de 18 s cortaba 20-40 % de los turnos de Luna por Azure ZDR
+      // (2-5 vueltas de 3-6 s). Ahi manda solo el fin de la fase que calcula el webhook (ya trae el margen de cierre).
+      const deadline = turnoAsincrono && finTurnoMs !== undefined ? finTurnoMs : Math.min(Date.now() + turnBudgetMs, finTurnoMs ?? Number.POSITIVE_INFINITY);
+      // Cerebro v2 (suelto ~8022-8045): el clasificador «¿aparte?» con el plazo que le queda al turno (sin tiempo: no se llama, null). Memo por entrada en el turno.
+      const intencionesDelTurno = new Map<string, Promise<IntencionPedidoAparte | null>>();
+      const clasificadorAparteV2 = options.clasificadorRole
+        ? (entrada: EntradaIntencionPedidoAparte): Promise<IntencionPedidoAparte | null> => {
+            const clave = JSON.stringify(entrada);
+            let pendiente = intencionesDelTurno.get(clave);
+            if (!pendiente) {
+              const plazoMs = plazoClasificadorPedidoAparte(deadline - Date.now());
+              const clasificar = clasificadorApartePorGateway(gateway, { organizationId, role: options.clasificadorRole! });
+              pendiente = plazoMs > 0 ? clasificar(entrada, { llave: "gateway", plazoMs }).catch(() => null) : Promise.resolve(null);
+              intencionesDelTurno.set(clave, pendiente);
+            }
+            return pendiente;
+          }
+        : null;
       // `modo` y `configBorrador` solo los fija la ruta de preview del panel (servidor); el modelo nunca los ve.
       const preview = modo === "preview";
       const configBase = preview && configBorrador ? aplicarFilaAConfig(configBorrador, organizationId) : await resolveAgentConfig(repo, organizationId, entryPropertyId ?? null);
@@ -712,6 +757,8 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       const modoCtx = preview ? { modo: "preview" as const, previewCustomerId: previewCustomerId ?? null } : {};
       // Modelo y temperatura que eligio la organizacion (ajustes del agente). Si falla la lectura, el turno sigue con los de siempre.
       const ajustes = options.leerAjustes ? await options.leerAjustes(organizationId).catch(() => null) : null;
+      // Cerebro v2: reglas medidas del repo suelto + Luna -> Haiku 5.5 con retencion cero. Nunca en la vista previa del panel (sin efectos ni costo extra).
+      const cerebroV2 = !preview && options.leerCerebroV2 ? await options.leerCerebroV2(organizationId).catch(() => false) : false;
       const perfil: PerfilAgenteWhatsApp = config.perfil ?? "generico";
       // El flujo de PM encadena mas llamadas por turno (cliente, zona, un producto por renglon, cotizar).
       const maxToolUseTurns = options.maxToolUseTurns ?? (perfil === "taqueria_pm" ? 8 : 4);
@@ -724,7 +771,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       // Base sin migrar o sin entradas = bloque vacio (el prompt es identico al de antes); la lectura corre en SAVEPOINT dentro del repositorio.
       const conocimientoBloque = await bloqueConocimientoDelTurno(repo, organizationId, activeEntryBranch?.propertyId ?? entryPropertyId ?? null, config.timezone, now());
       const estadoSucursal = config.perfil === "taqueria_pm" ? await estadoSucursalParaPrompt(repo, activeEntryBranch, now()) : "";
-      const systemPrompt = buildSystemPrompt(config, branches, customer, now(), activeEntryBranch, conocimientoBloque, estadoSucursal, Boolean(options.agregados));
+      const systemPrompt = buildSystemPrompt(config, branches, customer, now(), activeEntryBranch, conocimientoBloque, estadoSucursal, Boolean(options.agregados), cerebroV2);
 
       const working: LlmMessage[] = toLlmHistory(messages);
       // Marcador del turno del cliente: el historial solo crece, asi que el numero de mensajes de
@@ -752,6 +799,14 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       const pedidosCreadosDelTurno: Array<{ readonly clave: string; readonly raw: unknown; readonly mensajeAlCliente: string | null; readonly timezone: string }> = [];
       let yaRegistradoEnTurno = false;
       let retenidoEnTurno = false;
+      // Cerebro v2 (guardia del texto final del suelto, R81-G/R82-4/R87-T): que paso con crear_pedido en el turno. `crearFalloInternoEnTurno` = error del sistema sin pedido
+      // (el texto lo arma el servidor y se deja el aviso operativo:pedido_no_registrado); `crearRechazadoEnTurno` = algun crear_pedido del turno fallo o se rechazo;
+      // `porAprobarEnTurno` = el pedido creado quedo por_aprobar (pedido grande con autopiloto).
+      let crearFalloInternoEnTurno = false;
+      let crearRechazadoEnTurno = false;
+      // El ultimo crear_pedido rechazado del turno con su CLASE (suelto R84-1/R85-1: interno, nada, alergia, cotizar, aparte, existente, otro) y si una cotizacion o la zona lo resolvio.
+      let crearFallidoV2: CrearPedidoFallido | null = null;
+      let porAprobarEnTurno = false;
       // Un pedido grande ya retenido (incluido `por_aprobar` del autopiloto) YA tiene su aviso: un "ya avise a la sucursal" del modelo no genera otro ni abre toma.
       let pedidoGrandeVisto = false;
       // El total que lee el cliente es SIEMPRE el real (cotizar/crear), aunque el modelo escriba otra cifra.
@@ -762,7 +817,9 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         // R11-03: ninguna promesa de devolver dinero ni de descuento fuera de la cotizacion llega al cliente.
         reply = quitarPromesaDeDinero(reply, { respaldaDescuento: lastQuoteRespaldaCortesia === true });
         const base = enforceQuotedTotal(enforceBistecPackNotice(lastQuoteRespaldaCortesia === false ? quitarCortesiaNoRespaldada(reply) : reply, working), lastQuoteTotal, lastQuoteAmounts);
-        return perfil === "taqueria_pm" ? corregirPromesaDeHorarioNocturno(base, horaLocalDelTurno) : base;
+        const conHorario = perfil === "taqueria_pm" ? corregirPromesaDeHorarioNocturno(base, horaLocalDelTurno) : base;
+        // Cerebro v2 (politicas del 31-oct del suelto): sin propina no preguntada y sin promociones ofrecidas a domicilio o sin que el cliente pregunte.
+        return cerebroV2 && perfil === "taqueria_pm" ? quitarAlgoMasRepetido(enforcePromoPolicy(stripUnpromptedTip(conHorario, messages), messages), messages) : conHorario;
       };
       /** Zona horaria de la SUCURSAL del pedido (la misma que usa el servidor para validar la hora de recogida); si no se puede leer, la del agente. */
       const zonaDeLaSucursal = async (propertyIdDelPedido: string | null | undefined, branchSlug: unknown): Promise<string> => {
@@ -794,6 +851,10 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       let cotizacionDelTurno: string | null = null;
       // R11 (cierre como maquina de estados): resumen armado por el servidor para la cotizacion de este turno (solo con la maquina activa).
       let resumenCanonicoDelTurno: { texto: string; total: number } | null = null;
+      // Cerebro v2 (bloque 4): las herramientas del turno que leen las guardas de sesion del suelto; se guardan en el mensaje del asistente (hilo-herramientas.ts).
+      const herramientasV2: HerramientaDelHilo[] = [];
+      // Cerebro v2 (suelto ~7946): el primer crear_pedido EXITOSO del turno (entrada y resultado): un segundo crear_pedido en el turno devuelve este resultado.
+      let primerCrearV2: { readonly input: Record<string, unknown>; readonly result: unknown } | null = null;
       const done = <R extends { readonly reply: string }>(r: R): R & { readonly escalacion?: { readonly motivo: string }; readonly pedirUbicacion?: true; readonly pedirConfirmacion?: { readonly quoteHash: string; readonly quotedAtMs: number }; readonly pedidoSimulado?: unknown; readonly accionMutante?: true } => ({
         ...r,
         ...(escalarMotivo ? { escalacion: { motivo: escalarMotivo } } : {}),
@@ -801,6 +862,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         ...(mutoEnTurno ? { accionMutante: true as const } : {}),
         ...(pedirUbicacionEnTurno && !escalarMotivo ? { pedirUbicacion: true as const } : {}),
         ...(pedirConfirmacionEnTurno && !escalarMotivo ? { pedirConfirmacion: pedirConfirmacionEnTurno } : {}),
+        ...(herramientasV2.length > 0 ? { herramientas: [...herramientasV2] } : {}),
       });
       // Contadores deterministas (§3): "no entiendo" y "colonia no reconocida" seguidos. Cuenta el SERVIDOR entre turnos (migracion 047); sin donde
       // contar (base sin migrar) se cuenta solo dentro del turno. Al llegar al umbral escala por su cuenta con un texto fijo.
@@ -870,7 +932,58 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       const respondidos = messages.slice(0, messages.length - mensajesSinResponder(messages).length).filter((m) => m.role === "user").slice(-12);
       const motivosYaAtendidos = new Set(respondidos.map((m) => classifyHighRiskIntent(m.content, ctxRiesgo)?.intent).filter((i): i is NonNullable<typeof i> => i !== undefined));
       const paraRiesgo = pendientes.filter((m, i) => i === pendientes.length - 1 || !motivosYaAtendidos.has(classifyHighRiskIntent(m.content, ctxRiesgo)?.intent as never));
-      const riesgoClasificado = classifyHighRiskIntentInMessages(paraRiesgo.map((m) => m.content), ctxRiesgo);
+      // C3 PED-22 (b), solo cerebro v2: «Perdón, yo pago en efectivo, no con tarjeta» sobre un pedido ya creado y aun no despachado se escalaba como cancelacion_modificacion. Cambiar
+      // solo COMO se cobra no toca lo que prepara cocina: el servidor actualiza la forma de pago del pedido (con una linea en sus notas para la sucursal) y se lo confirma al cliente,
+      // sin modelo y sin escalar. Con un carrito en curso, sin pedido reciente modificable o sin la funcion en el repositorio, sigue el camino de siempre.
+      if (cerebroV2 && perfil === "taqueria_pm" && !preview && !carritoEnCurso && pendientes.length > 0 && repo.actualizarFormaDePagoPedido) {
+        const cambios = pendientes.map((m) => cambioSoloDeFormaDePago(m.content));
+        const cambio = cambios.every((c) => c !== null) ? cambios.at(-1)! : null;
+        const efectivoCon = cambio?.pago === "efectivo" ? (cambios.findLast((c) => c?.efectivoCon !== undefined)?.efectivoCon ?? null) : null;
+        const reciente = cambio ? await repo.findLatestOrderByPhone(organizationId, normalizePhone(phone), new Date(now().getTime() - VENTANA_CAMBIO_DE_PAGO_MS).toISOString()).catch(() => null) : null;
+        if (cambio && reciente && (reciente.status === "pending" || reciente.status === "programado" || reciente.status === "por_aprobar")) {
+          const domicilio = !/Canal: recoger en sucursal\./.test(reciente.notes ?? "");
+          const conBillete = efectivoCon !== null && efectivoCon >= reciente.total ? efectivoCon : null;
+          const nota = `Cambio de forma de pago pedido por el cliente por WhatsApp: ahora ${cambio.pago}${cambio.pago === "efectivo" ? (domicilio ? "; ya NO lleva terminal" : "") : domicilio ? "; llevar terminal" : ""}${conBillete !== null ? `; paga con $${conBillete.toFixed(2)} (cambio: $${(Math.round((conBillete - reciente.total) * 100) / 100).toFixed(2)})` : ""}.`;
+          const actualizado = reciente.paymentMethod === cambio.pago && conBillete === null ? reciente : await repo.actualizarFormaDePagoPedido(organizationId, reciente.id, cambio.pago, nota);
+          if (actualizado) {
+            if (actualizado !== reciente) mutoEnTurno = true;
+            tele.resultado = "ok";
+            const reply =
+              cambio.pago === "tarjeta"
+                ? `Listo, su pedido queda para pagar con tarjeta${domicilio ? "; el repartidor lleva terminal" : " en la sucursal"}.`
+                : conBillete !== null
+                  ? `Listo, su pedido queda para pagar en efectivo con $${conBillete}; ${domicilio ? "el repartidor lleva" : "le tenemos"} su cambio de $${Math.round((conBillete - reciente.total) * 100) / 100}.`
+                  : domicilio
+                    ? "Listo, su pedido queda para pagar en efectivo. ¿Con cuánto paga, para que el repartidor lleve su cambio?"
+                    : "Listo, su pedido queda para pagar en efectivo en la sucursal.";
+            return done({ reply, orderId: null, propertyId: actualizado.propertyId ?? propertyId });
+          }
+        }
+      }
+      // Cerebro v2: decision determinista del suelto (salud/alergia con aviso URGENTE, transferencia realizada) ANTES del clasificador de siempre; los intents que v2
+      // decide se quitan del clasificador de guards.ts para no avisar ni contestar dos veces.
+      const pedidoEnCursoV2 = !customer.isNew && customer.pedidoReciente != null && ["registrado", "preparando", "salio", "listo_para_recoger", "programado", "por_confirmar"].includes(customer.pedidoReciente.estado);
+      const hiloPrevioV2 = messages.slice(0, messages.length - mensajesSinResponder(messages).length).map((m) => ({ role: m.role, content: m.content }));
+      // Cerebro v2 (suelto ~6479): clasificador SEMANTICO de alergia sobre los textos del turno con pista de comida o reaccion que la regex no ve (regex O
+      // clasificador => alergia). En paralelo, con el plazo del suelto acotado por lo que le queda al turno; cualquier falla = solo la regex.
+      const alergiaSemanticaV2 = cerebroV2 && perfil === "taqueria_pm" && options.clasificadorRole
+        ? await alergiasSemanticasDelTurno(pendientes.map((m) => m.content), clasificadorAlergiaPorGateway(gateway, { organizationId, role: options.clasificadorRole }), async () => "gateway", () => deadline - Date.now())
+        : undefined;
+      const decisionV2 = cerebroV2 && perfil === "taqueria_pm"
+        ? decidirAntesDelModelo(pendientes.map((m) => m.content), {
+            ...(alergiaSemanticaV2 ? { alergiaSemantica: alergiaSemanticaV2 } : {}),
+            pedidoEnCurso: pedidoEnCursoV2,
+            mensajes: hiloPrevioV2,
+            ahoraMs: now().getTime(),
+            carritoEnCurso,
+            otroRiesgo: (t) => {
+              const i = classifyHighRiskIntent(t, ctxRiesgo)?.intent ?? null;
+              return i === "cancelacion_modificacion" || i === "alergia_salud" || i === "transferencia" ? null : i;
+            },
+          })
+        : null;
+      const riesgoClasificadoBase = classifyHighRiskIntentInMessages(paraRiesgo.map((m) => m.content), ctxRiesgo);
+      const riesgoClasificado = riesgoClasificadoBase && decisionV2?.sustituye.has(riesgoClasificadoBase.intent) ? null : riesgoClasificadoBase;
       // Queja en dos tiempos: tras la pregunta «¿qué faltó o qué llegó mal?» el mensaje del cliente ES el detalle. Un riesgo de mayor prioridad (salud, cobro, una persona...) manda sobre el detalle.
       const textoPendiente = pendientes.map((m) => m.content).join(" / ");
       const recibeDetalle =
@@ -884,6 +997,34 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         : riesgoClasificado && riesgoClasificado.motivo === "queja"
           ? { ...riesgoClasificado, reply: respuestaDeQuejaConDetalle(quejaSinDetalle ? QUEJA_PREGUNTA_DETALLE : riesgoClasificado.reply, riesgoClasificado.text) }
           : riesgoClasificado;
+      let prefijoRespuestaV2: string | null = null;
+      let bloquePromptV2 = "";
+      if (decisionV2 && (decisionV2.avisos.length > 0 || decisionV2.respuestaFija || decisionV2.prefijoRespuesta || decisionV2.bloquePrompt || decisionV2.cancelacion)) {
+        const nombreV2 = !customer.isNew && customer.name ? customer.name : "Cliente";
+        for (const avisoV2 of decisionV2.avisos) {
+          const r = await executeAgentToolSafely(
+            repo,
+            { organizationId, channel: "whatsapp", phone, lockedPropertyId: activeEntryBranch?.propertyId ?? null, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...(avisoV2.urgente ? { avisoUrgente: true } : {}), ...modoCtx },
+            "escalar_a_humano",
+            { customer_name: nombreV2, motivo: avisoV2.motivo, resumen: avisoV2.resumen },
+          );
+          // Honestidad: sin el aviso registrado no se dice «ya avisé».
+          if (isToolErrorResult(r.result)) {
+            tele.resultado = "error_sistema";
+            tele.causaError = "herramienta";
+            return { reply: "Lamento el inconveniente: no pude avisar al equipo en este momento. Por favor inténtelo de nuevo en unos minutos.", orderId: null, propertyId };
+          }
+          mutoEnTurno = true;
+        }
+        if (decisionV2.respuestaFija) {
+          escalarMotivo = decisionV2.motivoToma;
+          tele.resultado = decisionV2.avisos.length > 0 ? "escalado_alto_riesgo" : "ok";
+          tele.motivoEscalacion = decisionV2.motivoToma;
+          return done({ reply: decisionV2.respuestaFija, orderId: null, propertyId });
+        }
+        prefijoRespuestaV2 = decisionV2.prefijoRespuesta;
+        bloquePromptV2 = decisionV2.bloquePrompt ?? "";
+      }
       if (riesgo) {
         const nombre = !customer.isNew && customer.name ? customer.name : "Cliente";
         // Autopiloto: con la bandera de la organizacion encendida, una cancelacion con pedido activo se resuelve con una solicitud de aprobacion (o la
@@ -934,14 +1075,20 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       // R10 P1: lo que el servidor ya consulto y daria el mismo resultado que la herramienta se le dice al modelo (una vuelta menos). Vacio = prompt identico al de antes.
       const datosYaConsultadosBloque = bloqueDatosYaConsultados(customer, { perfil, preview });
       // R19 (G4 / T7-012): «4 tacos de bistec» / «3 gringas» no son ordenes exactas; el servidor le fija al modelo que explique y ofrezca las opciones con precio. Solo los mensajes sin responder.
-      const cantidadNoMultiploBloque = perfil === "taqueria_pm" && !preview ? bloqueCantidadNoMultiplo(mensajesSinResponder(messages).map((m) => m.content)) : "";
+      // C3 PED-13: con cerebro v2 cada gringa/mestiza contada es una ORDEN (no una pieza que «no se vende suelta»): sale de esta regla y la dice su propio bloque.
+      const cantidadNoMultiploBloque = perfil === "taqueria_pm" && !preview
+        ? [bloqueCantidadNoMultiplo(mensajesSinResponder(messages).map((m) => m.content), cerebroV2 ? { gringasYMestizasPorOrden: true } : {}), cerebroV2 ? bloqueGringasYMestizasComoOrdenes(mensajesSinResponder(messages).map((m) => m.content)) : ""].filter((b) => b !== "").join("\n\n")
+        : "";
       // R11 A (bandera apagada por omision): contexto precargado + llamadas en lote. Solo PM, nunca en preview.
-      const precargaActiva = options.contextoPrecargado === true && perfil === "taqueria_pm" && !preview;
+      // Cerebro v2 (decision B): encendida siempre, con la sucursal de la colonia nombrada y el memo de lecturas (ver contexto-precargado.ts: por que la R11 A no quito vueltas en C3).
+      const precargaV2 = cerebroV2 && perfil === "taqueria_pm" && !preview;
+      const precargaActiva = (options.contextoPrecargado === true || precargaV2) && perfil === "taqueria_pm" && !preview;
       // R21 (T7-008): un producto que el menu no tiene (chistorra, longaniza, salchichas...) se rechaza con la alternativa correcta, no con un platillo inventado.
       const productoNoManejadoBloque = perfil === "taqueria_pm" && !preview ? bloqueProductoNoManejado(mensajesSinResponder(messages).map((m) => m.content)) : "";
       // R21 (arreglo 2 R20): tras un aviso de falla del sistema el mensaje previo del cliente sigue pendiente (un solo bloque de falla; vive en falla-pendiente.ts).
       const fallaPrevia = perfil === "taqueria_pm" && !preview ? bloquePedidoPendienteTrasFalla(messages) : "";
-      const systemFinal = [systemPrompt, datosYaConsultadosBloque, cotizacionVigenteBloque, cantidadNoMultiploBloque, productoNoManejadoBloque, fallaPrevia, precargaActiva ? BLOQUE_CONTEXTO_PRECARGADO : ""].filter((b) => b !== "").join("\n\n");
+      // C3 PED-15: con cerebro v2 el prompt de PM cambia H17 / paso 4 / B4 (tomar el pedido de la zona de otra sucursal); sin la bandera el prompt es el mismo texto de siempre.
+      const systemFinal = [cerebroV2 && perfil === "taqueria_pm" ? adaptarPromptPmV2(systemPrompt) : systemPrompt, cerebroV2 && perfil === "taqueria_pm" ? PM_POLICY_RULES_V2 : "", bloquePromptV2, datosYaConsultadosBloque, cotizacionVigenteBloque, cantidadNoMultiploBloque, productoNoManejadoBloque, fallaPrevia, precargaActiva ? (precargaV2 ? BLOQUE_CONTEXTO_PRECARGADO_V2 : BLOQUE_CONTEXTO_PRECARGADO) : ""].filter((b) => b !== "").join("\n\n");
 
       // B03: toque a «Confirmar pedido». Es un «si» explicito, pero SOLO a la cotizacion vigente: el boton de un resumen viejo (el pedido cambio, vencio, ya se
       // creo o se esta creando) se responde aqui con texto fijo, sin modelo y sin crear nada. Si es vigente, el pedido se crea por el camino de siempre
@@ -990,10 +1137,19 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
       };
 
       /** Total del resumen vigente si el ultimo mensaje del cliente es un «si» claro a ese resumen y aun no hay pedido; si no, null. */
+      const pagoAdoptadoV2 = (): DatosDeCierre | null => {
+        if (!cerebroV2 || perfil !== "taqueria_pm" || !cotizacionVigente || !flowSnapshot?.context || flowSnapshot.state !== "cotizado") return null;
+        const sinResponder = mensajesSinResponder(messages);
+        if (sinResponder.length !== 1) return null;
+        const c = flowSnapshot.context;
+        return pagoConVistoBuenoAlResumen([...messages].reverse().find((m) => m.role === "assistant")?.content, sinResponder[0]!.content, { total: c.quotedTotal, canal: c.quotedCanal, datosCotizados: datosDeCierreDeContexto(c) });
+      };
       const siPendienteSinPedido = (): number | null => {
         const total = flowSnapshot?.context?.quotedTotal;
         if (typeof total !== "number" || !Number.isFinite(total) || !cotizacionVigente) return null;
         const estado = estadoDeCierre(flowSnapshot, messages);
+        // C3 PED-16 (cerebro v2): «Tarjeta… sí, todo lo demás está bien» a un resumen vigente que pedía el pago tambien es el sí (el pago se adopta al confirmar).
+        if (pagoAdoptadoV2() !== null) return total;
         if (estado !== "esperando_confirmacion" && estado !== "confirmado") return null;
         // TODOS los mensajes sin responder deben ser un «si» claro: en una rafaga («mejor 3 cocas» + «si») el «si» responde al cambio, no al resumen que el servidor guardo.
         const sinResponder = mensajesSinResponder(messages);
@@ -1018,7 +1174,9 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         if (lecturaFallida) return null;
         cierreDeterministaIntentado = true;
         if (!fresco?.context || fresco.context.quotedTotal !== totalConfirmado || fresco.context.quoteHash !== flowSnapshot?.context?.quoteHash) return null;
-        const plan = planCierreDeterminista(fresco, { ahoraMs: now().getTime(), nombreDeLaFicha: customer.isNew ? null : customer.name, hayUbicacionCompartida: sharedLocation !== null && sharedLocation !== undefined });
+        // C3 PED-16: el plan lleva el pago que el cliente acaba de dar (confirmar_resumen lo adopta en la cotizacion con la misma regla).
+        const adoptado = porToque ? null : pagoAdoptadoV2();
+        const plan = planCierreDeterminista(adoptado ? { ...fresco, context: { ...fresco.context, ...(adoptado.pago ? { quotedPago: adoptado.pago } : {}), quotedEfectivoCon: adoptado.efectivoCon, quotedPropinaMxn: adoptado.propinaMxn, quotedPropinaPct: adoptado.propinaPct } } : fresco, { ahoraMs: now().getTime(), nombreDeLaFicha: customer.isNew ? null : customer.name, hayUbicacionCompartida: sharedLocation !== null && sharedLocation !== undefined });
         if (!plan.ok) return null;
         return [
           { id: "cierre-determinista-1", name: "confirmar_resumen", argumentsJson: "{}" },
@@ -1116,25 +1274,77 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
 
       // R11 A: consultas de LECTURA que el servidor hace antes de la primera vuelta y le entrega al modelo como llamadas ya hechas (un intercambio efimero al final del
       // historial del turno; nunca se persiste). Mismas herramientas y mismas guardas que las llamadas del modelo. Nada de esto crea ni cambia estado.
+      // Cerebro v2: lecturas precargadas por firma (herramienta + argumentos equivalentes). Si el modelo las vuelve a pedir igual, recibe el MISMO resultado sin ir a la base.
+      const lecturasPrecargadas = new Map<string, unknown>();
+      let zonasConocidas: readonly KnownZone[] = [];
+      const zonaDeColonia = (colonia: string): KnownZone | null => (zonasConocidas.length > 0 ? matchKnownZone(zonasConocidas, colonia) : null);
       if (precargaActiva && llamadasDeterministas === null) {
         const precargados: Array<{ tool: string; args: Record<string, unknown>; result: unknown; latenciaMs: number }> = [];
         const clientePrecargado = resultadoClientePrecargado(customer);
         if (clientePrecargado) precargados.push({ tool: "buscar_cliente", args: {}, result: clientePrecargado, latenciaMs: 0 });
         let productosPrecargados = 0;
+        let sucursalPrecargada = false;
         const textoDelCliente = pendientes.at(-1)?.content;
-        // Sin sucursal de entrada no se sabe cual es hasta buscar_sucursal_cercana (cruce colonia/pin de #556): ahi no se precarga producto alguno.
-        if (activeEntryBranch && textoDelCliente) {
-          const consultas = await precargarBusquedas(textoDelCliente, async (query) => {
+        const hastaMs = Date.now() + PRECARGA_V2_TOPE_MS;
+        // Sucursal donde se buscan los productos: la de entrada o, con cerebro v2, la que asigna buscar_sucursal_cercana a la colonia que nombra el cliente.
+        let sucursalProductos: { readonly slug: string; readonly propertyId: string | null } | null = activeEntryBranch ? { slug: activeEntryBranch.slug, propertyId: activeEntryBranch.propertyId } : null;
+        let textoProductos = textoDelCliente;
+        // Cerebro v2: colonia CONOCIDA con señal de domicilio en el mensaje -> buscar_sucursal_cercana con esa colonia, por la MISMA herramienta y contexto que la del modelo.
+        // Con un pin compartido no se precarga (cruce colonia/pin de #556: lo resuelve la herramienta cuando el modelo la llama). Solo se entrega un resultado claro
+        // (asignada sin otro chat, o fuera de zona); «sugerida» / «no reconocida» siguen por el modelo y sus contadores.
+        if (precargaV2 && textoDelCliente && !sharedLocation) {
+          try {
+            // En SAVEPOINT: una lectura fallida no debe dejar abortada la transaccion del turno.
+            zonasConocidas = await repo.runWithRowSavepoint(() => repo.listKnownZones(organizationId));
+          } catch {
+            zonasConocidas = [];
+          }
+          const zona = coloniaDelMensaje(textoDelCliente, zonasConocidas, branches.map((b) => b.name));
+          if (zona) {
             const inicio = Date.now();
-            const r = await executeAgentToolSafely(
-              repo,
-              { organizationId, channel: "whatsapp", phone, entryPropertyId: activeEntryBranch.propertyId, sourceEventId: messageId ?? null },
-              "buscar_producto",
-              { query, branch_slug: activeEntryBranch.slug },
-            );
-            return { result: r.result, latenciaMs: Date.now() - inicio, error: isToolErrorResult(r.result) };
-          });
-          for (const c of consultas) precargados.push({ tool: "buscar_producto", args: { query: c.query, branch_slug: activeEntryBranch.slug }, result: c.result, latenciaMs: c.latenciaMs });
+            const args = { colonia: zona.name };
+            const r = await executeAgentToolSafely(repo, { organizationId, channel: "whatsapp", phone, cerebroV2: true, flow: { key: `wa:${phone}`, turn: userTurn }, sharedLocation, ubicacionEntrega, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null }, "buscar_sucursal_cercana", args);
+            const res = r.result as { estado?: unknown; branch_slug?: unknown; atiende_otra_sucursal?: unknown } | null;
+            const claro = !isToolErrorResult(r.result) && (res?.estado === "asignada" || res?.estado === "fuera_de_zona");
+            if (claro) {
+              precargados.push({ tool: "buscar_sucursal_cercana", args, result: r.result, latenciaMs: Date.now() - inicio });
+              lecturasPrecargadas.set(`buscar_sucursal_cercana|${zona.id}`, r.result);
+              sucursalPrecargada = true;
+              // Mismos efectos que tras la llamada del modelo (ver el loop): el boton de ubicacion una vez por pedido y el contador de colonia no reconocida en cero.
+              if (!pedirUbicacionEnTurno && (await contar(repo, organizationId, phone, "ubicacion_solicitada", "incrementar")) === 1) pedirUbicacionEnTurno = true;
+              await contar(repo, organizationId, phone, "colonia_no_reconocida", "reiniciar");
+              // Productos: en la sucursal asignada; si el domicilio es de otro chat o queda fuera de zona, no se busca nada (el modelo explica primero).
+              sucursalProductos = res?.estado === "asignada" && typeof res.branch_slug === "string" && res.atiende_otra_sucursal === undefined ? { slug: res.branch_slug, propertyId: null } : null;
+              textoProductos = mensajeSinColonia(textoDelCliente, zona);
+            }
+          }
+        }
+        // Sin sucursal (ni de entrada ni asignada) no se sabe donde buscar: ahi no se precarga producto alguno.
+        if (sucursalProductos && textoProductos) {
+          const destino = sucursalProductos;
+          const consultas = await precargarBusquedas(
+            precargaV2 ? mensajeParaPrecargaV2(textoProductos) : textoProductos,
+            async (query) => {
+              const inicio = Date.now();
+              const r = await executeAgentToolSafely(
+                repo,
+                { organizationId, channel: "whatsapp", phone, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...(precargaV2 ? { cerebroV2: true } : {}) },
+                "buscar_producto",
+                { query, branch_slug: destino.slug },
+              );
+              return { result: r.result, latenciaMs: Date.now() - inicio, error: isToolErrorResult(r.result) };
+            },
+            precargaV2 ? hastaMs : Number.POSITIVE_INFINITY,
+            precargaV2,
+          );
+          for (const c of consultas) {
+            const args = { query: c.query, branch_slug: destino.slug };
+            precargados.push({ tool: "buscar_producto", args, result: c.result, latenciaMs: c.latenciaMs });
+            if (precargaV2) {
+              const firma = firmaDeLecturaPrecargable("buscar_producto", args, zonaDeColonia);
+              if (firma) lecturasPrecargadas.set(firma, c.result);
+            }
+          }
           productosPrecargados = consultas.length;
         }
         const intercambio = intercambioPrecargado(precargados);
@@ -1142,14 +1352,18 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           working.push(...intercambio.mensajes);
           for (const l of intercambio.llamadas) tele.tools.push({ tool: l.tool, latenciaMs: l.latenciaMs, resultado: "ok", vuelta: 0, codigoRegla: null });
         }
-        tele.precargado = { cliente: clientePrecargado !== null, productos: productosPrecargados };
+        tele.precargado = { cliente: clientePrecargado !== null, productos: productosPrecargados, ...(sucursalPrecargada ? { sucursal: true } : {}) };
       }
 
       // PM-R19: tras un respaldo, el resto del turno sigue con el modelo alterno (el primario ya demostro estar atascado).
       let modeloRespaldo: string | null = null;
+      // Cerebro v2 (decision B): texto que el servidor ya tiene listo para el cliente (el resumen canonico de cotizar_pedido con todos los datos); la vuelta siguiente lo
+      // usa en lugar de llamar al modelo y pasa por las mismas guardas del texto final.
+      let textoDelServidor: string | null = null;
       for (let turn = 0; turn < maxToolUseTurns; turn++) {
+        const eraTextoDelServidor = textoDelServidor !== null;
         // Con llamadas deterministas ya preparadas (el intento real fallo por tope/proveedor), la causa real queda en la telemetria: no se pisa con la del reloj.
-        if (Date.now() >= deadline) {
+        if (!eraTextoDelServidor && Date.now() >= deadline) {
           if (llamadasDeterministas === null) {
             tele.resultado = "presupuesto_agotado";
             tele.causaError = "tope_turno";
@@ -1159,12 +1373,16 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         }
         const role = huboFalloDeHerramienta ? options.escalatedRole : options.defaultRole;
         if (huboFalloDeHerramienta) tele.motivoEscaladaDeRol = "fallo_crear_pedido";
-        tele.vueltas += 1;
+        if (!eraTextoDelServidor) tele.vueltas += 1;
         if (!tele.rolesUsados.includes(role)) tele.rolesUsados.push(role);
 
         let completion: { text: string; toolCalls?: LlmToolCall[]; model?: string; providerId?: string };
         const eraCierreDeterminista = llamadasDeterministas !== null;
-        if (llamadasDeterministas !== null) {
+        if (textoDelServidor !== null) {
+          completion = { text: textoDelServidor, toolCalls: [] };
+          textoDelServidor = null;
+          tele.resumenDelServidor = true;
+        } else if (llamadasDeterministas !== null) {
           completion = { text: "", toolCalls: llamadasDeterministas };
           llamadasDeterministas = null;
         } else try {
@@ -1177,6 +1395,8 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             role,
             // El modelo elegido solo aplica al rol por defecto: el reintento tras un fallo real de `crear_pedido` (rol escalado) sigue siendo el de la plataforma.
             ...(modelo ? { preferredModel: modelo } : {}),
+            // Cerebro v2: solo escalones con retencion cero (escalera ZDR del rol); sin ella la llamada falla cerrada.
+            ...(cerebroV2 ? { zdrEstricto: true } : {}),
             request: { system: systemFinal, messages: working, tools: [...TOOLS], temperature: ajustes && esRolPorDefecto ? ajustes.temperatura : 0, signal },
           });
           const modeloElegido = ajustes?.modelo && esRolPorDefecto ? ajustes.modelo : undefined;
@@ -1188,12 +1408,14 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             if (tele.llamadasLlm.length >= 12) return;
             tele.llamadasLlm.push({ pata, resultado, ms: Math.max(0, Math.round(ms)), modelo: idModeloDeListaCerrada(modelo ?? MODELO_PREDETERMINADO_ID), ...(resultado === "error" ? { causa: clasificarCausaError(error) } : {}) });
           };
-          const hedgeMs = hedgeLlmDespuesMs();
+          // Cerebro v2: con ZDR la unica ruta de Luna es Azure (cola larga: p90 5-10 s por llamada en C3) y el turno tiene ~18 s; sin la variable de entorno el
+          // alterno (Haiku 5.5, ZDR) se lanza en paralelo a los HEDGE_CEREBRO_V2_MS. La variable de entorno sigue mandando (0/off la apaga tambien aqui).
+          const hedgeMs = process.env.WHATSAPP_LLM_HEDGE_MS !== undefined ? hedgeLlmDespuesMs() : cerebroV2 ? HEDGE_CEREBRO_V2_MS : null;
           for (;;) {
             const modeloActual = esRolPorDefecto && modeloRespaldo !== null ? modeloRespaldo : modeloElegido;
             // Un solo respaldo por turno: con el alterno ya en uso (o un modelo no economico) la llamada lleva todo el presupuesto restante. Con 10 a 16 s restantes el segundo
             // respaldo no cabria de todos modos (el primer tope siempre deja <= 7 s al siguiente).
-            const siguiente: string | null = esRolPorDefecto && modeloRespaldo === null && modeloAdmiteRespaldoPorTope(modeloElegido) ? modeloAlternoParaTope(modeloElegido ?? MODELO_PREDETERMINADO_ID) : null;
+            const siguiente: string | null = esRolPorDefecto && modeloRespaldo === null && modeloAdmiteRespaldoPorTope(modeloElegido) ? modeloAlternoParaTope(modeloElegido ?? MODELO_PREDETERMINADO_ID, cerebroV2) : null;
             // PM-R21 (hedging, apagable con WHATSAPP_LLM_HEDGE_MS=0): el alterno se lanza EN PARALELO cuando el primario pasa de ~5.5 s sin contestar, en vez de cortarlo a los 9-11 s y
             // dejar al alterno 7 s o menos (en R20 el respaldo secuencial tambien se quedo sin contestar en 71 de 113 turnos con error). Gana el primero que conteste; la otra se aborta.
             const retrasoHedge = siguiente !== null && hedgeMs !== null && tele.hedgesLlm < HEDGES_MAX_POR_TURNO ? hedgeLlmRetrasoEfectivoMs(deadline - Date.now(), hedgeMs) : null;
@@ -1264,7 +1486,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
         }
 
         // Las llamadas del cierre determinista las arma el servidor: ningun modelo respondio, la telemetria de modelo conserva lo del intento real.
-        if (!eraCierreDeterminista) tele.modeloRespondioLlm = idModeloDeListaCerrada(completion.model, completion.providerId);
+        if (!eraCierreDeterminista && !eraTextoDelServidor) tele.modeloRespondioLlm = idModeloDeListaCerrada(completion.model, completion.providerId);
         const toolCalls = completion.toolCalls ?? [];
         if (toolCalls.length === 0) {
           let base = reemplazarFugaDePrompt(completion.text ?? "", TOOLS.map((t) => t.name)) || confirmacionDelTurno() || (perfil === "taqueria_pm" ? PM_COPY.repetirPedido : "¿Me puede repetir su pedido?");
@@ -1302,7 +1524,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           const avisoDelTurno = tele.tools.some((t) => (t.tool === "escalar_a_humano" || t.tool === "registrar_contacto") && t.resultado === "ok");
           if (afirmaHaberAvisado(respuesta) && !escalarMotivo && !avisoDelTurno && !pedidoGrandeVisto && !(promesaPrevia && afirmaHaberAvisado(promesaPrevia.content))) {
             // QA-PM-R4-reglas-01: un pedido grande cotizado que el modelo "avisa" sin escalar queda como pedido_grande (cede la conversacion a la sucursal), no como "otro".
-            const motivoAvisoHonesto = perfil === "taqueria_pm" && lastQuoteTotal !== null && lastQuoteTotal > PEDIDO_GRANDE_TOTAL_MXN ? "pedido_grande" : "otro";
+            const motivoAvisoHonesto = perfil === "taqueria_pm" && lastQuoteTotal !== null && umbralesPedidoGrande().totalMxn !== null && lastQuoteTotal > (umbralesPedidoGrande().totalMxn ?? Number.POSITIVE_INFINITY) ? "pedido_grande" : "otro";
             const nombre = !customer.isNew && customer.name ? customer.name : "Cliente";
             const ultimo = [...messages].reverse().find((m) => m.role === "user");
             const aviso = await executeAgentToolSafely(
@@ -1376,6 +1598,52 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
               if (!Number.isNaN(instanteMs)) respuesta = corregirHoraDeRecogidaEnRespuesta(respuesta, { instanteMs, zonaHoraria: p.timezone, ahoraMs: now().getTime() });
             }
           }
+          // Cerebro v2 (fc5797c + e69279e del suelto): no se promete un producto que el cliente nombro y ninguna herramienta devolvio; si no esta en el menu de
+          // ninguna sucursal activa, la oracion pasa a «Por el momento no tenemos X en el menú.». Lo que si esta (o si el menu no se pudo leer) no se toca.
+          if (cerebroV2 && perfil === "taqueria_pm" && !orderId) {
+            const hiloV2 = working.map((m) => ({ role: m.role, content: typeof m.content === "string" ? m.content : "" }));
+            const promesa = promesaDeProductoSinBuscar(respuesta, hiloV2);
+            if (promesa) {
+              let enElMenu: boolean | null = false;
+              try {
+                for (const b of branches) {
+                  const catalogo = (await repo.listAvailableProductsForBranch(b.propertyId)).map((p) => ({ id: p.id, name: p.name, category: p.categoryName ?? null, description: p.description ?? null, price: Number(p.price), searchKeywords: p.searchKeywords ?? null }));
+                  if (consultasDeMenuParaPromesa(promesa.producto).some((q) => buscarEnCatalogo(q, catalogo, { conExtras: false }).length > 0)) { enElMenu = true; break; }
+                }
+              } catch {
+                enElMenu = null;
+              }
+              respuesta = corregirPromesaSinBuscar(respuesta, hiloV2, enElMenu) ?? respuesta;
+            }
+          }
+          // Cerebro v2: guardia del texto final del suelto (whatsapp-agent-core.ts ~7737-7787) en su orden: error del sistema al crear sin pedido -> texto del servidor y aviso
+          // operativo:pedido_no_registrado; pedido por aprobar dado por confirmado/en camino -> acuse + PEDIDO_POR_APROBAR_REPLY; pedido creado y «no se pudo» -> confirmacion.
+          // La promesa sin buscar ya se corrigio arriba y la afirmacion de registro sin pedido la quita la guardia de honestidad de siempre (pedidoPrevioRegistrado).
+          if (cerebroV2 && perfil === "taqueria_pm") {
+            const hiloGuardia = working.map((m) => ({ role: m.role, content: typeof m.content === "string" ? m.content : "" }));
+            const guardia = guardiaTextoFinal(respuesta, {
+              pedidoCreadoEnTurno: orderId !== null,
+              orderId,
+              pedidoPorAprobar: orderId !== null ? porAprobarEnTurno : !customer.isNew && customer.pedidoReciente?.estado === "por_confirmar",
+              productosDevueltosPorHerramientas: [],
+              productoPrometidoEnMenu: null,
+              mensajes: hiloGuardia,
+              crearFallido: crearFallidoV2 ?? (crearFalloInternoEnTurno ? { interno: true, clase: "interno" } : crearRechazadoEnTurno ? { interno: false, clase: "otro" } : null),
+              pedidoEnCurso: pedidoEnCursoV2 ? "abierto" : null,
+              pedidoPrevioRegistrado: true,
+              enIngles: esTextoEnIngles(pendientes.map((m) => m.content)),
+            });
+            if (guardia.reemplazado) respuesta = guardia.texto;
+            if (guardia.alertar && !preview) {
+              // Con SAVEPOINT (executeAgentToolSafely): si el aviso no se puede dejar, la respuesta al cliente sigue (como el try/catch del suelto).
+              await executeAgentToolSafely(
+                repo,
+                { organizationId, channel: "whatsapp", phone, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...modoCtx },
+                "registrar_contacto",
+                { customer_name: !customer.isNew && customer.name ? customer.name : "Cliente", reason: MOTIVO_PEDIDO_NO_REGISTRADO, message: "No se pudo registrar el pedido del cliente por un error del sistema (crear_pedido). Contáctelo para tomarlo." },
+              );
+            }
+          }
           const replyFinal = safeReply(respuesta);
           // B03: resumen por confirmar (cotizacion de ESTE turno, aun sin pedido): el webhook agrega los botones. Si no se puede comprobar la cotizacion vigente en el
           // servidor (base sin la maquina de estados) o no hay resumen con total, el cliente recibe el texto de siempre y contesta «si».
@@ -1383,16 +1651,19 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             const vigente = await repo.readOrderFlow(organizationId, `wa:${phone}`);
             if (vigente?.state === "cotizado" && vigente.context?.quoteHash === cotizacionDelTurno) pedirConfirmacionEnTurno = { quoteHash: vigente.context.quoteHash, quotedAtMs: vigente.context.quotedAtMs };
           }
-          return done({ reply: replyFinal, orderId, propertyId });
+          return done({ reply: decisionV2 ? respuestaFinalV2(replyFinal, { prefijoRespuesta: prefijoRespuestaV2, cancelacion: decisionV2.cancelacion }) : replyFinal, orderId, propertyId });
         }
 
         working.push({ role: "assistant", content: completion.text ?? "", toolCalls });
+        // Cerebro v2: las herramientas de ESTA respuesta, para decidir si el resumen sale del servidor sin otra vuelta (ver resumen-sin-vuelta.ts).
+        const loteDeVuelta: LlamadaDelLote[] = [];
 
         for (const [indice, call] of toolCalls.entries()) {
           let input: Record<string, unknown> = {};
           let result: unknown;
           let fallaSistema = false;
           let codigoDeRechazo: string | null = null;
+          let rechazoClase: AgentToolOutcome["rechazoClase"];
           let argumentosInvalidos = false;
           const toolInicio = Date.now();
           // R11-05a: pasado el tope por respuesta NO se ejecuta nada, pero cada tool_call recibe su resultado (el protocolo exige uno por id).
@@ -1415,15 +1686,24 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           }
           // Propina dicha en porcentaje ("de propina 10%") que el modelo no mando: el servidor la completa (solo tarjeta; el resto de la regla de propina sigue en el servidor).
           // Solo si el modelo NO mando propina (ni 0): el ultimo mensaje del cliente acepta un porcentaje en afirmativo.
-          if (result === undefined && call.name === "crear_pedido" && input.payment_method === "tarjeta" && input.propina === undefined && input.propina_porcentaje === undefined) {
+          if (result === undefined && !cerebroV2 && call.name === "crear_pedido" && input.payment_method === "tarjeta" && input.propina === undefined && input.propina_porcentaje === undefined) {
             const pct = porcentajePropinaDichoPorElCliente([...messages].reverse().find((m) => m.role === "user")?.content);
             if (pct !== null) input = { ...input, propina_porcentaje: pct };
           }
+          // Cerebro v2: la misma lectura que el servidor precargo en este turno (mismos argumentos equivalentes) devuelve el MISMO resultado sin otra consulta a la base.
+          // Cerebro v2 (suelto ~7946-7959): dentro del turno el pedido ya existe; otro crear_pedido no vuelve a crear y, si trae algo distinto, lo dice (cambio_no_aplicado).
+          if (result === undefined && cerebroV2 && call.name === "crear_pedido" && orderId && primerCrearV2) {
+            const cambio = cambioNoAplicadoEnTurno(primerCrearV2.input, input);
+            result = cambio && primerCrearV2.result && typeof primerCrearV2.result === "object" ? { ...(primerCrearV2.result as Record<string, unknown>), cambio_no_aplicado: cambio } : primerCrearV2.result;
+          }
+          const firmaPrecargada = result === undefined && lecturasPrecargadas.size > 0 ? firmaDeLecturaPrecargable(call.name, input, zonaDeColonia) : null;
+          const memo = firmaPrecargada !== null && lecturasPrecargadas.has(firmaPrecargada) ? { result: lecturasPrecargadas.get(firmaPrecargada) } : null;
           if (result === undefined) {
-            const executed = await executeAgentToolSafely(repo, { organizationId, channel: "whatsapp", phone, conversacionReciente: messages.flatMap((m) => (m.role === "user" || m.role === "assistant") && typeof m.content === "string" ? [{ role: m.role, content: m.content }] : []).slice(-30), flow: { key: `wa:${phone}`, turn: userTurn }, sharedLocation, ubicacionEntrega, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...(options.autopiloto?.pedidoGrande ? { pedidoGrande: options.autopiloto.pedidoGrande } : {}), ...(options.agregados ? { agregados: options.agregados } : {}), ...(options.menuPdfBaseUrl ? { menuPdfBaseUrl: options.menuPdfBaseUrl } : {}), ...modoCtx }, call.name, input);
+            const executed: AgentToolOutcome = memo ? { result: memo.result, orderId: null, propertyId: null } : await executeAgentToolSafely(repo, { organizationId, channel: "whatsapp", phone, ...(cerebroV2 ? { cerebroV2: true } : {}), ...(cerebroV2 && call.name === "crear_pedido" ? { hiloV2: [...hiloDelSuelto(messages), ...hiloDelSuelto([{ role: "assistant", content: "", herramientas: herramientasV2 }]).slice(0, -1)] } : {}), ...(cerebroV2 && call.name === "crear_pedido" && clasificadorAparteV2 ? { clasificarAparte: clasificadorAparteV2 } : {}), conversacionReciente: messages.flatMap((m) => (m.role === "user" || m.role === "assistant") && typeof m.content === "string" ? [{ role: m.role, content: m.content, ...(m.at ? { at: m.at } : {}) }] : []).slice(-30), flow: { key: `wa:${phone}`, turn: userTurn }, sharedLocation, ubicacionEntrega, entryPropertyId: activeEntryBranch?.propertyId ?? null, sourceEventId: messageId ?? null, ...(options.autopiloto?.pedidoGrande ? { pedidoGrande: options.autopiloto.pedidoGrande } : {}), ...(options.agregados ? { agregados: options.agregados } : {}), ...(options.menuPdfBaseUrl ? { menuPdfBaseUrl: options.menuPdfBaseUrl } : {}), ...modoCtx }, call.name, input);
             result = executed.result;
             fallaSistema = executed.fallaSistema === true;
             codigoDeRechazo = executed.rechazoDelFlujo ?? null;
+            rechazoClase = executed.rechazoClase;
             anyToolCalled = true;
             if ((call.name === "crear_pedido" || call.name === "registrar_contacto" || call.name === "solicitar_agregado_pedido" || call.name === "escalar_a_humano") && !isToolErrorResult(result)) mutoEnTurno = true;
             if ((call.name === "cotizar_pedido" || call.name === "repetir_pedido") && !isToolErrorResult(result) && executed.quoteHash) cotizacionDelTurno = executed.quoteHash;
@@ -1464,6 +1744,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
               }
             }
             if (executed.orderId) {
+              if (call.name === "crear_pedido" && !primerCrearV2 && !isToolErrorResult(result)) primerCrearV2 = { input, result };
               orderId = executed.orderId;
               propertyId = executed.propertyId;
               if (call.name === "crear_pedido" && options.encolarComanda && executed.raw && !executed.pedidoRetenido) {
@@ -1472,6 +1753,23 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
               }
             }
           }
+          if (call.name === "crear_pedido") {
+            if (isToolErrorResult(result)) {
+              crearRechazadoEnTurno = true;
+              if (fallaSistema) crearFalloInternoEnTurno = true;
+              const error = (result as { error?: unknown }).error;
+              crearFallidoV2 = siguienteCrearFallido(crearFallidoV2, {
+                error: typeof error === "string" ? error : undefined,
+                codigo: codigoDeRechazo ?? undefined,
+                interno: fallaSistema,
+                clase: rechazoClase?.clase ?? null,
+                pregunta: rechazoClase?.pregunta,
+                sucursal: rechazoClase?.sucursal ?? null,
+                input,
+              });
+            } else if ((result as { por_aprobar?: unknown } | null)?.por_aprobar === true) porAprobarEnTurno = true;
+          }
+          crearFallidoV2 = crearFallidoTrasHerramienta(crearFallidoV2, call.name, result);
           if (call.name === "escalar_a_humano" && !isToolErrorResult(result)) {
             escalacionOkEnTurno = true;
             escalarMotivo = typeof input.motivo === "string" ? input.motivo : "otro";
@@ -1560,7 +1858,10 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           }
           if (perfil === "taqueria_pm" && call.name === "buscar_sucursal_cercana" && !isToolErrorResult(result)) {
             const estado = (result as { estado?: unknown } | null)?.estado;
-            if (estado === "no_reconocida") {
+            // Cerebro v2 (C4 ROB-04): si lo que el cliente acaba de escribir es solo su nombre, no fue un intento de dar la colonia: no cuenta.
+            const pidioNombre = /\bnombre\b/i.test(String(hiloPrevioV2.filter((m) => m.role === "assistant").slice(-1)[0]?.content ?? ""));
+            const soloNombre = cerebroV2 && pidioNombre && pareceSoloNombre(pendientes.map((m) => m.content).join(" "));
+            if (estado === "no_reconocida" && !soloNombre) {
               const n = (await contar(repo, organizationId, phone, "colonia_no_reconocida", "incrementar")) ?? (coloniaFallosEnTurno += 1);
               if (n >= CONTADOR_AGENTE_UMBRAL) return escalarPorContador("zona_no_reconocida", `La colonia no se reconoció ${CONTADOR_AGENTE_UMBRAL} veces seguidas. Último mensaje: ${(mensajesSinResponder(messages).slice(-1)[0]?.content ?? "").slice(0, 300)}`);
             } else if (estado === "asignada" || estado === "fuera_de_zona") {
@@ -1574,7 +1875,26 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           if (call.name === "crear_pedido" && isToolErrorResult(result) && (fallaSistema || argumentosInvalidos)) {
             huboFalloDeHerramienta = true;
           }
+          loteDeVuelta.push({ name: call.name, input, result, error: isToolErrorResult(result) || argumentosInvalidos });
+          if (cerebroV2 && perfil === "taqueria_pm" && !preview) {
+            const h = herramientaParaElHilo(call.id, call.name, input, result, now().toISOString());
+            if (h) herramientasV2.push(h);
+          }
           working.push({ role: "tool", toolCallId: call.id, content: JSON.stringify(result) });
+        }
+        // Cerebro v2 (decision B): la respuesta fue lecturas + cotizar_pedido con todos los datos del cierre y nada que explicar antes del resumen. La vuelta siguiente solo
+        // copiaria `resumen_canonico` tal cual (lo exige la instruccion de la herramienta): el servidor lo entrega y se ahorra esa llamada al modelo. La cotizacion debe
+        // ser la VIGENTE de este turno en el estado fresco del flujo y el plan de cierre debe estar completo (nombre, pago y, a domicilio, direccion y colonia).
+        if (
+          cerebroV2 && perfil === "taqueria_pm" && !preview && !eraCierreDeterminista && cierreMaquinaActiva() &&
+          orderId === null && escalarMotivo === null && cotizacionDelTurno !== null && resumenCanonicoDelTurno !== null &&
+          loteDeVuelta.length === toolCalls.length && loteAdmiteResumenSinVuelta(loteDeVuelta, pendientes.map((m) => m.content))
+        ) {
+          const fresco = await repo.readOrderFlow(organizationId, `wa:${phone}`).catch(() => null);
+          const plan = fresco?.state === "cotizado" && fresco.context?.quoteHash === cotizacionDelTurno
+            ? planCierreDeterminista(fresco, { ahoraMs: now().getTime(), nombreDeLaFicha: customer.isNew ? null : customer.name, hayUbicacionCompartida: sharedLocation !== null && sharedLocation !== undefined })
+            : null;
+          if (plan?.ok && fresco?.context?.resumenCanonico === resumenCanonicoDelTurno.texto) textoDelServidor = resumenCanonicoDelTurno.texto;
         }
         // PM R18: el pedido se creo por el cierre determinista: el cliente recibe la confirmacion del SERVIDOR (renglones, total y hora reales) sin otra llamada al modelo (que acaba de fallar o de agotar el tiempo).
         if (eraCierreDeterminista && !cierreAdelantado) {
@@ -1613,7 +1933,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
     async handleInboundMessage(entrada) {
       const inicio = Date.now();
       const correlationId = randomUUID();
-      const tele: Telemetria = { vueltas: 0, rolesUsados: [], tools: [], resultado: "ok", causaError: null, cierreMaquina: cierreMaquinaActiva(), cierreCortado: false, reintentosLlm: 0, reintentoLlmRecuperado: false, modeloRespaldoLlm: null, modeloRespondioLlm: null, llamadasLlm: [], hedgeLlmLanzado: false, hedgesLlm: 0, hedgeLlmGanador: null, motivoEscalacion: null, motivoEscaladaDeRol: null, precargado: null };
+      const tele: Telemetria = { vueltas: 0, rolesUsados: [], tools: [], resultado: "ok", causaError: null, cierreMaquina: cierreMaquinaActiva(), cierreCortado: false, reintentosLlm: 0, reintentoLlmRecuperado: false, modeloRespaldoLlm: null, modeloRespondioLlm: null, llamadasLlm: [], hedgeLlmLanzado: false, hedgesLlm: 0, hedgeLlmGanador: null, motivoEscalacion: null, motivoEscaladaDeRol: null, precargado: null, resumenDelServidor: false };
       let salida: Salida | null = null;
       try {
         const turno = await ejecutarTurno(entrada, tele);
@@ -1658,6 +1978,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
             motivoEscalacion: tele.motivoEscalacion,
             motivoEscaladaDeRol: tele.motivoEscaladaDeRol,
             ...(tele.precargado ? { precargado: tele.precargado } : {}),
+            ...(tele.resumenDelServidor ? { resumenDelServidor: true } : {}),
             telefonoHash,
           });
         }

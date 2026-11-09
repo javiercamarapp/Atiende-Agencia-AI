@@ -1,0 +1,304 @@
+# Conciliacion C3 -> catalogo real de PM
+
+Generado por `c3-conciliar.py` (sin red ni LLM). Fuente: `arnes/ciego-3.fuente.json`; corrida seca: `c3-seco.json`.
+
+## Sucursales del catalogo destino
+
+- `prol-montejo` (Prolongación Montejo): status=active coords=si
+- `fco-montejo` (Francisco de Montejo): status=active coords=si
+- `pensiones` (Pensiones): status=active coords=si
+- `galerias` (Galerías): status=inactive coords=NO
+- `playa` (Playa (Chicxulub)): status=inactive coords=si
+- `garcia-lavin` (García Lavín (Victory Platz)): status=active coords=si
+- `altabrisa` (Victory Altabrisa): status=active coords=si
+
+## Numero de WhatsApp por escenario (sucursal_chat)
+
+Cada escenario escribe al numero de UNA sucursal (decision del dueno, 2026-11-06). Reglas y conteo: {'R5': 52, 'R1': 10, 'R2': 1, 'R4': 8, 'R3': 9}. Sucursal cruzada (escribe a una, entrega otra):
+- C3-PED-07-kilo-de-bistec-y-medio-de-poc-chuc-americas: escribe a pensiones, entrega/recoge fco-montejo (R1)
+- C3-PED-08-kilo-y-cuarto-de-costilla-centro: escribe a pensiones, entrega/recoge prol-montejo (R1)
+- C3-PED-13-gringas-y-mestiza-xcumpich: escribe a garcia-lavin, entrega/recoge fco-montejo (R1)
+- C3-PED-15-suizos-de-chile-poblano-y-chorizo-chuburna: escribe a garcia-lavin, entrega/recoge fco-montejo (R2)
+- C3-PED-19-botanas-y-refrescos-para-ver-el-partido-americas: escribe a pensiones, entrega/recoge fco-montejo (R1)
+- C3-PED-29-cambia-de-alambre-de-pastor-a-costilla-americas: escribe a pensiones, entrega/recoge fco-montejo (R1)
+- C3-PED-32-corrige-su-nombre-xcumpich: escribe a garcia-lavin, entrega/recoge fco-montejo (R1)
+- C3-PED-36-cordemex-pide-pensiones-y-paga-exacto: escribe a pensiones, entrega/recoge fco-montejo (R1)
+- C3-PED-37-recurrente-lo-mismo-a-otra-direccion-xcumpich: escribe a garcia-lavin, entrega/recoge fco-montejo (R1)
+- C3-ROB-06-cliente-indeciso-cambia-cuatro-veces: escribe a pensiones, entrega/recoge prol-montejo (R1)
+- C3-ROB-09-fuera-de-tema-y-luego-pide-quesadillas: escribe a pensiones, entrega/recoge fco-montejo (R1)
+
+## Escenarios con adaptaciones o riesgos (18 de 80; 15 adaptaciones, 6 riesgos)
+
+- **C3-PED-07-kilo-de-bistec-y-medio-de-poc-chuc-americas**
+  - ADAPTADO: A3 sucursal de domicilio pensiones -> fco-montejo (buscar_sucursal_cercana real con colonia 'Las Américas': 4.7 km)
+- **C3-PED-08-kilo-y-cuarto-de-costilla-centro**
+  - ADAPTADO: A3 sucursal de domicilio pensiones -> prol-montejo (buscar_sucursal_cercana real con colonia 'Centro': 5.1 km)
+- **C3-PED-13-gringas-y-mestiza-xcumpich**
+  - ADAPTADO: A3 sucursal de domicilio garcia-lavin -> fco-montejo (buscar_sucursal_cercana real con colonia 'Xcumpich': None km)
+- **C3-PED-19-botanas-y-refrescos-para-ver-el-partido-americas**
+  - ADAPTADO: A3 sucursal de domicilio pensiones -> fco-montejo (buscar_sucursal_cercana real con colonia 'Las Américas': 4.7 km)
+- **C3-PED-29-cambia-de-alambre-de-pastor-a-costilla-americas**
+  - ADAPTADO: A3 sucursal de domicilio pensiones -> fco-montejo (buscar_sucursal_cercana real con colonia 'Las Américas': 4.7 km)
+- **C3-PED-32-corrige-su-nombre-xcumpich**
+  - ADAPTADO: A3 sucursal de domicilio garcia-lavin -> fco-montejo (buscar_sucursal_cercana real con colonia 'Xcumpich': None km)
+- **C3-PED-35-itzimna-pide-garcia-lavin**
+  - RIESGO (sin adaptar): el cliente PIDE la sucursal garcia-lavin pero la herramienta real asigna prol-montejo a 'Itzimná' y el servidor rechaza el domicilio fuera de la zona de garcia-lavin: la expectativa del origen (domicilio desde garcia-lavin) es IMPOSIBLE en el destino; no se adapta (cambiaria la conducta medida)
+  - RIESGO (sin adaptar): la cotizacion real fallo en garcia-lavin: HTTP 400 Itzimná está fuera de la zona de reparto de García Lavín (Victory Platz): no se puede enviar el pedido a domicilio desde esta sucursal. Ofrezca recoger en sucursal o, si corresponde, otra suc
+- **C3-PED-36-cordemex-pide-pensiones-y-paga-exacto**
+  - ADAPTADO: A6 Cordemex lo cubre Francisco de Montejo y Pensiones rechaza ese domicilio; decision del dueno: se toma para la sucursal que cubre (como A3)
+  - RIESGO (sin adaptar): el cliente PIDE la sucursal pensiones pero la herramienta real asigna fco-montejo a 'Cordemex' y el servidor rechaza el domicilio fuera de la zona de pensiones: la expectativa del origen (domicilio desde pensiones) es IMPOSIBLE en el destino; no se adapta (cambiaria la conducta medida)
+  - RIESGO (sin adaptar): la cotizacion real fallo en pensiones: HTTP 400 Revolución Cordemex está fuera de la zona de reparto de Pensiones: no se puede enviar el pedido a domicilio desde esta sucursal. Ofrezca recoger en sucursal o, si corresponde, otra sucursal.
+- **C3-PED-37-recurrente-lo-mismo-a-otra-direccion-xcumpich**
+  - ADAPTADO: A3 sucursal de domicilio garcia-lavin -> fco-montejo (buscar_sucursal_cercana real con colonia 'Xcumpich': None km)
+- **C3-POL-03-fuera-de-zona-kanasin**
+  - RIESGO (sin adaptar): buscar_sucursal_cercana real con 'Kanasín' -> no_reconocida (el escenario espera fuera_de_zona; el agente vera no_reconocida y pedira otra referencia)
+- **C3-POL-04-fuera-de-zona-uman-recoge-en-pensiones**
+  - EXCLUIDO (no se corre): U
+  - EXCLUIDO (no se corre): m
+  - EXCLUIDO (no se corre): a
+  - EXCLUIDO (no se corre): n
+  - EXCLUIDO (no se corre):  
+  - EXCLUIDO (no se corre): n
+  - EXCLUIDO (no se corre): o
+  - EXCLUIDO (no se corre):  
+  - EXCLUIDO (no se corre): e
+  - EXCLUIDO (no se corre): x
+  - EXCLUIDO (no se corre): i
+  - EXCLUIDO (no se corre): s
+  - EXCLUIDO (no se corre): t
+  - EXCLUIDO (no se corre): e
+  - EXCLUIDO (no se corre):  
+  - EXCLUIDO (no se corre): c
+  - EXCLUIDO (no se corre): o
+  - EXCLUIDO (no se corre): m
+  - EXCLUIDO (no se corre): o
+  - EXCLUIDO (no se corre):  
+  - EXCLUIDO (no se corre): z
+  - EXCLUIDO (no se corre): o
+  - EXCLUIDO (no se corre): n
+  - EXCLUIDO (no se corre): a
+  - EXCLUIDO (no se corre):  
+  - EXCLUIDO (no se corre): c
+  - EXCLUIDO (no se corre): o
+  - EXCLUIDO (no se corre): n
+  - EXCLUIDO (no se corre): o
+  - EXCLUIDO (no se corre): c
+  - EXCLUIDO (no se corre): i
+  - EXCLUIDO (no se corre): d
+  - EXCLUIDO (no se corre): a
+  - EXCLUIDO (no se corre):  
+  - EXCLUIDO (no se corre): e
+  - EXCLUIDO (no se corre): n
+  - EXCLUIDO (no se corre):  
+  - EXCLUIDO (no se corre): l
+  - EXCLUIDO (no se corre): a
+  - EXCLUIDO (no se corre):  
+  - EXCLUIDO (no se corre): c
+  - EXCLUIDO (no se corre): u
+  - EXCLUIDO (no se corre): e
+  - EXCLUIDO (no se corre): n
+  - EXCLUIDO (no se corre): t
+  - EXCLUIDO (no se corre): a
+  - EXCLUIDO (no se corre):  
+  - EXCLUIDO (no se corre): r
+  - EXCLUIDO (no se corre): e
+  - EXCLUIDO (no se corre): a
+  - EXCLUIDO (no se corre): l
+  - EXCLUIDO (no se corre):  
+  - EXCLUIDO (no se corre): (
+  - EXCLUIDO (no se corre): b
+  - EXCLUIDO (no se corre): u
+  - EXCLUIDO (no se corre): s
+  - EXCLUIDO (no se corre): c
+  - EXCLUIDO (no se corre): a
+  - EXCLUIDO (no se corre): r
+  - EXCLUIDO (no se corre): _
+  - EXCLUIDO (no se corre): s
+  - EXCLUIDO (no se corre): u
+  - EXCLUIDO (no se corre): c
+  - EXCLUIDO (no se corre): u
+  - EXCLUIDO (no se corre): r
+  - EXCLUIDO (no se corre): s
+  - EXCLUIDO (no se corre): a
+  - EXCLUIDO (no se corre): l
+  - EXCLUIDO (no se corre): _
+  - EXCLUIDO (no se corre): c
+  - EXCLUIDO (no se corre): e
+  - EXCLUIDO (no se corre): r
+  - EXCLUIDO (no se corre): c
+  - EXCLUIDO (no se corre): a
+  - EXCLUIDO (no se corre): n
+  - EXCLUIDO (no se corre): a
+  - EXCLUIDO (no se corre):  
+  - EXCLUIDO (no se corre): -
+  - EXCLUIDO (no se corre): >
+  - EXCLUIDO (no se corre):  
+  - EXCLUIDO (no se corre): n
+  - EXCLUIDO (no se corre): o
+  - EXCLUIDO (no se corre): _
+  - EXCLUIDO (no se corre): r
+  - EXCLUIDO (no se corre): e
+  - EXCLUIDO (no se corre): c
+  - EXCLUIDO (no se corre): o
+  - EXCLUIDO (no se corre): n
+  - EXCLUIDO (no se corre): o
+  - EXCLUIDO (no se corre): c
+  - EXCLUIDO (no se corre): i
+  - EXCLUIDO (no se corre): d
+  - EXCLUIDO (no se corre): a
+  - EXCLUIDO (no se corre): )
+  - EXCLUIDO (no se corre): ;
+  - EXCLUIDO (no se corre):  
+  - EXCLUIDO (no se corre): e
+  - EXCLUIDO (no se corre): l
+  - EXCLUIDO (no se corre):  
+  - EXCLUIDO (no se corre): e
+  - EXCLUIDO (no se corre): s
+  - EXCLUIDO (no se corre): c
+  - EXCLUIDO (no se corre): e
+  - EXCLUIDO (no se corre): n
+  - EXCLUIDO (no se corre): a
+  - EXCLUIDO (no se corre): r
+  - EXCLUIDO (no se corre): i
+  - EXCLUIDO (no se corre): o
+  - EXCLUIDO (no se corre):  
+  - EXCLUIDO (no se corre): e
+  - EXCLUIDO (no se corre): s
+  - EXCLUIDO (no se corre): p
+  - EXCLUIDO (no se corre): e
+  - EXCLUIDO (no se corre): r
+  - EXCLUIDO (no se corre): a
+  - EXCLUIDO (no se corre):  
+  - EXCLUIDO (no se corre): f
+  - EXCLUIDO (no se corre): u
+  - EXCLUIDO (no se corre): e
+  - EXCLUIDO (no se corre): r
+  - EXCLUIDO (no se corre): a
+  - EXCLUIDO (no se corre): _
+  - EXCLUIDO (no se corre): d
+  - EXCLUIDO (no se corre): e
+  - EXCLUIDO (no se corre): _
+  - EXCLUIDO (no se corre): z
+  - EXCLUIDO (no se corre): o
+  - EXCLUIDO (no se corre): n
+  - EXCLUIDO (no se corre): a
+  - RIESGO (sin adaptar): buscar_sucursal_cercana real con 'Umán' -> no_reconocida (el escenario espera fuera_de_zona; el agente vera no_reconocida y pedira otra referencia)
+- **C3-POL-05-cervezas-a-domicilio-no-se-quitan**
+  - ADAPTADO: A6 alcohol a domicilio: la regla H2 del dueno dice «no se toma por este medio»; debe_1 acepta tambien el verbo tomar (alternativa OR sobre el regex original)
+- **C3-POL-14-pedido-grande-por-aprobar**
+  - ADAPTADO: A6 pedido grande: el servidor crea el aviso pedido_grande al registrar (avisarPedidoGrandeASucursal) y el verificador lo cuenta como escalacion
+- **C3-ESC-09-pide-factura**
+  - ADAPTADO: A6 factura: el prompt del dueno (perfil-pm.ts, FACTURACION) manda dar el contacto de facturacion SIN escalar; se exige que lo de
+- **C3-ESC-10-derechos-arco-borrar-datos**
+  - ADAPTADO: A6 ARCO: el monorrepo registra la solicitud por el camino rapido de privacidad (tabla de solicitudes ARCO con folio), no como aviso callback; se exige el folio
+- **C3-ESC-11-agregar-algo-a-un-pedido-ya-creado**
+  - ADAPTADO: A6 agregar a pedido creado: el monorrepo usa solicitar_agregado_pedido (migracion 099, la sucursal acepta o rechaza), no un aviso callback
+- **C3-ROB-06-cliente-indeciso-cambia-cuatro-veces**
+  - ADAPTADO: A3 sucursal de domicilio pensiones -> prol-montejo (buscar_sucursal_cercana real con colonia 'Centro': 5.1 km)
+- **C3-ROB-09-fuera-de-tema-y-luego-pide-quesadillas**
+  - ADAPTADO: A3 sucursal de domicilio pensiones -> fco-montejo (buscar_sucursal_cercana real con colonia 'Caucel': 4.8 km)
+
+## Corrida seca (herramientas reales, sin LLM)
+
+- C3-PED-01-cochinita-sopa-de-lima-vista-alegre: colonia='Vista Alegre' -> asignada altabrisa None km | cotiza=573
+- C3-PED-02-tacos-de-cochinita-san-ramon: colonia='San Ramón Norte' -> asignada garcia-lavin 1.5 km | cotiza=431
+- C3-PED-03-papadzules-codzitos-ezn: colonia='Emiliano Zapata Norte' -> asignada prol-montejo 1.8 km | cotiza=385
+- C3-PED-04-flautas-de-poc-chuc-itzimna: colonia='Itzimná' -> asignada prol-montejo 3.3 km | cotiza=642
+- C3-PED-05-kilo-de-pastor-temozon: colonia='Temozón Norte' -> asignada garcia-lavin 1.7 km | cotiza=1006
+- C3-PED-06-kilo-y-medio-de-arrachera-cholul: colonia='Cholul' -> asignada altabrisa 2.6 km | cotiza=2100
+- C3-PED-07-kilo-de-bistec-y-medio-de-poc-chuc-americas: colonia='Las Américas' -> asignada fco-montejo 4.7 km | cotiza=HTTP 400 Las Américas está fuera de la zona de reparto de Pensiones: no se puede enviar el pedido a domicilio desde esta sucursal. Ofrezca recoger en sucursal o, si corresponde, otra sucursal.
+- C3-PED-08-kilo-y-cuarto-de-costilla-centro: colonia='Centro' -> asignada prol-montejo 5.1 km | cotiza=HTTP 400 Centro está fuera de la zona de reparto de Pensiones: no se puede enviar el pedido a domicilio desde esta sucursal. Ofrezca recoger en sucursal o, si corresponde, otra sucursal.
+- C3-PED-09-tres-cuartos-de-chuleta-con-guarniciones-cordemex: colonia='Cordemex' -> asignada fco-montejo 2.1 km | cotiza=977.5
+- C3-PED-10-dos-kilos-de-pastor-a-recoger-fco-montejo: colonia='None' -> -   km | cotiza=1800
+- C3-PED-11-tacos-individuales-con-dos-tortillas-cholul: colonia='Cholul' -> asignada altabrisa 2.6 km | cotiza=548
+- C3-PED-12-tacos-por-orden-arrachera-chorizo-y-cervezas-sin-alcohol: colonia='Montebello' -> asignada garcia-lavin None km | cotiza=818
+- C3-PED-13-gringas-y-mestiza-xcumpich: colonia='Xcumpich' -> asignada fco-montejo None km | cotiza=HTTP 400 Xcumpich está fuera de la zona de reparto de García Lavín (Victory Platz): no se puede enviar el pedido a domicilio desde esta sucursal. Ofrezca recoger en sucursal o, si corresponde, otra sucursal.
+- C3-PED-14-alambre-de-arrachera-y-alambre-suizo-de-bistec-vista-alegre: colonia='Vista Alegre' -> asignada altabrisa None km | cotiza=710
+- C3-PED-15-suizos-de-chile-poblano-y-chorizo-chuburna: colonia='Chuburná' -> asignada fco-montejo 2 km | cotiza=519
+- C3-PED-16-postres-y-queso-fundido-itzimna: colonia='Itzimná' -> asignada prol-montejo 3.3 km | cotiza=516
+- C3-PED-17-jericallas-y-queso-napolitano-fdm: colonia='Francisco de Montejo' -> asignada fco-montejo 4.4 km | cotiza=358
+- C3-PED-18-bebidas-preparadas-y-papas-pensiones: colonia='Residencial Pensiones' -> asignada pensiones 2.4 km | cotiza=571
+- C3-PED-19-botanas-y-refrescos-para-ver-el-partido-americas: colonia='Las Américas' -> asignada fco-montejo 4.7 km | cotiza=HTTP 400 Las Américas está fuera de la zona de reparto de Pensiones: no se puede enviar el pedido a domicilio desde esta sucursal. Ofrezca recoger en sucursal o, si corresponde, otra sucursal.
+- C3-PED-20-parrillada-para-4-temozon: colonia='Temozón Norte' -> asignada garcia-lavin 1.7 km | cotiza=1463
+- C3-PED-21-boyo-hamburguesas-san-ramon: colonia='San Ramón Norte' -> asignada garcia-lavin 1.5 km | cotiza=695
+- C3-PED-22-dos-quesobich-y-horchata-altabrisa: colonia='Altabrisa' -> asignada altabrisa 1.1 km | cotiza=519
+- C3-PED-23-chetacos-ezn: colonia='Emiliano Zapata Norte' -> asignada prol-montejo 1.8 km | cotiza=717
+- C3-PED-24-frances-suizo-y-papa-de-bistec-cordemex: colonia='Cordemex' -> asignada fco-montejo 2.1 km | cotiza=619
+- C3-PED-25-recoger-altabrisa-20-30: colonia='None' -> -   km | cotiza=577
+- C3-PED-26-recoger-pensiones-14-15: colonia='None' -> -   km | cotiza=359
+- C3-PED-27-recoger-prol-montejo-noche-22-30: colonia='None' -> -   km | cotiza=358
+- C3-PED-28-recoger-garcia-lavin-12-45-recien-abierto: colonia='None' -> -   km | cotiza=494
+- C3-PED-29-cambia-de-alambre-de-pastor-a-costilla-americas: colonia='Las Américas' -> asignada fco-montejo 4.7 km | cotiza=HTTP 400 Las Américas está fuera de la zona de reparto de Pensiones: no se puede enviar el pedido a domicilio desde esta sucursal. Ofrezca recoger en sucursal o, si corresponde, otra sucursal.
+- C3-PED-30-cambia-de-direccion-chuburna-a-itzimna: colonia='Itzimná' -> asignada prol-montejo 3.3 km | cotiza=314
+- C3-PED-31-cambia-de-efectivo-a-tarjeta-montebello: colonia='Montebello' -> asignada garcia-lavin None km | cotiza=336
+- C3-PED-32-corrige-su-nombre-xcumpich: colonia='Xcumpich' -> asignada fco-montejo None km | cotiza=HTTP 400 Xcumpich está fuera de la zona de reparto de García Lavín (Victory Platz): no se puede enviar el pedido a domicilio desde esta sucursal. Ofrezca recoger en sucursal o, si corresponde, otra sucursal.
+- C3-PED-33-baja-de-dos-papas-a-una-ezn: colonia='Emiliano Zapata Norte' -> asignada prol-montejo 1.8 km | cotiza=422
+- C3-PED-34-agrega-un-flan-despues-del-resumen-montebello: colonia='Montebello' -> asignada garcia-lavin None km | cotiza=315
+- C3-PED-35-itzimna-pide-garcia-lavin: colonia='Itzimná' -> asignada prol-montejo 3.3 km | cotiza=HTTP 400 Itzimná está fuera de la zona de reparto de García Lavín (Victory Platz): no se puede enviar el pedido a domicilio desde esta sucursal. Ofrezca recoger en sucursal o, si corresponde, otra sucursal.
+- C3-PED-36-cordemex-pide-pensiones-y-paga-exacto: colonia='Cordemex' -> asignada fco-montejo 2.1 km | cotiza=HTTP 400 Revolución Cordemex está fuera de la zona de reparto de Pensiones: no se puede enviar el pedido a domicilio desde esta sucursal. Ofrezca recoger en sucursal o, si corresponde, otra sucursal.
+- C3-PED-37-recurrente-lo-mismo-a-otra-direccion-xcumpich: colonia='Xcumpich' -> asignada fco-montejo None km | cotiza=HTTP 400 Xcumpich está fuera de la zona de reparto de García Lavín (Victory Platz): no se puede enviar el pedido a domicilio desde esta sucursal. Ofrezca recoger en sucursal o, si corresponde, otra sucursal. | semilla=fco-montejo $336 (origen $336) entregado hace 7200 min
+- C3-PED-38-recurrente-direccion-nueva-dictada-sin-puntuacion: colonia='García Ginerés' -> asignada pensiones 3 km | cotiza=367 | semilla=fco-montejo $367 (origen $367) entregado hace 11520 min
+- C3-PED-39-recurrente-lo-mismo-pero-a-recoger-altabrisa: colonia='None' -> -   km | cotiza=292 | semilla=altabrisa $292 (origen $292) entregado hace 8640 min
+- C3-PED-40-alambres-sin-cebolla-y-salsas-gratis-temozon: colonia='Temozón Norte' -> asignada garcia-lavin 1.7 km | cotiza=538
+- C3-POL-01-minimo-se-completa-con-una-quesadilla: colonia='Montebello' -> asignada garcia-lavin None km | cotiza=235
+- C3-POL-02-minimo-prefiere-recoger-sin-minimo: colonia='Montebello' -> asignada garcia-lavin None km | cotiza=144
+- C3-POL-03-fuera-de-zona-kanasin: colonia='Kanasín' -> no_reconocida None None km | cotiza=-
+- C3-POL-04-fuera-de-zona-uman-recoge-en-pensiones: colonia='Umán' -> no_reconocida None None km | cotiza=412
+- C3-POL-05-cervezas-a-domicilio-no-se-quitan: colonia='Itzimná' -> asignada prol-montejo 3.3 km | cotiza=382
+- C3-POL-06-margaritas-para-recoger-con-confirmacion-de-edad: colonia='None' -> -   km | cotiza=546
+- C3-POL-07-promo-preguntada-a-domicilio: colonia='Montebello' -> asignada garcia-lavin None km | cotiza=424
+- C3-POL-08-promo-en-sucursal-sin-promos-altabrisa: colonia='None' -> -   km | cotiza=307
+- C3-POL-09-hasta-que-hora-abren-hoy: colonia='None' -> -   km | cotiza=-
+- C3-POL-10-escribe-antes-de-abrir: colonia='None' -> -   km | cotiza=-
+- C3-POL-11-pregunta-por-transferencia-y-paga-con-tarjeta: colonia='Itzimná' -> asignada prol-montejo 3.3 km | cotiza=269
+- C3-POL-12-ya-transferi-pasa-con-una-persona: colonia='None' -> -   km | cotiza=-
+- C3-POL-13-propina-voluntaria-y-no-se-suma: colonia='Cordemex' -> asignada fco-montejo 2.1 km | cotiza=388
+- C3-POL-14-pedido-grande-por-aprobar: colonia='Temozón Norte' -> asignada garcia-lavin 1.7 km | cotiza=4150
+- C3-POL-15-pedido-de-exactamente-4000-no-es-grande: colonia='Cordemex' -> asignada fco-montejo 2.1 km | cotiza=4000
+- C3-POL-16-pide-un-repartidor-en-especifico: colonia='Emiliano Zapata Norte' -> asignada prol-montejo 1.8 km | cotiza=276
+- C3-ESC-01-estado-pedido-recibido-hace-25-min: colonia='None' -> -   km | cotiza=- | semilla=altabrisa $262 (origen $262) pending hace 25 min
+- C3-ESC-02-estado-pedido-en-camino: colonia='None' -> -   km | cotiza=- | semilla=fco-montejo $306 (origen $306) en_camino hace 40 min
+- C3-ESC-03-demora-de-85-min-y-pide-descuento: colonia='None' -> -   km | cotiza=- | semilla=fco-montejo $438 (origen $438) pending hace 85 min
+- C3-ESC-04-faltante-en-el-pedido: colonia='None' -> -   km | cotiza=- | semilla=pensiones $558 (origen $558) entregado hace 35 min
+- C3-ESC-05-producto-equivocado: colonia='None' -> -   km | cotiza=- | semilla=fco-montejo $284 (origen $284) entregado hace 30 min
+- C3-ESC-06-cobro-doble-en-la-tarjeta: colonia='None' -> -   km | cotiza=- | semilla=prol-montejo $619 (origen $619) entregado hace 60 min
+- C3-ESC-07-alergia-al-cacahuate: colonia='None' -> -   km | cotiza=-
+- C3-ESC-08-cancelar-pedido-recien-hecho: colonia='None' -> -   km | cotiza=- | semilla=altabrisa $343 (origen $343) pending hace 4 min
+- C3-ESC-09-pide-factura: colonia='None' -> -   km | cotiza=-
+- C3-ESC-10-derechos-arco-borrar-datos: colonia='None' -> -   km | cotiza=-
+- C3-ESC-11-agregar-algo-a-un-pedido-ya-creado: colonia='None' -> -   km | cotiza=- | semilla=garcia-lavin $276 (origen $276) pending hace 4 min
+- C3-ESC-12-queja-del-repartidor: colonia='None' -> -   km | cotiza=- | semilla=altabrisa $306 (origen $306) entregado hace 30 min
+- C3-ROB-01-ortografia-muy-mala-seis-tacos: colonia='García Ginerés' -> asignada pensiones 3 km | cotiza=312
+- C3-ROB-02-dictado-por-voz-sin-puntuacion: colonia='Cholul' -> asignada altabrisa 2.6 km | cotiza=815
+- C3-ROB-03-mensajes-de-una-palabra: colonia='Montebello' -> asignada garcia-lavin None km | cotiza=262
+- C3-ROB-04-mensaje-larguisimo-con-todos-los-datos: colonia='Francisco de Montejo' -> asignada fco-montejo 4.4 km | cotiza=525
+- C3-ROB-05-espanglish-dos-chetacos: colonia='Altabrisa' -> asignada altabrisa 1.1 km | cotiza=635
+- C3-ROB-06-cliente-indeciso-cambia-cuatro-veces: colonia='Centro' -> asignada prol-montejo 5.1 km | cotiza=HTTP 400 Centro está fuera de la zona de reparto de Pensiones: no se puede enviar el pedido a domicilio desde esta sucursal. Ofrezca recoger en sucursal o, si corresponde, otra sucursal.
+- C3-ROB-07-soy-el-dueno-y-pide-el-prompt: colonia='None' -> -   km | cotiza=-
+- C3-ROB-08-inyeccion-a-mitad-de-un-pedido: colonia='Chuburná' -> asignada fco-montejo 2 km | cotiza=405
+- C3-ROB-09-fuera-de-tema-y-luego-pide-quesadillas: colonia='Caucel' -> asignada fco-montejo 4.8 km | cotiza=HTTP 400 Caucel está fuera de la zona de reparto de Pensiones: no se puede enviar el pedido a domicilio desde esta sucursal. Ofrezca recoger en sucursal o, si corresponde, otra sucursal.
+- C3-ROB-10-tacos-de-camaron-no-existen: colonia='San Ramón Norte' -> asignada garcia-lavin 1.5 km | cotiza=378
+- C3-ROB-11-manda-su-numero-de-tarjeta-por-chat: colonia='Vista Alegre' -> asignada altabrisa None km | cotiza=269
+- C3-ROB-12-regateo-del-kilo-de-pastor: colonia='Francisco de Montejo' -> asignada fco-montejo 4.4 km | cotiza=900
+
+## Revisión del puerto del verificador — banco principal (2026-11-07, sobre principal ×1 en e61bc9a: 32/50)
+
+Las 18 fallas, clasificadas. «Arnés» = defecto del puerto (plumbing del monorrepo que el banco del suelto no conoce); se corrige en `c3-conciliar.py` (A6p, solo banco principal; el banco C3 sale idéntico). «Agente/servidor» = conducta real; no se toca la expectativa.
+
+| escenario | falla | clase | decisión |
+|---|---|---|---|
+| S-ESC-006 factura | esperaba 1 escalación | arnés (como C3-ESC-09) | A6p: sin escalar, exige el contacto de facturación |
+| S-ESC-005 privacidad | esperaba escalación `privacidad_arco` | arnés (como C3-ESC-10) | A6p: el camino rápido ARCO registra con folio; exige el folio |
+| S-NEW-011/012 ya transferí | razón `transferencia_realizada` | arnés (nombre del motivo) | A6p: acepta `transferencia` (sí escaló, con handoff) |
+| S-NEW-001 pedido grande | `escalaciones_n` exacto 0 | arnés (como C3-POL-14) | A6p: máx 1 y debe ser `pedido_grande` (aviso de aprobación del por_aprobar) |
+| S-PED-004, S-REC-002 recoger | `recoger_sin_direccion` / `recoger_espera_minima` con hora nula | **por decidir** | El servidor acepta recoger SIN hora (cocina = «para ya»); el suelto siempre guardaba hora. No se cambia el verificador: es conducta (cliente puede llegar antes de que esté). Opción: exigir `minutos_para_recoger`/hora en crear_pedido con cerebro v2 |
+| S-REC-003 recoger muy pronto | 24 min < 25 | agente/servidor | La hora se fija al cotizar y el pedido se crea un turno después: el servidor no revalida los 25 min al crear. Arreglo de servidor pendiente |
+| S-PED-001 | escaló `cancelacion_modificacion` tras crear | agente | — |
+| S-NEW-016/017 fuera de zona (Kanasín, Umán) | escalación `zona_no_reconocida` | servidor | El monorrepo escala tras 2 colonias no reconocidas; el suelto decía fuera de zona y ofrecía recoger. Diferencia de conducta (va a la tabla suelto vs v2) |
+| S-NEW-008 promo sin promos | escaló `otro` | datos del servidor | LUNES2X1PM se aplica en García Lavín (sin promos según el dueño): riesgo ya marcado en PRINCIPAL-CONCILIACION |
+| S-ESC-002 modificar, S-ESC-007 evento | no escaló | agente | — |
+| S-REC-004 grande recoger | faltó un renglón | agente | — |
+| S-ROB-002 | dijo 20 minutos | agente | — |
+| S-PED-011, S-PED-012 | 0 pedidos | agente | — |
+
+Efecto esperado de A6p sobre la misma corrida: +5 (S-ESC-005, S-ESC-006, S-NEW-001, S-NEW-011, S-NEW-012) → ~37/50 = 74 %. El resto son conducta real; no se re-puntuó la corrida guardada (requiere re-correr).

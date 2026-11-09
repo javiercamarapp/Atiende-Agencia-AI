@@ -1,0 +1,471 @@
+{
+ "generado": "2026-11-07T04:18:43.534Z",
+ "escenarios": [
+  {
+   "id": "S-PED-001-efectivo-cambio",
+   "colonia": "Montebello",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "garcia-lavin",
+    "km": null
+   },
+   "cotizacion": {
+    "total": 524
+   }
+  },
+  {
+   "id": "S-PED-002-tarjeta-terminal",
+   "colonia": "Montebello",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "garcia-lavin",
+    "km": null
+   },
+   "cotizacion": {
+    "total": 291
+   }
+  },
+  {
+   "id": "S-PED-003-orden-vs-pieza",
+   "colonia": "Montebello",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "garcia-lavin",
+    "km": null
+   },
+   "cotizacion": {
+    "total": 697
+   }
+  },
+  {
+   "id": "S-PED-004-bistec-no-suelto",
+   "cotizacion": {
+    "total": 194
+   }
+  },
+  {
+   "id": "S-PED-005-seis-tacos-bistec",
+   "colonia": "Montebello",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "garcia-lavin",
+    "km": null
+   },
+   "sucursal_implicita": "garcia-lavin",
+   "cotizacion": {
+    "total": 388
+   }
+  },
+  {
+   "id": "S-PED-006-kilo-mixto",
+   "colonia": "Montebello",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "garcia-lavin",
+    "km": null
+   },
+   "sucursal_implicita": "garcia-lavin",
+   "cotizacion": {
+    "total": 1000
+   }
+  },
+  {
+   "id": "S-PED-007-kilo-fuera-de-tabla",
+   "colonia": "Montebello",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "garcia-lavin",
+    "km": null
+   },
+   "sucursal_implicita": "garcia-lavin",
+   "cotizacion": {
+    "total": 2250
+   }
+  },
+  {
+   "id": "S-PED-008-nachos-mitad",
+   "colonia": "Montebello",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "garcia-lavin",
+    "km": null
+   },
+   "sucursal_implicita": "garcia-lavin",
+   "cotizacion": {
+    "total": 494
+   }
+  },
+  {
+   "id": "S-PED-009-complementos-y-notas",
+   "colonia": "Montebello",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "garcia-lavin",
+    "km": null
+   },
+   "sucursal_implicita": "garcia-lavin",
+   "cotizacion": {
+    "total": 335
+   }
+  },
+  {
+   "id": "S-PED-010-nombre-corregido",
+   "colonia": "Montebello",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "garcia-lavin",
+    "km": null
+   },
+   "sucursal_implicita": "garcia-lavin",
+   "cotizacion": {
+    "total": 276
+   }
+  },
+  {
+   "id": "S-PED-011-doble-envio",
+   "colonia": "Montebello",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "garcia-lavin",
+    "km": null
+   },
+   "sucursal_implicita": "garcia-lavin",
+   "cotizacion": {
+    "total": 362
+   }
+  },
+  {
+   "id": "S-PED-012-rafaga",
+   "colonia": "Montebello",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "garcia-lavin",
+    "km": null
+   },
+   "sucursal_implicita": "garcia-lavin",
+   "cotizacion": {
+    "total": 322
+   }
+  },
+  {
+   "id": "S-PED-013-lo-de-siempre",
+   "colonia": "Montebello",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "garcia-lavin",
+    "km": null
+   },
+   "sucursal_implicita": "garcia-lavin",
+   "cotizacion": {
+    "total": 262
+   },
+   "semilla": "garcia-lavin $262 (origen $262) entregado hace 8640 min"
+  },
+  {
+   "id": "S-PED-014-producto-inexistente"
+  },
+  {
+   "id": "S-PED-015-precio-subio",
+   "colonia": "Montebello",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "garcia-lavin",
+    "km": null
+   },
+   "sucursal_implicita": "garcia-lavin",
+   "cotizacion": {
+    "total": 232
+   }
+  },
+  {
+   "id": "S-PED-016-direccion-por-referencia",
+   "colonia": "Altabrisa",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "altabrisa",
+    "km": 1.1
+   },
+   "cotizacion": {
+    "total": 291
+   }
+  },
+  {
+   "id": "S-PED-017-sucursal-por-zona-pensiones",
+   "colonia": "Pensiones",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "pensiones",
+    "km": 2.4
+   },
+   "cotizacion": {
+    "total": 328
+   }
+  },
+  {
+   "id": "S-NEW-001-pedido-grande-por-aprobar",
+   "colonia": "Montebello",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "garcia-lavin",
+    "km": null
+   },
+   "sucursal_implicita": "garcia-lavin",
+   "cotizacion": {
+    "total": 4450
+   }
+  },
+  {
+   "id": "S-NEW-002-limite-4000-exacto",
+   "colonia": "Montebello",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "garcia-lavin",
+    "km": null
+   },
+   "sucursal_implicita": "garcia-lavin",
+   "cotizacion": {
+    "total": 4000
+   }
+  },
+  {
+   "id": "S-NEW-003-sucursal-cerrada-antes-de-abrir",
+   "colonia": "Montebello",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "garcia-lavin",
+    "km": null
+   },
+   "sucursal_implicita": "garcia-lavin"
+  },
+  {
+   "id": "S-NEW-004-sucursal-cerrada-madrugada",
+   "colonia": "Montebello",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "garcia-lavin",
+    "km": null
+   },
+   "sucursal_implicita": "garcia-lavin"
+  },
+  {
+   "id": "S-NEW-006-promo-a-domicilio",
+   "colonia": "Montebello",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "garcia-lavin",
+    "km": null
+   },
+   "sucursal_implicita": "garcia-lavin"
+  },
+  {
+   "id": "S-NEW-007-promo-recoger-con-promos",
+   "cotizacion": {
+    "total": 42,
+    "promo": "LUNES2X1PM",
+    "descuento": 42
+   }
+  },
+  {
+   "id": "S-NEW-008-promo-recoger-sin-promos",
+   "cotizacion": {
+    "total": 42,
+    "promo": "LUNES2X1PM",
+    "descuento": 42
+   }
+  },
+  {
+   "id": "S-NEW-009-propina-mencionada",
+   "colonia": "Montebello",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "garcia-lavin",
+    "km": null
+   },
+   "sucursal_implicita": "garcia-lavin",
+   "cotizacion": {
+    "total": 247
+   }
+  },
+  {
+   "id": "S-NEW-010-transferencia-pregunta",
+   "colonia": "Montebello",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "garcia-lavin",
+    "km": null
+   },
+   "sucursal_implicita": "garcia-lavin",
+   "cotizacion": {
+    "total": 291
+   }
+  },
+  {
+   "id": "S-NEW-011-ya-transferi-con-texto"
+  },
+  {
+   "id": "S-NEW-012-ya-transferi-sin-texto"
+  },
+  {
+   "id": "S-NEW-013-alcohol-a-domicilio",
+   "colonia": "Montebello",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "garcia-lavin",
+    "km": null
+   },
+   "sucursal_implicita": "garcia-lavin"
+  },
+  {
+   "id": "S-NEW-014-alcohol-edad-ambigua"
+  },
+  {
+   "id": "S-NEW-015-minimo-domicilio",
+   "colonia": "Montebello",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "garcia-lavin",
+    "km": null
+   },
+   "sucursal_implicita": "garcia-lavin"
+  },
+  {
+   "id": "S-NEW-016-fuera-de-zona-cercano",
+   "colonia": "Kanasín",
+   "cercana": {
+    "estado": "no_reconocida",
+    "slug": null,
+    "km": null
+   }
+  },
+  {
+   "id": "S-NEW-017-fuera-de-zona-lejano",
+   "colonia": "Umán",
+   "cercana": {
+    "estado": "no_reconocida",
+    "slug": null,
+    "km": null
+   }
+  },
+  {
+   "id": "S-NEW-018-zona-borde-dentro",
+   "colonia": "Caucel",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "fco-montejo",
+    "km": 4.8
+   },
+   "cotizacion": {
+    "total": 283
+   }
+  },
+  {
+   "id": "S-REC-001-recoger-con-hora",
+   "cotizacion": {
+    "total": 247
+   }
+  },
+  {
+   "id": "S-REC-002-recoger-sin-hora",
+   "cotizacion": {
+    "total": 675
+   }
+  },
+  {
+   "id": "S-REC-003-recoger-muy-pronto",
+   "cotizacion": {
+    "total": 206
+   }
+  },
+  {
+   "id": "S-REC-004-pedido-grande-recoger",
+   "cotizacion": {
+    "total": 5000
+   }
+  },
+  {
+   "id": "S-ESC-001-cancelar",
+   "colonia": "Montebello",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "garcia-lavin",
+    "km": null
+   },
+   "sucursal_implicita": "garcia-lavin",
+   "semilla": "garcia-lavin $262 (origen $262) pending hace 45 min"
+  },
+  {
+   "id": "S-ESC-002-modificar-pedido",
+   "colonia": "Montebello",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "garcia-lavin",
+    "km": null
+   },
+   "sucursal_implicita": "garcia-lavin",
+   "semilla": "garcia-lavin $262 (origen $262) pending hace 4 min"
+  },
+  {
+   "id": "S-ESC-003-ya-salio",
+   "colonia": "Montebello",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "garcia-lavin",
+    "km": null
+   },
+   "sucursal_implicita": "garcia-lavin",
+   "semilla": "garcia-lavin $262 (origen $262) pending hace 25 min"
+  },
+  {
+   "id": "S-ESC-004-queja-faltante",
+   "colonia": "Montebello",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "garcia-lavin",
+    "km": null
+   },
+   "sucursal_implicita": "garcia-lavin",
+   "semilla": "garcia-lavin $262 (origen $262) entregado hace 50 min"
+  },
+  {
+   "id": "S-ESC-005-privacidad"
+  },
+  {
+   "id": "S-ESC-006-factura"
+  },
+  {
+   "id": "S-ESC-007-evento"
+  },
+  {
+   "id": "S-ESC-008-alergia"
+  },
+  {
+   "id": "S-ESC-009-spam"
+  },
+  {
+   "id": "S-ESC-010-cobro-duplicado"
+  },
+  {
+   "id": "S-ROB-001-precio-impuesto-por-cliente",
+   "colonia": "Montebello",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "garcia-lavin",
+    "km": null
+   },
+   "sucursal_implicita": "garcia-lavin"
+  },
+  {
+   "id": "S-ROB-002-tiempo-de-entrega",
+   "colonia": "Montebello",
+   "cercana": {
+    "estado": "asignada",
+    "slug": "garcia-lavin",
+    "km": null
+   },
+   "sucursal_implicita": "garcia-lavin",
+   "cotizacion": {
+    "total": 262
+   }
+  }
+ ]
+}

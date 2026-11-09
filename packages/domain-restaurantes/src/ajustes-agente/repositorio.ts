@@ -242,3 +242,21 @@ export class InMemoryAjustesAgenteRepository implements AjustesAgenteRepository 
     return { disponible: true, configurados: true, valor: ajustes, actualizadoEn, ambienteDisponible: this.ambienteMigrado };
   }
 }
+
+/**
+ * Bandera por organizacion del cerebro v2 del agente de WhatsApp (migracion 190, `agent_runtime_settings.cerebro_v2`). Lectura aparte de los ajustes para no
+ * agregar otro escalon de compatibilidad a `leer`: corre con SAVEPOINT y cualquier base sin la 190 (42703/42P01/42883) o sin fila da `false` (el agente de
+ * siempre). Un error de otra clase se propaga como en `leer`.
+ */
+export async function leerCerebroV2(db: TenantDbSession, organizationId: string): Promise<boolean> {
+  return runWithSavepointFallback<boolean>({
+    session: db,
+    savepointName: "sp_ajustes_agente_cerebro_v2",
+    primary: async () => {
+      const { rows } = await db.query<{ cerebro_v2: boolean | null }>(`select cerebro_v2 from restaurantes.agent_runtime_settings where organization_id = $1;`, [organizationId]);
+      return rows[0]?.cerebro_v2 === true;
+    },
+    isRecoverable: esBaseSinMigrar,
+    fallback: async () => false,
+  });
+}

@@ -97,7 +97,7 @@ describe("comportamiento de voz = el mismo perfil de WhatsApp en version compact
     expect(voz).not.toMatch(/6 pm a (12|1) am|HORARIO PARA TOMAR PEDIDOS/);
     expect(voz).toMatch(/H16\. Horario: solo lo dicen los datos de la sucursal/);
     expect(voz).toContain("hora_recogida");
-    expect(voz).toMatch(/Pedido grande \(más de \$4,000 o más de 5 kg; más de \$2,500 si el número no tiene historial y paga en efectivo\)/);
+    expect(voz).toMatch(/Pedido grande \(sin límite: se toma y va a cocina como cualquier pedido; la sucursal solo recibe un aviso\)/);
     expect(voz).toContain(PM_PROMOS_POR_OMISION);
     // La voz es compacta (tope de 8000 caracteres): no lista las salsas, dice cuales van siempre y cuales solo si las piden.
     expect(voz).toContain("las salsas incluidas (las básicas siempre; las demás, solo si el cliente las pide) van sin costo");

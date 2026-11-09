@@ -56,6 +56,7 @@ import { billingRoutes } from "./routes/billing.ts";
 import { restaurantesPublicRoutes } from "./routes/verticals/restaurantes/public.ts";
 import { restaurantesDemoWidgetRoutes } from "./routes/verticals/restaurantes/demo-widget.ts";
 import { restaurantesVoiceToolsRoutes } from "./routes/verticals/restaurantes/voice-tools.ts";
+import { restaurantesVozTurnoRoutes } from "./routes/verticals/restaurantes/voz-turno.ts";
 import { restaurantesWhatsAppRoutes } from "./routes/verticals/restaurantes/whatsapp.ts";
 import { restaurantesRoutes } from "./routes/verticals/restaurantes/restaurantes.ts";
 import { hotelesRoutes } from "./routes/verticals/hoteles/hoteles.ts";
@@ -166,6 +167,8 @@ export function buildApp(deps: AppDeps): Hono {
   app.route("/", restaurantesDemoWidgetRoutes(deps));
   app.route("/", demoAgentsRoutes(deps.publicDemoAgents));
   app.route("/", restaurantesVoiceToolsRoutes(deps));
+  // Turno de voz del cerebro v2 (worker de voz con VOZ_CEREBRO=suelto): secreto por sucursal, solo organizaciones con cerebro_v2.
+  app.route("/", restaurantesVozTurnoRoutes(deps));
   app.route("/", restaurantesWhatsAppRoutes(deps));
   app.route("/", restaurantesRoutes(deps));
   app.route("/", hotelesRoutes(deps));

@@ -6,6 +6,10 @@ import { PM_CONFIG_POR_OMISION } from "../src/whatsapp/llm-turn-handler.ts";
 import { PM_REGLA_CANTIDAD_ENORME, buildPmSystemPrompt } from "../src/whatsapp/perfil-pm.ts";
 import { comportamientoVozPm, REGLAS_VIVAS_VOZ } from "../src/voz/perfil-voz-pm.ts";
 import { AGENT_TOOL_DEFINITIONS } from "../src/agent-tools/registry.ts";
+import { activarEsperaPedidoGrande } from "./support/pedido-grande-con-espera.ts";
+
+// Prueba de la espera por pedido grande CONFIGURADA (decisión de Omar, 9-nov: sin espera por omisión).
+activarEsperaPedidoGrande();
 
 const branches = [{ propertyId: "p0", slug: "garcia-lavin", name: "García Lavín", address: null }];
 const base = { businessName: PM_CONFIG_POR_OMISION.businessName, agentName: "el asistente virtual", deliveryTimeText: PM_CONFIG_POR_OMISION.deliveryTimeText, branches };
@@ -14,14 +18,14 @@ const voz = comportamientoVozPm(base);
 
 describe("R22-3 pedido grande: se toma normal y no escala antes de cotizar", () => {
   it("WhatsApp: se toma como cualquier pedido con el total de cotizar_pedido; no escala con motivo pedido_grande", () => {
-    expect(wa).toMatch(/Pedido grande \([^)]*\$4,000[^)]*\): se toma como CUALQUIER pedido/);
+    expect(wa).toMatch(/Pedido grande \(sin límite[^)]*\): se toma como CUALQUIER pedido/);
     expect(wa).toMatch(/NO llame escalar_a_humano con motivo pedido_grande/);
     expect(wa).not.toMatch(/Antes de escalar, cotice/);
     expect(wa).not.toMatch(/tome todos los datos y escale \(pedido_grande\)/);
     expect(wa).not.toMatch(/salvo pedido grande/);
   });
   it("voz: tomarlo como cualquier pedido con el total de cotizar_pedido, sin escalar", () => {
-    expect(voz).toMatch(/Pedido grande \([^)]*\$4,000[^)]*\): tómelo como cualquier pedido con el total de cotizar_pedido; no escale/);
+    expect(voz).toMatch(/Pedido grande \(sin límite[^)]*\): tómelo como cualquier pedido con el total de cotizar_pedido; no escale/);
     expect(voz).not.toMatch(/escale \(pedido_grande\)/);
     expect(REGLAS_VIVAS_VOZ).not.toMatch(/escalar_a_humano si es pedido grande/);
   });

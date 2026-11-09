@@ -21,6 +21,7 @@ import { restaurantesRepartidorOrdersRoutes } from "./repartidor-orders.ts";
 import { restaurantesEmailDispatchRoutes } from "./email-dispatch.ts";
 import { restaurantesProgramadosInternoRoutes } from "./programados-interno.ts";
 import { restaurantesVozHuerfanasRoutes } from "./voz-huerfanas.ts";
+import { restaurantesWhatsAppTurnosHuerfanosRoutes } from "./whatsapp-turnos-huerfanos.ts";
 import { restaurantesCierresRoutes } from "./cierres.ts";
 import { restaurantesAutopilotoRoutes } from "./autopiloto.ts";
 import { restaurantesCierresInternoRoutes } from "./cierres-interno.ts";
@@ -88,6 +89,7 @@ export function restaurantesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   app.route("/", restaurantesProgramadosInternoRoutes(deps));
   // QA R1 (migración 042): barrido cron de llamadas de voz sin cierre.
   app.route("/", restaurantesVozHuerfanasRoutes(deps));
+  app.route("/", restaurantesWhatsAppTurnosHuerfanosRoutes(deps));
   app.route("/", restaurantesCierresInternoRoutes(deps));
   app.route("/", restaurantesCierresRoutes(deps));
   app.route("/", restaurantesAutopilotoRoutes(deps));

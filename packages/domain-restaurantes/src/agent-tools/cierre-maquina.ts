@@ -363,9 +363,17 @@ export function terminaEnPreguntaDeConfirmacion(texto: string | undefined): bool
   return !PREGUNTA_DE_PROPINA_O_PAGO.test(q) && PREGUNTA_DE_CONFIRMACION.test(q);
 }
 
+/**
+ * C3 PED-14 (maquina de cierre ON): el asistente AFIRMA haber cambiado algo («Actualizo la dirección…», «agregué…») sin pegar el resumen del servidor. El total puede no moverse, pero lo que
+ * el cliente confirmaria (la direccion, una nota) ya no es lo que el servidor guardo: ese mensaje no es el resumen para confirmar; hay que re-cotizar y mostrar el resumen nuevo.
+ */
+const AFIRMA_CAMBIO_SIN_RESUMEN = /\b(?:actualiz[oe]|actualic[eé]|corrij[oa]|correg[ií]|cambi[eé]|modific[oa]|modifiqu[eé]|agrego|agregu[eé]|quito|quit[eé]|anot[eé])(?![a-záéíóúñ])/i;
+const ES_RESUMEN_DEL_SERVIDOR = /resumen de su pedido/i;
+
 /** El mensaje del asistente ES el resumen vigente: trae el total de la cotizacion y termina pidiendo la confirmacion. */
 export function esResumenParaConfirmar(total: number | undefined, mensajeAsistente: string | undefined): boolean {
   if (!mensajeAsistente || typeof total !== "number") return false;
+  if (!ES_RESUMEN_DEL_SERVIDOR.test(mensajeAsistente) && AFIRMA_CAMBIO_SIN_RESUMEN.test(sinMarcadores(mensajeAsistente))) return false;
   const trae = resumenMostradoEnHistorial(total, [{ role: "assistant", content: mensajeAsistente }]);
   return trae === true && terminaEnPreguntaDeConfirmacion(mensajeAsistente);
 }
@@ -418,6 +426,8 @@ export interface LineaResumen {
   readonly tortilla?: string | null;
   /** R22 (R4): piezas por orden del catalogo (`packSize`) cuando el renglon se vende por ordenes; el resumen muestra «1 orden (2 piezas)». Ausente = sin dato: se muestra «N × nombre». */
   readonly piezasPorOrden?: number | null;
+  /** C3 PED-28 (cerebro v2): gringa o mestiza pedida por platillo: el renglón dice «2 órdenes (2 tacos cada una)», nunca las piezas («4 piezas» se leía como 4 mestizas). */
+  readonly tacosCadaUna?: boolean;
 }
 
 export interface EntradaResumen {
@@ -637,7 +647,12 @@ function acotarLista(items: readonly string[]): string {
 export function resumenCanonico(e: EntradaResumen): string {
   // Un nombre que ya dice sus piezas («Tacos de Bistec (orden de 3)») no se repite: sale «1 × nombre» como siempre.
   const piezasEnElNombre = (l: LineaResumen): boolean => new RegExp(String.raw`\(orden de ${l.piezasPorOrden ?? 0}\)`, "i").test(l.name);
-  const etiquetaDe = (l: LineaResumen): string | null => (piezasEnElNombre(l) ? null : etiquetaOrdenConPiezas(l.quantity, l.piezasPorOrden));
+  const etiquetaDe = (l: LineaResumen): string | null =>
+    piezasEnElNombre(l)
+      ? null
+      : l.tacosCadaUna && l.piezasPorOrden && l.piezasPorOrden > 1 && Number.isInteger(l.quantity) && l.quantity >= 1
+        ? `${l.quantity} ${l.quantity === 1 ? `orden (${l.piezasPorOrden} tacos)` : `órdenes (${l.piezasPorOrden} tacos cada una)`}`
+        : etiquetaOrdenConPiezas(l.quantity, l.piezasPorOrden);
   const renglones = e.lineas.map((l) => `• ${etiquetaDe(l) ? `${etiquetaDe(l)} de` : `${l.quantity} ×`} ${l.name}${l.tortilla ? ` (${l.tortilla})` : ""}${typeof l.lineTotal === "number" ? ` — ${pesos(l.lineTotal)}` : ""}`);
   const detalles: string[] = [];
   if (e.basicas && e.basicas.length > 0) detalles.push(`Salsas básicas incluidas: ${acotarLista(e.basicas)}`);
@@ -688,13 +703,45 @@ export function componerRespuestaConResumen(respuesta: string, canonico: string,
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
+// C3 PED-16 (cerebro v2): pago pedido por el resumen + visto bueno a lo demas
+// ---------------------------------------------------------------------------------------------------------------------
+
+// El resumen completo (con el total vigente) terminaba preguntando la forma de pago; el cliente contesta el pago y en el mismo mensaje afirma que lo demas esta bien. El cierre de siempre
+// lo trata como «dato» (no es el si) y obliga a repetir el resumen con «¿Es correcto?»: el cliente ya lo vio completo y ya dijo que si. Solo con cerebro v2.
+const ULTIMA_PREGUNTA_PIDE_PAGO = /efectivo|tarjeta|con\s+cu[aá]nto\s+(?:paga|pagar)|forma\s+de\s+pago|m[eé]todo\s+de\s+pago|c[oó]mo\s+(?:desea|va\s+a|quiere|prefiere)\s+pagar/i;
+const VISTO_BUENO_A_LO_DEMAS = /\b(?:si|todo\s+(?:lo\s+demas\s+)?(?:esta\s+)?(?:bien|correcto)|lo\s+demas\s+(?:esta\s+)?(?:bien|correcto)|asi\s+esta\s+bien|esta\s+bien|es\s+correcto|correcto|de\s+acuerdo|perfecto)\b/;
+
+/**
+ * Datos de cierre que el cliente fija con «Tarjeta… Sí, todo lo demás está bien» en respuesta a un resumen VIGENTE (trae el total cotizado) cuya ultima pregunta pide la forma de pago;
+ * `null` si no aplica. El mensaje debe traer la forma de pago y un visto bueno explicito, sin preguntas, titubeos, negaciones, cambios, direcciones ni cantidades. Efectivo a domicilio
+ * exige el billete («con cuanto paga»). Pura.
+ */
+export function pagoConVistoBuenoAlResumen(
+  mensajeAsistente: string | undefined,
+  mensajeCliente: string | undefined,
+  e: { readonly total: number | undefined; readonly canal?: string; readonly datosCotizados: DatosDeCierre },
+): DatosDeCierre | null {
+  if (!mensajeAsistente || !mensajeCliente || typeof e.total !== "number") return null;
+  if (resumenMostradoEnHistorial(e.total, [{ role: "assistant", content: mensajeAsistente }]) !== true) return null;
+  if (!ULTIMA_PREGUNTA_PIDE_PAGO.test(ultimaPregunta(mensajeAsistente))) return null;
+  const t = normalizar(mensajeCliente);
+  if (!t || t.includes("?") || TITUBEO.test(t) || /\bno\b/.test(t) || rechazaElResumen(mensajeCliente)) return null;
+  if (MARCADORES_DE_CAMBIO.test(t) || DIRECCION.test(t) || CANTIDAD.test(t)) return null;
+  if (!VISTO_BUENO_A_LO_DEMAS.test(t)) return null;
+  const d = datosDelMensaje(mensajeCliente, e.total);
+  if (d.pago === undefined) return null;
+  if (d.pago === "efectivo" && e.canal !== "recoger" && d.efectivoCon === undefined) return null;
+  return aplicarDatosDelMensaje(e.datosCotizados, d);
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
 // Decision de confirmar
 // ---------------------------------------------------------------------------------------------------------------------
 
 export type CodigoCierre = "cierre_resumen_no_mostrado" | "cierre_sin_si_explicito" | "cierre_datos_cambiaron";
 
 export type DecisionConfirmacion =
-  | { readonly ok: true }
+  | { readonly ok: true; /** C3 PED-16 (cerebro v2): pago que el cliente dio junto con su visto bueno; el llamador lo guarda antes de confirmar. */ readonly datosAdoptados?: DatosDeCierre }
   | {
       readonly ok: false;
       readonly code: CodigoCierre;
@@ -712,6 +759,8 @@ export interface EntradaDecision {
   readonly historial: readonly MensajeHistorial[];
   readonly turn: string | null;
   readonly canonico?: string;
+  /** C3 PED-16 (cerebro v2): «Tarjeta… sí, todo lo demás está bien» a un resumen que pedía el pago confirma (ver `pagoConVistoBuenoAlResumen`). */
+  readonly pagoConVistoBueno?: boolean;
 }
 
 const COMO_MOSTRAR = (canonico: string | undefined): string =>
@@ -719,16 +768,45 @@ const COMO_MOSTRAR = (canonico: string | undefined): string =>
     ? ` Muéstrele AHORA este resumen, copiado tal cual, y espere su respuesta en el mensaje siguiente:\n${canonico}`
     : " Muéstrele ahora el resumen completo (renglones, entrega, pago y total a pagar), pregúntele si está correcto y espere su sí en el mensaje siguiente.";
 
+const PIDE_EL_SI = /\bresponda\b[^.\n]{0,30}\bs[ií](?![a-záéíóúñ])/i;
+const CIFRAS = (t: string): number[] => Array.from(t.matchAll(/\$\s?(\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?/g), (m) => Number(m[1]!.replace(/,/g, "")));
+
+/**
+ * C3 PED-05 (maquina de cierre ON): historial «resumen vigente -> cliente (sin rechazo) -> asistente que solo pide el sí a ESE resumen». El recordatorio no afirma cambios, toda cifra que
+ * menciona ya estaba en el resumen y el resumen trae el total vigente. Sin esto el «sí» se rechazaba como «resumen no mostrado» y el cliente recibía el resumen otra vez. Pura.
+ */
+function recordatorioDelResumenAnterior(ctx: OrderFlowContext, historial: readonly MensajeHistorial[]): boolean {
+  const asistentes = historial.map((m, i) => ({ m, i })).filter(({ m }) => m.role === "assistant");
+  const ultimo = asistentes.at(-1);
+  const anterior = asistentes.at(-2);
+  if (!ultimo || !anterior) return false;
+  const recordatorio = sinMarcadores(ultimo.m.content);
+  if (!esResumenParaConfirmar(ctx.quotedTotal, anterior.m.content)) return false;
+  if (!(PIDE_EL_SI.test(recordatorio) || terminaEnPreguntaDeConfirmacion(recordatorio)) || AFIRMA_CAMBIO_SIN_RESUMEN.test(recordatorio)) return false;
+  const cifrasDelResumen = new Set(CIFRAS(anterior.m.content));
+  if (CIFRAS(recordatorio).some((c) => !cifrasDelResumen.has(c))) return false;
+  const enMedio = historial.slice(anterior.i + 1, ultimo.i).filter((m) => m.role === "user");
+  return enMedio.every((m) => clasificarRespuestaCierre(m.content, { despuesDelResumen: true, datosCotizados: datosDeCierreDeContexto(ctx), total: ctx.quotedTotal }) !== "no");
+}
+
 /** ¿Puede confirmarse el resumen con lo que el cliente vio y dijo? Pura: no escribe nada. El llamador persiste `marcarAmbiguo`. */
 export function decidirConfirmacion(e: EntradaDecision): DecisionConfirmacion {
   const ultimoAsistente = ultimoDe(e.historial, "assistant");
   const ultimoCliente = ultimoDe(e.historial, "user");
+  if (e.pagoConVistoBueno) {
+    const adoptados = pagoConVistoBuenoAlResumen(ultimoAsistente, ultimoCliente, { total: e.ctx.quotedTotal, canal: e.ctx.quotedCanal, datosCotizados: datosDeCierreDeContexto(e.ctx) });
+    if (adoptados) return { ok: true, datosAdoptados: adoptados };
+  }
   const salidaNoVisto = e.ctx.cierreNoVistoTurn !== undefined && e.turn !== null && e.ctx.cierreNoVistoTurn !== e.turn;
   // SALIDA SEGURA contra la heuristica de texto (falso negativo: el resumen salio con el total en letras, otra pregunta final o fuera de la ventana de historial): si ya se rechazo UNA vez por
   // «resumen no mostrado» y en un turno POSTERIOR el cliente contesta un «si» claro, se acepta. El cierre se retrasa a lo mucho un turno y nunca se queda trabado.
   if (salidaNoVisto && !esResumenParaConfirmar(e.ctx.quotedTotal, ultimoAsistente)) {
     const totalVisto = resumenMostradoEnHistorial(e.ctx.quotedTotal, [{ role: "assistant", content: ultimoAsistente ?? "" }]) === true;
     if (clasificarRespuestaCierre(ultimoCliente, { despuesDelResumen: totalVisto, datosCotizados: datosDeCierreDeContexto(e.ctx), total: e.ctx.quotedTotal }) === "si") return { ok: true };
+  }
+  if (!esResumenParaConfirmar(e.ctx.quotedTotal, ultimoAsistente) && recordatorioDelResumenAnterior(e.ctx, e.historial)) {
+    // C3 PED-05 (ON): entre el resumen y este «sí» el asistente solo pidio confirmar ESE resumen (sin cambiar nada ni dar otra cifra): el «sí» responde al resumen anterior.
+    if (clasificarRespuestaCierre(ultimoCliente, { despuesDelResumen: true, datosCotizados: datosDeCierreDeContexto(e.ctx), total: e.ctx.quotedTotal }) === "si") return { ok: true };
   }
   if (!esResumenParaConfirmar(e.ctx.quotedTotal, ultimoAsistente)) {
     // El cliente contesto un dato de pago / propina antes de ver el resumen: el servidor lo adopta para que el resumen que se le muestre ya lo lleve.

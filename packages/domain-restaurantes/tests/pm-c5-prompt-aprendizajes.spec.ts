@@ -123,7 +123,7 @@ describe("6. saludo y despedida cortos de usted", () => {
 
 describe("7. umbral de pedido grande (decision de Javier, 2-oct)", () => {
   it("por omision: mas de $4,000 o 5 kg, o mas de $2,500 con numero sin historial y pago en efectivo", () => {
-    expect(PM_PEDIDO_GRANDE_POR_OMISION).toBe("más de $4,000 o más de 5 kg; más de $2,500 si el número no tiene historial y paga en efectivo");
+    expect(PM_PEDIDO_GRANDE_POR_OMISION).toBe("sin límite: se toma y va a cocina como cualquier pedido; la sucursal solo recibe un aviso");
     expect(p).toContain(`Pedido grande (${PM_PEDIDO_GRANDE_POR_OMISION};`);
     expect(p).toMatch(/Un pedido de \$1,500 o más que NO pasa de ese umbral se toma normal, sin escalar/);
     expect(p).not.toMatch(/40 o más piezas/);

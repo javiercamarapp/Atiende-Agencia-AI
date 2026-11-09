@@ -1,4 +1,5 @@
 import type { DemoAgentsDeps } from "./demo-agents/types.ts";
+import type { VozTurnoPuertos } from "./routes/verticals/restaurantes/voz-turno.ts";
 import type {
   AgentRunRepository,
   AuthzAuditRepository,
@@ -31,7 +32,7 @@ import type {
 import type { TenancyEngine, TenantDbSession } from "@atiende/core-tenancy";
 import type { AuditSink } from "@atiende/core-authz";
 import type { DataChatDeps } from "./data-chat/deps.ts";
-import type { AgregadosRepository, AutopilotoRepository, CierreRepository, ResultadoAlertasVozSistema, ConversacionesRepository, RepartidorPerfilRepository, DemoRepository, HandoffAgentGate, PrivacidadRepository, PuertoNotasDeVoz, RestaurantesRepository, VoiceAgentProvider, VozKpiRepository, VozLlamadaRepository, VozRepository, WhatsAppTurnHandler, WhatsappKpiRepository, AjustesAgenteRepository } from "@atiende/domain-restaurantes";
+import type { AgregadosRepository, AutopilotoRepository, CierreRepository, ResultadoAlertasVozSistema, ConversacionesRepository, RepartidorPerfilRepository, DemoRepository, HandoffAgentGate, PrivacidadRepository, PuertoNotasDeVoz, RestaurantesRepository, VoiceAgentProvider, VozKpiRepository, VozLlamadaRepository, VozRepository, WhatsAppTurnHandler, WhatsappKpiRepository, AjustesAgenteRepository, TurnoHuerfano } from "@atiende/domain-restaurantes";
 import type { CfoRepository as CfoRestaurantesRepository } from "@atiende/domain-restaurantes/cfo";
 import type { ComandaOutboxStore, ResolverCodigosPos, ResolverSucursalPos, SoftRestaurantPort } from "@atiende/domain-restaurantes/softrestaurant";
 import type { HotelesRepository, GuestTicketRepository, AgentesRepository, GruposRepository, HuespedesRepository, RecepcionRepository, CambioFechasRepository, ListaEsperaRepository, ReservasAgenteRepository, HotelesWhatsAppTurnHandler, HousekeepingRepository, HousekeepingResidualRepository, HousekeepingDiaSistemaRepository, MensajeriaConfigRepository, IdentityRepository, PaymentsPort, PrivacyRepository, PublicPrivacyRepository, GuestDataRepository, ConversacionesRepository as HotelesConversacionesRepository, ConversacionesSistemaPort as HotelesConversacionesSistemaPort } from "@atiende/domain-hoteles";
@@ -165,8 +166,22 @@ export interface AppDeps {
   /** PM-C5: espera real (en ms) entre las dos fases del webhook de WhatsApp cuando el agente tiene `replyDebounceSeconds` > 0. OPCIONAL: sin
    * ella se usa `setTimeout`; los tests inyectan una espera controlada. Con la espera apagada (lo normal) nunca se llama. */
   readonly esperarRafaga?: (ms: number) => Promise<void>;
+  /** Ventana de silencio (ms) de la espera DESLIZANTE del turno asincrono: se espera esta ventana y se repite solo si llego otro mensaje del mismo telefono,
+   * sin pasar de `replyDebounceSeconds`. OPCIONAL: por omision `WHATSAPP_RAFAGA_SILENCIO_MS` (2500). El camino sincrono conserva la espera fija. */
+  readonly silencioRafagaMs?: number;
   /** PM-C5: reloj en ms del webhook de WhatsApp para recortar la espera de rafagas segun lo que ya llevo la funcion. OPCIONAL (por omision `Date.now`); los tests lo inyectan. */
   readonly relojMs?: () => number;
+  /** Turno ASINCRONO de WhatsApp de restaurantes: ¿esta organizacion acusa a Meta al terminar la fase A y corre la fase B despues con 60 s de vida? En
+   * produccion = cerebro v2 de la organizacion o `WHATSAPP_TURNO_ASINCRONO`. OPCIONAL: sin ella (tests viejos) nadie es asincrono y el webhook es el de siempre. */
+  readonly turnoAsincrono?: (db: TenantDbSession, organizationId: string) => Promise<boolean>;
+  /** Entrega una promesa para que siga corriendo DESPUES de responder. OPCIONAL: por omision se usa `waitUntil` del contexto de peticion de Vercel
+   * (ver en-segundo-plano.ts); sin contexto el webhook espera la fase B antes de responder. Los tests inyectan uno que guarda la promesa. */
+  readonly enSegundoPlano?: (p: Promise<unknown>) => void;
+  /** Indicador de «escribiendo» + leido de la Cloud API al tomar un turno asincrono. Best-effort: un fallo nunca toca el turno. OPCIONAL (sin token de Meta no hay). */
+  readonly escribiendoWhatsApp?: (a: { readonly phoneNumberId: string; readonly messageId: string }) => Promise<void>;
+  /** Reclamo de turnos huerfanos del WhatsApp asincrono (migracion 192). OPCIONAL: por omision `reclamarTurnosHuerfanos` de @atiende/domain-restaurantes
+   * (Postgres, degrada a null sin la 192); los tests inyectan uno en memoria. */
+  readonly reclamarTurnosHuerfanos?: (db: TenantDbSession, opts: { readonly organizationId?: string | null; readonly todas: boolean; readonly limite: number }) => Promise<readonly TurnoHuerfano[] | null>;
   /** "Chatea con tus datos" (restaurantes piloto). OPCIONAL: si falta, la ruta responde honesta
    * "no disponible" en vez de fingir. En produccion lo arma `buildProductionDataChat` (lector Postgres
    * sobre la sesion RLS del usuario, bitacora en `core.data_chat_query_log`, gateway LLM compartido con
@@ -177,6 +192,8 @@ export interface AppDeps {
    * `(db) => new PostgresVozRepository(db)` y `voiceProvider` el adaptador de Gemini 3.8 Live
    * (emite sesiones solo con `GEMINI_API_KEY`). */
   readonly vozRepo?: (db: TenantDbSession) => VozRepository;
+  /** Turno de voz del cerebro v2 (POST /v1/restaurantes/voz/turno, migracion 191). Ausente = la ruta responde 503 con fin (apagado honesto). */
+  readonly vozTurno?: VozTurnoPuertos;
   /** Ajustes del agente por organizacion (migración 055: modelo, temperatura, voz, fondo). OPCIONAL: sin él las rutas responden 503 honesto. En producción es
    * `(db) => new PostgresAjustesAgenteRepository(db)` (degrada con SAVEPOINT a los valores de siempre contra la base sin migrar). */
   readonly ajustesAgenteRepo?: (db: TenantDbSession) => AjustesAgenteRepository;

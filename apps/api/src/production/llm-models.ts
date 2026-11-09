@@ -46,6 +46,9 @@ export const COMPACTACION_HISTORIAL_ROLE = "plataforma:compactacion_historial";
  *  Studio / Vertex (`GOOGLE_HOSTS`, en la lista permitida). Si ningun escalon acepta la peticion, el llamador conserva el comportamiento de
  *  "pedir al cliente que escriba". */
 export const RESTAURANTES_TRANSCRIPCION_ROLE = "restaurantes:transcripcion";
+/** Cerebro v2: los clasificadores del suelto en el turno de WhatsApp de restaurantes («¿aparte?» y alergia semantica). Llamadas cortas con salida
+ *  estructurada y SIEMPRE con retencion cero (escalera ZDR propia en `buildCerebroV2ZdrLadders`). */
+export const RESTAURANTES_WHATSAPP_CLASIFICADOR_ROLE = "restaurantes:whatsapp_clasificador";
 /** Alta autoservicio: extraccion del menu (PDF o foto) a un borrador de productos/precios que el dueño revisa antes de guardar
  *  (llamador: apps/api/src/routes/verticals/restaurantes/admin-menu-importar.ts). Entrada de imagen/PDF: actividad `extraccion_menu`. */
 export const RESTAURANTES_EXTRACCION_MENU_ROLE = "restaurantes:extraccion_menu";
@@ -302,6 +305,7 @@ export type ActividadLlm =
   | "reporte_redaccion"
   | "resumen_diario"
   | "tareas_cortas"
+  | "clasificacion_whatsapp"
   | "transcripcion_audio"
   | "extraccion_documentos"
   | "extraccion_menu"
@@ -335,6 +339,8 @@ export const ACTIVIDADES_LLM: Readonly<Record<ActividadLlm, ActividadLlmConfig>>
   reporte_analisis_general: { descripcion: "Reportes: etapa de analisis de datos no financieros", modalidad: "texto", decision: "precio", route: ruta({ ...LUNA_LOW, minMaxTokens: 3000 }, { ...FLASH_LITE_35, minMaxTokens: 3000 }) },
   reporte_redaccion: { descripcion: "Reportes: etapa de redaccion", modalidad: "texto", decision: "precio", route: ruta(GEMINI_38_FLASH, { ...LUNA_LOW, minMaxTokens: 4000 }) },
   resumen_diario: { descripcion: "Resumen diario de operacion para superadmin", modalidad: "texto", decision: "precio", route: ruta(GEMINI_38_FLASH, { ...LUNA_LOW, minMaxTokens: 4000 }) },
+  // El suelto midio sus dos clasificadores (intencion-pedido-aparte, clasificador-alergia) con Gemini 3.5 Flash-Lite; respaldo Luna. Ambos con endpoint ZDR.
+  clasificacion_whatsapp: { descripcion: "Clasificadores del agente de WhatsApp (cerebro v2): pedido aparte y alergia semantica", modalidad: "texto", decision: "medicion", route: ruta({ ...FLASH_LITE_35, minMaxTokens: 200 }, { ...LUNA_LOW, minMaxTokens: 1500 }) },
   tareas_cortas: { descripcion: "Clasificacion y tareas cortas: enrutador de turno, compuerta de escalamiento, titulos, compactacion", modalidad: "texto", decision: "precio", route: ruta(LUNA_LOW, FLASH_LITE_35) },
   // Bake-off 6-nov (10 notas sinteticas es-MX en m4a): Gemini 3.1 Flash-Lite WER 7.1 % (mediana 0), Gemini 3.5 Flash-Lite 10.0 %, ambos ~US$0.00017
   // por nota y p50 ~1.8-2.0 s; MiMo V2.6 Flash (DeepInfra) rechaza `input_audio` (422). Antes: Gemini 2.5 Flash-Lite, que NO tiene endpoint ZDR.
@@ -366,6 +372,7 @@ export const ACTIVIDAD_POR_ROL: Readonly<Record<string, ActividadLlm>> = {
   [TITULOS_RESUMENES_ROLE]: "tareas_cortas",
   [COMPACTACION_HISTORIAL_ROLE]: "tareas_cortas",
   [RESTAURANTES_TRANSCRIPCION_ROLE]: "transcripcion_audio",
+  [RESTAURANTES_WHATSAPP_CLASIFICADOR_ROLE]: "clasificacion_whatsapp",
   [RESTAURANTES_EXTRACCION_MENU_ROLE]: "extraccion_menu",
   "licitaciones:requirement_extractor": "extraccion_documentos",
   "licitaciones:junta_question_agent": "borradores",
@@ -396,6 +403,39 @@ export const DEFAULT_ROLE_ROUTES: Readonly<Record<string, LlmRouteConfig>> = Obj
 
 /** Rol sin actividad declarada (no deberia existir; un test lo impide para los roles de produccion): la ruta de chat barata. */
 export const DEFAULT_ROUTE: LlmRouteConfig = ruta(LUNA_LOW, FLASH_LITE_35, HAIKU_55);
+
+/**
+ * Cerebro v2 (bandera por organizacion, migracion 190): modelos con endpoint de RETENCION CERO verificado en https://openrouter.ai/api/v1/endpoints/zdr
+ * (6-nov-2026) dentro de los proveedores de EE.UU. permitidos. Las llamadas con `zdrEstricto` solo usan escalones de esta lista y siempre con `provider.zdr: true`.
+ * Gemini 2.5 Flash-Lite y Muse Spark NO tienen endpoint ZDR: quedan fuera de la escalera v2. Claude Sonnet 5.5 (premium) y Gemini 3.8 Flash (gama media,
+ * solo reportes) tampoco entran aunque tengan endpoint ZDR: la decision del dueno es solo modelos baratos (Luna, Haiku 5.5 y el rapido de voz).
+ */
+export const MODELOS_CON_ZDR_VERIFICADO: ReadonlySet<string> = new Set([
+  "openai/gpt-6-luna", // Azure (us)
+  "anthropic/claude-haiku-5.5", // Google Vertex (us/global) y Amazon Bedrock (us-east-1)
+  "google/gemini-3.5-flash-lite", // Google Vertex (us/global)
+  // Gemini 3.8 Flash tiene endpoint ZDR desde #750 (solo reportes): fuera del cerebro v2 por decision del dueno (gama media, no del agente).
+  ...Object.entries(VERIFIED_MODEL_HOSTS).filter(([m, v]) => v.zdr && v.hosts.length > 0 && m !== GEMINI_38_FLASH.model).map(([m]) => m),
+]);
+
+/** Escalera v2 del agente de WhatsApp de restaurantes: Luna -> Haiku 5.5, ambas con ZDR. */
+export const CEREBRO_V2_WHATSAPP_ROUTE: LlmRouteConfig = { models: [LUNA_LOW, HAIKU_55], routing: { allowFallbacks: true, zdr: true } };
+/** Escalado v2 (decision del 6-nov, BARRIDO-MODELOS-NOV: en la prueba de recuperacion tras fallo forzado de crear_pedido Luna recupero 14/20 pedidos y
+ *  gpt-6.1-terra 0/20): Luna -> Haiku 5.5, sin Terra. */
+export const CEREBRO_V2_ESCALADO_ROUTE: LlmRouteConfig = { models: [LUNA_LOW, HAIKU_55], routing: { allowFallbacks: true, zdr: true } };
+/** Alternativas ZDR elegibles por `preferredModel` dentro del cerebro v2 (el rapido de voz y Haiku de primario). */
+export const CEREBRO_V2_ALTERNATIVAS: readonly LlmRungConfig[] = [FLASH_LITE_35, HAIKU_55, LUNA_LOW];
+
+/**
+ * Escalera ZDR de un rol para el cerebro v2: la ruta vigente del rol (defaults o LLM_MODELS_JSON) SIN los escalones que no tienen endpoint ZDR, con Haiku 5.5
+ * al final si no estaba (el respaldo decidido). Asi el escalado conserva la decision vigente del monorrepo y solo se le quita lo que no cumple retencion cero.
+ * El rol por defecto del agente usa `CEREBRO_V2_WHATSAPP_ROUTE` tal cual.
+ */
+export function rutaZdrCerebroV2(route: LlmRouteConfig): LlmRouteConfig {
+  const conZdr = route.models.filter((r) => MODELOS_CON_ZDR_VERIFICADO.has(r.model));
+  const models = conZdr.some((r) => r.model === HAIKU_55.model) ? conZdr : [...conZdr, HAIKU_55];
+  return { ...route, models, routing: { ...(route.routing ?? {}), zdr: true } };
+}
 
 /** Retadores SOLO para el arnes de evals (MOD-07/08). Apagados: nada en produccion los lee. */
 export const EVAL_CHALLENGERS: readonly (LlmRungConfig & { readonly enabled: false; readonly note: string })[] = [

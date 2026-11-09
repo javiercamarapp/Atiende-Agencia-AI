@@ -102,6 +102,10 @@ export interface GatewayCallOptions {
    *  queda detras como respaldo; un modelo no registrado se IGNORA (nunca se llama a un modelo no listado). El rol, el
    *  interruptor de plataforma, el tope diario y el registro de uso siguen siendo los del rol: elegir modelo no los esquiva. */
   preferredModel?: string;
+  /** Retencion cero ESTRICTA para esta llamada (p.ej. el cerebro v2 de una organizacion): la escalera sale SOLO de lo registrado con
+   *  `registerZdrLadder` para el rol (todos con `provider.zdr: true`); sin escalera ZDR registrada la llamada falla cerrada (nunca cae a la
+   *  escalera normal). `preferredModel` se busca en esa misma escalera ZDR o en sus alternativas ZDR. Rol, interruptor, topes y registro de uso: los del rol. */
+  zdrEstricto?: boolean;
   /** Sobreescribe la política de residencia por defecto del gateway SOLO
    *  para esta llamada (p.ej. un tenant de licitación de gobierno la activa,
    *  el resto de las verticales no). */
@@ -130,6 +134,8 @@ export class LlmGateway {
   private readonly laddersByRole = new Map<string, LlmProvider[]>();
   /** Modelos elegibles por rol que NO van en la escalera por defecto (rol -> modelo -> proveedor). */
   private readonly alternativesByRole = new Map<string, Map<string, LlmProvider>>();
+  /** Escaleras con retencion cero para `zdrEstricto` (rol -> escalera) y sus alternativas elegibles por `preferredModel`. */
+  private readonly zdrLaddersByRole = new Map<string, { ladder: LlmProvider[]; alternativas: Map<string, LlmProvider> }>();
 
   constructor(opts: LlmGatewayOptions) {
     this.breaker = opts.breaker;
@@ -163,8 +169,28 @@ export class LlmGateway {
     this.alternativesByRole.set(role, porModelo);
   }
 
+  /** Registra la escalera con retencion cero de un rol (y modelos elegibles solo por `preferredModel`), para las llamadas con `zdrEstricto`.
+   *  Quien registra garantiza que cada proveedor lleva `provider.zdr: true`. */
+  registerZdrLadder(role: string, providers: LlmProvider[], alternativas: LlmProvider[] = []): void {
+    if (providers.length === 0) throw new Error(`gateway: la escalera ZDR de "${role}" no puede estar vacía`);
+    const porModelo = new Map<string, LlmProvider>();
+    for (const p of alternativas) {
+      if (!p.model) throw new Error(`gateway: una alternativa ZDR del rol "${role}" debe declarar su modelo`);
+      porModelo.set(p.model, p);
+    }
+    this.zdrLaddersByRole.set(role, { ladder: providers, alternativas: porModelo });
+  }
+
   /** Escalera efectiva de una llamada: la del rol, con el modelo preferido (si esta registrado) al frente. */
-  private ladderFor(role: string, preferredModel: string | undefined): LlmProvider[] {
+  private ladderFor(role: string, preferredModel: string | undefined, zdrEstricto = false): LlmProvider[] {
+    if (zdrEstricto) {
+      const zdr = this.zdrLaddersByRole.get(role);
+      if (!zdr) throw new Error(`gateway: el rol "${role}" no tiene escalera de retencion cero registrada (llamada con zdrEstricto)`);
+      if (!preferredModel) return zdr.ladder;
+      const elegidoZdr = zdr.alternativas.get(preferredModel) ?? zdr.ladder.find((p) => p.model === preferredModel);
+      if (!elegidoZdr) return zdr.ladder;
+      return [elegidoZdr, ...zdr.ladder.filter((p) => p !== elegidoZdr && p.model !== elegidoZdr.model)];
+    }
     const base = this.laddersByRole.get(role);
     if (!base) throw new Error(`gateway: sin proveedores registrados para el rol "${role}" (llamar registerLadder primero)`);
     if (!preferredModel) return base;
@@ -176,7 +202,7 @@ export class LlmGateway {
   }
 
   async complete(opts: GatewayCallOptions): Promise<GatewayCallResult> {
-    const ladder = this.ladderFor(opts.role, opts.preferredModel);
+    const ladder = this.ladderFor(opts.role, opts.preferredModel, opts.zdrEstricto === true);
 
     // Interruptor de plataforma: ANTES de residencia, breaker, presupuesto y red.
     // Un fallo del propio puerto es fail-open (nunca tumba a los agentes por un

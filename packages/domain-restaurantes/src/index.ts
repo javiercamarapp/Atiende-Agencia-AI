@@ -215,8 +215,10 @@ export { splitMetaPayloadByChannel } from "./whatsapp/batch-routing.ts";
 export { extractMetaEchoes, registrarEcoDeApp } from "./whatsapp/eco-app.ts";
 export type { EcoDeApp, ExtraccionDeEcos, ResultadoEco } from "./whatsapp/eco-app.ts";
 export type { MetaChannelBatch } from "./whatsapp/batch-routing.ts";
-export { redactSensitiveInfo, handleInboundWhatsAppMessage, recibirMensajeConEspera, responderTrasEspera, mensajesSinResponder, usuariosRespondidos, analizarHistorial, MAX_PASADAS_RAFAGA, esperaEfectivaMs, FUNCION_MAX_MS, PASADA_ESTIMADA_MS, liberarTurnoTrasFalloDeFaseB } from "./whatsapp/inbound.ts";
+export { redactSensitiveInfo, handleInboundWhatsAppMessage, recibirMensajeConEspera, responderTrasEspera, mensajesSinResponder, usuariosRespondidos, analizarHistorial, MAX_PASADAS_RAFAGA, esperaEfectivaMs, FUNCION_MAX_MS, FUNCION_ASINCRONA_MAX_MS, LEASE_TURNO_ASINCRONO_SEGUNDOS, PASADA_ESTIMADA_MS, liberarTurnoTrasFalloDeFaseB } from "./whatsapp/inbound.ts";
 export type { RecepcionConEspera } from "./whatsapp/inbound.ts";
+export { reclamarTurnosHuerfanos, retomarTurnoHuerfano, HUERFANOS_POR_BARRIDO, CLASE_HUERFANO_SIN_CONVERSACION, CLASE_HUERFANO_TURNO_OCUPADO } from "./whatsapp/turnos-huerfanos.ts";
+export type { TurnoHuerfano } from "./whatsapp/turnos-huerfanos.ts";
 export type { InboundMessageOutcome } from "./whatsapp/inbound.ts";
 export { createRestaurantesMessagingOutboxPort } from "./whatsapp/outbox-adapter.ts";
 export { UMBRAL_AVISOS_AGRUPADOS, procesarEstadosEntrega } from "./whatsapp/estados-entrega.ts";
@@ -383,8 +385,8 @@ export {
   listarUmbralesEntrega,
 } from "./avisos-preferencias.ts";
 export type { EventoAviso, PreferenciaAviso, UmbralSucursal } from "./avisos-preferencias.ts";
-export { barrerAvisosOperativos, listarCandidatosAvisos } from "./avisos-operativos.ts";
-export type { CandidatoAviso, ResultadoBarridoAvisos, TipoAvisoOperativo } from "./avisos-operativos.ts";
+export { barrerAvisosOperativos, barrerAvisosPorCorreo, barrerAvisosUrgentesSinResolver, listarCandidatosAvisos } from "./avisos-operativos.ts";
+export type { CandidatoAviso, ResultadoBarridoAvisos, ResultadoBarridoCorreo, TipoAvisoOperativo } from "./avisos-operativos.ts";
 export { diaMerida } from "./alertas-duenio/dia.ts";
 export { emitirAlertasProveedor, evaluarSaludProveedor, GRAPH_CODIGO_TOKEN_INVALIDO, UMBRAL_FALLAS_PROVEEDOR } from "./alertas-duenio/proveedor.ts";
 export type { DiagnosticoProveedorOrg, ItemDespachoOrg, ResultadoAlertasProveedor } from "./alertas-duenio/proveedor.ts";

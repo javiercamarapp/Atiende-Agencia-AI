@@ -138,6 +138,19 @@ describe("restaurantes.callback.pendiente", () => {
     await expect(session.query("select 1 as siguiente;")).resolves.toEqual({ rows: [{ ok: true }] });
   });
 
+  it("aviso marcado urgente (cerebro v2: alergia, emergencia) sale con severidad critica; sin marca, la del catalogo", async () => {
+    const { session, vistos } = conRegistro([
+      { match: REGISTRAR_AGENTE, respond: () => [AVISO_NUEVO] },
+      { match: EMITIR, respond: () => [{ emit_notification: 1 }] },
+    ]);
+    await new PostgresRestaurantesRepository(session).createCallbackRequest({ ...INPUT, reason: "escalada:alergia_salud", source: "whatsapp", urgente: true });
+    await new PostgresRestaurantesRepository(session).createCallbackRequest({ ...INPUT, reason: "escalada:queja", source: "whatsapp" });
+    expect(vistos).toHaveLength(2);
+    expect(vistos[0]![2]).toBe("restaurantes.callback.pendiente");
+    expect(vistos[0]![4]).toBe("critica");
+    expect(vistos[1]![4]).toBe("atencion");
+  });
+
   it("reason cliente_llego emite el aviso URGENTE propio (restaurantes.cliente.llego, enlace a pedidos) y NO el generico; sin PII", async () => {
     const { session, vistos } = conRegistro([
       { match: REGISTRAR_AGENTE, respond: () => [AVISO_NUEVO] },

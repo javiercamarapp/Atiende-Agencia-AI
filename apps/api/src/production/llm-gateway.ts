@@ -61,7 +61,7 @@ import { emitirNotificacion } from "@atiende/db";
 import { ProductionLlmUsageRecorder, ProductionOrgMonthlyBudgetStore, ProductionRoleDailyTurnStore } from "./llm-usage-gateway-adapters.ts";
 import { RESUMEN_DIARIO_LLM_ROLE } from "../resumen-diario/redaccion.ts";
 import type { ApiEnv } from "../env.ts";
-import { COMPACTACION_HISTORIAL_ROLE, COMPUERTA_ESCALAMIENTO_ROLE, DATA_CHAT_RETRY_SUFFIX, ENRUTADOR_TURNO_ROLE, NEW_PLATFORM_LLM_ROLES, REPORTE_ANALISIS_FINANCIERO_ROLE, REPORTE_ANALISIS_GENERAL_ROLE, REPORTE_REDACCION_FINANCIERO_ROLE, REPORTE_REDACCION_GENERAL_ROLE, RESTAURANTES_EXTRACCION_MENU_ROLE, RESTAURANTES_TRANSCRIPCION_ROLE, TITULOS_RESUMENES_ROLE, parseLlmModelsJson, resolveRoleRoute, routingForModel, rungsDeModelosAgente, SUPERADMIN_COPILOTO_ROLE, type LlmModelsConfig } from "./llm-models.ts";
+import { COMPACTACION_HISTORIAL_ROLE, COMPUERTA_ESCALAMIENTO_ROLE, DATA_CHAT_RETRY_SUFFIX, ENRUTADOR_TURNO_ROLE, NEW_PLATFORM_LLM_ROLES, REPORTE_ANALISIS_FINANCIERO_ROLE, REPORTE_ANALISIS_GENERAL_ROLE, REPORTE_REDACCION_FINANCIERO_ROLE, REPORTE_REDACCION_GENERAL_ROLE, RESTAURANTES_EXTRACCION_MENU_ROLE, RESTAURANTES_TRANSCRIPCION_ROLE, RESTAURANTES_WHATSAPP_CLASIFICADOR_ROLE, MODELOS_CON_ZDR_VERIFICADO, TITULOS_RESUMENES_ROLE, CEREBRO_V2_ALTERNATIVAS, CEREBRO_V2_WHATSAPP_ROUTE, CEREBRO_V2_ESCALADO_ROUTE, parseLlmModelsJson, resolveRoleRoute, routingForModel, rungsDeModelosAgente, SUPERADMIN_COPILOTO_ROLE, type LlmModelsConfig, type LlmRouteConfig, type LlmRungConfig } from "./llm-models.ts";
 
 export const RESTAURANTES_WHATSAPP_AGENT_ROLE = "restaurantes:whatsapp_agent";
 export const RESTAURANTES_WHATSAPP_AGENT_ESCALATED_ROLE = "restaurantes:whatsapp_agent_escalated";
@@ -127,6 +127,8 @@ export const ALL_PRODUCTION_ROLES: readonly string[] = [
   RESTAURANTES_DATA_CHAT_ROLE,
   // R-32: transcripcion de notas de voz (llamador: apps/api/src/routes/verticals/restaurantes/transcripcion-voz.ts). Apagable.
   RESTAURANTES_TRANSCRIPCION_ROLE,
+  // Cerebro v2: clasificadores del suelto («¿aparte?», alergia semantica) del turno de WhatsApp de restaurantes. Solo con zdrEstricto.
+  RESTAURANTES_WHATSAPP_CLASIFICADOR_ROLE,
   // Alta autoservicio: extraccion del menu (PDF/foto) a borrador (llamador: routes/verticals/restaurantes/admin-menu-importar.ts).
   RESTAURANTES_EXTRACCION_MENU_ROLE,
   HOTELES_DATA_CHAT_ROLE,
@@ -242,6 +244,58 @@ function hasAnyProvider(env: ApiEnv): boolean {
   return Boolean(env.llmProviders.openrouter);
 }
 
+/** Proveedor OpenRouter de un escalon con la politica de siempre (EE.UU., `data_collection: deny`, `require_parameters`) y el `zdr` de la ruta. */
+function proveedorOpenRouter(env: ApiEnv, openrouter: NonNullable<ApiEnv["llmProviders"]["openrouter"]>, route: LlmRouteConfig, rung: LlmRungConfig): LlmProvider {
+  return new OpenRouterProvider({
+    id: `openrouter:${rung.model}`,
+    apiKey: openrouter.apiKey,
+    model: rung.model,
+    params: rung,
+    routing: routingForModel(route, rung.model, openrouter.zdr),
+    countryOfResidence: openrouter.countryOfResidence ?? undefined,
+    appUrl: env.appBaseUrl,
+    appName: OPENROUTER_APP_NAME,
+  });
+}
+
+/**
+ * Parametros de un escalon del cerebro v2: Luna con el esfuerzo de razonamiento elegido (none = sin `reasoningEffort`); los modelos de Anthropic (Haiku 5.5, respaldo de Luna) con
+ * `cacheSystemPrompt` (punto de cache explicito sobre herramientas + system: ~250k tokens de entrada por conversacion casi todos repetidos). Luna (OpenAI por Azure) cachea sola el
+ * prefijo comun, sin marca. Pura.
+ */
+export function paramsDeEscalonCerebroV2(r: LlmRungConfig, esfuerzo: string): LlmRungConfig {
+  if (r.model.startsWith("anthropic/")) return { ...r, cacheSystemPrompt: true };
+  if (r.model !== "openai/gpt-6-luna") return r;
+  if (esfuerzo === "none") { const { reasoningEffort: _sin, ...resto } = r; return resto; }
+  return { ...r, reasoningEffort: esfuerzo as LlmRungConfig["reasoningEffort"] };
+}
+
+/**
+ * Escaleras de RETENCION CERO del cerebro v2 por rol del agente de WhatsApp de restaurantes: el rol por defecto y el escalado usan Luna -> Haiku 5.5 (decision
+ * del 6-nov: el escalado es Luna, no Terra). Todas las rutas llevan `zdr: true`, que
+ * `routingForModel` traslada a `provider.zdr`. Sin llave de OpenRouter: ninguna (la llamada v2 falla cerrada).
+ */
+export function buildCerebroV2ZdrLadders(env: ApiEnv, _models?: LlmModelsConfig): Map<string, { ladder: LlmProvider[]; alternativas: LlmProvider[] }> {
+  const salida = new Map<string, { ladder: LlmProvider[]; alternativas: LlmProvider[] }>();
+  const { openrouter } = env.llmProviders;
+  if (!openrouter) return salida;
+  // Esfuerzo de razonamiento de Luna en el cerebro v2 (CEREBRO_V2_LUNA_ESFUERZO = none|minimal|low; otro valor o ausente = low): para medir latencia sin redeploy de codigo.
+  const esfuerzo = ["none", "minimal", "low"].includes(String(process.env.CEREBRO_V2_LUNA_ESFUERZO ?? "").trim()) ? String(process.env.CEREBRO_V2_LUNA_ESFUERZO).trim() : "low";
+  const conEsfuerzo = (r: LlmRungConfig): LlmRungConfig => paramsDeEscalonCerebroV2(r, esfuerzo);
+  const ajustar = (route: LlmRouteConfig): LlmRouteConfig => ({ ...route, models: route.models.map(conEsfuerzo) });
+  const alternativasRoute: LlmRouteConfig = { models: CEREBRO_V2_ALTERNATIVAS.map(conEsfuerzo), routing: { allowFallbacks: true, zdr: true } };
+  const alternativas = alternativasRoute.models.map((rung) => proveedorOpenRouter(env, openrouter, alternativasRoute, rung));
+  const principal = ajustar(CEREBRO_V2_WHATSAPP_ROUTE);
+  salida.set(RESTAURANTES_WHATSAPP_AGENT_ROLE, { ladder: principal.models.map((rung) => proveedorOpenRouter(env, openrouter, principal, rung)), alternativas });
+  const escalada = ajustar(CEREBRO_V2_ESCALADO_ROUTE);
+  salida.set(RESTAURANTES_WHATSAPP_AGENT_ESCALATED_ROLE, { ladder: escalada.models.map((rung) => proveedorOpenRouter(env, openrouter, escalada, rung)), alternativas: [] });
+  // Clasificadores del suelto: la ruta de su actividad (tabla central, o LLM_MODELS_JSON) sin escalones sin ZDR.
+  const rutaClasificador = resolveRoleRoute(RESTAURANTES_WHATSAPP_CLASIFICADOR_ROLE, _models);
+  const clasificador: LlmRouteConfig = { ...rutaClasificador, models: rutaClasificador.models.filter((r) => MODELOS_CON_ZDR_VERIFICADO.has(r.model)), routing: { ...(rutaClasificador.routing ?? {}), zdr: true } };
+  salida.set(RESTAURANTES_WHATSAPP_CLASIFICADOR_ROLE, { ladder: clasificador.models.map((rung) => proveedorOpenRouter(env, openrouter, clasificador, rung)), alternativas: [] });
+  return salida;
+}
+
 /** Modelos que una organizacion de restaurantes puede ELEGIR para un rol (lista permitida de domain-restaurantes). Se registran como alternativas del
  *  rol (`LlmGateway.registerAlternatives`): no entran a la escalera por defecto y pasan por la MISMA politica de proveedores de EE.UU. (`routingForModel`),
  *  con el mismo id de escalon (`openrouter:<modelo>`) para compartir el circuit breaker. Sin llave de OpenRouter no hay alternativas (el legado de un
@@ -306,6 +360,9 @@ export function buildProductionLlmGateway(env: ApiEnv, engine: TenancyEngine, ki
   // Modelo elegido por la organizacion para el agente de WhatsApp de restaurantes (ajustes del agente): alternativas del MISMO rol, asi el interruptor
   // de plataforma, el tope y el registro de uso siguen siendo los del rol.
   gateway.registerAlternatives(RESTAURANTES_WHATSAPP_AGENT_ROLE, buildAgentModelAlternatives(env, RESTAURANTES_WHATSAPP_AGENT_ROLE, models));
+  // Cerebro v2 (bandera por organizacion, migracion 190): escaleras con retencion cero para las llamadas con `zdrEstricto`. Sin OpenRouter no se registran y la
+  // llamada v2 falla cerrada (el turno responde con el texto de falla del proveedor), nunca cae a un proveedor sin ZDR.
+  for (const [role, ladder] of buildCerebroV2ZdrLadders(env, models)) gateway.registerZdrLadder(role, ladder.ladder, ladder.alternativas);
 
   return gateway;
 }

@@ -279,7 +279,7 @@ describe("prompt de PM (PM-C3): contenido del cerebro, sin aflojar reglas vigent
   });
 
   it("umbral de pedido grande: 40 piezas o $1,500 se queda, sin rechazar el pedido (lo confirma la sucursal)", () => {
-    expect(p).toMatch(/Pedido grande \(más de \$4,000 o más de 5 kg; más de \$2,500 si el número no tiene historial y paga en efectivo/);
+    expect(p).toMatch(/Pedido grande \(sin límite: se toma y va a cocina como cualquier pedido; la sucursal solo recibe un aviso/);
     expect(p).toMatch(/se toma como CUALQUIER pedido: no lo rechace ni escale antes de cotizar/);
   });
 

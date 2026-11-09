@@ -166,6 +166,10 @@ import { CircuitBreaker, FakeLlmProvider, InMemoryBudgetLedgerStore, InMemoryCir
 import type { LlmCompletionRequest, LlmCompletionResult } from "@atiende/agent-core";
 import { createLlmWhatsAppTurnHandler } from "../src/whatsapp/llm-turn-handler.ts";
 import type { ConversationMessage } from "../src/repository.ts";
+import { activarEsperaPedidoGrande } from "./support/pedido-grande-con-espera.ts";
+
+// Prueba de la espera por pedido grande CONFIGURADA (decisión de Omar, 9-nov: sin espera por omisión).
+activarEsperaPedidoGrande();
 
 function agente(repo: RestaurantesRepository, script: (r: LlmCompletionRequest) => LlmCompletionResult) {
   const gateway = new LlmGateway({ breaker: new CircuitBreaker(new InMemoryCircuitBreakerStore()), budgetStore: new InMemoryBudgetLedgerStore(), budgetLimits: { maxRunUsd: 10, maxTenantDailyUsd: 100 } });

@@ -15,6 +15,11 @@
 import { descripcionSeguraDeError } from "../log-seguro.ts";
 import { createHash } from "node:crypto";
 import { registerCallbackRequest } from "../callback-requests.ts";
+import { decidirBloqueoAlergia, evidenciaAlergiaEnSesion, MARCA_AVISO_URGENTE, notaAlergiaDelPedido, notaPreferenciaDelPedido, notasConAlergia, notasConPreferencia, rechazoAlergiaSinConfirmar, type EstadoAlergia, type MensajeSalud } from "../whatsapp/cerebro-v2/salud.ts";
+import type { AvisoDelTelefono } from "../repository.ts";
+import { avisoCreadoUrgente, planDeAviso } from "../whatsapp/cerebro-v2/avisos.ts";
+import { claseDelRechazoOtroPedido, entradaClasificadorPedidoAparte, idsPedidosCreadosEnSesion, motivoOtroPedidoEnSesion, RECHAZO_COTIZA_OTRO_PEDIDO, RECHAZO_COTIZA_PEDIDO_APARTE, type EntradaIntencionPedidoAparte, type IntencionPedidoAparte } from "../whatsapp/cerebro-v2/pedido-aparte.ts";
+import type { MensajeHilo } from "../whatsapp/cerebro-v2/texto-plano.ts";
 import { MOTIVOS_AVISO_CON_PEDIDO, armarBloquePedidoParaAviso, componerMensajeAviso, corregirAvisoCotizado } from "../aviso-pedido-gerente.ts";
 import { cargarMemoria, evaluarReincidencia } from "../cliente-360/memoria.ts";
 import { elegirPedido, repetirPedido } from "../cliente-360/repetir.ts";
@@ -23,14 +28,14 @@ import { VENTANA_PEDIDO_RECIENTE_MIN, buscarPedidoRecienteConSucursal, estadoPar
 import { fusionarRenglonesPorProducto } from "../promotions.ts";
 import { aclararGuacamoleExtra } from "../whatsapp/guards.ts";
 import { sanitizeInlineText } from "../text-sanitize.ts";
-import { OrderValidationError, esGuardaSqlDeNegocioDePedido } from "../errors.ts";
+import { OrderValidationError, RechazoConClaseError, esGuardaSqlDeNegocioDePedido } from "../errors.ts";
 import { normalizePhone, toWhatsAppRecipient } from "../phone.ts";
 import { resolverMenuPdf } from "../menu-pdf.ts";
 import { mismosRenglones, VENTANA_PEDIDO_IGUAL_MIN } from "../pedido-igual-reciente.ts";
 import { PROPINA_PORCENTAJE_MAX } from "../whatsapp/guards.ts";
 import { composicionParaProducto, pesoPedidoEnConsulta } from "../peso-composicion.ts";
 import { pesoDeProductoEnGramos, unidadDeVenta } from "../product-search.ts";
-import { avisoUnidadPorTabla, ordenesInterpretadasSinPreguntar, piezasPorOrdenDe } from "../unidades-pm.ts";
+import { avisoUnidadPorTabla, ordenesInterpretadasSinPreguntar, piezasEsperadasDeGringaOMestiza, piezasPorOrdenDe } from "../unidades-pm.ts";
 import { canonicalRequestedComplement, complementosExcluidosEnNotas, COMPLEMENTOS_PEDIBLES, DEFAULT_COMPLEMENTS, etiquetaComplementoResumen, isTortillaChoice, normalizarTortilla, PM_BASIC_COMPLEMENTS } from "../order-quote.ts";
 import { componentesLocales, estaAbiertoAhora, aperturaConExcepciones, evaluarUltimoPedido, fechaLocal, fraseUltimoPedido, horaHablada, horaLegible, tieneUltimoPedidoPorTipo } from "../horarios.ts";
 import { evaluarDomicilioSucursal } from "../domicilio-sucursal.ts";
@@ -45,7 +50,7 @@ import { SUCURSALES_QUE_NO_REPARTEN_PM } from "../sugerencia-despacho.ts";
 import { formatUbicacionEntregaNota, type UbicacionEntrega } from "../whatsapp/location.ts";
 import { knownAmountsOfQuote, requierePinAntesDeCrear } from "../whatsapp/guards.ts";
 import { CATEGORIAS_SIN_SALSA, createOrder, prepareCreateOrder, quoteOrder, resolveBranchOrderItems, searchProducts, type PreparedOrder, type QuotePolicyInfo, type QuotePromotionInfo } from "../orders.ts";
-import { acumuladoReciente, evaluarPedidoGrande, PEDIDO_GRANDE_KG, pesoTotalKg, PedidoGrandeRetenidoError, resumenPedidoGrande } from "../pedido-grande.ts";
+import { acumuladoReciente, evaluarPedidoGrande, motivoAvisoPedidoGrande, PEDIDO_GRANDE_KG, pesoTotalKg, PedidoGrandeRetenidoError, resumenPedidoGrande, type MotivoPedidoGrande } from "../pedido-grande.ts";
 import type { PedidoGrandeHook } from "../autopiloto/tipos.ts";
 import { pedidoAceptaAgregado } from "../agregados/tipos.ts";
 import type { AgregadosHook } from "../agregados/tipos.ts";
@@ -82,6 +87,7 @@ import {
   clasificarRespuestaCierre,
   datosDeCierreDeContexto,
   datosDeCierreDeEntrada,
+  datosDelMensaje,
   billeteExplicitoDelMensaje,
   HABLA_DE_PAGO,
   normalizar,
@@ -166,6 +172,14 @@ export interface AgentToolDefinition {
 
 export interface AgentToolContext {
   readonly organizationId: string;
+  /** Cerebro v2 (bandera por organizacion, migracion 190): buscar_producto usa la busqueda medida del suelto antes que la de siempre. */
+  readonly cerebroV2?: boolean;
+  /** Cerebro v2 (bloque 4): el hilo en el formato del suelto (con tool_calls y resultados) para la guarda de otro pedido en la sesion de crear_pedido. */
+  readonly hiloV2?: readonly MensajeHilo[];
+  /** Cerebro v2 (bloque 4, suelto ~8022-8045): el clasificador «¿aparte?» ya conectado (gateway, rol y plazo del turno). Ausente = sin clasificador (null, modo R24). */
+  readonly clasificarAparte?: (entrada: EntradaIntencionPedidoAparte) => Promise<IntencionPedidoAparte | null>;
+  /** Cerebro v2: el aviso que deja ESTA llamada (escalar_a_humano del servidor) es URGENTE. Lo pone el turno con la decision determinista; el modelo no lo controla. */
+  readonly avisoUrgente?: boolean;
   readonly channel: AgentChannel;
   /** Telefono del cliente tomado del CONTEXTO (remitente de WhatsApp / token de llamada).
    * `null` = el canal no lo conoce (voz sin token de llamada, camino legado). */
@@ -208,7 +222,7 @@ export interface AgentToolContext {
   readonly usarCoordenadasPropuestas?: boolean;
   /** Ultimos mensajes (cliente y agente) de esta conversacion de WhatsApp. Solo lo fija el servidor; alimenta guardas que comparan lo que dijo el cliente, y si ya se le aclaro, con lo que cotiza el
    * modelo (p. ej. «guacamole» contra «Extra Guacamole»). Ausente (voz, camino legado) = esas guardas no opinan. */
-  readonly conversacionReciente?: readonly { readonly role: "user" | "assistant"; readonly content: string }[];
+  readonly conversacionReciente?: readonly { readonly role: "user" | "assistant"; readonly content: string; readonly at?: string }[];
   /** Base https publica donde estan los PDF del menu por sucursal (`PM_MENU_PDF_BASE_URL`). Solo la fija el servidor. Ausente = `enviar_menu` comparte el enlace de la pagina oficial del menu. */
   readonly menuPdfBaseUrl?: string | null;
 }
@@ -235,6 +249,8 @@ export interface AgentToolOutcome {
   readonly pedidoRetenido?: boolean;
   /** Codigo de la violacion de la maquina de estados que el SERVIDOR rechazo a proposito (solo `executeAgentToolSafely`, con `{error}`). */
   readonly rechazoDelFlujo?: OrderFlowViolationCode;
+  /** Cerebro v2: clase del rechazo de crear_pedido (alergia en espera o la guarda del pedido en la sesion), para el texto final del turno. Nunca la ve el modelo. */
+  readonly rechazoClase?: { readonly clase: RechazoConClaseError["clase"]; readonly pregunta?: string; readonly sucursal?: { readonly name?: string | null; readonly phone?: string | null } | null };
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -782,6 +798,26 @@ const PIN_ANTES_DE_CREAR_MENSAJE =
   "El cliente describió su casa solo con referencias visuales (sin número ni cruzamientos) y todavía no hay pin de ubicación. Antes de registrar, pídale UNA vez que comparta su ubicación de WhatsApp (botón o clip) o un enlace de Google Maps, " +
   "para que el repartidor llegue directo; guarde la referencia visual en referencias_acceso. Si responde que no puede o no quiere, vuelva a llamar crear_pedido con los mismos datos y se registra sin pin. No escale por esto.";
 
+/**
+ * C3 PED-32 (cerebro v2, perfil PM): cotizar un pedido de OTRA sucursal (la que entrega el domicilio o la que el cliente eligió para recoger) desde este chat. El prompt solo
+ * trae los TIEMPOS de la sucursal del chat y el modelo los usaba en el resumen («75 a 90 minutos», García Lavín en hora pico) después de haber dicho los de la que entrega
+ * («40 a 50»): el cliente reclamaba la diferencia. La cotización trae el tiempo de la sucursal cotizada para que el resumen use ese. `null` sin bandera, con la sucursal
+ * del chat, otro perfil o sin tiempo configurado (el resultado queda idéntico).
+ */
+async function tiempoDeSucursalCotizada(repo: RestaurantesRepository, ctx: AgentToolContext, organizationId: string, branchSlug: string): Promise<{ tiempo_entrega: string; aviso_tiempo: string } | null> {
+  if (!ctx.cerebroV2 || ctx.channel !== "whatsapp" || !ctx.entryPropertyId || !branchSlug) return null;
+  // Por la puerta de #741: una sucursal solo venta local nunca presta su tiempo (ni su nombre) a la cotizacion.
+  const cotizada = await buscarSucursalParaClientes(repo, organizationId, { slug: branchSlug }).catch(() => null);
+  if (!cotizada || cotizada.propertyId === ctx.entryPropertyId) return null;
+  const config = await repo.findWhatsAppAgentConfig(organizationId, cotizada.propertyId).catch(() => null);
+  const tiempo = config?.perfil === "taqueria_pm" ? config.deliveryTimeText?.trim() || null : null;
+  if (!tiempo) return null;
+  return {
+    tiempo_entrega: tiempo,
+    aviso_tiempo: `Este pedido es de ${cotizada.name}, no de la sucursal de este chat: el tiempo que le diga al cliente, también en el resumen, es el de ${cotizada.name} (${tiempo}), nunca los TIEMPOS DE ESTA SUCURSAL del prompt. Use el mismo en todos los mensajes.`,
+  };
+}
+
 /** La sucursal asignada al domicilio cuando NO es la de este chat (`entryPropertyId`); `null` si coincide o no hay sucursal de entrada. */
 async function sucursalDeOtroChat(repo: RestaurantesRepository, ctx: AgentToolContext, organizationId: string, branchSlug: string, confirmada = true): Promise<Record<string, unknown> | null> {
   if (!ctx.entryPropertyId) return null;
@@ -789,12 +825,30 @@ async function sucursalDeOtroChat(repo: RestaurantesRepository, ctx: AgentToolCo
   if (!asignada || asignada.propertyId === ctx.entryPropertyId) return null;
   const delChat = await repo.findBranchById(organizationId, ctx.entryPropertyId);
   const tel = asignada.phone ? ` (${asignada.phone})` : "";
+  // C3 PED-15 (cerebro v2, decision del dueño): el pedido NO se rechaza ni se manda a llamar a la otra sucursal (el cliente se iba sin pedir): se toma aqui mismo y se
+  // asigna a la sucursal que cubre el domicilio, diciendole al cliente cual lo entrega y en cuanto tiempo (el tiempo de ESA sucursal, no el de este chat).
+  if (ctx.cerebroV2 && confirmada) {
+    const tiempo = (await repo.findWhatsAppAgentConfig(organizationId, asignada.propertyId).catch(() => null))?.deliveryTimeText?.trim() || null;
+    return {
+      branch_slug: asignada.slug,
+      branch_name: asignada.name,
+      tomar_pedido: true,
+      ...(tiempo ? { tiempo_entrega: tiempo } : {}),
+      ...(delChat ? { chat_de: delChat.name } : {}),
+      aviso:
+        `Ese domicilio lo entrega ${asignada.name}. Tome el pedido con branch_slug ${asignada.slug} desde este mismo chat (cotizar_pedido y crear_pedido con esa sucursal) y dígale al cliente que su pedido lo entrega ${asignada.name}` +
+        `${tiempo ? ` y llega en ${tiempo}` : " (el tiempo estimado lo da consultar_sucursal de esa sucursal)"}. No lo mande a llamar a otro número ni le diga que este chat no toma pedidos para esa sucursal.`,
+    };
+  }
   if (!confirmada) {
     return {
       branch_slug: asignada.slug,
       branch_name: asignada.name,
       ...(asignada.phone ? { telefono: asignada.phone } : {}),
-      aviso: `La referencia (NO confirmada) apunta a ${asignada.name}${tel}, que no es la sucursal de este chat. No diga que entregan ni que le toca esa sucursal; ofrezca recoger en la sucursal de este chat y, si insiste en domicilio, escale UNA vez (zona_ambigua).`,
+      // C3 PED-35/36 (cerebro v2): el dueño no quiere escalaciones por la zona; la referencia no confirmada se aclara con la ubicación o se ofrece recoger.
+      aviso: ctx.cerebroV2
+        ? `La referencia (NO confirmada) apunta a ${asignada.name}, que no es la sucursal de este chat. No diga que entregan ni que le toca esa sucursal: pídale su ubicación de WhatsApp para confirmarlo (vuelva a llamar esta herramienta con lat y lng) u ofrezca recoger en la sucursal que prefiera. Si insiste en otra sucursal, explique con amabilidad que las zonas de reparto son fijas; no escale por eso.`
+        : `La referencia (NO confirmada) apunta a ${asignada.name}${tel}, que no es la sucursal de este chat. No diga que entregan ni que le toca esa sucursal; ofrezca recoger en la sucursal de este chat y, si insiste en domicilio, escale UNA vez (zona_ambigua).`,
     };
   }
   return {
@@ -807,6 +861,31 @@ async function sucursalDeOtroChat(repo: RestaurantesRepository, ctx: AgentToolCo
       `dígale con calidez que su zona la atiende ${asignada.name}, dele ${asignada.phone ? `el teléfono ${asignada.phone}` : "el teléfono de esa sucursal (lista de DATOS DEL NEGOCIO)"} y conteste lo que preguntó (precio o tiempo). ` +
       `Ofrezca recoger en ${delChat?.name ?? "la sucursal de este chat"}. Si insiste una primera vez, mantenga la postura (las zonas de reparto son fijas) y ofrezca recoger otra vez; si insiste de nuevo, escale UNA vez con motivo zona_ambigua (el cliente insiste en otra sucursal para domicilio). No escale antes de eso.`,
   };
+}
+
+// ── C3 PED-11 / PED-35 / PED-36 (cerebro v2, decisión del dueño): sin escalaciones por la zona ─────────────────────────────────────────────────────────────
+// Cada sucursal tiene su número y las zonas de reparto son fijas: el domicilio se toma para la sucursal que lo cubre y, si el cliente insiste en otra, se le explica y se le ofrece
+// recoger en la que prefiera. El modelo escalaba igual: zona_ambigua al insistir el cliente (PED-36), cliente_lo_pide cuando pedía «un supervisor» para lo mismo (PED-35) y «otro»
+// para «confirmar la atención de su zona» con la sucursal ya asignada y cotizada (PED-11). El prompt solo no bastó: el servidor rechaza esas escaladas y le dice qué contestar.
+export const INSTRUCCION_ZONA_SIN_ESCALAR =
+  "No escale por la zona: las zonas de reparto son fijas y el domicilio ya tiene la sucursal que lo entrega (la que dio buscar_sucursal_cercana). Explíquele con amabilidad que cada sucursal reparte solo en su zona, ofrezca el domicilio desde la sucursal que cubre (con su tiempo) o recoger en la sucursal que prefiera, y siga con el pedido. No diga que avisó al gerente, al encargado ni al equipo, ni que alguien lo revisará. Solo si el cliente pide una persona por OTRO motivo (queja, alergia, etc.), escale con ese motivo.";
+/** Resumen de una escalada que trata de la zona o de qué sucursal entrega (sin acentos, minúsculas). */
+const RESUMEN_DE_ZONA = /\b(?:zonas?|cobertura|colonia)\b|\bsucursal\b.{0,80}\b(?:entreg|atiend|cubr|repart|despach)/;
+/** Escaladas que, aunque mencionen la zona, son de otro asunto y siempre pasan. */
+const RESUMEN_DE_OTRO_ASUNTO = /\b(?:queja|reclam\w*|alergi\w*|factur\w*|cancel\w*|cobr\w*|cargo|emple\w*|evento|repartidor)\b/;
+
+async function escaladaDeZonaInnecesaria(repo: RestaurantesRepository, ctx: AgentToolContext, input: Record<string, unknown>): Promise<boolean> {
+  if (!ctx.cerebroV2 || ctx.channel !== "whatsapp") return false;
+  const motivo = normalizarMotivoEscalacion(input.motivo);
+  if (motivo !== "zona_ambigua" && motivo !== "otro" && motivo !== "cliente_lo_pide") return false;
+  if ((await repo.findWhatsAppAgentConfig(ctx.organizationId, null).catch(() => null))?.perfil !== "taqueria_pm") return false;
+  // zona_ambigua es justo «el cliente insiste en otra sucursal para domicilio»: con cerebro v2 ya no se escala.
+  if (motivo === "zona_ambigua") return true;
+  const resumen = (typeof input.resumen === "string" ? input.resumen : "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  if (!RESUMEN_DE_ZONA.test(resumen) || RESUMEN_DE_OTRO_ASUNTO.test(resumen)) return false;
+  // Solo con una cotización a domicilio vigente (la zona ya tiene sucursal que entrega): sin ella puede ser un domicilio que ninguna sucursal cubre, que sigue su camino de siempre.
+  const flujo = ctx.flow ? await repo.readOrderFlow(ctx.organizationId, ctx.flow.key).catch(() => null) : null;
+  return flujo?.context?.quotedCanal === "domicilio";
 }
 
 /** Una tool apunta a otra sucursal que la fijada por el contexto -> se rechaza (aislamiento entre sucursales). */
@@ -825,7 +904,8 @@ async function assertBranchAllowed(repo: RestaurantesRepository, ctx: AgentToolC
  * limita aqui: la sucursal la decide la zona (`buscar_sucursal_cercana`). Sin sucursal de entrada (numero unico, vista previa del dueno) no hay nada que comparar.
  */
 async function assertRecogerEnSucursalDeEntrada(repo: RestaurantesRepository, ctx: AgentToolContext, branchSlug: string, canal: unknown): Promise<void> {
-  if (ctx.channel !== "whatsapp" || ctx.modo === "preview" || !ctx.entryPropertyId || canal !== "recoger") return;
+  // C3 PED-15 (cerebro v2): el pedido para recoger se toma para la sucursal que el cliente elija (el modelo le dice donde recoge); H17 ya no rechaza.
+  if (ctx.cerebroV2 || ctx.channel !== "whatsapp" || ctx.modo === "preview" || !ctx.entryPropertyId || canal !== "recoger") return;
   const branch = await buscarSucursalParaClientes(repo, ctx.organizationId, { slug: branchSlug });
   if (!branch || branch.propertyId === ctx.entryPropertyId) return;
   // H17 es una regla del perfil `taqueria_pm`: otro perfil conserva el comportamiento de siempre (T-ZS06/P29: entrar por el numero de la sucursal A y pedir en la B).
@@ -1053,11 +1133,18 @@ async function exigirOffsetDeLaSucursal(repo: RestaurantesRepository, ctx: Agent
   }
 }
 
+function sinPropina(entrada: Record<string, unknown>): Record<string, unknown> {
+  const { propina: _propina, propina_porcentaje: _pct, ...resto } = entrada;
+  return resto;
+}
+
 export async function invokeAgentTool(repo: RestaurantesRepository, ctx: AgentToolContext, name: string, rawInput: Record<string, unknown>, opts: InvokeAgentToolOpts = {}): Promise<AgentToolOutcome> {
   const def = AGENT_TOOL_DEFINITIONS.find((t) => t.name === name);
   if (!def || !def.channels.includes(ctx.channel)) throw new OrderValidationError(`Herramienta desconocida: ${name}`);
   // `plazo_minutos_servidor` es un campo INTERNO que solo pone `conHoraDeRecogidaRelativa`: lo que mande el modelo se descarta.
-  const { plazo_minutos_servidor: _interno, ...entrada } = rawInput;
+  const { plazo_minutos_servidor: _interno, ...entradaCruda } = rawInput;
+  // Cerebro v2 (default del dueño, 7-nov): la propina NUNCA se agrega al pedido (política PM «nunca»: voluntaria, directo al repartidor). Lo que mande el modelo se descarta.
+  const entrada = ctx.cerebroV2 && (name === "cotizar_pedido" || name === "crear_pedido") ? sinPropina(entradaCruda) : entradaCruda;
   // QA-PM-R4-reglas-11: una hora_recogida que no es texto (un epoch numerico) se ignoraba en silencio y el pedido salia sin hora (cocina lo trata como "para ya").
   if ((name === "cotizar_pedido" || name === "crear_pedido") && entrada.hora_recogida !== undefined && entrada.hora_recogida !== null && typeof entrada.hora_recogida !== "string") {
     throw new OrderValidationError("hora_recogida debe ser texto en ISO 8601 con zona (por ejemplo 2026-09-30T20:30:00-06:00), no un número. Si el cliente dio un plazo (\"en 40 minutos\"), mande minutos_para_recoger.");
@@ -1080,12 +1167,29 @@ export async function invokeAgentTool(repo: RestaurantesRepository, ctx: AgentTo
   const input = await conHoraDeRecogidaRelativa(repo, ctx, name, entrada);
   await exigirMinimoDeRecogida(repo, ctx, name, input);
   await exigirAclararOrdenesOPiezas(repo, ctx, name, input);
+  exigirPagoDichoPorElCliente(ctx, name, input);
   if (!ctx.flow || (name !== "cotizar_pedido" && name !== "confirmar_resumen" && name !== "crear_pedido" && name !== "repetir_pedido")) {
     return dispatchTool(repo, ctx, name, input);
   }
   return runWithOrderFlow(repo, ctx, ctx.flow, name, input, opts);
 }
 
+
+/** C3 PED-22 (a): mensaje cuando el modelo registra una forma de pago que el cliente no dijo. */
+export const PAGO_NO_DICHO_POR_EL_CLIENTE =
+  "NO se creó el pedido: el cliente todavía no ha dicho cómo va a pagar (o dijo otra forma de pago) y no se puede suponer. Pregúntele «¿Pagará en efectivo o con tarjeta?» y espere su respuesta; si es efectivo a domicilio, pregunte también con cuánto paga. Después vuelva a crear el pedido con la forma de pago que él dijo.";
+
+/**
+ * C3 PED-22 (a), solo cerebro v2: el pedido se creaba con «tarjeta» aunque el cliente nunca dijo la forma de pago (el modelo la inventaba y el resumen ni la mostraba). `crear_pedido`
+ * de WhatsApp exige que ALGUN mensaje del cliente de la conversacion reciente diga ESA forma de pago (tarjeta/terminal o efectivo/billete). Sin historial no se juzga.
+ */
+function exigirPagoDichoPorElCliente(ctx: AgentToolContext, name: string, input: Record<string, unknown>): void {
+  if (name !== "crear_pedido" || !ctx.cerebroV2 || ctx.channel !== "whatsapp" || ctx.modo === "preview" || !ctx.conversacionReciente) return;
+  const pago = input.payment_method;
+  if (pago !== "efectivo" && pago !== "tarjeta") return; // sin forma de pago la validacion del pedido ya la pide
+  const dicha = ctx.conversacionReciente.some((m) => m.role === "user" && datosDelMensaje(m.content).pago === pago);
+  if (!dicha) throw new OrderValidationError(PAGO_NO_DICHO_POR_EL_CLIENTE);
+}
 
 /** Zona horaria de la sucursal por su slug (la de plataforma si no hay dato o la base no tiene la migracion de zona). `null` = la sucursal no existe: otra regla se encarga del error. */
 async function zonaDeSucursal(repo: RestaurantesRepository, ctx: AgentToolContext, slug: unknown): Promise<string | null> {
@@ -1219,6 +1323,12 @@ async function conHoraDeRecogidaRelativa(repo: RestaurantesRepository, ctx: Agen
     const plazoCambio = plazoValido && contexto?.minutosPlazo !== undefined && contexto.minutosPlazo !== Math.round(minutos);
     if (!plazoCambio && cotizada && !Number.isNaN(Date.parse(`${cotizada}:00.000Z`))) return { ...resto, hora_recogida: `${cotizada}:00.000Z` };
   }
+  // Cerebro v2 (suelto, pm-policies validarRecoger): recoger SIN hora ni plazo nunca queda «para ya»: el plazo es RECOGER_ESPERA_POR_OMISION_MIN (30) y se marca como plazo
+  // del servidor (crear_pedido lo vuelve a contar desde que se crea el pedido, ver revalidarRecogerAlCrear).
+  if (!plazoValido && sinDato && ctx.cerebroV2 && ctx.channel === "whatsapp") {
+    const ahoraOmision = ctx.flow?.now ? ctx.flow.now() : Date.now();
+    return { ...resto, hora_recogida: new Date(ahoraOmision + RECOGER_ESPERA_POR_OMISION_MIN * 60_000).toISOString(), ...(name === "cotizar_pedido" ? { plazo_minutos_servidor: RECOGER_ESPERA_POR_OMISION_MIN } : {}) };
+  }
   if (!plazoValido) return input;
   const ahora = ctx.flow?.now ? ctx.flow.now() : Date.now();
   // En cotizar se marca el plazo (campo interno, no lo manda el modelo) para que `runWithOrderFlow` reconozca una re-cotizacion identica con el mismo plazo.
@@ -1227,6 +1337,27 @@ async function conHoraDeRecogidaRelativa(repo: RestaurantesRepository, ctx: Agen
 
 /** R22 (R3): minutos minimos entre «ahora» y la hora de recogida de hoy: cocina no alcanza a preparar antes (SIM 114, 118, 119 aceptaban 20 min). */
 export const MINUTOS_MINIMOS_RECOGER = 25;
+/** Cerebro v2 (suelto RECOGER_ESPERA_POR_OMISION_MIN): plazo de recoger cuando el cliente no da hora. */
+export const RECOGER_ESPERA_POR_OMISION_MIN = 30;
+
+/**
+ * Cerebro v2 (suelto: createOrderCore valida la hora de recoger AL CREAR con validarRecoger): la hora cotizada puede haber quedado a menos de 25 min (el pedido se crea un turno
+ * despues). Un PLAZO (minutos_para_recoger o el de omision) se cuenta desde que se crea el pedido; una hora EXACTA del cliente que ya quedo muy pronto se rechaza con el texto del
+ * suelto («Esa hora es muy pronto… Lo más temprano es HH:MM») para pedirle otra hora. Devuelve la hora (ISO) con la que se crea el pedido.
+ */
+async function revalidarRecogerAlCrear(repo: RestaurantesRepository, ctx: AgentToolContext, horaRecogida: string): Promise<string> {
+  const ms = Date.parse(horaRecogida);
+  if (Number.isNaN(ms)) return horaRecogida;
+  const ahora = ctx.flow?.now ? ctx.flow.now() : Date.now();
+  const faltan = Math.floor(ms / 60_000) - Math.floor(ahora / 60_000);
+  if (faltan >= MINUTOS_MINIMOS_RECOGER) return horaRecogida;
+  const plazo = ctx.flow ? (await repo.readOrderFlow(ctx.organizationId, ctx.flow.key).catch(() => null))?.context?.minutosPlazo : undefined;
+  if (typeof plazo === "number" && plazo >= MINUTOS_MINIMOS_RECOGER) return new Date(ahora + plazo * 60_000).toISOString();
+  const masTemprano = new Intl.DateTimeFormat("es-MX", { timeZone: "America/Merida", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(ahora + MINUTOS_MINIMOS_RECOGER * 60_000));
+  throw new OrderValidationError(
+    `Esa hora es muy pronto: para recoger se necesitan al menos ${MINUTOS_MINIMOS_RECOGER} minutos. Lo más temprano es ${masTemprano}. NO se creó el pedido: pídale al cliente otra hora (${masTemprano} o más tarde), vuelva a cotizar con esa hora y léale el resumen.`,
+  );
+}
 
 /**
  * R22 (R3): al COTIZAR un pedido para recoger por WhatsApp, la hora (dicha como hora exacta o como plazo en `minutos_para_recoger`) debe quedar a >= 25 minutos del reloj del flujo
@@ -1277,6 +1408,18 @@ async function exigirAclararOrdenesOPiezas(repo: RestaurantesRepository, ctx: Ag
       const p = products.find((x) => x.id === r.productId);
       if (!p) continue;
       const porOrden = piezasPorOrdenDe(p.name, p.packSize);
+      // C3 PED-13 (cerebro v2): «dos gringas de costilla» / «una mestiza de pastor» son ordenes (platillos), no piezas: sin pregunta; si el modelo cotizo las piezas tal cual, se corrige.
+      const esperado = ctx.cerebroV2 && porOrden !== null ? piezasEsperadasDeGringaOMestiza(ultimo, p.name) : null;
+      if (esperado !== null) {
+        const pedido = items[idx]!.requested_quantity as number;
+        if (pedido !== esperado) {
+          const ordenes = esperado / porOrden!;
+          throw new OrderValidationError(
+            `El cliente pidió ${ordenes} ${ordenes === 1 ? "orden" : "órdenes"} de ${p.name} (cada gringa o mestiza que nombra es un platillo de ${porOrden} tacos): cotice ${p.name} con requested_quantity ${esperado} y dígalo como ${ordenes} ${ordenes === 1 ? "orden" : "órdenes"}. NO pregunte si son piezas u órdenes ni diga que no se vende suelta.`,
+          );
+        }
+        continue;
+      }
       const n = ordenesInterpretadasSinPreguntar(ultimo, p.name, porOrden, items[idx]!.requested_quantity as number);
       if (n !== null && porOrden !== null) {
         throw new OrderValidationError(
@@ -1285,7 +1428,7 @@ async function exigirAclararOrdenesOPiezas(repo: RestaurantesRepository, ctx: Ag
       }
     }
   } catch (e) {
-    if (e instanceof OrderValidationError && e.message.startsWith("El cliente dijo «")) throw e;
+    if (e instanceof OrderValidationError && (e.message.startsWith("El cliente dijo «") || e.message.startsWith("El cliente pidió "))) throw e;
   }
 }
 
@@ -1488,8 +1631,9 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
       const resumenBase =
         cierreMaquinaActiva() && ctx.channel === "whatsapp"
           ? {
+              // C3 PED-28 (cerebro v2): las gringas y mestizas se dicen «N órdenes (2 tacos cada una)», no «(4 piezas)» (ver `tacosCadaUna`).
               // R15/T7-001: la tortilla de un KILO no vive en el renglon cotizado (`tortilla` es null): sale de lo que el cliente eligio (`quotedItems[idx].tortillaKilo`, por indice: dos renglones del mismo producto con tortillas distintas no se mezclan).
-              lineas: quotedQuote.lines.map((l, idx) => ({ name: l.name, quantity: l.quantity, piezasPorOrden: piezasPorOrdenDe(l.name, l.packSize), lineTotal: l.lineTotal, tortilla: l.tortilla ?? (quotedItems?.[idx]?.id === l.productId ? quotedItems[idx]!.tortillaKilo : undefined) ?? null })),
+              lineas: quotedQuote.lines.map((l, idx) => ({ name: l.name, quantity: l.quantity, piezasPorOrden: piezasPorOrdenDe(l.name, l.packSize), ...(ctx.cerebroV2 && /^(?:gringa|mestiza)/i.test(l.name) ? { tacosCadaUna: true } : {}), lineTotal: l.lineTotal, tortilla: l.tortilla ?? (quotedItems?.[idx]?.id === l.productId ? quotedItems[idx]!.tortillaKilo : undefined) ?? null })),
               ...detallesDeResumen(input, previoVigente?.resumenBase),
               total: quotedQuote.total,
               descuento: quotedQuote.descuento,
@@ -1505,7 +1649,10 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
       // Tope: UNA sola vez por turno. Si ya hubo una cotizacion en ESTE turno (la que disparo el aviso), la re-cotizacion no lo repite: evita ciclos de recotizacion si el modelo insiste en la hora cotizada.
       const yaCotizadoEnEsteTurno = flow.turn !== null && previo?.quotedTurn === flow.turn;
       const avisoHora = !yaCotizadoEnEsteTurno && "contradiceAlCliente" in horaYDireccion && horaYDireccion.contradiceAlCliente ? { hora_distinta_a_la_del_cliente: true, aviso_hora: avisoHoraDistinta(horaYDireccion.contradiceAlCliente) } : {};
-      const conCanonico = (r: object, texto: string | undefined = canonico): object => (texto ? { ...r, ...avisoHora, resumen_canonico: texto, instruccion_resumen: INSTRUCCION_RESUMEN_CANONICO } : { ...r, ...avisoHora });
+      // C3 PED-18 (cerebro v2, maquina de cierre ON): sin forma de pago el resumen no es el final (le falta el pago y a veces la direccion completa); devolverlo hacia que el modelo
+      // (o `componerRespuestaConResumen`) lo pegara antes de preguntar el pago y el cliente lo corrigiera. El flujo lo sigue guardando: solo no se le ofrece al modelo todavia.
+      const resumenOfrecible = !ctx.cerebroV2 || pagoCotizado.quotedPago !== undefined;
+      const conCanonico = (r: object, texto: string | undefined = canonico): object => (texto && resumenOfrecible ? { ...r, ...avisoHora, resumen_canonico: texto, instruccion_resumen: INSTRUCCION_RESUMEN_CANONICO } : { ...r, ...avisoHora });
       if (
         previo &&
         (snap.state === "cotizado" || snap.state === "confirmado") &&
@@ -1594,8 +1741,21 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
       // R11: cierre como maquina de estados. Con historial de WhatsApp el servidor exige que el ULTIMO mensaje del asistente sea el resumen vigente y que el ultimo del cliente sea un «si»
       // explicito. La negativa se devuelve como RESULTADO (no como excepcion): el SAVEPOINT revertiria la marca de «ambiguo» que habilita la salida segura del turno siguiente.
       const cierreOn = cierreMaquinaActiva() && ctx.channel === "whatsapp" && ctx.conversacionReciente !== undefined;
+      let confirmable: OrderFlowContext = current;
       if (cierreOn) {
-        const decision = decidirConfirmacion({ ctx: current, historial: ctx.conversacionReciente!, turn: flow.turn, canonico: current.resumenCanonico });
+        const decision = decidirConfirmacion({ ctx: current, historial: ctx.conversacionReciente!, turn: flow.turn, canonico: current.resumenCanonico, ...(ctx.cerebroV2 ? { pagoConVistoBueno: true } : {}) });
+        // C3 PED-16 (cerebro v2): el pago que el cliente dio junto con su visto bueno se guarda en la cotizacion antes de confirmar (la firma confirmada ya lo lleva).
+        if (decision.ok && decision.datosAdoptados) {
+          const d = decision.datosAdoptados;
+          confirmable = {
+            ...current,
+            ...(d.pago ? { quotedPago: d.pago } : {}),
+            quotedEfectivoCon: d.efectivoCon,
+            quotedPropinaMxn: d.propinaMxn,
+            quotedPropinaPct: d.propinaPct,
+            ...(current.resumenBase ? { resumenCanonico: resumenCanonico({ ...current.resumenBase, datos: d }) } : {}),
+          };
+        }
         if (!decision.ok) {
           // Respuesta de pago / propina: el servidor ADOPTA el dato (avanza), vuelve a `cotizado` y rearma el resumen; el modelo solo lo muestra. Nunca confirma.
           if (decision.datosNuevos && current.resumenBase) {
@@ -1626,9 +1786,9 @@ async function runWithOrderFlow(repo: RestaurantesRepository, ctx: AgentToolCont
         }
       }
       const res = await writeFlow(repo, ctx, flow, snap.version, "confirmado", {
-        ...current,
+        ...confirmable,
         confirmedAtMs: flowNow(flow),
-        ...(cierreOn ? { confirmedFirma: firmaDeCierre(datosDeCierreDeContexto(current)), ...(flow.turn !== null ? { confirmedTurn: flow.turn } : {}) } : {}),
+        ...(cierreOn ? { confirmedFirma: firmaDeCierre(datosDeCierreDeContexto(confirmable)), ...(flow.turn !== null ? { confirmedTurn: flow.turn } : {}) } : {}),
       });
       if (res === "written") return { result: { confirmado: true, quote_hash: current.quoteHash, instruccion: INSTRUCCION_TRAS_CONFIRMAR_RESUMEN }, orderId: null, propertyId: null, quoteHash: current.quoteHash };
       if (res === "unavailable") return { result: { confirmado: true }, orderId: null, propertyId: null };
@@ -2004,7 +2164,7 @@ async function dispatchTool(
       const perfilAgente = configAgente?.perfil ?? "generico";
       // Pines de Google de las sucursales (opt-in, APAGADO por omision: activarlo es decision de Javier; ver coordenadas-sucursales.ts).
       const usarPropuestas = ctx.usarCoordenadasPropuestas ?? coordenadasPropuestasActivas();
-      const match = await assignBranch(repo, {
+      let match = await assignBranch(repo, {
         organizationId,
         radioMaximoKm: radioRepartoDelPerfil(perfilAgente, configAgente?.radioRepartoKm),
         ...(usarPropuestas ? { coordenadasPropuestas: COORDENADAS_PROPUESTAS_PM } : {}),
@@ -2015,6 +2175,38 @@ async function dispatchTool(
         ...(lat !== undefined || lng !== undefined ? { lat, lng } : {}),
         ...(typeof input.max_km === "number" && Number.isFinite(input.max_km) && input.max_km > 0 ? { maxKm: input.max_km } : {}),
       });
+      // Cerebro v2 (suelto, C3 S-NEW-016/017): un municipio conocido fuera de Merida (Kanasin, Uman, Progreso…) no es «colonia no reconocida»: se mide desde su
+      // coordenada, como el suelto (merida_colonias), y queda `fuera_de_zona` para ofrecer recoger, sin pedir otra referencia ni escalar zona_no_reconocida.
+      const municipio = ctx.cerebroV2 && perfilAgente === "taqueria_pm" && match.estado === "no_reconocida" && coloniaDicha && !coordenadasValidas ? municipioFueraDeCoberturaPm(String(input.colonia)) : null;
+      if (municipio) {
+        match = await assignBranch(repo, {
+          organizationId,
+          radioMaximoKm: radioRepartoDelPerfil(perfilAgente, configAgente?.radioRepartoKm),
+          ...(usarPropuestas ? { coordenadasPropuestas: COORDENADAS_PROPUESTAS_PM } : {}),
+          sucursalesQueNoReparten: SUCURSALES_QUE_NO_REPARTEN_PM,
+          lat: municipio.lat,
+          lng: municipio.lng,
+        });
+      }
+      // Cerebro v2 (C4 POL-08/PED-22): el modelo manda a veces la DIRECCION completa como colonia («calle 9 #120 x 2 y 4 cordemex, casa amarilla…») y no se reconocia,
+      // lo que sumaba al contador de colonia no reconocida hasta escalar. Se prueba con la colonia que trae la direccion (candidatosDeColonia), la primera que se reconozca.
+      if (ctx.cerebroV2 && perfilAgente === "taqueria_pm" && match.estado === "no_reconocida" && coloniaDicha && !coordenadasValidas) {
+        for (const candidata of candidatosDeColonia(String(input.colonia))) {
+          const otra = await assignBranch(repo, {
+            organizationId,
+            radioMaximoKm: radioRepartoDelPerfil(perfilAgente, configAgente?.radioRepartoKm),
+            ...(usarPropuestas ? { coordenadasPropuestas: COORDENADAS_PROPUESTAS_PM } : {}),
+            sucursalesQueNoReparten: SUCURSALES_QUE_NO_REPARTEN_PM,
+            ...(geocercasActivas() ? { geocercas: GEOCERCAS_PM } : {}),
+            ...(ctx.entryPropertyId ? { sucursalDeEntregaPreferidaPropertyId: ctx.entryPropertyId } : {}),
+            colonia: candidata,
+          });
+          if (otra.estado !== "no_reconocida") {
+            match = otra;
+            break;
+          }
+        }
+      }
       // QA-PM-R5-whatsapp-08: una colonia ESCRITA manda sobre el pin compartido (la colonia dicha despues del pin es una correccion), pero el servidor no sabe en que orden llegaron.
       // Si el pin compartido cae en OTRA sucursal que la de la colonia, se avisa al modelo para que le pregunte al cliente cual vale en vez de asignar en silencio.
       let conflictoPin: { readonly slug: string; readonly nombre: string } | null = null;
@@ -2034,6 +2226,14 @@ async function dispatchTool(
       // «si, entregamos» desde la sucursal equivocada ni omita el telefono.
       const otraSucursal = match.estado === "asignada" ? await sucursalDeOtroChat(repo, ctx, organizationId, match.branchSlug) : null;
       const otraReferencia = match.estado === "sugerida" && match.sugerida ? await sucursalDeOtroChat(repo, ctx, organizationId, match.sugerida.slug, false) : null;
+      // Cerebro v2 (C4 POL-11): POLITICAS v2 manda decir SOLO el tiempo que dan las herramientas; con la sucursal asignada igual a la del chat no venia ninguno y el agente
+      // contestaba «la sucursal le confirma el tiempo». Se manda el de esa sucursal (el mismo deliveryTimeText que ya usa atiende_otra_sucursal).
+      const tiempoAsignada = ctx.cerebroV2 && match.estado === "asignada" && !otraSucursal
+        ? await (async () => {
+            const b = await buscarSucursalParaClientes(repo, organizationId, { slug: match.branchSlug }).catch(() => null);
+            return b ? ((await repo.findWhatsAppAgentConfig(organizationId, b.propertyId).catch(() => null))?.deliveryTimeText?.trim() || null) : null;
+          })()
+        : null;
       const result =
         match.estado === "asignada"
           ? {
@@ -2050,6 +2250,7 @@ async function dispatchTool(
                 : {}),
               branch_slug: match.branchSlug,
               branch_name: match.branchName,
+              ...(tiempoAsignada ? { tiempo_entrega: tiempoAsignada } : {}),
               distancia_km: match.distanceKm,
               ...(match.distanceKm === null && match.kmReferencia !== null ? { distancia_aprox_km: match.kmReferencia } : {}),
               distancia_texto: match.distanceKm !== null ? kmAproxTexto(match.distanceKm) : match.kmReferencia !== null ? kmAproxTexto(match.kmReferencia) : null,
@@ -2107,7 +2308,7 @@ async function dispatchTool(
       const branch = await buscarSucursalParaClientes(repo, organizationId, { slug: branchSlug });
       if (!branch) throw new OrderValidationError(`Sucursal '${branchSlug}' no encontrada`);
       const buscarUna = async (consulta: string) => {
-      const productos = await searchProducts(repo, { propertyId: branch.propertyId, query: consulta });
+      const productos = await searchProducts(repo, { propertyId: branch.propertyId, query: consulta, ...(ctx.cerebroV2 ? { cerebroV2: true } : {}) });
       // QA-PM-R5-voz-01 / reglas-05: el modelo buscaba "arrachera kilo", veia solo "Arrachera — 1 kg" y cotizaba el kilo cuando el cliente pidio tres cuartos ($350 de mas), o decia que
       // "no existe" 1.25 kg. Cada renglon por peso lleva las presentaciones REALES del mismo platillo y la regla para fracciones que no existen.
       const hayPeso = productos.some((p) => pesoDeProductoEnGramos(p.name) !== null);
@@ -2186,9 +2387,11 @@ async function dispatchTool(
       const sinPromocion = !quote.promocionAplicada && (quote.promocionesSugeridas?.length ?? 0) === 0;
       // QA-PM-R4-reglas-02 (P0): con MEDIA orden de nachos el modelo de voz prometia "las 2 aguas de cortesia" y cotizaba 4 horchatas (+$120). La explicacion va como frase LITERAL de la herramienta.
       const mediaOrdenConBebida = sinPromocion && quote.lines.some((l) => /nachos/i.test(l.name) && /\(1\/2 orden\)/.test(l.name)) && quote.lines.some((l) => ES_BEBIDA_POR_NOMBRE.test(l.name));
+      const tiempoDeOtra = await tiempoDeSucursalCotizada(repo, ctx, organizationId, branchSlug);
       return {
         result: {
           quote: quoteToWire(quote),
+          ...(tiempoDeOtra ?? {}),
           ...(sinPromocion ? { sin_cortesias: SIN_CORTESIAS_AVISO } : {}),
           ...(mediaOrdenConBebida ? { mensaje_media_orden_nachos: MENSAJE_MEDIA_ORDEN_NACHOS } : {}),
           ...(dobleGuacamole ? { aviso_guacamole: AVISO_DOBLE_GUACAMOLERA } : {}),
@@ -2218,7 +2421,7 @@ async function dispatchTool(
         const compensacion = await compensacionPendiente(repo, ctx);
         if (compensacion) mapped = { ...mapped, promoCode: compensacion };
       }
-      const createInput = mapped;
+      let createInput = mapped;
       // La sucursal puede venir por slug o por nombre (contrato historico del checkout de voz).
       if (createInput.branchSlug || createInput.branchName) {
         await assertBranchAllowed(repo, ctx, createInput.branchSlug ?? "", createInput.branchName);
@@ -2236,17 +2439,41 @@ async function dispatchTool(
         throw new OrderValidationError(PIN_ANTES_DE_CREAR_MENSAJE);
       }
       if (ctx.modo === "preview") return simulatePreviewOrder(repo, ctx, createInput, expectedPrices, expectedTotal);
+      // Cerebro v2 (suelto R25-R28, whatsapp-agent-core.ts ~7961-7985 y ~8156): alergia avisada y sin confirmar -> no se toma el pedido (rechazo con el
+      // telefono de la sucursal y aviso URGENTE); pasada la ventana o resuelto el aviso, el pedido lleva «ALERGIA declarada: …» (y la preferencia) en las notas.
+      if (ctx.cerebroV2 && ctx.channel === "whatsapp" && ctx.phone && ctx.conversacionReciente) {
+        const notas = await guardaAlergiaV2(repo, ctx, createInput);
+        if (notas !== createInput.notes) createInput = { ...createInput, notes: notas };
+      }
+      // Cerebro v2 (bloque 4, suelto ~8022-8075): con un pedido creado en la sesion (90 min), otro crear_pedido es una modificacion (va a la sucursal) salvo el
+      // si al pedido aparte con su cotizacion posterior. Sin clasificador «¿aparte?» (intencionAparte null: el modo degradado del suelto, R24).
+      if (ctx.cerebroV2 && ctx.channel === "whatsapp" && ctx.hiloV2) {
+        const motivo = await motivoOtroPedidoV2(repo, ctx.organizationId, ctx.hiloV2, input, ctx.clasificarAparte);
+        if (motivo) {
+          const c = claseDelRechazoOtroPedido(motivo);
+          throw new RechazoConClaseError(motivo, c.clase === "cotizar" || c.clase === "aparte" ? c.clase : "existente", c.pregunta ? { pregunta: c.pregunta } : {});
+        }
+      }
+      if (ctx.cerebroV2 && ctx.channel === "whatsapp" && createInput.canal === "recoger" && !createInput.programadoPara && createInput.horaRecogida) {
+        const hora = await revalidarRecogerAlCrear(repo, ctx, createInput.horaRecogida);
+        if (hora !== createInput.horaRecogida) createInput = { ...createInput, horaRecogida: hora };
+      }
       const retenido = await retenerPedidoDeReincidente(repo, ctx, createInput);
       if (retenido) return retenido;
       let order: Order;
       // Pedido grande con autopiloto disponible: se crea y se deja `por_aprobar` (ver `retener` abajo); si no, se lanza el aviso de siempre.
       const grandeAprobable: { error: PedidoGrandeRetenidoError | null } = { error: null };
+      const avisoGrande: { motivo: MotivoPedidoGrande | null; total: number } = { motivo: null, total: 0 };
       const idsEnMemoria = new Set<string>();
       // El ultimo pedido de la sesion puede NO estar en la memoria (la memoria excluye `programado`) y aun asi `create_order_idempotent` lo deduplica ("otro igual"
       // en < 5 min): se marca como ya aceptado para que `retener` no lo pase de `programado` a `por_aprobar`.
       if (sesionPrevia?.ultimoPedidoId) idsEnMemoria.add(sesionPrevia.ultimoPedidoId);
       try {
         order = await createOrder(repo, createInput, {
+          // Cerebro v2 (turno asincrono): un turno re-ejecutado para el MISMO mensaje de Meta no duplica el pedido aunque cambien las notas. Si la sesion ya creo
+          // un pedido no se usa: la deduplicacion por contenido de create_order_idempotent (5 min) es la que reconoce «otro igual» de un mensaje posterior
+          // (QA-PM-R2-reglas-15) y con llave esa rama no corre.
+          ...(ctx.cerebroV2 && ctx.channel === "whatsapp" && ctx.sourceEventId && !sesionPrevia?.ultimoPedidoId ? { idempotenciaDeMensaje: ctx.sourceEventId } : {}),
           beforePersist: async (prepared) => {
             // El precio lo fija SIEMPRE el catalogo vigente, pero el cliente solo acepto los precios que vio: si
             // cambiaron entre confirmar y crear, se pide re-cotizar en vez de cobrar un total distinto.
@@ -2255,7 +2482,7 @@ async function dispatchTool(
             }
             assertTotalNoSubio(prepared, expectedTotal);
             // Pedido grande (decision de PM, 2-oct): lo hace cumplir el SERVIDOR aunque el modelo olvide escalar.
-            const grande = await evaluarPedidoGrandeDelPedido(repo, prepared, idsEnMemoria, sesionPrevia);
+            const grande = await evaluarPedidoGrandeDelPedido(repo, prepared, idsEnMemoria, sesionPrevia, avisoGrande);
             if (!grande) return;
             if (ctx.pedidoGrande && (await ctx.pedidoGrande.disponible(prepared.payload.organizationId, prepared.branch.propertyId))) grandeAprobable.error = grande;
             else throw grande;
@@ -2304,6 +2531,10 @@ async function dispatchTool(
         };
         return { result, raw: order, orderId: order.id, propertyId: order.propertyId, pedidoRetenido: true };
       }
+      // Decision de Omar (9-nov): el pedido grande entra normal a cocina y la sucursal recibe un aviso in-app (uno por pedido; no en un reintento que devuelve el mismo).
+      if (avisoGrande.motivo && !idsEnMemoria.has(order.id) && repo.notificarPedidoGrande) {
+        await repo.notificarPedidoGrande({ organizationId: order.organizationId, propertyId: order.propertyId, orderId: order.id, orderNumber: order.orderNumber ?? null, total: avisoGrande.total, motivo: avisoGrande.motivo });
+      }
       return { result: { order: orderToWire(order) }, raw: order, orderId: order.id, propertyId: order.propertyId };
     }
     case "enviar_menu":
@@ -2324,6 +2555,7 @@ async function dispatchTool(
       if (!ctx.phone) throw new OrderValidationError("No se conoce el teléfono de esta conversación; no se puede dejar aviso.");
       const esEscalada = def.name === "escalar_a_humano";
       if (esEscalada && input.motivo === "pedido_grande" && !(await servidorConfirmaPedidoGrande(repo, ctx))) throw new OrderValidationError(INSTRUCCION_PEDIDO_GRANDE_SOLO_SERVIDOR);
+      if (esEscalada && (await escaladaDeZonaInnecesaria(repo, ctx, input))) throw new OrderValidationError(INSTRUCCION_ZONA_SIN_ESCALAR);
       if (!esEscalada && input.reason === "cliente_llego") return avisarLlegadaDelCliente(repo, ctx, input);
       if (!esEscalada && input.reason === "pedido_telefonico") return pasarNotaDePedidoTelefonico(repo, ctx, input);
       const reason = esEscalada ? `escalada:${normalizarMotivoEscalacion(input.motivo)}` : typeof input.reason === "string" ? input.reason : undefined;
@@ -2334,15 +2566,20 @@ async function dispatchTool(
       // T7-038: si ya hay una cotizacion vigente el aviso no puede decir «no se ha cotizado».
       const totalCotizado = esEscalada && ctx.flow && detalleDelModelo ? (await repo.readOrderFlow(ctx.organizationId, ctx.flow.key).catch(() => null))?.context?.quotedTotal : undefined;
       const detalleModelo = corregirAvisoCotizado(detalleDelModelo, totalCotizado);
-      await registerCallbackRequest(repo, {
+      const mensajeAviso = ctx.avisoUrgente ? conMarcaUrgente(componerMensajeAviso(bloquePedido, detalleModelo, motivoEscalada ?? "")) : componerMensajeAviso(bloquePedido, detalleModelo, motivoEscalada ?? "");
+      // Cerebro v2 (suelto B7): dedupe por CATEGORIA contra los avisos abiertos del telefono (30 min, misma sucursal). «cubierto» = no se registra nada;
+      // «anexar» = se registra con la razon del aviso abierto para que callback_registrar_agente (047) le agregue la nota en vez de crear otro.
+      const plan = esEscalada && ctx.cerebroV2 && ctx.channel === "whatsapp" ? await planDeAvisoV2(repo, ctx, reason ?? "", mensajeAviso ?? "") : null;
+      if (plan?.accion !== "cubierto") await registerCallbackRequest(repo, {
         organizationId,
         propertyId: ctx.lockedPropertyId ?? ctx.entryPropertyId ?? null,
         customerName: textoOpcional(input.customer_name)?.trim() || "Cliente", // "" (el modelo no sabe el nombre) -> "Cliente": antes lanzaba y el cliente leia "Error interno"
         customerPhone: ctx.phone,
-        reason,
+        reason: plan?.accion === "anexar" ? plan.razonAbierta : reason,
         sourceEventId: ctx.sourceEventId ? `${ctx.sourceEventId}:${reason ?? ""}`.slice(0, 255) : null,
-        message: componerMensajeAviso(bloquePedido, detalleModelo, motivoEscalada ?? ""),
+        message: plan?.accion === "anexar" && plan.razonAbierta !== reason ? `[${reason ?? ""}] ${mensajeAviso}` : mensajeAviso,
         source: ctx.channel === "voz" ? "voice" : "whatsapp",
+        ...(ctx.avisoUrgente ? { urgente: true } : {}),
       });
       // QA-PM-R5-voz-05: por voz el agente escalaba y colgaba SIN decirle nada al cliente. El resultado trae la frase que debe decir (en WhatsApp el agente ya la escribe en el mismo turno).
       // Cancelar NO es agregar: la frase de agregados («alcanza a salir») no aplica. Cancelacion = el `resumen` del modelo habla de cancelar/anular (la herramienta no tiene otro campo).
@@ -2629,6 +2866,8 @@ async function evaluarPedidoGrandeDelPedido(
   prepared: PreparedOrder,
   idsEnMemoria?: Set<string>,
   sesionPrevia?: { readonly total: number; readonly pesoKg: number; readonly pedidos: number },
+  /** Decision de Omar (9-nov): si el pedido NO queda en espera pero amerita el aviso informativo, aqui se deja el motivo y el total (lo notifica quien crea). */
+  aviso?: { motivo: MotivoPedidoGrande | null; total: number },
 ): Promise<PedidoGrandeRetenidoError | null> {
   const config = await repo.findWhatsAppAgentConfig(prepared.payload.organizationId, prepared.branch.propertyId);
   if (!config || config.perfil !== "taqueria_pm" || (config.escalationReasonsOff ?? []).includes("pedido_grande")) return null;
@@ -2647,14 +2886,20 @@ async function evaluarPedidoGrandeDelPedido(
   const pedidosPrevios = cliente?.orderCount ?? 0;
   const total = Math.round((prepared.total + previos.total) * 100) / 100;
   const pesoAcumulado = pesoKg + previos.pesoKg;
+  const pagaEfectivo = prepared.payload.paymentMethod === "efectivo";
+  const sinHistorial = memoria ? pedidosPrevios <= previos.cuantos : !cliente || cliente.orderCount - (sesionPrevia?.pedidos ?? 0) <= 0;
+  if (aviso) {
+    aviso.motivo = motivoAvisoPedidoGrande({ total, pagaEfectivo, sinHistorial });
+    aviso.total = total;
+  }
   const motivo = evaluarPedidoGrande({
     total,
     pesoKg: pesoAcumulado,
-    pagaEfectivo: prepared.payload.paymentMethod === "efectivo",
+    pagaEfectivo,
     // Con la memoria: "sin historial" = todo lo que el numero ha pedido cae dentro de la ventana (no hay pedidos anteriores a ella). Los pedidos creados
     // en ESTA sesion tampoco son historial (R90: un pedido de $126 de hace segundos no apaga la regla de $2,500 en efectivo).
     // Limitacion conocida: `orderCount` puede incluir cancelados que `previos.cuantos` no cuenta.
-    sinHistorial: memoria ? pedidosPrevios <= previos.cuantos : !cliente || cliente.orderCount - (sesionPrevia?.pedidos ?? 0) <= 0,
+    sinHistorial,
   });
   if (!motivo) return null;
   const resumen = resumenPedidoGrande({
@@ -2712,6 +2957,153 @@ async function retenerPedidoGrande(repo: RestaurantesRepository, ctx: AgentToolC
 }
 
 /**
+ * Cerebro v2: la razon del monorrepo (`escalada:<motivo>`) con el vocabulario del suelto para avisoAbiertoQueCubre/planDeAviso: alergia/salud y
+ * transferencia son `alto_riesgo:*`; una cancelacion (el resumen habla de cancelar) es `alto_riesgo:cancelacion` y el resto de cancelacion_modificacion es
+ * `modificacion_pedido` (post-venta, como la queja). Pura.
+ */
+export function razonDelSueltoParaDedupe(reason: string | null | undefined, mensaje: string | null | undefined): string {
+  const r = String(reason ?? "");
+  if (r === "escalada:alergia_salud") return /alerg/i.test(String(mensaje ?? "").normalize("NFD")) ? "alto_riesgo:alergia" : "alto_riesgo:salud";
+  if (r === "escalada:transferencia") return "alto_riesgo:transferencia_realizada";
+  if (r === "escalada:cancelacion_modificacion") return ES_CANCELACION.test(String(mensaje ?? "")) ? "alto_riesgo:cancelacion" : "modificacion_pedido";
+  return r;
+}
+
+type PlanAvisoV2 = { readonly accion: "registrar" } | { readonly accion: "cubierto" } | { readonly accion: "anexar"; readonly razonAbierta: string };
+
+/** planDeAviso del suelto sobre los avisos del telefono (migracion 193). Sin la lectura (base sin migrar): «registrar», como siempre. Un aviso URGENTE no se
+ * anexa a uno abierto que no lo era (perderia la notificacion critica): se registra. */
+async function planDeAvisoV2(repo: RestaurantesRepository, ctx: AgentToolContext, reason: string, mensaje: string): Promise<PlanAvisoV2> {
+  if (!repo.listarAvisosDelTelefono || !ctx.phone || !reason) return { accion: "registrar" };
+  const filas = await repo.listarAvisosDelTelefono(ctx.organizationId, ctx.phone, 1);
+  if (!filas) return { accion: "registrar" };
+  const original = new Map(filas.map((f) => [f.id, f.reason ?? ""]));
+  const plan = planDeAviso(
+    filas.map((f) => ({ id: f.id, reason: razonDelSueltoParaDedupe(f.reason, f.message), message: f.message, branch_id: f.property_id, created_at: f.created_at, resolved: f.resolved })),
+    razonDelSueltoParaDedupe(reason, mensaje),
+    Date.now(),
+    { branchId: ctx.lockedPropertyId ?? ctx.entryPropertyId ?? null, message: mensaje },
+  );
+  if (plan.accion === "registrar") return plan;
+  if (ctx.avisoUrgente && !avisoCreadoUrgente(plan.fila.message)) return { accion: "registrar" };
+  if (plan.accion === "cubierto") return { accion: "cubierto" };
+  return { accion: "anexar", razonAbierta: original.get(String(plan.fila.id)) ?? reason };
+}
+
+/**
+ * Cerebro v2: municipios y localidades conocidos FUERA de la cobertura de PM, con su coordenada aproximada (la del suelto: merida_colonias / COLONIAS_APROX
+ * del banco de medicion). No son colonias de known_zone, asi que sin esta lista salian `no_reconocida`. Sin acentos, minusculas.
+ */
+const MUNICIPIOS_FUERA_DE_COBERTURA_PM: ReadonlyArray<{ readonly nombres: readonly string[]; readonly lat: number; readonly lng: number }> = [
+  { nombres: ["kanasin"], lat: 20.934, lng: -89.558 },
+  { nombres: ["uman"], lat: 20.885, lng: -89.748 },
+  { nombres: ["progreso", "puerto progreso"], lat: 21.282, lng: -89.664 },
+  { nombres: ["chicxulub puerto", "chicxulub"], lat: 21.296, lng: -89.602 },
+];
+
+/** El municipio conocido fuera de cobertura que nombra la colonia dicha («Kanasín», «en Umán», «Kanasin centro»), o null. Pura. */
+export function municipioFueraDeCoberturaPm(colonia: string): { readonly lat: number; readonly lng: number } | null {
+  const plano = colonia.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+  if (!plano) return null;
+  return MUNICIPIOS_FUERA_DE_COBERTURA_PM.find((m) => m.nombres.some((n) => new RegExp(`(?:^| )${n}(?: |$)`).test(plano))) ?? null;
+}
+
+/**
+ * Cerebro v2 (C4): las colonias candidatas dentro de una DIRECCION completa que el modelo mando como colonia: por cada trozo separado por coma / punto y coma /
+ * salto, lo que va despues del ultimo numero o del ultimo «en / col. / colonia / fracc.» («calle 9 #120 x 2 y 4 cordemex» -> «cordemex»; «es en cordemex» ->
+ * «cordemex»), y el trozo entero si no tiene numeros («Itzimná»). Sin el texto original completo; a lo mas 4. [] si el texto es un solo trozo sin nada que quitar. Pura.
+ */
+export function candidatosDeColonia(texto: string): string[] {
+  const trozos = String(texto ?? "").split(/[,;\n]+/).map((t) => t.trim()).filter(Boolean);
+  const salida: string[] = [];
+  for (const trozo of trozos) {
+    const palabras = trozo.split(/\s+/);
+    let corte = -1;
+    palabras.forEach((p, i) => {
+      if (/\d/.test(p) || /^(?:en|col\.?|colonia|fracc\.?|fraccionamiento)$/i.test(p)) corte = i;
+    });
+    const resto = palabras.slice(corte + 1).join(" ").replace(/^(?:x|y|e|entre)\s+/i, "").trim();
+    if (resto && /[\p{L}]{3,}/u.test(resto) && resto !== String(texto).trim() && !salida.includes(resto)) salida.push(resto);
+  }
+  return salida.slice(0, 4);
+}
+
+/** motivoOtroPedidoEnSesion del suelto con los cancelados/entregados que sabe la base (findOrderById de los pedidos de la sesion; un fallo de lectura = no se sabe). */
+async function motivoOtroPedidoV2(
+  repo: RestaurantesRepository,
+  organizationId: string,
+  hilo: readonly MensajeHilo[],
+  input: Record<string, unknown>,
+  clasificarAparte?: (entrada: EntradaIntencionPedidoAparte) => Promise<IntencionPedidoAparte | null>,
+): Promise<string | null> {
+  const ids = idsPedidosCreadosEnSesion(hilo);
+  if (ids.length === 0) return null;
+  // Suelto ~8022-8045: primero sin intencion; si rechaza (no por cotizar) y hay respuesta a «¿Quiere hacer un pedido aparte?», el clasificador lee lo que
+  // dijo el cliente y la guarda se recalcula con esa intencion (sin clasificador, falla o «indefinido»: null, conservador).
+  let intencionAparte: IntencionPedidoAparte | null | undefined;
+  const primero = motivoOtroPedidoEnSesion(hilo, input, { ahoraMs: Date.now() });
+  if (primero && primero !== RECHAZO_COTIZA_OTRO_PEDIDO && primero !== RECHAZO_COTIZA_PEDIDO_APARTE) {
+    const entrada = entradaClasificadorPedidoAparte(hilo);
+    if (entrada) intencionAparte = clasificarAparte ? await clasificarAparte(entrada).catch(() => null) : null;
+  }
+  if (primero === null) return null;
+  const cancelados = new Set<string>();
+  const entregados = new Set<string>();
+  for (const id of ids) {
+    const o = await repo.findOrderById(organizationId, id).catch(() => null);
+    if (o?.status === "cancelado" || o?.status === "no_recogido") cancelados.add(id);
+    if (o?.status === "entregado" || o?.status === "completado") entregados.add(id);
+  }
+  return motivoOtroPedidoEnSesion(hilo, input, { ahoraMs: Date.now(), intencionAparte, cancelados, entregados });
+}
+
+/** Razones de callback que son aviso de alergia (monorrepo: escalar_a_humano con motivo alergia_salud; suelto: alto_riesgo:alergia). */
+const RAZONES_AVISO_ALERGIA = new Set(["escalada:alergia_salud", "alto_riesgo:alergia"]);
+
+/**
+ * Cerebro v2: estadoAlergiaSinConfirmar del suelto con lo que hay en el monorrepo: la evidencia del hilo (evidenciaAlergiaEnSesion) y el aviso de alergia
+ * MAS RECIENTE del telefono (`filas` de listarAvisosDelTelefono; null = consulta no disponible, como la base caida del suelto). Pura.
+ */
+export function estadoAlergiaParaCrear(hilo: readonly MensajeSalud[], filas: readonly AvisoDelTelefono[] | null, ahoraMs: number): EstadoAlergia {
+  const fila = filas === null ? null : (filas.find((f) => RAZONES_AVISO_ALERGIA.has(String(f.reason ?? ""))) ?? null);
+  return decidirBloqueoAlergia(evidenciaAlergiaEnSesion(hilo), filas === null ? { ok: false, fila: null } : { ok: true, fila: fila ? { ...fila } : null }, ahoraMs);
+}
+
+/** La guarda de alergia de crear_pedido (cerebro v2). Lanza el rechazo si el pedido espera la confirmacion; si no, devuelve las notas con alergia/preferencia. */
+async function guardaAlergiaV2(repo: RestaurantesRepository, ctx: AgentToolContext, createInput: ReturnType<typeof mapCreateOrderToolInput>): Promise<string | undefined> {
+  const hilo = ctx.conversacionReciente ?? [];
+  const filas = repo.listarAvisosDelTelefono ? await repo.listarAvisosDelTelefono(ctx.organizationId, ctx.phone!, 48) : null;
+  const estado = estadoAlergiaParaCrear(hilo, filas, Date.now());
+  if (estado.bloquear) {
+    // Declaracion sin aviso registrado (el registro fallo o llego con el agente apagado): se registra YA, URGENTE (dueño: toda alergia escala urgente).
+    if (estado.sinAviso) {
+      const textos = evidenciaAlergiaEnSesion(hilo).pendiente?.textos ?? [];
+      await registerCallbackRequest(repo, {
+        organizationId: ctx.organizationId,
+        propertyId: ctx.lockedPropertyId ?? ctx.entryPropertyId ?? null,
+        customerName: textoOpcional(createInput.customerName)?.trim() || "Cliente",
+        customerPhone: ctx.phone!,
+        reason: "escalada:alergia_salud",
+        sourceEventId: ctx.sourceEventId ? `${ctx.sourceEventId}:alergia-bloqueo`.slice(0, 255) : null,
+        message: conMarcaUrgente(`El cliente quiere hacer un pedido y declaró una alergia que nadie ha confirmado: ${textos.join(" / ") || "ver la conversación"}`),
+        source: "whatsapp",
+        urgente: true,
+      });
+    }
+    const branch = createInput.branchSlug ? await repo.findBranch(ctx.organizationId, { slug: createInput.branchSlug }).catch(() => null) : null;
+    const sucursal = branch ? { name: branch.name, phone: branch.phone } : null;
+    throw new RechazoConClaseError(rechazoAlergiaSinConfirmar(sucursal), "alergia", { sucursal });
+  }
+  return notasConAlergia(notaAlergiaDelPedido(hilo), notasConPreferencia(notaPreferenciaDelPedido(hilo), createInput.notes));
+}
+
+/** Cerebro v2: la marca URGENTE del suelto (MARCA_AVISO_URGENTE) va al INICIO del aviso, aunque el servidor anteponga el bloque del pedido. Pura. */
+function conMarcaUrgente(mensaje: string | undefined): string {
+  const sin = String(mensaje ?? "").split(MARCA_AVISO_URGENTE).join("").replace(/^\s+/, "");
+  return sin ? `${MARCA_AVISO_URGENTE}\n${sin}` : MARCA_AVISO_URGENTE;
+}
+
+/**
  * Variante para turnos dentro de una transaccion compartida (WhatsApp): SAVEPOINT propio por tool
  * call y errores de negocio convertidos en una respuesta `{error}` normal, nunca en una
  * transaccion abortada ni en una excepcion que tumbe el resto del turno.
@@ -2734,6 +3126,7 @@ export async function executeAgentToolSafely(repo: RestaurantesRepository, ctx: 
       propertyId: null,
       ...(esRegla ? {} : { fallaSistema: true }),
       ...(err instanceof OrderFlowViolationError ? { rechazoDelFlujo: err.code } : {}),
+      ...(err instanceof RechazoConClaseError ? { rechazoClase: { clase: err.clase, ...err.extra } } : {}),
     };
   }
 }

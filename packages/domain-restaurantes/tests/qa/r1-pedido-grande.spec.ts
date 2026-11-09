@@ -7,6 +7,10 @@ import { correrGuion } from "../../src/voz/simulador/correr-guion.ts";
 import { BRANCH_SLUG_PRINCIPAL } from "../../src/voz/simulador/mundo-voz.ts";
 import type { MemoriaTools, PasoAgente } from "../../src/voz/simulador/tipos.ts";
 import { banco, call, item, say, sayResumen } from "./r1-arnes-whatsapp-pm.ts";
+import { activarEsperaPedidoGrande } from "../support/pedido-grande-con-espera.ts";
+
+// Prueba de la espera por pedido grande CONFIGURADA (decisión de Omar, 9-nov: sin espera por omisión).
+activarEsperaPedidoGrande();
 
 afterEach(() => {
   vi.useRealTimers();

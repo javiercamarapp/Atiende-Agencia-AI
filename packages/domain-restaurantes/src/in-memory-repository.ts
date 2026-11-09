@@ -84,6 +84,7 @@ import type {
 } from "./types.ts";
 import type {
   ChannelStatsRow,
+  AvisoDelTelefono,
   ConversationMessage,
   CustomerOverviewRow,
   EmailOutboxJobRow,
@@ -1168,6 +1169,14 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     return { metric: metrica, ...distribucion, withoutTier: 0 };
   }
 
+  /** Avisos in-app de pedido grande emitidos (solo pruebas; en Postgres van a core.notification por emitirNotificacion). Dedupe por pedido. */
+  readonly notificacionesPedidoGrande: Array<{ readonly organizationId: string; readonly propertyId: string; readonly orderId: string; readonly orderNumber: number | null; readonly total: number; readonly motivo: string }> = [];
+
+  async notificarPedidoGrande(a: { readonly organizationId: string; readonly propertyId: string; readonly orderId: string; readonly orderNumber: number | null; readonly total: number; readonly motivo: string }): Promise<void> {
+    if (this.notificacionesPedidoGrande.some((n) => n.orderId === a.orderId)) return;
+    this.notificacionesPedidoGrande.push({ ...a });
+  }
+
   async createOrderIdempotent(order: NewOrderRecord, dedupeFingerprint: string, idempotencyKey: string | null): Promise<Order> {
     return this.orderLock.run(`${order.organizationId}:${idempotencyKey ?? dedupeFingerprint}`, async () => {
       if (idempotencyKey) {
@@ -1249,6 +1258,15 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
 
   /** Mismas reglas que `restaurantes.callback_registrar_agente` (migracion 047) para los avisos del agente (`voice`/`whatsapp`): el mismo
    * evento no se repite y un aviso abierto del mismo canal, telefono y motivo recibe una nota en vez de crear otro. */
+  async listarAvisosDelTelefono(organizationId: string, phone: string, horas: number): Promise<readonly AvisoDelTelefono[] | null> {
+    const desde = Date.now() - Math.min(48, Math.max(1, Math.trunc(horas))) * 3_600_000;
+    return this.callbackRequests
+      .filter((c) => c.organizationId === organizationId && c.customerPhone === phone && Date.parse(c.createdAt) >= desde)
+      .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
+      .slice(0, 20)
+      .map((c) => ({ id: c.id, property_id: c.propertyId ?? null, reason: c.reason ?? null, message: c.message ?? null, resolved: c.resolved, created_at: c.createdAt }));
+  }
+
   async createCallbackRequest(input: CallbackRequestInput): Promise<CallbackRequest> {
     if (input.source === "voice" || input.source === "whatsapp") {
       const evento = input.sourceEventId ?? null;
@@ -2034,6 +2052,16 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     if (index === -1) return null;
     const existing = this.orders[index]!;
     const updated: Order = { ...existing, status: toStatus, ...(toStatus === "problema" && incidentNote ? { incidentNote } : {}) };
+    this.orders[index] = updated;
+    return updated;
+  }
+
+  async actualizarFormaDePagoPedido(organizationId: string, orderId: string, paymentMethod: "efectivo" | "tarjeta", notaPago: string): Promise<Order | null> {
+    // Misma guarda de estado que el UPDATE de Postgres (solo pedidos aun no despachados).
+    const index = this.orders.findIndex((o) => o.id === orderId && o.organizationId === organizationId && (o.status === "pending" || o.status === "programado" || o.status === "por_aprobar"));
+    if (index === -1) return null;
+    const existing = this.orders[index]!;
+    const updated: Order = { ...existing, paymentMethod, notes: existing.notes ? `${existing.notes}\n${notaPago}` : notaPago };
     this.orders[index] = updated;
     return updated;
   }

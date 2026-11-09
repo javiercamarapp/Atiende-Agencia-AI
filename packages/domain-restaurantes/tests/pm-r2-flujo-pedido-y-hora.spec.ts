@@ -6,6 +6,10 @@ import { invokeAgentTool } from "../src/agent-tools/registry.ts";
 import { OrderFlowViolationError, resetOrderFlowWarningForTests } from "../src/agent-tools/order-flow.ts";
 import { OrderValidationError } from "../src/errors.ts";
 import { buildRestaurantFixture } from "./fixtures.ts";
+import { activarEsperaPedidoGrande } from "./support/pedido-grande-con-espera.ts";
+
+// Prueba de la espera por pedido grande CONFIGURADA (decisión de Omar, 9-nov: sin espera por omisión).
+activarEsperaPedidoGrande();
 
 // Martes 2026-10-06 13:00 en Merida (UTC-6).
 const MARTES_13 = new Date("2026-10-06T13:00:00-06:00");

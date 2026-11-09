@@ -24,7 +24,7 @@
 import type { LlmMessage, LlmToolCall } from "@atiende/agent-core";
 import { sinAcentos } from "../product-search.ts";
 import { toqueDeMensaje } from "./botones-confirmacion.ts";
-import type { CustomerLookupResult } from "../types.ts";
+import type { CustomerLookupResult, KnownZone } from "../types.ts";
 
 /** Marca estable del bloque de instrucciones (la usan las pruebas y el arnes). */
 export const MARCA_CONTEXTO_PRECARGADO = "CONTEXTO PRECARGADO POR EL SISTEMA";
@@ -108,10 +108,15 @@ export interface ConsultaProductoPrecargada {
   readonly error: boolean;
 }
 
-/** Ejecuta las consultas con el ejecutor de herramientas del turno (`buscar`) y devuelve solo las que traen productos. Nunca lanza. */
+/** Ejecuta las consultas con el ejecutor de herramientas del turno (`buscar`) y devuelve solo las que traen productos. Nunca lanza.
+ *  `hastaMs` (cerebro v2): pasado ese instante no se empieza otra consulta; la precarga nunca debe costar mas de lo que ahorra.
+ *  `partesPrimero` (cerebro v2): con varios productos se busca cada parte y no el mensaje entero. La busqueda del suelto (buscar_producto con cerebro v2) ordena por
+ *  relevancia y SI devuelve algo para «2 cocas y un kilo de pastor» (solo las cocas): con la estrategia de R11 A esa respuesta parcial tapaba al segundo producto. */
 export async function precargarBusquedas(
   mensaje: string,
   buscar: (query: string) => Promise<{ readonly result: unknown; readonly latenciaMs: number; readonly error: boolean }>,
+  hastaMs: number = Number.POSITIVE_INFINITY,
+  partesPrimero = false,
 ): Promise<ConsultaProductoPrecargada[]> {
   const { entera, partes } = consultasDeProductoDelMensaje(mensaje);
   if (entera === null) return [];
@@ -125,11 +130,12 @@ export async function precargarBusquedas(
     }
   };
   // Las consultas son secuenciales a proposito (un SAVEPOINT a la vez sobre la conexion unica del request).
-  const completa = await hacer(entera);
+  const completa = partesPrimero && partes.length > 1 ? null : await hacer(entera);
   if (completa) return [completa];
   const salida: ConsultaProductoPrecargada[] = [];
   let caracteres = 0;
   for (const parte of partes) {
+    if (Date.now() >= hastaMs) break;
     const c = await hacer(parte);
     if (!c) continue;
     caracteres += JSON.stringify(c.result).length;
@@ -154,4 +160,111 @@ export function intercambioPrecargado(items: readonly { readonly tool: string; r
     mensajes: [{ role: "assistant", content: "", toolCalls }, ...resultados],
     llamadas: items.map((it) => ({ tool: it.tool, latenciaMs: it.latenciaMs })),
   };
+}
+
+// ─── Cerebro v2 (decision B: menos vueltas con Luna por Azure ZDR) ──────────────────────────────────────────────────────────────────────────
+//
+// Por que la R11 A no quito vueltas en C3 (medicion c3-v2-precarga, sha 3395206): la telemetria de los 37 turnos dice `precargado: { cliente: false, productos: 0 }` en TODOS.
+// Los clientes de C3 son nuevos (buscar_cliente ya lo cubria R10) y el chat no siempre trae sucursal de entrada; y cuando el mensaje nombra la colonia, el producto se busca
+// en la sucursal que asigna buscar_sucursal_cercana, que la R11 A no precargaba. Resultado: la precarga no hizo nada y el modelo siguio con su cadena de siempre
+// (sucursal -> producto -> producto -> cotizar -> texto, 4-5 vueltas de 3-6 s). Con la bandera cerebro_v2 el servidor precarga tambien la sucursal cuando el mensaje
+// nombra una colonia CONOCIDA con señal de domicilio y busca los productos en la sucursal asignada.
+//
+// Por que NO en paralelo (Promise.all): cada herramienta corre en su SAVEPOINT sobre la transaccion unica del request (`executeAgentToolSafely` ->
+// `repo.runWithRowSavepoint` -> packages/db/src/savepoint-fallback.ts). Intercaladas en una sola conexion, el RELEASE de una suelta los SAVEPOINT abiertos despues
+// (los de la otra) y su ROLLBACK TO deshace lo de la otra: no es seguro ni para lecturas. Tampoco ganaria nada: node-postgres encola las consultas de una conexion y cada
+// lectura cuesta 2-40 ms (buscar_sucursal_cercana no llama a la red: zonas y coordenadas vienen de la base). El tope de tiempo (`PRECARGA_V2_TOPE_MS`) corta la cadena si
+// la base anda lenta.
+
+/** Tope de tiempo de toda la precarga v2 (sucursal + productos). Las lecturas cuestan milisegundos: si la base anda lenta se corta y el modelo pide lo que falte. */
+export const PRECARGA_V2_TOPE_MS = 1_500;
+
+/** Bloque del prompt con cerebro v2: mas corto y explicito que el de R11 A (misma marca, la usan las pruebas y el arnes). */
+export const BLOQUE_CONTEXTO_PRECARGADO_V2 = `${MARCA_CONTEXTO_PRECARGADO} (manda sobre los pasos de este prompt en lo de CUÁNTAS VECES llamar herramientas):
+- Las llamadas a buscar_cliente, buscar_sucursal_cercana o buscar_producto que ya aparecen con su resultado al final de la conversación las hizo el sistema en este mismo turno: son resultados VIGENTES de esas herramientas. NO las vuelva a llamar con los mismos datos; siga directo al paso siguiente (cotizar_pedido o contestar).
+- Pida en UNA sola respuesta todas las búsquedas que falten: un buscar_producto por cada producto distinto (o uno solo con consultas_adicionales). Cada respuesta separada le cuesta al cliente varios segundos.
+- Lo que depende de otro resultado va después: cotizar_pedido necesita los product_id; crear_pedido necesita confirmar_resumen. Nunca llame confirmar_resumen en el mismo turno en que cotizó.`;
+
+// Señales de que el cliente habla de una ENTREGA (no de la sucursal donde recoge). «Pensiones», «Galerías» o «Altabrisa» son colonias y tambien sucursales.
+const SENAL_DOMICILIO = /\b(?:domicilio|envi[oa]r?|envien|entreg\w*|mand\w*|llev\w*|a mi casa|vivo en|estoy en|col|colonia|fracc\w*)\b/;
+const SENAL_RECOGER = /\b(?:recog\w*|paso por|pasar por|pasare|voy por|en sucursal|para llevar)\b/;
+
+function palabras(texto: string): string[] {
+  return sinAcentos(texto).replace(/[^a-z0-9ñ]+/g, " ").trim().split(" ").filter((p) => p !== "");
+}
+
+function contieneSecuencia(texto: readonly string[], buscada: readonly string[]): number {
+  if (buscada.length === 0) return -1;
+  for (let i = 0; i + buscada.length <= texto.length; i++) {
+    let igual = true;
+    for (let j = 0; j < buscada.length; j++) if (texto[i + j] !== buscada[j]) { igual = false; break; }
+    if (igual) return i;
+  }
+  return -1;
+}
+
+/** Colonia CONOCIDA que el cliente nombra para una entrega en su mensaje, o `null`. Funcion pura y conservadora: palabras completas (nunca un pedazo de otra palabra),
+ *  nombre de 4+ letras, ninguna señal de recoger, y si el nombre es tambien el de una sucursal hace falta una señal explicita de domicilio. Ante la duda, `null`
+ *  (el modelo llama la herramienta como siempre). */
+export function coloniaDelMensaje(mensaje: string, zonas: readonly KnownZone[], nombresDeSucursal: readonly string[]): KnownZone | null {
+  const crudo = mensaje.trim();
+  if (crudo.length === 0 || crudo.length > 300 || crudo.startsWith("[") || toqueDeMensaje(crudo) !== null) return null;
+  const texto = palabras(crudo);
+  const plano = texto.join(" ");
+  if (SENAL_RECOGER.test(plano)) return null;
+  const sucursales = nombresDeSucursal.map((n) => palabras(n).join(" "));
+  let mejor: { zona: KnownZone; largo: number } | null = null;
+  for (const zona of zonas) {
+    const nombre = palabras(zona.name.replace(/\([^)]*\)/g, " "));
+    if (nombre.join("").length < 4) continue;
+    const i = contieneSecuencia(texto, nombre);
+    if (i < 0) continue;
+    const previa = texto[i - 1];
+    const conPreposicion = previa === "a" || previa === "en" || previa === "para" || previa === "hasta" || previa === "col" || previa === "colonia" || previa === "la";
+    const esSucursal = sucursales.some((s) => s === nombre.join(" ") || s.includes(nombre.join(" ")));
+    if (esSucursal ? !SENAL_DOMICILIO.test(plano) : !(conPreposicion || SENAL_DOMICILIO.test(plano))) continue;
+    if (!mejor || nombre.length > mejor.largo) mejor = { zona, largo: nombre.length };
+  }
+  return mejor?.zona ?? null;
+}
+
+/** El mensaje sin la colonia (ni su «a / en / col.» de antes): el buscador de productos exige TODAS las palabras y «pastor a itzimna» no encuentra nada. */
+export function mensajeSinColonia(mensaje: string, zona: KnownZone): string {
+  const nombre = palabras(zona.name.replace(/\([^)]*\)/g, " "));
+  const tokens = sinAcentos(mensaje).replace(/[^a-z0-9ñ,;\n]+/g, " ").replace(/([,;\n])/g, " $1 ").trim().split(/ +/);
+  const soloPalabras = tokens.map((t) => (/^[,;\n]$/.test(t) ? "\u0000" : t));
+  const i = contieneSecuencia(soloPalabras, nombre);
+  if (i < 0) return mensaje;
+  let inicio = i;
+  const PREVIAS = new Set(["a", "en", "para", "hasta", "la", "col", "colonia", "fracc", "fraccionamiento", "domicilio"]);
+  while (inicio > 0 && PREVIAS.has(soloPalabras[inicio - 1]!)) inicio -= 1;
+  return [...tokens.slice(0, inicio), ...tokens.slice(i + nombre.length)].join(" ").replace(/ ([,;])/g, "$1").trim();
+}
+
+/** Cerebro v2: quita del mensaje lo que no es producto pero viaja pegado a el en el mismo renglon («para recoger en 30 minutos», «pago en efectivo», «soy Ana»):
+ *  el buscador exige TODAS las palabras y «2 cocas en 30 minutos» no encuentra nada. Solo afecta las consultas de la precarga; lo que no se encuentra lo busca el modelo. */
+export function mensajeParaPrecargaV2(mensaje: string): string {
+  return sinAcentos(mensaje)
+    .replace(/\b(?:pago|pagare|pagaria|pagamos|pagar)\s+(?:en|con)\s+(?:efectivo|tarjeta)\b/g, ",")
+    .replace(/\b(?:en|con)\s+(?:efectivo|tarjeta)\b/g, ",")
+    .replace(/\b(?:en|dentro de)\s+(?:\d{1,3}|media|una)\s*(?:min|mins|minutos|hora|horas|hr|hrs)\b/g, ",")
+    .replace(/\ben cuanto (?:este|esten)\b/g, ",")
+    .replace(/\b(?:soy|me llamo|mi nombre es)\s+[a-z]+(?:\s+[a-z]+)?\s*(?=[,.;\n]|$)/g, ",")
+    .replace(/[.]/g, ",");
+}
+
+/** Firma de una lectura para reutilizar su resultado precargado si el modelo la vuelve a pedir con los mismos datos (sin ir a la base). `null` = no reutilizable. */
+export function firmaDeLecturaPrecargable(tool: string, args: Record<string, unknown>, zonaDe: (colonia: string) => KnownZone | null): string | null {
+  if (tool === "buscar_producto") {
+    if (typeof args.query !== "string" || typeof args.branch_slug !== "string") return null;
+    if (Array.isArray(args.consultas_adicionales) && args.consultas_adicionales.length > 0) return null;
+    return `buscar_producto|${args.branch_slug}|${palabras(args.query).join(" ")}`;
+  }
+  if (tool === "buscar_sucursal_cercana") {
+    // Con coordenadas o radio propio el resultado es otro: solo la colonia sola se reutiliza, y solo si cae en la MISMA zona (lo mismo que calcula assignBranch).
+    if (args.lat !== undefined || args.lng !== undefined || args.max_km !== undefined || typeof args.colonia !== "string") return null;
+    const zona = zonaDe(args.colonia);
+    return zona ? `buscar_sucursal_cercana|${zona.id}` : null;
+  }
+  return null;
 }
