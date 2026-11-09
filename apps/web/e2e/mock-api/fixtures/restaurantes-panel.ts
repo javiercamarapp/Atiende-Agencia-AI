@@ -6,6 +6,7 @@
 import { conStatus, fallo } from "../respuestas.ts";
 import { propiedadDe } from "../personas.ts";
 import type { Ruta } from "../tipos.ts";
+import { CLAVES_ALTA } from "./restaurantes-alta.ts";
 import { ORDENES_SEMILLA, ENTREGAS_SEMILLA, PROGRAMADOS_SEMILLA } from "./restaurantes.ts";
 
 const PROP = propiedadDe("restaurantes");
@@ -236,7 +237,9 @@ export const rutasRestaurantesPanel: readonly Ruta[] = [
         isAvailable: true,
         displayOrder: prods.length + 1,
         searchKeywords: [] as string[],
-        branch: { propertyId: PROP.id, productId: `p-${prods.length + 1}`, price: cuerpo.price, isAvailable: true },
+        // Alta autoservicio (restaurantes-alta.ts): como el servidor real, el producto nace sin fila en la sucursal y se activa con
+        // «Disponible aquí». El escenario de siempre conserva el atajo de nacer ya disponible.
+        branch: p.estado.obtener<boolean>(CLAVES_ALTA.productoNaceSinSucursal, () => false) ? null : { propertyId: PROP.id, productId: `p-${prods.length + 1}`, price: cuerpo.price, isAvailable: true },
       };
       prods.push(n as (typeof prods)[number]);
       return conStatus(201, { product: n });
@@ -249,8 +252,10 @@ export const rutasRestaurantesPanel: readonly Ruta[] = [
       const prod = lista(p, "rest.productos", PRODUCTOS_SEMILLA).find((x) => x.id === p.params["productId"]);
       if (!prod) return fallo(404, "Ese producto no existe");
       const cuerpo = (p.cuerpo ?? {}) as { price?: number; isAvailable?: boolean };
-      if (cuerpo.price !== undefined) prod.branch = { ...prod.branch!, price: cuerpo.price };
-      if (cuerpo.isAvailable !== undefined) prod.branch = { ...prod.branch!, isAvailable: cuerpo.isAvailable };
+      // Sin fila en la sucursal: el servidor la da de alta con el precio base (upsert), como en la API real.
+      const base = prod.branch ?? { propertyId: PROP.id, productId: prod.id, price: prod.price, isAvailable: false };
+      if (cuerpo.price !== undefined) prod.branch = { ...base, price: cuerpo.price };
+      if (cuerpo.isAvailable !== undefined) prod.branch = { ...(prod.branch ?? base), isAvailable: cuerpo.isAvailable };
       return { branch: prod.branch };
     },
   },

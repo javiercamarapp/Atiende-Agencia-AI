@@ -15,6 +15,7 @@ import { rutasRestaurantes } from "./restaurantes.ts";
 import { rutasOperacionChofer, rutasOperacionTurno } from "./operacion-chofer.ts";
 import { rutasOperacionEncargado } from "./operacion-encargado.ts";
 import { rutasRestaurantesAgregados } from "./restaurantes-agregados.ts";
+import { rutasRestaurantesAlta } from "./restaurantes-alta.ts";
 import { rutasRestaurantesAutopiloto } from "./restaurantes-autopiloto.ts";
 import { rutasRestaurantesCfo } from "./restaurantes-cfo.ts";
 import { rutasRestaurantesCfoB } from "./restaurantes-cfo-b.ts";
@@ -23,4 +24,4 @@ import { rutasRestaurantesPanel } from "./restaurantes-panel.ts";
 import { rutasRestaurantesQaR2 } from "./restaurantes-qa-r2.ts";
 import { rutasSuperadmin } from "./superadmin.ts";
 
-export const todasLasRutas: readonly Ruta[] = [...rutasComunes, ...rutasCuenta, ...rutasRestaurantes, ...rutasRestaurantesAutopiloto, ...rutasRestaurantesCfo, ...rutasRestaurantesCfoB, ...rutasRestaurantesCfoAnalisis, ...rutasOperacionEncargado, ...rutasRestaurantesAgregados, ...rutasOperacionChofer, ...rutasOperacionTurno, ...rutasRestaurantesPanel, ...rutasRestaurantesQaR2, ...rutasHoteles, ...rutasRentas, ...rutasDespachos, ...rutasDespachosListados, ...rutasLicitacionesDatosEmpresa, ...rutasLicitacionesBitacora, ...rutasLicitaciones, ...rutasCitas, ...rutasSuperadmin];
+export const todasLasRutas: readonly Ruta[] = [...rutasComunes, ...rutasCuenta, ...rutasRestaurantes, ...rutasRestaurantesAutopiloto, ...rutasRestaurantesCfo, ...rutasRestaurantesCfoB, ...rutasRestaurantesCfoAnalisis, ...rutasOperacionEncargado, ...rutasRestaurantesAgregados, ...rutasOperacionChofer, ...rutasOperacionTurno, ...rutasRestaurantesPanel, ...rutasRestaurantesAlta, ...rutasRestaurantesQaR2, ...rutasHoteles, ...rutasRentas, ...rutasDespachos, ...rutasDespachosListados, ...rutasLicitacionesDatosEmpresa, ...rutasLicitacionesBitacora, ...rutasLicitaciones, ...rutasCitas, ...rutasSuperadmin];
