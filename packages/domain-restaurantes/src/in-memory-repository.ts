@@ -1169,6 +1169,14 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
     return { metric: metrica, ...distribucion, withoutTier: 0 };
   }
 
+  /** Avisos in-app de pedido grande emitidos (solo pruebas; en Postgres van a core.notification por emitirNotificacion). Dedupe por pedido. */
+  readonly notificacionesPedidoGrande: Array<{ readonly organizationId: string; readonly propertyId: string; readonly orderId: string; readonly orderNumber: number | null; readonly total: number; readonly motivo: string }> = [];
+
+  async notificarPedidoGrande(a: { readonly organizationId: string; readonly propertyId: string; readonly orderId: string; readonly orderNumber: number | null; readonly total: number; readonly motivo: string }): Promise<void> {
+    if (this.notificacionesPedidoGrande.some((n) => n.orderId === a.orderId)) return;
+    this.notificacionesPedidoGrande.push({ ...a });
+  }
+
   async createOrderIdempotent(order: NewOrderRecord, dedupeFingerprint: string, idempotencyKey: string | null): Promise<Order> {
     return this.orderLock.run(`${order.organizationId}:${idempotencyKey ?? dedupeFingerprint}`, async () => {
       if (idempotencyKey) {

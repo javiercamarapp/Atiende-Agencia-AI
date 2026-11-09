@@ -75,7 +75,8 @@ export const PM_SALSAS_A_PETICION = "crema de ajo, guacamolera, mexicana (pico d
 /** Tiempo de entrega con lluvia: lo dice la web de Los Taquitos de PM (/preguntas, 24-oct-2026); sustituye al "+20 min" provisional sin fuente. */
 export const PM_TIEMPO_LLUVIA = "de 1 hora a 1 hora 20 minutos a domicilio";
 /** Umbral de pedido grande por omision (decision de Javier, 2-oct-2026): editable por organizacion. */
-export const PM_PEDIDO_GRANDE_POR_OMISION = "más de $4,000 o más de 5 kg; más de $2,500 si el número no tiene historial y paga en efectivo";
+// Decision de Omar (9-nov-2026): no hay limite de pedido grande; todo pedido se toma y va a cocina (la sucursal solo recibe un aviso).
+export const PM_PEDIDO_GRANDE_POR_OMISION = "sin límite: se toma y va a cocina como cualquier pedido; la sucursal solo recibe un aviso";
 export const PM_PROMOS_POR_OMISION = "lunes 2x1 en tacos al pastor y martes nachos de pastor con 2 aguas de cortesía; solo para recoger y solo en Francisco de Montejo y Pensiones";
 
 /** Reglas del agente vivo de PM que el original ya habia probado (rescate-orig-restaurantes-1 §4). UNA sola redaccion para los dos

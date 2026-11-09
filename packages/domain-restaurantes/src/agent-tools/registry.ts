@@ -50,7 +50,7 @@ import { SUCURSALES_QUE_NO_REPARTEN_PM } from "../sugerencia-despacho.ts";
 import { formatUbicacionEntregaNota, type UbicacionEntrega } from "../whatsapp/location.ts";
 import { knownAmountsOfQuote, requierePinAntesDeCrear } from "../whatsapp/guards.ts";
 import { CATEGORIAS_SIN_SALSA, createOrder, prepareCreateOrder, quoteOrder, resolveBranchOrderItems, searchProducts, type PreparedOrder, type QuotePolicyInfo, type QuotePromotionInfo } from "../orders.ts";
-import { acumuladoReciente, evaluarPedidoGrande, PEDIDO_GRANDE_KG, pesoTotalKg, PedidoGrandeRetenidoError, resumenPedidoGrande } from "../pedido-grande.ts";
+import { acumuladoReciente, evaluarPedidoGrande, motivoAvisoPedidoGrande, PEDIDO_GRANDE_KG, pesoTotalKg, PedidoGrandeRetenidoError, resumenPedidoGrande, type MotivoPedidoGrande } from "../pedido-grande.ts";
 import type { PedidoGrandeHook } from "../autopiloto/tipos.ts";
 import { pedidoAceptaAgregado } from "../agregados/tipos.ts";
 import type { AgregadosHook } from "../agregados/tipos.ts";
@@ -2463,6 +2463,7 @@ async function dispatchTool(
       let order: Order;
       // Pedido grande con autopiloto disponible: se crea y se deja `por_aprobar` (ver `retener` abajo); si no, se lanza el aviso de siempre.
       const grandeAprobable: { error: PedidoGrandeRetenidoError | null } = { error: null };
+      const avisoGrande: { motivo: MotivoPedidoGrande | null; total: number } = { motivo: null, total: 0 };
       const idsEnMemoria = new Set<string>();
       // El ultimo pedido de la sesion puede NO estar en la memoria (la memoria excluye `programado`) y aun asi `create_order_idempotent` lo deduplica ("otro igual"
       // en < 5 min): se marca como ya aceptado para que `retener` no lo pase de `programado` a `por_aprobar`.
@@ -2481,7 +2482,7 @@ async function dispatchTool(
             }
             assertTotalNoSubio(prepared, expectedTotal);
             // Pedido grande (decision de PM, 2-oct): lo hace cumplir el SERVIDOR aunque el modelo olvide escalar.
-            const grande = await evaluarPedidoGrandeDelPedido(repo, prepared, idsEnMemoria, sesionPrevia);
+            const grande = await evaluarPedidoGrandeDelPedido(repo, prepared, idsEnMemoria, sesionPrevia, avisoGrande);
             if (!grande) return;
             if (ctx.pedidoGrande && (await ctx.pedidoGrande.disponible(prepared.payload.organizationId, prepared.branch.propertyId))) grandeAprobable.error = grande;
             else throw grande;
@@ -2529,6 +2530,10 @@ async function dispatchTool(
           mensaje_al_cliente: MENSAJE_PEDIDO_GRANDE_PENDIENTE,
         };
         return { result, raw: order, orderId: order.id, propertyId: order.propertyId, pedidoRetenido: true };
+      }
+      // Decision de Omar (9-nov): el pedido grande entra normal a cocina y la sucursal recibe un aviso in-app (uno por pedido; no en un reintento que devuelve el mismo).
+      if (avisoGrande.motivo && !idsEnMemoria.has(order.id) && repo.notificarPedidoGrande) {
+        await repo.notificarPedidoGrande({ organizationId: order.organizationId, propertyId: order.propertyId, orderId: order.id, orderNumber: order.orderNumber ?? null, total: avisoGrande.total, motivo: avisoGrande.motivo });
       }
       return { result: { order: orderToWire(order) }, raw: order, orderId: order.id, propertyId: order.propertyId };
     }
@@ -2861,6 +2866,8 @@ async function evaluarPedidoGrandeDelPedido(
   prepared: PreparedOrder,
   idsEnMemoria?: Set<string>,
   sesionPrevia?: { readonly total: number; readonly pesoKg: number; readonly pedidos: number },
+  /** Decision de Omar (9-nov): si el pedido NO queda en espera pero amerita el aviso informativo, aqui se deja el motivo y el total (lo notifica quien crea). */
+  aviso?: { motivo: MotivoPedidoGrande | null; total: number },
 ): Promise<PedidoGrandeRetenidoError | null> {
   const config = await repo.findWhatsAppAgentConfig(prepared.payload.organizationId, prepared.branch.propertyId);
   if (!config || config.perfil !== "taqueria_pm" || (config.escalationReasonsOff ?? []).includes("pedido_grande")) return null;
@@ -2879,14 +2886,20 @@ async function evaluarPedidoGrandeDelPedido(
   const pedidosPrevios = cliente?.orderCount ?? 0;
   const total = Math.round((prepared.total + previos.total) * 100) / 100;
   const pesoAcumulado = pesoKg + previos.pesoKg;
+  const pagaEfectivo = prepared.payload.paymentMethod === "efectivo";
+  const sinHistorial = memoria ? pedidosPrevios <= previos.cuantos : !cliente || cliente.orderCount - (sesionPrevia?.pedidos ?? 0) <= 0;
+  if (aviso) {
+    aviso.motivo = motivoAvisoPedidoGrande({ total, pagaEfectivo, sinHistorial });
+    aviso.total = total;
+  }
   const motivo = evaluarPedidoGrande({
     total,
     pesoKg: pesoAcumulado,
-    pagaEfectivo: prepared.payload.paymentMethod === "efectivo",
+    pagaEfectivo,
     // Con la memoria: "sin historial" = todo lo que el numero ha pedido cae dentro de la ventana (no hay pedidos anteriores a ella). Los pedidos creados
     // en ESTA sesion tampoco son historial (R90: un pedido de $126 de hace segundos no apaga la regla de $2,500 en efectivo).
     // Limitacion conocida: `orderCount` puede incluir cancelados que `previos.cuantos` no cuenta.
-    sinHistorial: memoria ? pedidosPrevios <= previos.cuantos : !cliente || cliente.orderCount - (sesionPrevia?.pedidos ?? 0) <= 0,
+    sinHistorial,
   });
   if (!motivo) return null;
   const resumen = resumenPedidoGrande({

@@ -383,8 +383,13 @@ export const OPERATIONAL_ENV_VARS: readonly string[] = [
   "WHATSAPP_TURNO_ASINCRONO",
   // Ventana de silencio (ms, 500-10000; ausente = 2500) de la espera de rafagas deslizante del turno asincrono de WhatsApp de restaurantes. No es credencial.
   "WHATSAPP_RAFAGA_SILENCIO_MS",
-  // Umbral (MXN, entero 500-20000; ausente = 2500) de pedido grande cuando el numero no tiene historial y paga en efectivo (perfil PM). Decision del dueno. No es credencial.
+  // Pedido grande (perfil PM, decision de Omar 9-nov): SIN espera por omision. Cada espera se activa solo con su umbral (vacio = sin umbral):
+  // total (MXN), kilos y total de un numero sin historial que paga en efectivo. No son credenciales.
+  "PM_PEDIDO_GRANDE_TOTAL_MXN",
+  "PM_PEDIDO_GRANDE_KG",
   "PM_PEDIDO_GRANDE_SIN_HISTORIAL_EFECTIVO_MXN",
+  // Monto informativo (MXN; ausente = 2500; off/0/no = sin aviso) del aviso in-app `restaurantes.pedido.grande` (sin espera). No es credencial.
+  "PM_PEDIDO_GRANDE_AVISO_MXN",
 ];
 
 /** Unión de toda variable "conocida" por este inventario (integraciones +

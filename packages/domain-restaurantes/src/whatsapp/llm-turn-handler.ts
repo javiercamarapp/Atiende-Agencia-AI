@@ -55,7 +55,7 @@ import type { Branch, BranchSummary, CanalPedido, CustomerLookupResult, KnownZon
 import { matchKnownZone } from "../reglas-pedido.ts";
 import { FUNCION_MAX_MS, MARGEN_CIERRE_TURNO_MS, mensajesSinResponder } from "./inbound.ts";
 import { latestDeliveryPin, latestSharedLocation } from "./location.ts";
-import { PEDIDO_GRANDE_TOTAL_MXN, evaluarPedidoGrande, pesoTotalKg, resumenPedidoGrande } from "../pedido-grande.ts";
+import { evaluarPedidoGrande, pesoTotalKg, resumenPedidoGrande, umbralesPedidoGrande } from "../pedido-grande.ts";
 import { confirmacionDePedido } from "./confirmacion-pedido.ts";
 import { normalizarFormatoWhatsApp } from "./formato-whatsapp.ts";
 import { afirmaCambioRegistrado, afirmaPedidoProgramado, afirmaPedidoRegistrado, normalizarParaClasificar, CAMBIO_AVISADO_SIN_REGISTRAR, CAMBIO_SIN_REGISTRAR_OFRECE_AVISO, corregirPromesaDeHorarioNocturno, porcentajePropinaDichoPorElCliente, afirmaHaberAvisado, afirmaSoloRegistroDePedido, branchAlreadyKnown, classifyHighRiskIntent, classifyHighRiskIntentInMessages, contextoDeCliente, esperaDetalleDeQueja, noEsDetalleDeQueja, QUEJA_DETALLE_RECIBIDO, QUEJA_PREGUNTA_DETALLE, quejaTraeDetalle, respuestaDeQuejaConDetalle, enforcePendingQuestion, enforceQuotedTotal, knownAmountsOfQuote, quitarAfirmacionDeAviso, quitarAfirmacionDePedidoRegistrado, quitarCortesiaNoRespaldada, quitarPromesaDeDinero, reemplazarFugaDePrompt, contieneFugaDePrompt, RESPUESTA_SIN_FUGA } from "./guards.ts";
@@ -1524,7 +1524,7 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           const avisoDelTurno = tele.tools.some((t) => (t.tool === "escalar_a_humano" || t.tool === "registrar_contacto") && t.resultado === "ok");
           if (afirmaHaberAvisado(respuesta) && !escalarMotivo && !avisoDelTurno && !pedidoGrandeVisto && !(promesaPrevia && afirmaHaberAvisado(promesaPrevia.content))) {
             // QA-PM-R4-reglas-01: un pedido grande cotizado que el modelo "avisa" sin escalar queda como pedido_grande (cede la conversacion a la sucursal), no como "otro".
-            const motivoAvisoHonesto = perfil === "taqueria_pm" && lastQuoteTotal !== null && lastQuoteTotal > PEDIDO_GRANDE_TOTAL_MXN ? "pedido_grande" : "otro";
+            const motivoAvisoHonesto = perfil === "taqueria_pm" && lastQuoteTotal !== null && umbralesPedidoGrande().totalMxn !== null && lastQuoteTotal > (umbralesPedidoGrande().totalMxn ?? Number.POSITIVE_INFINITY) ? "pedido_grande" : "otro";
             const nombre = !customer.isNew && customer.name ? customer.name : "Cliente";
             const ultimo = [...messages].reverse().find((m) => m.role === "user");
             const aviso = await executeAgentToolSafely(

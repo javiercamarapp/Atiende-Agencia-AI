@@ -297,6 +297,8 @@ export interface RestaurantesRepository {
    * `pending`), serializados — nunca dos filas reales por una sola intención real de
    * pedido. */
   createOrderIdempotent(order: NewOrderRecord, dedupeFingerprint: string, idempotencyKey: string | null): Promise<Order>;
+  /** Aviso in-app de pedido grande (decision de Omar, 9-nov): el pedido ya entro normal a cocina; la sucursal recibe `restaurantes.pedido.grande`. Opcional (otros repos). */
+  notificarPedidoGrande?(a: { readonly organizationId: string; readonly propertyId: string; readonly orderId: string; readonly orderNumber: number | null; readonly total: number; readonly motivo: string }): Promise<void>;
 
   createCallbackRequest(input: CallbackRequestInput): Promise<CallbackRequest>;
   /** Cerebro v2 (migracion 193): avisos al equipo (callback_requests) de ESTE telefono en las ultimas `horas` (1..48), del mas reciente al mas viejo, a lo

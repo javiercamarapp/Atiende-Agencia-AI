@@ -1084,6 +1084,20 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     }
   }
 
+  async notificarPedidoGrande(a: { readonly organizationId: string; readonly propertyId: string; readonly orderId: string; readonly orderNumber: number | null; readonly total: number; readonly motivo: string }): Promise<void> {
+    // Decision de Omar (9-nov): sin espera; aviso in-app a la sucursal (catalogo `restaurantes.pedido.grande`, dedupe por pedido, solo numero de pedido y total: sin PII).
+    // emitirNotificacion corre en su SAVEPOINT y nunca lanza por la base sin migrar: el pedido ya creado no se toca.
+    await emitirNotificacion(this.db, {
+      evento: "restaurantes.pedido.grande",
+      organizationId: a.organizationId,
+      propertyId: a.propertyId,
+      clave: a.orderId,
+      parametros: { numero: a.orderNumber ?? 0, total: Math.round(a.total) },
+      entidadTipo: "order",
+      entidadId: a.orderId,
+    });
+  }
+
   async listarAvisosDelTelefono(organizationId: string, phone: string, horas: number): Promise<readonly AvisoDelTelefono[] | null> {
     // Migracion 193 (funcion de SOLO SISTEMA: la sesion del agente no ve callback_requests por RLS). Dentro de la transaccion del turno: SAVEPOINT;
     // sin la 193 (42883) -> null y el llamador decide con el hilo.
