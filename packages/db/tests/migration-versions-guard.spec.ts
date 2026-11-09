@@ -1,13 +1,16 @@
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   findDuplicateInternalNumbers,
   findDuplicateVersions,
   findMirrorDivergences,
   findNewInternalNumberDuplicates,
+  findOrphanMirrors,
   formatGuardReport,
+  RENAMED_MIRRORS,
   hasProblems,
   runMigrationVersionGuard,
 } from "../../../scripts/verify-migration-versions/check-migration-versions.ts";
@@ -240,11 +243,130 @@ describe("runMigrationVersionGuard / hasProblems / formatGuardReport", () => {
   it("hasProblems() es false y el reporte queda vacío contra un árbol sano", () => {
     const migrationsDir = makeTempDir("guard-clean-");
     const packagesRoot = makeTempDir("packages-clean-");
+    const dbDir = path.join(packagesRoot, "db", "migrations");
+    mkdirSync(dbDir, { recursive: true });
     writeSql(migrationsDir, "20240101000001_a.sql", "select 1;");
+    writeSql(dbDir, "a.sql", "select 1;");
 
     const result = runMigrationVersionGuard(migrationsDir, [packagesRoot]);
 
     expect(hasProblems(result)).toBe(false);
     expect(formatGuardReport(result)).toBe("");
+  });
+});
+
+// Ola 4 (G1): el espejo `supabase/migrations/` tenía migraciones SIN fuente en
+// `packages/*/migrations/` (20240101000110..000119 <-> internas 0008..0014 de
+// packages/db) y el guard las dejaba pasar en silencio ("sin candidatos -> no es
+// asunto de este guard"). Un espejo huérfano significa que el SQL aplicado en
+// producción no tiene fuente canónica: nadie lo ve al revisar el paquete y nadie
+// detecta si diverge. Ahora es un error, salvo los espejos RENOMBRADOS (nombre
+// base distinto al de la fuente) declarados en RENAMED_MIRRORS, que también se
+// exigen byte-idénticos.
+describe("findOrphanMirrors", () => {
+  it("detecta un espejo sin ninguna fuente en packages/*/migrations", () => {
+    const migrationsDir = makeTempDir("orphan-");
+    const packagesRoot = makeTempDir("packages-orphan-");
+    mkdirSync(path.join(packagesRoot, "db", "migrations"), { recursive: true });
+    writeSql(migrationsDir, "20240101000110_0008_staff_google_identity.sql", "select 1;");
+
+    const result = findOrphanMirrors(migrationsDir, [packagesRoot], { repoRoot: packagesRoot, renamed: {} });
+
+    expect(result.orphans).toEqual(["20240101000110_0008_staff_google_identity.sql"]);
+    expect(result.renamedDivergences).toEqual([]);
+  });
+
+  it("acepta un espejo renombrado declarado cuyo contenido es byte-idéntico a la fuente", () => {
+    const migrationsDir = makeTempDir("renamed-ok-");
+    const repoRoot = makeTempDir("repo-renamed-ok-");
+    const dir = path.join(repoRoot, "packages", "domain-despachos", "migrations");
+    mkdirSync(dir, { recursive: true });
+    writeSql(dir, "003_cierre_mensual_schema.sql", "select 3;");
+    writeSql(migrationsDir, "20240101000048_003_despachos_cierre_mensual_schema.sql", "select 3;");
+
+    const result = findOrphanMirrors(migrationsDir, [path.join(repoRoot, "packages")], {
+      repoRoot,
+      renamed: { "20240101000048_003_despachos_cierre_mensual_schema.sql": "packages/domain-despachos/migrations/003_cierre_mensual_schema.sql" },
+    });
+
+    expect(result).toEqual({ orphans: [], renamedDivergences: [] });
+  });
+
+  it("reporta un espejo renombrado que divergió de su fuente declarada", () => {
+    const migrationsDir = makeTempDir("renamed-div-");
+    const repoRoot = makeTempDir("repo-renamed-div-");
+    const dir = path.join(repoRoot, "packages", "domain-despachos", "migrations");
+    mkdirSync(dir, { recursive: true });
+    writeSql(dir, "002_migracion_catalogo_schema.sql", "-- nota agregada solo en la fuente\nselect 2;");
+    writeSql(migrationsDir, "20240101000037_002_despachos_migracion_catalogo_schema.sql", "select 2;");
+
+    const result = findOrphanMirrors(migrationsDir, [path.join(repoRoot, "packages")], {
+      repoRoot,
+      renamed: { "20240101000037_002_despachos_migracion_catalogo_schema.sql": "packages/domain-despachos/migrations/002_migracion_catalogo_schema.sql" },
+    });
+
+    expect(result.orphans).toEqual([]);
+    expect(result.renamedDivergences).toEqual([
+      { file: "20240101000037_002_despachos_migracion_catalogo_schema.sql", candidates: ["packages/domain-despachos/migrations/002_migracion_catalogo_schema.sql"] },
+    ]);
+  });
+
+  it("un renombrado declarado cuya fuente ya no existe cuenta como huérfano", () => {
+    const migrationsDir = makeTempDir("renamed-gone-");
+    const repoRoot = makeTempDir("repo-renamed-gone-");
+    writeSql(migrationsDir, "20240101000253_037_restaurantes_demo_organization.sql", "select 37;");
+
+    const result = findOrphanMirrors(migrationsDir, [path.join(repoRoot, "packages")], {
+      repoRoot,
+      renamed: { "20240101000253_037_restaurantes_demo_organization.sql": "packages/domain-restaurantes/migrations/037_demo_organization.sql" },
+    });
+
+    expect(result.orphans).toEqual(["20240101000253_037_restaurantes_demo_organization.sql"]);
+  });
+
+  it("runMigrationVersionGuard falla (hasProblems) ante un espejo huérfano y el reporte lo nombra", () => {
+    const migrationsDir = makeTempDir("guard-orphan-");
+    const packagesRoot = makeTempDir("packages-guard-orphan-");
+    writeSql(migrationsDir, "20240101000119_0014_superadmin_demo_access.sql", "select 14;");
+
+    const result = runMigrationVersionGuard(migrationsDir, [packagesRoot], { repoRoot: packagesRoot });
+
+    expect(result.orphans).toEqual(["20240101000119_0014_superadmin_demo_access.sql"]);
+    expect(hasProblems(result)).toBe(true);
+    expect(formatGuardReport(result)).toContain("espejo huérfano");
+  });
+});
+
+describe("árbol real del repo (supabase/migrations <-> packages/*/migrations)", () => {
+  const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+
+  it("no queda ningún espejo huérfano ni divergente (incluidos los renombrados)", () => {
+    const result = runMigrationVersionGuard(path.join(repoRoot, "supabase", "migrations"), [path.join(repoRoot, "packages")], { repoRoot });
+    expect(result.orphans).toEqual([]);
+    expect(result.divergences).toEqual([]);
+    expect(hasProblems(result)).toBe(false);
+  });
+
+  it("las migraciones 0008..0014 de packages/db que solo vivían en el espejo (000110..000119) ya tienen fuente byte-idéntica", () => {
+    const pares: Array<[string, string]> = [
+      ["20240101000110_0008_staff_google_identity.sql", "0008_staff_google_identity.sql"],
+      ["20240101000111_0009_magic_link_login.sql", "0009_magic_link_login.sql"],
+      ["20240101000112_0010_platform_superadmin.sql", "0010_platform_superadmin.sql"],
+      ["20240101000113_0011_login_lookup_security_definer.sql", "0011_login_lookup_security_definer.sql"],
+      ["20240101000114_0012_superadmin_prospectos.sql", "0012_superadmin_prospectos.sql"],
+      ["20240101000115_0013_notifications_schema.sql", "0013_notifications_schema.sql"],
+      ["20240101000119_0014_superadmin_demo_access.sql", "0014_superadmin_demo_access.sql"],
+    ];
+    for (const [espejo, fuente] of pares) {
+      const a = readFileSync(path.join(repoRoot, "supabase", "migrations", espejo));
+      const b = readFileSync(path.join(repoRoot, "packages", "db", "migrations", fuente));
+      expect(b.equals(a), `${fuente} debe ser byte-idéntico a ${espejo}`).toBe(true);
+    }
+  });
+
+  it("cada espejo renombrado declarado apunta a una fuente que existe", () => {
+    for (const fuente of Object.values(RENAMED_MIRRORS)) {
+      expect(() => readFileSync(path.join(repoRoot, fuente))).not.toThrow();
+    }
   });
 });
