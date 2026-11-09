@@ -4,7 +4,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { invokeAgentTool } from "../src/agent-tools/registry.ts";
 import { PM_CONFIG_POR_OMISION } from "../src/whatsapp/llm-turn-handler.ts";
 import { PM_AGENT_NAME_POR_OMISION, buildPmSystemPrompt } from "../src/whatsapp/perfil-pm.ts";
-import { bloqueReglasVozPm } from "../src/voz/perfil-voz-pm.ts";
+import { REGLAS_CONDICIONALES_VOZ_PM, bloqueReglasVozPm } from "../src/voz/perfil-voz-pm.ts";
+
+/** Lo que la llamada puede llevar: el bloque fijo mas las reglas condicionales por tema (dieta del prompt de voz, 7-nov-2026). */
+const bloqueYCondicionales = (): string => [bloqueReglasVozPm(), ...REGLAS_CONDICIONALES_VOZ_PM.map((r) => r.texto)].join("\n");
 import { buildRestaurantFixture } from "./fixtures.ts";
 
 const prompt = () =>
@@ -38,7 +41,7 @@ describe("prompt de WhatsApp: reglas nuevas de la ronda 2", () => {
     expect(p).toMatch(/contesta otra cosa, como "no, es todo" o "sí" sin referirse al número, dé por bueno el número de este chat/);
   });
   it("VX13: tras una llamada cortada, un pedido_reciente con lo mismo ya esta registrado y no se crea otro (bloque de voz)", () => {
-    expect(bloqueReglasVozPm()).toMatch(/LLAMADA CORTADA: .*pedido_reciente .*YA está registrado: dígaselo y NO cree otro/);
+    expect(bloqueYCondicionales()).toMatch(/LLAMADA CORTADA: .*pedido_reciente .*YA está registrado: dígaselo y NO cree otro/);
   });
   it("reglas-07: 2 kilos es UN renglon de 2 kg con requested_quantity 1", () => {
     expect(p).toMatch(/"2 kilos" es UN renglón del producto de 2 kg con requested_quantity 1/);
@@ -52,7 +55,7 @@ describe("prompt de WhatsApp: reglas nuevas de la ronda 2", () => {
 });
 
 describe("bloque de reglas vivas de la VOZ (no borrable)", () => {
-  const b = bloqueReglasVozPm();
+  const b = bloqueYCondicionales();
   it("lleva el reloj local, el telefono una sola vez, el resumen completo, los kilos, el estado del pedido, el insulto y el combo", () => {
     expect(b).toMatch(/hora_local, fecha_local, dia_semana/);
     expect(b).toMatch(/nunca la hora UTC/);

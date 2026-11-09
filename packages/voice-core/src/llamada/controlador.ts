@@ -14,7 +14,7 @@ import type { SumideroLog } from "./log-sin-pii.ts";
 import { CallStateMachine, LIMITES_POR_DEFECTO } from "./maquina.ts";
 import type { AccionLlamada, EventoLlamada, LimitesLlamada, ReglasCierreLlamada } from "./maquina.ts";
 import type { MensajeId } from "./mensajes.ts";
-import type { AbrirSesionLlamada, ToolCallPedida, VozSesionLlamada } from "./sesion.ts";
+import type { AbrirSesionLlamada, ReglaCondicional, ToolCallPedida, VozSesionLlamada } from "./sesion.ts";
 
 export type EventoKpiLlamada =
   | { readonly tipo: "tool_call"; readonly herramienta: string; readonly latenciaMs: number }
@@ -60,6 +60,8 @@ export interface DepsControlador<R extends string = string> {
   readonly voiceId: string;
   /** Nombres del menu de la sucursal: el STT de la cascada los recibe como `keyterms` (platillos que se oyen mal con ruido). */
   readonly vocabulario?: readonly string[];
+  /** Reglas del prompt por tema (dieta del prompt de voz): la cascada v2 las agrega cuando el cliente toca el tema; los demas escalones las reciben en la instruccion. */
+  readonly reglasCondicionales?: readonly ReglaCondicional[];
   /** Modelo de texto de la cascada elegido en los ajustes del agente (`voice_cascade_model`); sin valor, el de la plataforma. */
   readonly modeloLlm?: string | null;
   /** Voz telefonica de la sucursal (ElevenLabs); sin valor, la de la plataforma. */
@@ -232,6 +234,7 @@ export class ControladorLlamada<R extends string = string> {
         reanudarHandle: handle,
         ...(historial ? { historial } : {}),
         ...(this.deps.vocabulario && this.deps.vocabulario.length > 0 ? { vocabulario: this.deps.vocabulario } : {}),
+        ...(this.deps.reglasCondicionales && this.deps.reglasCondicionales.length > 0 ? { reglasCondicionales: this.deps.reglasCondicionales } : {}),
         ...(this.deps.modeloLlm ? { modeloLlm: this.deps.modeloLlm } : {}),
         ...(this.deps.vozTelefono ? { vozTelefono: this.deps.vozTelefono } : {}),
       },
@@ -274,7 +277,9 @@ export class ControladorLlamada<R extends string = string> {
     if (!decision) return false;
     // Solo el MOTIVO queda en el log: nunca lo que dijo el cliente.
     this.log("guardia_cliente", { motivo: decision.motivo });
-    this.sesion?.interrumpir();
+    // El turno del modelo para este mismo mensaje (y su acuse) no debe sonar encima ni despues del texto de la guardia (revision #752 P2-1).
+    if (this.sesion?.silenciarTurnoPendiente) this.sesion.silenciarTurnoPendiente();
+    else this.sesion?.interrumpir();
     this.deps.cortarAudio?.();
     await guardia.decir(decision.texto);
     await this.escalar(decision.motivo, decision.resumen);
@@ -293,6 +298,8 @@ export class ControladorLlamada<R extends string = string> {
     // La maquina puede ordenar acciones (aviso por tool lenta, escalar tras dos timeouts) ANTES de contestar al modelo.
     const res = (typeof salida.resultado === "object" && salida.resultado !== null ? salida.resultado : {}) as { pedido_grande?: unknown; escalado?: unknown; incierto?: unknown };
     if (res.incierto === true) this.notaIncierto = "El registro del pedido expiró y PUDO quedar registrado: verifique en la sucursal antes de contactar al cliente.";
+    // Lectura precargada por la sesion (optimizacion de latencia): su timeout o error no cuenta para la maquina (ni escala ni dice «un momento»; E2E r4 P14).
+    if (llamada.precarga === true) return salida.resultado;
     await this.encolar(() =>
       this.eventoInterno({
         tipo: "tool_resultado",

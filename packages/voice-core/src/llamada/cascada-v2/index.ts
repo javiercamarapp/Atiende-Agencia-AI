@@ -22,4 +22,5 @@ export { sttConRespaldo, ttsConRespaldo } from "./respaldo.ts";
 export type { AvisoRespaldo } from "./respaldo.ts";
 export { completarConPlazo } from "./plazo-llm.ts";
 export type { OpcionesPlazoLlm, ResultadoPlazoLlm } from "./plazo-llm.ts";
-export { elegirNivelModelo, esAsentimiento } from "./sesion.ts";
+export { ACUSES_NEUTROS, ACUSE_ESPERA_MS, afirmaRegistroVoz, elegirNivelModelo, esAsentimiento, esTurnoDeRiesgoVoz } from "./sesion.ts";
+export { esAfirmacion } from "./afirmacion.ts";

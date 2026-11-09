@@ -7,6 +7,8 @@ export interface ToolCallPedida {
   readonly id: string;
   readonly nombre: string;
   readonly args: Readonly<Record<string, unknown>>;
+  /** Lectura PRECARGADA por la sesion (no la pidio el modelo): si falla o expira no cuenta como falla de herramienta de la llamada. */
+  readonly precarga?: boolean;
 }
 
 /** A que componente (`deepgram`, `heygen`, `openrouter:<modelo>`) pertenece un aviso de costo: la escalera lo desglosa en `core.usage_cost_event`. */
@@ -27,6 +29,9 @@ export interface ManejadoresSesion {
   usuarioDijo?(texto: string): void;
   /** El agente pide una herramienta; la respuesta se devuelve al proveedor tal cual. */
   ejecutarTool(llamada: ToolCallPedida): Promise<unknown>;
+  /** Lecturas que la vertical quiere PRECARGAR antes de la primera vuelta del modelo en este turno del cliente (`turno` empieza en 1): solo herramientas de LECTURA
+   * (buscar producto, sucursal, cliente). La sesion las corre con `ejecutarTool` y le entrega al modelo la llamada y su resultado como si el las hubiera pedido. */
+  precargar?(texto: string, turno: number): readonly { readonly nombre: string; readonly args: Readonly<Record<string, unknown>> }[];
   /** Audio PCM16 del agente (24 kHz mono en Gemini) para reproducirlo al cliente; solo en sesiones con audio. */
   audioAgente?(pcm16: Uint8Array): void;
   /** Costo adicional (micro-USD) desde el ultimo aviso. `real` = sale de los tokens que reporto el proveedor (`usageMetadata`), no de una tarifa. */
@@ -51,6 +56,16 @@ export interface AperturaLlamada {
   readonly vocabulario?: readonly string[];
   /** Voz telefonica de la sucursal para el TTS de la cascada v2 (id de ElevenLabs, `branch_voice_config.tts_voice_id`); null = la de la plataforma (Regina). Gemini Live no la usa. */
   readonly vozTelefono?: string | null;
+  /** Reglas del prompt que solo aplican a un tema (dieta del prompt de voz): la cascada v2 las agrega a la conversacion cuando el cliente toca el tema
+   * (`reglasActivadas`); los demas escalones las reciben todas dentro de `instruccion` (la escalera las fija con `instruccionConReglasFijas`). */
+  readonly reglasCondicionales?: readonly ReglaCondicional[];
+}
+
+/** Regla por tema: `patron` es el `source` de una RegExp SIN acentos y en minusculas, probada con la bandera "i" contra el texto del cliente normalizado. */
+export interface ReglaCondicional {
+  readonly id: string;
+  readonly patron: string;
+  readonly texto: string;
 }
 
 export interface VozSesionLlamada {
@@ -58,6 +73,8 @@ export interface VozSesionLlamada {
   enviarAudio?(pcm16: Uint8Array): void;
   /** Hace callar al agente (el controlador lo usa si la maquina ordena cortar el audio). */
   interrumpir(): void;
+  /** Una guardia determinista del controlador actuo sobre lo ultimo que dijo el cliente: el turno del modelo para ese mensaje (en curso o encolado) no habla. Opcional. */
+  silenciarTurnoPendiente?(): void;
   cerrar(): Promise<void>;
 }
 

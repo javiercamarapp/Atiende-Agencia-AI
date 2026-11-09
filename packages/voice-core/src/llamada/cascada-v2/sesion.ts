@@ -17,13 +17,14 @@
 import { VOZ_PLATAFORMA, costoDeepgramAura2MicroUsd, costoDeepgramMicroUsd, costoElevenLabsSttMicroUsd, costoElevenLabsTtsMicroUsd } from "../../config-plataforma.ts";
 import type { ConfigPlataformaVoz } from "../../config-plataforma.ts";
 import { VozNoConfiguradaError, VozProveedorError } from "../../provider.ts";
-import type { MensajeLlmVoz, PuertoLlmVoz, RespuestaLlmVoz } from "../cascada-openrouter.ts";
+import type { MensajeLlmVoz, PuertoLlmVoz, RespuestaLlmVoz, ToolCallLlmVoz } from "../cascada-openrouter.ts";
 import { eventoSinPII } from "../log-sin-pii.ts";
 import type { SumideroLog } from "../log-sin-pii.ts";
 import type { AbrirSesionLlamada, AperturaLlamada, ManejadoresSesion, VozSesionLlamada } from "../sesion.ts";
-import { crearSegmentadorFrases } from "./frases.ts";
+import { crearSegmentadorFrases, limpiarParaVoz } from "./frases.ts";
+import { TITULO_REGLAS_CONDICIONALES, reglasActivadas } from "./reglas-condicionales.ts";
 import { contieneTotal, esAfirmacion, esRechazo } from "./afirmacion.ts";
-import { ejecutarHerramientas, type EstadoEspera } from "./herramientas.ts";
+import { compuertaAbierta, ejecutarHerramientas, type EstadoEspera, type ReglaConfirmacion } from "./herramientas.ts";
 import { ColaAsync } from "./puertos.ts";
 import type { ContextoTurnoLlm, PuertoSttVoz, PuertoTtsVoz, SesionStt, SesionTts } from "./puertos.ts";
 import { crearSttDeepgram, keytermsDe } from "./deepgram-stt.ts";
@@ -50,6 +51,12 @@ export interface CascadaV2Opciones {
    * interrumpe ni abre otro turno: se ignora. Va con el plazo del LLM: tras la frase de espera la gente contesta «si» y, sin esto, cortaba la respuesta real
    * cada vez (medicion E2E del 6-nov-2026). Apagado por omision. */
   readonly ignorarAsentimientosOcupado?: boolean;
+  /** Acuse rapido: en un turno que va al modelo PRECISO, si en `ACUSE_ESPERA_MS` no hubo voz del agente suena un acuse NEUTRO de la lista fija `ACUSES_NEUTROS`
+   * (elegido de forma determinista; ningun modelo lo escribe: revision #752 P1-2). Nunca en un turno de riesgo (`esTurnoDeRiesgoVoz` u `omitirAcuse`); como mucho un
+   * relleno por turno (acuse o frase de espera); si el preciso habla antes, no suena; nunca entra al historial. Apagado por omision. */
+  readonly acuseRapido?: boolean;
+  /** Guardia de riesgo de la vertical para el acuse: `true` = este turno no lleva acuse (alergia, cancelacion, pago, escalacion, precio o existencia...). */
+  readonly omitirAcuse?: (texto: string) => boolean;
   /** Temporizador del plazo del LLM (pruebas). */
   readonly temporizador?: { readonly poner: (fn: () => void, ms: number) => unknown; readonly quitar: (id: unknown) => void };
   /** Puerto del LLM en streaming (en produccion `crearPuertoLlmVozV2` del worker, sobre OpenRouter). */
@@ -62,7 +69,7 @@ export interface CascadaV2Opciones {
   /** Herramientas de solo lectura que pueden correr en paralelo al inicio de un turno (el resto, en serie). */
   readonly herramientasEnParalelo?: ReadonlySet<string>;
   /** Si el modelo pide `confirmar` y `crear` en la MISMA respuesta, solo se ejecuta `confirmar`: `crear` espera la confirmacion del cliente en un turno posterior (restaurantes: confirmar_resumen / crear_pedido). */
-  readonly confirmacionAntesDeCrear?: { readonly confirmar: string; readonly crear: string; readonly cotizar?: string };
+  readonly confirmacionAntesDeCrear?: ReglaConfirmacion;
   /** Tope de vueltas modelo -> herramienta -> modelo dentro de un turno. */
   readonly vueltasToolMax?: number;
   /** Modelo del LLM por omision (de lo contrario `config.cascadaV2.llm.modelo`). */
@@ -146,6 +153,12 @@ class SesionCascadaV2 implements VozSesionLlamada {
   private cierreListo(): boolean {
     return this.esperandoAlCliente.cierreListo === true;
   }
+  private porAprobar(): boolean {
+    return this.esperandoAlCliente.pedidoPorAprobar === true;
+  }
+  private confirmadoEnTurno(): boolean {
+    return this.esperandoAlCliente.confirmadoEnTurno === true;
+  }
   /** El proveedor rechazo `tool_choice` forzado (400/422): no se vuelve a intentar en esta sesion. */
   private forzadoRechazado = false;
   /** Lo que ya sono al momento de interrumpir (se fija en `interrumpir`, antes de que el reloj avance). */
@@ -159,15 +172,31 @@ class SesionCascadaV2 implements VozSesionLlamada {
   constructor(
     private readonly apertura: AperturaLlamada,
     private readonly h: ManejadoresSesion,
-    private readonly o: Required<Pick<CascadaV2Opciones, "llm" | "config" | "vueltasToolMax">> & Pick<CascadaV2Opciones, "herramientasEnParalelo" | "confirmacionAntesDeCrear" | "modeloLlm" | "elegirModelo" | "log" | "ahora" | "plazoLlm" | "temporizador" | "modeloRapido" | "ignorarAsentimientosOcupado">,
+    private readonly o: Required<Pick<CascadaV2Opciones, "llm" | "config" | "vueltasToolMax">> & Pick<CascadaV2Opciones, "herramientasEnParalelo" | "confirmacionAntesDeCrear" | "modeloLlm" | "elegirModelo" | "log" | "ahora" | "plazoLlm" | "temporizador" | "modeloRapido" | "ignorarAsentimientosOcupado" | "acuseRapido" | "omitirAcuse">,
     readonly vozTts: string,
   ) {
     this.ahora = o.ahora ?? Date.now;
     this.conKeyterms = keytermsDe(apertura.vocabulario, o.config.cascadaV2.deepgram.keytermsMax).length > 0;
   }
 
-  /** Frase de espera ya dicha en el turno en curso (solo una por turno). */
+  /** Ids de las reglas condicionales ya agregadas a la conversacion. */
+  private readonly reglasActivas = new Set<string>();
+
+  /** Frase de espera ya dicha en esta LLAMADA (como mucho una; ver `esperaMinMs`). */
   private esperaDicha = false;
+
+  private temporizador(): { readonly poner: (fn: () => void, ms: number) => unknown; readonly quitar: (id: unknown) => void } {
+    return (
+      this.o.temporizador ?? {
+        poner: (fn, ms) => {
+          const id = setTimeout(fn, ms);
+          (id as { unref?: () => void }).unref?.();
+          return id;
+        },
+        quitar: (id) => clearTimeout(id as ReturnType<typeof setTimeout>),
+      }
+    );
+  }
 
   /** Proveedor del STT al abrir (el costo de lo pendiente se atribuye a el si la sesion ya se libero). */
   private ultimoProveedorStt: "deepgram" | "elevenlabs" = "deepgram";
@@ -183,6 +212,7 @@ class SesionCascadaV2 implements VozSesionLlamada {
           parcial: (texto) => this.alParcial(texto),
           turnoFinal: (texto) => this.alTurnoFinal(texto),
           caido: (codigo) => this.falla(new ErrorEtapa("stt", codigo.replace(/^stt_/, ""))),
+          descartado: (motivo) => this.log("v2_stt_descartado", { motivo }),
         },
       ),
       tts.abrir({ voz: this.vozTts, hzSalida: c.deepgramAura2.hzSalida }),
@@ -225,8 +255,10 @@ class SesionCascadaV2 implements VozSesionLlamada {
     if (!enCurso && !this.reproduciendo()) return;
     // Lo que ya sono se fija AHORA: despues el reloj sigue avanzando.
     this.oidasAlInterrumpir = this.oidasAhora();
-    // Interrumpir una lectura que aun suena: el cliente puede no haber oido el resumen completo; el siguiente «si» no cuenta como respuesta al resumen (se lee de nuevo).
-    this.esperandoAlCliente.huellaOida = null;
+    // Interrumpir una lectura que aun suena: el resumen cuenta como leido SOLO si la frase con el TOTAL ya termino de sonar (el cliente contesta «si» en cuanto oye el
+    // total, encima del «¿es correcto?» final: E2E r2 7-nov-2026). Si el total no alcanzo a sonar completo, el siguiente «si» no responde al resumen (se lee de nuevo).
+    this.resumenOidoAlInterrumpir();
+    this.log("v2_interrupcion", { motivo: enCurso ? "generando" : "sonando", ok: (this.esperandoAlCliente.huellaOida ?? null) !== null });
     if (enCurso) {
       this.generacion += 1;
       this.control?.abort();
@@ -237,6 +269,18 @@ class SesionCascadaV2 implements VozSesionLlamada {
     }
     if (this.audio) this.audio.totalMs = 0;
     this.h.interrumpido();
+  }
+
+  /** Turnos del cliente entregados por el STT (cada `turnoFinal`) y el ultimo que una guardia mando callar. */
+  private seqCliente = 0;
+  private silenciadoHasta = 0;
+
+  /** Una guardia determinista del controlador (alergia, persona, crisis) actuo sobre lo ultimo que dijo el cliente y dira su propio texto: el turno del modelo para
+   * ese mensaje (en curso o aun encolado) no habla, ni su acuse (revision #752 P2-1). `interrumpir` solo no basta: con la sesion libre no hace nada. */
+  silenciarTurnoPendiente(): void {
+    if (this.cerrada) return;
+    this.silenciadoHasta = this.seqCliente;
+    this.interrumpir();
   }
 
   async cerrar(): Promise<void> {
@@ -267,6 +311,8 @@ class SesionCascadaV2 implements VozSesionLlamada {
 
   private alParcial(texto: string): void {
     if (texto.trim() === "" || this.asentimientoMientrasPiensa(texto)) return;
+    // Una sola palabra en el parcial (un «oye» de la mesa de al lado, un golpe transcrito) no corta al agente: hacen falta dos. El turno final siempre corta.
+    if (texto.trim().split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length < 2) return;
     this.interrumpir();
   }
 
@@ -279,8 +325,9 @@ class SesionCascadaV2 implements VozSesionLlamada {
     this.interrumpir();
     this.esperandoAlCliente.pendiente = false; // el cliente respondio: ya puede crearse el pedido
     this.reportarSegundosStt();
+    const seq = ++this.seqCliente;
     this.h.usuarioDijo?.(texto);
-    this.encolar(() => this.turno(texto));
+    this.encolar(() => this.turno(texto, seq));
   }
 
   // ---- costo ----
@@ -395,10 +442,15 @@ class SesionCascadaV2 implements VozSesionLlamada {
   }
 
   /** Un turno completo: LLM en streaming (con herramientas) -> frases -> TTS. `texto` = lo que dijo el cliente (ya transcrito) o el disparador del saludo. */
-  private async turno(texto: string): Promise<void> {
+  private async turno(texto: string, seq?: number): Promise<void> {
     if (this.cerrada) return;
+    const silenciado = (): boolean => seq !== undefined && seq <= this.silenciadoHasta;
+    if (silenciado()) {
+      this.log("v2_turno_silenciado", { motivo: "guardia" });
+      return;
+    }
     const mia = ++this.generacion;
-    const vigente = (): boolean => !this.cerrada && this.generacion === mia;
+    const vigente = (): boolean => !this.cerrada && this.generacion === mia && !silenciado();
     const control = new AbortController();
     this.control = control;
     const senal = control.signal;
@@ -407,9 +459,12 @@ class SesionCascadaV2 implements VozSesionLlamada {
     this.oidasAlInterrumpir = null;
     this.indiceRespuestaFinal = null;
     this.vueltaActual = 0;
-    this.esperaDicha = false;
     this.turnosCliente += 1;
-    this.mensajes.push({ role: "user", content: texto });
+    // Reglas condicionales (dieta del prompt): las del tema que el cliente toca entran UNA vez, delante de su mensaje; la instruccion no cambia (cache del proveedor).
+    const nuevas = reglasActivadas(this.apertura.reglasCondicionales, texto, this.reglasActivas);
+    for (const r of nuevas) this.reglasActivas.add(r.id);
+    if (nuevas.length > 0) this.log("v2_reglas_activadas", { cantidad: nuevas.length });
+    this.mensajes.push({ role: "user", content: nuevas.length > 0 ? `${TITULO_REGLAS_CONDICIONALES}\n${nuevas.map((r) => r.texto).join("\n")}\n\n# LO QUE DIJO EL CLIENTE\n${texto}` : texto });
     this.esperandoAlCliente.cotizoEnTurno = false;
     this.esperandoAlCliente.huellaCotizada = null;
     this.esperandoAlCliente.totalCotizado = null;
@@ -418,15 +473,59 @@ class SesionCascadaV2 implements VozSesionLlamada {
     this.esperandoAlCliente.afirmacion = esAfirmacion(texto);
     this.esperandoAlCliente.cierreListo = false;
     this.esperandoAlCliente.forzadoEnTurno = false;
+    this.esperandoAlCliente.confirmadoEnTurno = false;
+    this.esperandoAlCliente.crearEnTurno = null;
+    this.esperandoAlCliente.pedidoPorAprobar = false;
+    this.esperandoAlCliente.forzarSiguiente = null;
     // Un rechazo/cancelacion deja sin vigencia el resumen leido (ver el cierre del turno).
     const rechazo = !this.esperandoAlCliente.afirmacion && esRechazo(texto);
     let habladoTurno = "";
+    const inicioMensajesTurno = this.mensajes.length;
+    // Frases que AFIRMAN el registro del pedido escritas antes de que crear_pedido tuviera exito: se retienen; suenan tras el exito o nunca. Se clasifican con el
+    // clasificador de la vertical Y con el de voz de la plataforma («Listo, queda registrado.», «Ya quedó.» con un pedido en juego: revision #752 P1-3).
+    const regla = this.o.confirmacionAntesDeCrear;
+    const afirmaRegistro = regla ? (f: string): boolean => regla.afirmaRegistro?.(f) === true || afirmaRegistroVoz(f, this.pedidoEnJuego()) : null;
+    const retenidas: FraseLlm[] = [];
+    /** Retenidas cuyo pedido ya se creo: suenan al terminar la vuelta siguiente (delante de lo que esa vuelta escribio), salvo que esa vuelta traiga su PROPIO anuncio
+     * del registro: entonces se descartan y el registro se anuncia una sola vez (P2-3b). */
+    let porLiberar: FraseLlm[] = [];
+    let enEspera: FraseLlm[] = [];
+    /** Frases que el modelo escribio y NO sonaron (retenidas descartadas): se quitan del historial. */
+    const noDichas: string[] = [];
+    /** Ya sono un relleno en este turno (acuse o frase de espera): como mucho uno (P2-2). */
+    let rellenoEmpujado = false;
 
     const cola = new ColaAsync<FraseLlm>();
-    const empujar = (f: FraseLlm): void => {
+    const empujarDirecto = (f: FraseLlm): void => {
       if (f.frase.trim() !== "") habladoTurno += ` ${f.frase}`;
       if (this.esperandoAlCliente.cotizoEnTurno === true && f.frase.trim() !== "") this.esperandoAlCliente.habladoTrasCotizar = `${this.esperandoAlCliente.habladoTrasCotizar ?? ""} ${f.frase}`;
       cola.push(f);
+    };
+    const liberar = (conRetenida: boolean): void => {
+      const p = porLiberar;
+      const e = enEspera;
+      porLiberar = [];
+      enEspera = [];
+      if (p.length > 0) {
+        // Solo la mas reciente: dos «quedó registrado» del mismo pedido serian un doble anuncio.
+        noDichas.push(...(conRetenida ? p.slice(0, -1) : p).map((x) => x.frase));
+        if (conRetenida) empujarDirecto(p[p.length - 1]!);
+      }
+      for (const x of e) empujarDirecto(x);
+    };
+    const empujar = (f: FraseLlm): void => {
+      if (porLiberar.length > 0 && f.espera !== true && f.frase.trim() !== "") {
+        if (afirmaRegistro?.(f.frase) === true) {
+          liberar(false);
+          empujarDirecto(f);
+        } else enEspera.push(f);
+        return;
+      }
+      if (afirmaRegistro && f.espera !== true && this.esperandoAlCliente.pedidoCreado !== true && f.frase.trim() !== "" && afirmaRegistro(f.frase)) {
+        retenidas.push(f);
+        return;
+      }
+      empujarDirecto(f);
     };
     let fallaTts: unknown = null;
     const bombeo = this.bombearFrases(cola, senal, vigente).catch((err: unknown) => {
@@ -435,10 +534,46 @@ class SesionCascadaV2 implements VozSesionLlamada {
       control.abort();
     });
     const cfg = this.o.config.cascadaV2;
+    const reloj = this.temporizador();
+    const turnoAudio = this.audio;
+    const callado = (): boolean => rellenoEmpujado || !vigente() || habladoTurno.trim() !== "" || (turnoAudio?.t0 ?? null) !== null;
+    const empujarRelleno = (frase: string): void => {
+      rellenoEmpujado = true;
+      cola.push({ frase, vuelta: this.vueltaActual, espera: true });
+    };
+    // Frase de espera (solo con el plazo del LLM encendido): si en `esperaMinMs` no hubo ni audio ni texto del modelo, UNA frase corta, una sola vez por llamada.
+    // No depende del plazo del hedge (2.5 s): ahi sonaba casi en cada turno e invitaba al cliente a hablar encima de la respuesta.
+    const tEspera =
+      this.o.plazoLlm && !this.esperaDicha && cfg.llm.frasesEspera.length > 0
+        ? reloj.poner(() => {
+            if (this.esperaDicha || callado()) return;
+            this.esperaDicha = true;
+            this.log("v2_frase_espera", { ms: cfg.llm.esperaMinMs });
+            empujarRelleno(cfg.llm.frasesEspera[this.turnosCliente % cfg.llm.frasesEspera.length]!);
+          }, cfg.llm.esperaMinMs)
+        : null;
+    // Acuse rapido (ver `acuseRapido`): lista fija, determinista, sin modelo; nunca en un turno de riesgo.
+    const conAcuse =
+      this.o.acuseRapido === true &&
+      !/^[([]/.test(texto) &&
+      !esAsentimiento(texto) &&
+      !esAfirmacion(texto) &&
+      !esTurnoDeRiesgoVoz(texto) &&
+      this.o.omitirAcuse?.(texto) !== true &&
+      (!this.o.modeloRapido || this.modeloDelTurno(0, texto) !== this.o.modeloRapido);
+    const tAcuse = conAcuse
+      ? reloj.poner(() => {
+          if (callado()) return;
+          this.log("v2_acuse", { ms: ACUSE_ESPERA_MS });
+          empujarRelleno(ACUSES_NEUTROS[(this.turnosCliente - 1) % ACUSES_NEUTROS.length]!);
+        }, ACUSE_ESPERA_MS)
+      : null;
     let errorLlm: unknown = null;
+    await this.precargarLecturas(texto, vigente);
     try {
       let vuelta = 0;
       let vacios = 0;
+      let forzadosEscalar = 0;
       let forzarCrear: string | undefined;
       while (vuelta <= this.o.vueltasToolMax) {
         this.vueltaActual = vuelta;
@@ -458,12 +593,7 @@ class SesionCascadaV2 implements VozSesionLlamada {
             }
           },
           () => {
-            // Plazo vencido sin primer token: una frase corta de espera (una por turno) mientras corre la peticion de respaldo. Se dice pero no entra al historial del modelo.
-            if (this.esperaDicha || !vigente()) return;
-            const frases = cfg.llm.frasesEspera;
-            if (frases.length === 0) return;
-            this.esperaDicha = true;
-            cola.push({ frase: frases[(this.turnosCliente + vuelta) % frases.length]!, vuelta, espera: true });
+            // Plazo del hedge vencido: corre la peticion de respaldo en silencio (la frase de espera tiene su propio plazo, `esperaMinMs`).
           },
           forzarCrear,
         );
@@ -475,6 +605,8 @@ class SesionCascadaV2 implements VozSesionLlamada {
         // Una respuesta cortada por el tope de tokens termina a media oracion: ese fragmento NO se dice; se cierra con una frase de respaldo.
         const resto = truncada ? (segmentador.vaciar(), null) : segmentador.vaciar();
         if (resto !== null) empujar({ frase: resto, vuelta });
+        // Termino la vuelta que siguio al registro sin anunciarlo ella misma: suena lo retenido y despues lo que esa vuelta escribio.
+        if (porLiberar.length > 0) liberar(true);
         if (truncada) {
           this.log("v2_respuesta_cortada", { proveedor: modelo, motivo: "length" });
           empujar({ frase: cfg.llm.fraseCorte, vuelta });
@@ -498,6 +630,15 @@ class SesionCascadaV2 implements VozSesionLlamada {
         this.mensajes.push({ role: "assistant", content: r.texto, ...(r.toolCalls.length ? { toolCalls: r.toolCalls } : {}) });
         if (r.toolCalls.length === 0) {
           this.indiceRespuestaFinal = this.mensajes.length - 1;
+          // Afirmo «quedó registrado» sin llamar crear y el cliente SI confirmo el resumen leido: se registra de verdad (vuelta forzada) en vez de callarlo.
+          const regla = this.o.confirmacionAntesDeCrear;
+          if (regla && retenidas.length > 0 && compuertaAbierta(this.esperandoAlCliente) && forzadosEscalar < 2 && vuelta < this.o.vueltasToolMax) {
+            forzadosEscalar += 1;
+            forzarCrear = this.confirmadoEnTurno() ? regla.crear : regla.confirmar;
+            this.log("v2_crear_forzado", { herramienta: forzarCrear, motivo: "afirmo_registro_sin_crear" });
+            vuelta += 1;
+            continue;
+          }
           break;
         }
         // El historial queda consistente aunque el cliente interrumpa a media herramienta: SIEMPRE se anotan las respuestas de las herramientas pedidas
@@ -510,8 +651,19 @@ class SesionCascadaV2 implements VozSesionLlamada {
           log: (evento, campos) => this.log(evento, campos ?? {}),
         });
         for (const res of resultados) this.mensajes.push({ role: "tool", toolCallId: res.llamada.id, content: JSON.stringify(res.salida ?? null) });
+        // El pedido ya existe (y no quedo por aprobar): lo retenido («quedó registrado») ya es cierto; suena tras la vuelta siguiente, salvo que ella lo anuncie.
+        if (this.esperandoAlCliente.pedidoCreado === true && retenidas.length > 0) porLiberar = retenidas.splice(0);
+        // Escalacion bloqueada con la compuerta abierta: la vuelta siguiente DEBE registrar el pedido (confirmar y luego crear).
+        const forzar = this.esperandoAlCliente.forzarSiguiente ?? null;
+        if (forzar !== null && this.o.confirmacionAntesDeCrear && forzadosEscalar < 2) {
+          forzadosEscalar += 1;
+          this.esperandoAlCliente.forzarSiguiente = null;
+          forzarCrear = forzar;
+          if (forzar === this.o.confirmacionAntesDeCrear.crear) this.esperandoAlCliente.forzadoEnTurno = true;
+          this.log("v2_crear_forzado", { herramienta: forzar, motivo: "escalar_sin_crear" });
+        }
         // Bucle R1: el «si» ya confirmo el resumen (compuerta abierta) y el modelo solo llamo confirmar: la vuelta siguiente DEBE llamar crear (una sola vez; la compuerta sigue valiendo).
-        if (this.cierreListo() && this.o.confirmacionAntesDeCrear) {
+        if (this.cierreListo() && this.o.confirmacionAntesDeCrear && forzarCrear === undefined) {
           forzarCrear = this.o.confirmacionAntesDeCrear.crear;
           this.esperandoAlCliente.cierreListo = false;
           this.esperandoAlCliente.forzadoEnTurno = true;
@@ -522,6 +674,30 @@ class SesionCascadaV2 implements VozSesionLlamada {
       }
     } catch (err) {
       errorLlm = err;
+    }
+    if (tEspera !== null) reloj.quitar(tEspera);
+    if (tAcuse !== null) reloj.quitar(tAcuse);
+    if (porLiberar.length > 0 || enEspera.length > 0) {
+      if (errorLlm === null && vigente()) liberar(true);
+      else {
+        noDichas.push(...porLiberar.map((f) => f.frase));
+        porLiberar = [];
+        enEspera = [];
+      }
+    }
+    if (retenidas.length > 0) {
+      // Afirmo el registro sin pedido creado (o quedo por aprobar): nunca se dice ni queda en el historial (el modelo no debe creer que ya lo dijo).
+      this.log("v2_registro_sin_crear", { motivo: this.porAprobar() ? "por_aprobar" : (this.esperandoAlCliente.crearEnTurno ?? "sin_crear") });
+      noDichas.push(...retenidas.map((f) => f.frase));
+    }
+    this.quitarDelHistorial(inicioMensajesTurno, noDichas);
+    // Sin pedido creado y sin nada dicho: se pide el «si» para registrarlo. Si crear SI corrio (pedido por aprobar), no: el modelo da el aviso de la sucursal.
+    if (retenidas.length > 0 && habladoTurno.trim() === "" && errorLlm === null && vigente() && this.esperandoAlCliente.crearEnTurno !== "ok") {
+      const f = cfg.llm.fraseSinRegistro;
+      empujarDirecto({ frase: f, vuelta: this.vueltaActual });
+      const i = this.indiceRespuestaFinal;
+      if (i !== null && this.mensajes[i]?.role === "assistant") this.mensajes[i] = { ...this.mensajes[i]!, content: f } as MensajeLlmVoz;
+      else this.mensajes.push({ role: "assistant", content: f });
     }
     cola.cerrar();
     await bombeo;
@@ -580,6 +756,61 @@ class SesionCascadaV2 implements VozSesionLlamada {
     }
   }
 
+  /** Corre las lecturas que precarga la vertical (ver `ManejadoresSesion.precargar`) y entrega al modelo las que trajeron resultado, como un intercambio
+   * assistant(tool_calls) + tool. Hasta `PRECARGA_MAX` lecturas en paralelo y `PRECARGA_MAX_CHARS` por resultado; una con error o vacia no entra (el modelo la pide). */
+  private async precargarLecturas(texto: string, vigente: () => boolean): Promise<void> {
+    const pedidas = this.h.precargar?.(texto, this.turnosCliente) ?? [];
+    if (pedidas.length === 0 || !vigente()) return;
+    const t0 = this.ahora();
+    const llamadas: ToolCallLlmVoz[] = pedidas.slice(0, PRECARGA_MAX).map((p, i) => ({ id: `precarga_${this.turnosCliente}_${i}`, nombre: p.nombre, argsJson: JSON.stringify(p.args) }));
+    const resultados = await Promise.all(
+      llamadas.map(async (tc) => {
+        try {
+          // Plazo propio corto: una lectura lenta no retrasa el turno (el modelo la pide si la necesita).
+          const plazo = new Promise<null>((r) => {
+            const t = setTimeout(() => r(null), PRECARGA_PLAZO_MS);
+            (t as { unref?: () => void }).unref?.();
+          });
+          return { tc, salida: await Promise.race([this.h.ejecutarTool({ id: tc.id, nombre: tc.nombre, args: JSON.parse(tc.argsJson) as Record<string, unknown>, precarga: true }), plazo]) };
+        } catch {
+          return { tc, salida: null };
+        }
+      }),
+    );
+    const utiles = resultados.filter((r) => resultadoUtil(r.salida));
+    this.log("v2_precarga", { intento: llamadas.length, invalidos: llamadas.length - utiles.length, ms: Math.round(this.ahora() - t0) });
+    if (utiles.length === 0 || !vigente()) return;
+    this.mensajes.push({ role: "assistant", content: "", toolCalls: utiles.map((u) => u.tc) });
+    for (const u of utiles) this.mensajes.push({ role: "tool", toolCallId: u.tc.id, content: JSON.stringify(u.salida).slice(0, PRECARGA_MAX_CHARS) });
+  }
+
+  /** Hay un pedido en juego (cotizado, resumen leido o esperando el «si»): «ya quedó» / «ya está» se refieren a el. */
+  private pedidoEnJuego(): boolean {
+    const e = this.esperandoAlCliente;
+    return e.pendiente === true || e.cotizoEnTurno === true || (e.huellaOida ?? null) !== null || (e.huellaUltima ?? null) !== null || (e.huellaCotizada ?? null) !== null;
+  }
+
+  /** Quita del historial del turno las frases que el modelo escribio y no sonaron. Las frases vienen LIMPIAS (`limpiarParaVoz`); el mensaje puede traer markdown o saltos de
+   * linea, asi que si no aparecen tal cual se busca en el texto limpio del mensaje (revision #752 P2-3a). */
+  private quitarDelHistorial(desde: number, frases: readonly string[]): void {
+    const quitar = frases.map((f) => f.trim()).filter((f) => f !== "");
+    if (quitar.length === 0) return;
+    for (let i = desde; i < this.mensajes.length; i++) {
+      const m = this.mensajes[i]!;
+      if (m.role !== "assistant" || typeof m.content !== "string") continue;
+      let c = m.content;
+      for (const q of quitar) {
+        if (c.includes(q)) c = c.split(q).join(" ");
+        else {
+          const limpio = limpiarParaVoz(c);
+          if (limpio.includes(q)) c = limpio.split(q).join(" ");
+        }
+      }
+      c = c.replace(/\s+/g, " ").trim();
+      if (c !== m.content) this.mensajes[i] = { ...m, content: c };
+    }
+  }
+
   /** Registra el uso del turno del LLM: costo por componente (real solo si el proveedor lo reporto) y, sin texto, el modelo, los tokens y la lectura de cache. */
   private registrarLlm(r: RespuestaLlmVoz, modelo: string, ttftMs: number | null, ms: number): void {
     this.h.costo?.(r.costoMicroUsd, r.costoReal === true, { proveedor: `openrouter:${modelo}`, unidad: "unidad", cantidad: 1 });
@@ -611,6 +842,39 @@ class SesionCascadaV2 implements VozSesionLlamada {
       });
     }
     return oidas;
+  }
+
+  /** Frases del turno (todas sus vueltas, sin rellenos) cuyo audio ya TERMINO de sonar: la siguiente frase de su ola ya empezo o la ola entera ya sono. */
+  private oidasCompletas(): string[] {
+    const a = this.audio;
+    if (!a || a.t0 === null) return [];
+    const transcurrido = this.ahora() - a.t0;
+    const oidas: string[] = [];
+    for (const ola of a.olas) {
+      const total = ola.chars.reduce((n, c) => n + c, 0) || 1;
+      let antes = 0;
+      ola.frases.forEach((f, i) => {
+        antes += ola.chars[i] ?? 0;
+        const fin = ola.inicioMs + ola.ms * (antes / total);
+        if (fin <= transcurrido && ola.esperas[i] !== true) oidas.push(f);
+      });
+    }
+    return oidas;
+  }
+
+  /** Al interrumpir: el resumen vigente (el cotizado en este turno o el ya leido antes) queda como oido solo si su total ya sono completo en este turno. */
+  private resumenOidoAlInterrumpir(): void {
+    const e = this.esperandoAlCliente;
+    const enTurno = e.cotizoEnTurno === true;
+    const huella = enTurno ? (e.huellaCotizada ?? null) : (e.huellaOida ?? null);
+    const total = enTurno ? (e.totalCotizado ?? null) : (e.totalOido ?? null);
+    if (huella !== null && total !== null && contieneTotal(this.oidasCompletas().join(" "), total)) {
+      e.huellaOida = huella;
+      e.totalOido = total;
+      this.log("v2_resumen_oido_al_interrumpir", { ok: true });
+      return;
+    }
+    e.huellaOida = null;
   }
 
   /** El turno se interrumpio: el historial debe reflejar lo que el cliente SI oyo, no lo que el modelo alcanzo a escribir ni lo que el TTS alcanzo a generar. */
@@ -696,7 +960,7 @@ export function crearProveedorCascadaV2(opts: CascadaV2Opciones): ProveedorCasca
     const sesion = new SesionCascadaV2(
       apertura,
       manejadores,
-      { llm: opts.llm, config, vueltasToolMax: opts.vueltasToolMax ?? 4, ...(opts.plazoLlm !== undefined ? { plazoLlm: opts.plazoLlm } : {}), ...(opts.modeloRapido ? { modeloRapido: opts.modeloRapido } : {}), ...(opts.ignorarAsentimientosOcupado ? { ignorarAsentimientosOcupado: true } : {}), ...(opts.temporizador ? { temporizador: opts.temporizador } : {}), ...(opts.herramientasEnParalelo ? { herramientasEnParalelo: opts.herramientasEnParalelo } : {}), ...(opts.confirmacionAntesDeCrear ? { confirmacionAntesDeCrear: opts.confirmacionAntesDeCrear } : {}), ...(opts.modeloLlm ? { modeloLlm: opts.modeloLlm } : {}), ...(opts.elegirModelo ? { elegirModelo: opts.elegirModelo } : {}), ...(opts.log ? { log: opts.log } : {}), ...(opts.ahora ? { ahora: opts.ahora } : {}) },
+      { llm: opts.llm, config, vueltasToolMax: opts.vueltasToolMax ?? 4, ...(opts.plazoLlm !== undefined ? { plazoLlm: opts.plazoLlm } : {}), ...(opts.modeloRapido ? { modeloRapido: opts.modeloRapido } : {}), ...(opts.ignorarAsentimientosOcupado ? { ignorarAsentimientosOcupado: true } : {}), ...(opts.acuseRapido ? { acuseRapido: true } : {}), ...(opts.omitirAcuse ? { omitirAcuse: opts.omitirAcuse } : {}), ...(opts.temporizador ? { temporizador: opts.temporizador } : {}), ...(opts.herramientasEnParalelo ? { herramientasEnParalelo: opts.herramientasEnParalelo } : {}), ...(opts.confirmacionAntesDeCrear ? { confirmacionAntesDeCrear: opts.confirmacionAntesDeCrear } : {}), ...(opts.modeloLlm ? { modeloLlm: opts.modeloLlm } : {}), ...(opts.elegirModelo ? { elegirModelo: opts.elegirModelo } : {}), ...(opts.log ? { log: opts.log } : {}), ...(opts.ahora ? { ahora: opts.ahora } : {}) },
       voz,
     );
     await sesion.iniciar(stt, tts);
@@ -747,6 +1011,52 @@ function armarPilaStt(opts: CascadaV2Opciones, config: ConfigPlataformaVoz, aper
     tts: opts.tts ?? (ttsDg ? ttsConRespaldo(ttsEl, ttsDg, vozAura, avisar) : ttsEl),
     voz: vozEl,
   };
+}
+
+/** Lecturas precargadas por turno y caracteres por resultado (el contexto precargado no debe encarecer el prompt mas de lo que ahorra). */
+export const PRECARGA_MAX = 4;
+export const PRECARGA_MAX_CHARS = 3_000;
+/** Plazo de cada lectura precargada: pasado, se descarta y el turno sigue (E2E r4: la API local tardo 4 s y retraso 6 s el turno). */
+export const PRECARGA_PLAZO_MS = 1_200;
+
+/** Resultado de lectura que vale la pena entregar: sin error y con contenido (una lista vacia o `null` no). */
+function resultadoUtil(salida: unknown): boolean {
+  if (salida === null || salida === undefined || typeof salida !== "object") return false;
+  const o = salida as Record<string, unknown>;
+  if (("error" in o && o["error"] !== undefined && o["error"] !== null && o["error"] !== false) || o["ok"] === false) return false;
+  if (Array.isArray(salida)) return salida.length > 0;
+  return Object.values(o).some((v) => (Array.isArray(v) ? v.length > 0 : v !== null && v !== undefined && v !== ""));
+}
+
+/** Acuses NEUTROS del acuse rapido (revision #752 P1-2): no afirman nada del pedido, del menu ni de la cuenta; ningun modelo los escribe. */
+/** Todos piden esperar (E2E r2 7-nov-2026: tras un «Claro.» suelto el agente callaba 2-3 s y el cliente lo tomaba como fin de turno y hablaba encima). */
+export const ACUSES_NEUTROS: readonly string[] = Object.freeze(["Claro, un momento.", "Déjeme ver.", "Entendido, lo reviso.", "Con gusto, déjeme ver."]);
+
+/** Silencio del agente (ms) antes del acuse: pasado este plazo ya no suena (el temporizador corre una sola vez por turno). */
+export const ACUSE_ESPERA_MS = 700;
+
+const normalizarRiesgo = (t: string): string => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+
+/** Turno de RIESGO para el acuse: alergias y salud, cancelacion, pago y cobros, pedir una persona o quejarse, privacidad, urgencias, precio o existencia de algo.
+ * Ahi un relleno puede sonar como respuesta («Claro.» a «¿el mole tiene cacahuate?»): no se dice. Conservador a proposito. */
+export function esTurnoDeRiesgoVoz(texto: string): boolean {
+  const t = normalizarRiesgo(texto);
+  return /\b(alerg\w*|celiac\w*|gluten|cacahuate\w*|mani|nuez|nueces|marisco\w*|lactosa|intoleran\w*|anafila\w*|diabet\w*|embaraz\w*|cancel\w*|ya no (lo |la |los |las )?quiero|devol\w*|reembols\w*|cobr\w*|pag\w*|tarjeta|transferencia|efectivo|factura\w*|cuenta|persona|humano|gerente|encargad\w*|asesor\w*|queja\w*|reclam\w*|hablar con|precio\w*|cuanto|cuesta\w*|costo\w*|vale|valen|hay|tienen|tiene|tendran?|queda|quedan|disponible\w*|lleva|llevan|trae|traen|contiene\w*|urgen\w*|emergencia|ambulancia|datos personales|privacidad)\b/.test(t);
+}
+
+/** Clasificador de VOZ de la plataforma para frases que afirman que el pedido ya quedo (revision #752 P1-3): el de la vertical exige el sujeto «pedido» y el segmentador
+ * corta por oracion, asi que «Listo, queda registrado.» llegaba sola. Con un pedido en juego atrapa tambien «Ya quedó.» / «Ya está.». Una pregunta, un condicional
+ * o una negacion no afirman nada; un dato personal anotado («queda registrada su direccion») no es el pedido. */
+export function afirmaRegistroVoz(frase: string, pedidoEnJuego: boolean): boolean {
+  if (!pedidoEnJuego || typeof frase !== "string" || /[?¿]/.test(frase)) return false;
+  if (/(?:^|[\s¡,;:(])si(?=[\s,])/.test(frase.toLowerCase())) return false;
+  const t = normalizarRiesgo(frase);
+  if (/\b(no|nunca|todavia|aun|falta|cuando|para que|en cuanto|una vez|antes de|hasta que|quedaria|podria|va a)\b/.test(t)) return false;
+  if (/\b(direccion|domicilio|nombre|telefono|correo|referencia|ubicacion)\b/.test(t)) return false;
+  if (/\b(queda|quedo|quedan|quedaron|esta|estan)\s+(ya\s+)?(registrad|confirmad|apuntad|anotad|levantad|tomad|capturad)\w*/.test(t)) return true;
+  if (/\b(queda|quedo|esta)\s+(ya\s+)?list[oa]s?\b/.test(t)) return true;
+  if (/\bya\s+(queda|quedo|esta)\b/.test(t)) return true;
+  return /\b(lo|la)\s+(registre|registramos|anote|anotamos|apunte|apuntamos|confirme|confirmamos|levante|capture)\b/.test(t);
 }
 
 /** Palabras de asentimiento / espera (sin contenido de pedido). */

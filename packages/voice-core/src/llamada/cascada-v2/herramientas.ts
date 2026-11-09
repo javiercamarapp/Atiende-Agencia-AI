@@ -19,9 +19,19 @@ export interface ResultadoHerramienta {
   readonly salida: unknown;
 }
 
+/** Regla confirmar -> crear de la vertical. `escalar` (opcional): herramienta de escalacion que NO corre mientras el pedido confirmado aun no se crea (ver `ejecutarHerramientas`).
+ * `afirmaRegistro` (opcional): clasificador de frases que AFIRMAN que el pedido ya quedo registrado; la sesion no las dice hasta que `crear` tiene exito. */
+export interface ReglaConfirmacion {
+  readonly confirmar: string;
+  readonly crear: string;
+  readonly cotizar?: string;
+  readonly escalar?: string;
+  readonly afirmaRegistro?: (frase: string) => boolean;
+}
+
 export interface OpcionesHerramientas {
   readonly enParalelo?: ReadonlySet<string>;
-  readonly confirmacionAntesDeCrear?: { readonly confirmar: string; readonly crear: string; readonly cotizar?: string };
+  readonly confirmacionAntesDeCrear?: ReglaConfirmacion;
   /** Falso = el turno ya no esta vigente (el cliente interrumpio o la llamada cerro): no se inicia ninguna herramienta mas. */
   readonly continuar?: () => boolean;
   /** Estado de la regla a nivel de SESION: `pendiente` = el modelo ya confirmo el resumen y espera la respuesta del cliente. Se enciende al ejecutar `confirmar` y la sesion lo apaga
@@ -57,7 +67,33 @@ export interface EstadoEspera {
   pagoCotizado?: "efectivo" | "tarjeta" | null;
   /** Ya se forzo `crear` en este turno del cliente: no se vuelve a forzar aunque el modelo llame `confirmar` otra vez. La sesion lo apaga al empezar cada turno. */
   forzadoEnTurno?: boolean;
+  /** `confirmar` tuvo exito en este turno (la sesion lo apaga al empezar cada turno). */
+  confirmadoEnTurno?: boolean;
+  /** `crear` respondio en este turno: `ok` (pedido creado), `falla` (error del servidor) o `compuerta` (lo freno esta compuerta: el cliente no ha dado un «si» valido). */
+  crearEnTurno?: "ok" | "falla" | "compuerta" | null;
+  /** Ya hay un pedido creado en esta llamada (las frases de registro ya son ciertas). Vuelve a false con una cotizacion NUEVA (otro pedido: revision #752 P2-3c) y no se
+   * enciende si el servidor lo dejo pendiente de aprobar (`pedido_grande` / `por_aprobar`: «quedó registrado» seria falso, P2-3d). */
+  pedidoCreado?: boolean;
+  /** Huella del ultimo pedido creado: una cotizacion con otra huella es otro pedido. */
+  huellaCreada?: string | null;
+  /** `crear` respondio que el pedido es grande y queda por aprobar (o retenido) en este turno. */
+  pedidoPorAprobar?: boolean;
+  /** Herramienta que la sesion debe FORZAR en la vuelta siguiente (escalacion bloqueada con la compuerta abierta: primero confirmar/crear). */
+  forzarSiguiente?: string | null;
 }
+
+/** La compuerta deja crear en este turno: el cliente afirmo el resumen vigente que ya se le leyo y el pedido aun no se crea. */
+export function compuertaAbierta(espera: EstadoEspera): boolean {
+  if (espera.afirmacion !== true || espera.crearEnTurno === "ok") return false;
+  const oida = espera.huellaOida ?? null;
+  const vigente = espera.huellaCotizada ?? espera.huellaUltima ?? null;
+  return oida !== null && (vigente === null || oida === vigente);
+}
+
+export const MENSAJE_PRIMERO_CREAR =
+  "No escale: el cliente ya confirmo el resumen con un «si». Primero registre el pedido (confirmar_resumen y crear_pedido); escale solo si crear_pedido falla.";
+export const MENSAJE_COMPUERTA_NO_ES_FALLA =
+  "No escale: espera_confirmacion_del_cliente NO es una falla del sistema. Lea el resumen completo con el total UNA vez y pida UN solo «si»; cuando el cliente diga que si, cree el pedido.";
 
 function huellaDe(salida: unknown): string | null {
   if (salida && typeof salida === "object" && !Array.isArray(salida)) {
@@ -91,6 +127,16 @@ function conError(salida: unknown): boolean {
   return ("error" in o && o["error"] !== undefined && o["error"] !== null && o["error"] !== false) || o["ok"] === false;
 }
 
+/** Motivos de escalacion que se frenan con la compuerta abierta (primero se registra el pedido). `""` = sin motivo. */
+const MOTIVOS_ESCALAR_FRENABLES: ReadonlySet<string> = new Set(["", "falla_sistema", "no_entiende"]);
+
+/** `crear` respondio sin error pero el pedido NO quedo en firme: pedido grande retenido o por aprobar por la sucursal. */
+function esPorAprobar(salida: unknown): boolean {
+  if (!salida || typeof salida !== "object" || Array.isArray(salida)) return false;
+  const o = salida as Record<string, unknown>;
+  return o["pedido_grande"] === true || o["por_aprobar"] === true || o["estado"] === "por_aprobar";
+}
+
 export const MENSAJE_ESPERA_CONFIRMACION =
   "Todavia no se puede crear el pedido: el cliente aun no contesto al resumen. Lea el resumen completo (pedido, entrega, pago y total) UNA vez, pida UN solo «si» y termine su respuesta sin llamar crear_pedido. " +
   "Cuando el cliente diga que si, llame crear_pedido (no le pida otro «si» ni vuelva a leer el resumen).";
@@ -119,6 +165,7 @@ export async function ejecutarHerramientas(
     // El codigo no da por hecho el «si» solo porque el cliente hablo: su turno debe ser una afirmacion (sin negacion, pregunta ni ruido).
     if (huellaLeida && espera.afirmacion !== true) log?.("v2_confirmacion_sin_afirmacion", { motivo: "bloquea_crear", herramienta: regla.confirmar });
     const leido = huellaLeida && espera.afirmacion === true;
+    if (!conError(salida)) espera.confirmadoEnTurno = true;
     if (!leido) espera.pendiente = true;
     else if (espera.forzadoEnTurno === true) log?.("v2_crear_no_forzado", { motivo: "ya_forzado_en_turno" });
     else if ((espera.pagoCotizado ?? null) === null) log?.("v2_crear_no_forzado", { motivo: "sin_pago" });
@@ -143,6 +190,8 @@ export async function ejecutarHerramientas(
     }
     if (h !== null && espera.totalCotizado === null) log?.("v2_total_desconocido", { motivo: "sin_total", herramienta: regla.cotizar });
     if (h === null || h !== espera.huellaOida) espera.huellaOida = null;
+    // Otro pedido en la misma llamada: sus frases de registro vuelven a esperar a su propio crear.
+    if (h !== null && espera.pedidoCreado === true && h !== (espera.huellaCreada ?? null)) espera.pedidoCreado = false;
   };
   const una = async (tc: ToolCallLlmVoz): Promise<ResultadoHerramienta> => {
     try {
@@ -164,13 +213,33 @@ export async function ejecutarHerramientas(
       resultados.push({ llamada: tc, salida: { error: "interrumpido_por_el_cliente", mensaje: "El cliente interrumpio: no se ejecuto. Escuche lo que dice antes de continuar." } });
       continue;
     }
+    if (regla?.escalar && tc.nombre === regla.escalar && espera.crearEnTurno !== "ok" && espera.crearEnTurno !== "falla") {
+      const motivo = argumentosDe(tc.argsJson)["motivo"];
+      // Escalar con el pedido confirmado y sin crear deja al cliente sin pedido (E2E 6-nov-2026): primero se registra; la escalacion solo vale si crear falla.
+      // Solo se frena una escalacion sin motivo de fondo (falla_sistema, no_entiende o sin motivo): alergia, privacidad, queja, urgencia o el cliente que pide una
+      // persona pasan SIEMPRE (revision #752 P2-4).
+      if (compuertaAbierta(espera) && MOTIVOS_ESCALAR_FRENABLES.has(typeof motivo === "string" ? motivo : "")) {
+        espera.forzarSiguiente = espera.confirmadoEnTurno === true ? regla.crear : regla.confirmar;
+        log?.("v2_escalar_sin_crear", { motivo: "compuerta_abierta", herramienta: espera.forzarSiguiente });
+        resultados.push({ llamada: tc, salida: { error: "primero_crear_pedido", mensaje: MENSAJE_PRIMERO_CREAR } });
+        continue;
+      }
+      // La compuerta acaba de frenar crear (el cliente no dio un «si» limpio) y el modelo lo toma como falla del sistema: no lo es.
+      if (espera.crearEnTurno === "compuerta" && (motivo === undefined || motivo === "falla_sistema")) {
+        log?.("v2_escalar_sin_crear", { motivo: "compuerta_no_es_falla", herramienta: regla.escalar });
+        resultados.push({ llamada: tc, salida: { error: "no_es_falla_del_sistema", mensaje: MENSAJE_COMPUERTA_NO_ES_FALLA } });
+        continue;
+      }
+    }
     if (regla && espera.pendiente && tc.nombre === regla.crear) {
+      espera.crearEnTurno ??= "compuerta";
       resultados.push({ llamada: tc, salida: { error: "espera_confirmacion_del_cliente", mensaje: MENSAJE_ESPERA_CONFIRMACION } });
       continue;
     }
     if (regla?.cotizar && tc.nombre === regla.crear) {
       // Sin una afirmacion del cliente en ESTE turno (negacion, pregunta, ruido, contenido nuevo) crear nunca corre, aunque el servidor siga «confirmado» de un turno anterior.
       if (espera.afirmacion !== true) {
+        espera.crearEnTurno ??= "compuerta";
         log?.("v2_crear_sin_afirmacion", { motivo: "bloquea_crear", herramienta: regla.crear });
         resultados.push({ llamada: tc, salida: { error: "espera_confirmacion_del_cliente", mensaje: MENSAJE_ESPERA_CONFIRMACION } });
         continue;
@@ -180,6 +249,7 @@ export async function ejecutarHerramientas(
       const huellaVigente = espera.huellaCotizada ?? espera.huellaUltima ?? null;
       const oida = espera.huellaOida ?? null;
       if (oida === null || (huellaVigente !== null && oida !== huellaVigente)) {
+        espera.crearEnTurno ??= "compuerta";
         log?.("v2_crear_sin_afirmacion", { motivo: "resumen_no_leido", herramienta: regla.crear });
         resultados.push({ llamada: tc, salida: { error: "espera_confirmacion_del_cliente", mensaje: MENSAJE_ESPERA_CONFIRMACION } });
         continue;
@@ -201,6 +271,17 @@ export async function ejecutarHerramientas(
     if (regla && tc.nombre === regla.cotizar) alCotizar(res.salida, tc.argsJson);
     if (regla && tc.nombre === regla.confirmar) alConfirmar(res.salida);
     // Pedido creado: ese resumen ya se uso. Un segundo «si» (o un crear repetido) debe pasar por una confirmacion nueva; la idempotencia sigue siendo del servidor.
+    if (regla && tc.nombre === regla.crear) {
+      espera.crearEnTurno = conError(res.salida) ? "falla" : "ok";
+      if (!conError(res.salida)) {
+        const porAprobar = esPorAprobar(res.salida);
+        espera.pedidoPorAprobar = porAprobar;
+        if (!porAprobar) {
+          espera.pedidoCreado = true;
+          espera.huellaCreada = espera.huellaCotizada ?? espera.huellaOida ?? espera.huellaUltima ?? null;
+        }
+      }
+    }
     if (regla?.cotizar && tc.nombre === regla.crear && !conError(res.salida)) {
       espera.huellaOida = null;
       espera.huellaUltima = null;

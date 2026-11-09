@@ -200,6 +200,11 @@ describe("POST .../admin/voz/preview/sesion", () => {
       },
     );
 
+    it("la vista previa (Gemini Live, sin reglas por tema) lleva TODAS las reglas condicionales dentro de la instruccion: la dieta del prompt no le quita ninguna", async () => {
+      const e = await previewConComportamiento("Hable de usted.");
+      for (const s of ["KILOS Y FRACCIONES", "COMBO DEL MARTES", "ÓRDENES DE 2 Y DE 5", "RELLAMADA", "TELÉFONO DICTADO"]) expect(e.comportamiento).toContain(s);
+    });
+
     it("el saludo inicial viaja ANTES del bloque (no puede pisar las reglas) y el tope del panel sigue siendo 8000 solo para el texto editable", async () => {
       const largo = "a".repeat(8000);
       const e = await previewConComportamiento(largo, "Hola, Los Taquitos de PM.");
