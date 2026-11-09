@@ -14,6 +14,8 @@ import type { LlamadaTelefonica, TelefoniaPort } from "./telefonia/puerto.ts";
 export interface EstadoSalud {
   readonly estado: "configurado" | "no_configurado";
   readonly motivos: readonly string[];
+  /** Avisos informativos de la configuracion (no cambian `sano`). */
+  readonly avisos: readonly string[];
   readonly escuchando: boolean;
   readonly llamadasActivas: number;
   readonly llamadasAtendidas: number;
@@ -52,6 +54,7 @@ export class Worker {
     return {
       estado: this.o.config.estado,
       motivos: this.o.config.motivos,
+      avisos: this.o.config.avisos,
       escuchando: this.escuchando,
       llamadasActivas: this.activas.size,
       llamadasAtendidas: this.atendidas,
@@ -75,6 +78,7 @@ export class Worker {
       for (const m of this.o.config.motivos) this.o.log("worker_motivo", { motivo: m });
       return false;
     }
+    for (const a of this.o.config.avisos) this.o.log("worker_aviso", { aviso: a });
     await this.o.telefonia.escuchar((tel) => this.alLlegar(tel));
     this.escuchando = true;
     this.o.log("worker_escuchando", { numeros: this.o.config.dnis.size });
