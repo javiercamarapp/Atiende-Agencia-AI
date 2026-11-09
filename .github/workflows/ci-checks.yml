@@ -134,7 +134,10 @@ jobs:
       - name: Typecheck (raíz + --workspaces --if-present, incluye apps/web)
         env:
           NODE_OPTIONS: --max-old-space-size=6144
-        run: /usr/bin/time -f "typecheck: pico de memoria %M KB, %e s" npm run typecheck
+        # Bloque literal a proposito: como escalar plano, el ": " dentro del formato de time rompia el YAML
+        # ("mapping values are not allowed") y todo push quedaba en "workflow file issue" sin jobs.
+        run: |
+          /usr/bin/time -f "typecheck: pico de memoria %M KB, %e s" npm run typecheck
 
       - name: Lint (ESLint, todo el árbol)
         run: npm run lint
