@@ -81,7 +81,7 @@ const COPILOTO_ROLES: ReadonlySet<string> = new Set(["admin_gestora", "contador"
  * como raíz sin título. Mismas rutas y etiquetas exactas que antes, solo reagrupadas (la agrupación original se inspiró en el
  * AdminSidebar de atiende-rentas-vacacionales standalone). "Plataforma" se omite: notificaciones, perfil y cierre de sesión ya
  * viven en el pie del Sidebar. Catálogo y Equipo se quedan en "Configuración": cada página gatea su contenido por rol. */
-function buildSections(t: Traductor, orgSlug: string, canSeeCopiloto: boolean, canSeePrivacidad: boolean): SidebarSection[] {
+export function buildSections(t: Traductor, orgSlug: string, canSeeCopiloto: boolean, canSeePrivacidad: boolean): SidebarSection[] {
   const ruta = (sufijo: string) => `/rentas/${orgSlug}${sufijo ? `/${sufijo}` : ""}`;
   return [
     {
@@ -223,6 +223,7 @@ export function RentasShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: R
       branchSelector={propiedadSelector("rentas-propiedad-activa")}
       mobileSelector={branches.length > 1 ? propiedadSelector("rentas-propiedad-activa-movil") : null}
       contentKey={propertyId}
+      guia={{ cargar: () => import("./guia-rentas.ts").then((m) => ({ contenido: m.GUIA_RENTAS, esenciales: m.esencialesRentas(org?.rol ?? ""), excluir: m.excluirRentas(org?.rol ?? "") })) }}
     >
       {children({ apiBaseUrl, token: session.token, propertyId, setPropertyId: s.selectBranch, properties: branches, orgSlug, session })}
     </VerticalShellConectado>

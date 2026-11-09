@@ -4,16 +4,36 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { RefreshCw } from "lucide-react";
-import { Button, Callout, Card, CardContent, EstadoCargando, EstadoError, PageContainer, StatusBadge, useT } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, EstadoCargando, EstadoError, PageContainer, PrimerosPasos, StatusBadge, iniciarRecorridoGuia, leerDisenoDs3, useT } from "@atiende/ui";
+import type { PrimerPaso } from "@atiende/ui";
 import { restaurantesOnboarding } from "@atiende/ui/i18n/restaurantes/onboarding";
-import { ESTADO_LABEL, RESPONSABLE_LABEL, fetchOnboarding, omitirGate, type OnboardingChecklist, type OnboardingEstado } from "../lib/onboarding-client.ts";
+import { ESTADO_LABEL, RESPONSABLE_LABEL, fetchOnboarding, omitirGate, type OnboardingChecklist, type OnboardingEstado, type OnboardingItem } from "../lib/onboarding-client.ts";
+import { etiquetaRol } from "../../../lib/roles.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 
 const TONO: Record<OnboardingEstado, "success" | "warning" | "danger" | "info"> = { hecho: "success", parcial: "warning", pendiente: "danger", externo: "info" };
 
-export function RestaurantesPrimerosPasosPage({ apiBaseUrl, token, propertyId, orgSlug }: RestaurantesShellContext) {
+/** Un punto del checklist del servidor como tarjeta de «Primeros pasos». Son «tuyos» los que cierra el dueño y los de Meta (el número lo
+ *  captura el dueño en Configuración con lo que Meta le da); los de la plataforma o del distribuidor del POS no cuentan para su avance. */
+export function aPrimerPaso(item: OnboardingItem, orgSlug: string): PrimerPaso {
+  return {
+    id: item.id,
+    titulo: item.titulo,
+    detalle: item.detalle,
+    estado: item.estado,
+    obligatorio: item.obligatorio,
+    responsable: RESPONSABLE_LABEL[item.responsable],
+    faltantes: item.estado === "hecho" ? [] : item.faltantes,
+    href: `/restaurantes/${orgSlug}/${item.pantalla}`,
+    puedeHacerlo: item.responsable === "dueno" || item.responsable === "meta",
+  };
+}
+
+export function RestaurantesPrimerosPasosPage({ apiBaseUrl, token, propertyId, orgSlug, role }: RestaurantesShellContext) {
   const t = useT(restaurantesOnboarding);
   const navigate = useNavigate();
+  // ds3: el patrón /setup de Rovaq (y su «Hacer el recorrido», que solo funciona con la guía) vive bajo la bandera; sin ella, la lista de siempre.
+  const [ds3] = useState(leerDisenoDs3);
   const [estado, setEstado] = useState<OnboardingChecklist | "cargando" | { error: string }>("cargando");
 
   const cargar = useCallback(() => {
@@ -65,33 +85,43 @@ export function RestaurantesPrimerosPasosPage({ apiBaseUrl, token, propertyId, o
             {t("restaurantes.onboarding.calculo")}
             {checklist.gate.operaConPedidos && checklist.resumen.obligatoriosPendientes > 0 ? t("restaurantes.onboarding.operaConPedidos") : ""}
           </Callout>
-          <ul className="flex flex-col gap-2">
-            {checklist.items.map((item) => (
-              <li key={item.id}>
-                <Card>
-                  <CardContent className="flex flex-col gap-1.5 p-3">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="m-0 text-sm font-medium text-foreground">
-                        {item.titulo}
-                        {item.obligatorio && <span className="ml-1.5 text-xs font-normal text-muted-foreground">{t("restaurantes.onboarding.obligatorio")}</span>}
-                      </p>
-                      <StatusBadge tone={TONO[item.estado]}>{ESTADO_LABEL[item.estado]}</StatusBadge>
-                    </div>
-                    <p className="m-0 text-xs text-muted-foreground">{item.detalle}</p>
-                    {item.estado !== "hecho" && item.faltantes.length > 0 && <p className="m-0 text-xs text-foreground">{t("restaurantes.onboarding.faltaEn", { lista: item.faltantes.join(", ") })}</p>}
-                    {item.estado !== "hecho" && (
-                      <p className="m-0 flex flex-wrap items-center gap-x-3 text-xs text-muted-foreground">
-                        <span>{t("restaurantes.onboarding.loCierra", { responsable: RESPONSABLE_LABEL[item.responsable] })}</span>
-                        <Link className="underline underline-offset-2" to={`/restaurantes/${orgSlug}/${item.pantalla}`}>
-                          {t("restaurantes.onboarding.irPantalla")}
-                        </Link>
-                      </p>
-                    )}
-                  </CardContent>
-                </Card>
-              </li>
-            ))}
-          </ul>
+          {ds3 ? (
+            /* ds3: patrón /setup de Rovaq: avance honesto («n de m que puedes hacer ahora»), recomendado, quién lo cierra y celebración. */
+            <PrimerosPasos
+              pasos={checklist.items.map((item) => aPrimerPaso(item, orgSlug))}
+              rolEtiqueta={etiquetaRol(role) ?? role}
+              claveCelebracion={`restaurantes:${orgSlug}`}
+              onRecorrido={() => iniciarRecorridoGuia("corto")}
+            />
+          ) : (
+            <ul className="flex flex-col gap-2">
+              {checklist.items.map((item) => (
+                <li key={item.id}>
+                  <Card>
+                    <CardContent className="flex flex-col gap-1.5 p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="m-0 text-sm font-medium text-foreground">
+                          {item.titulo}
+                          {item.obligatorio && <span className="ml-1.5 text-xs font-normal text-muted-foreground">{t("restaurantes.onboarding.obligatorio")}</span>}
+                        </p>
+                        <StatusBadge tone={TONO[item.estado]}>{ESTADO_LABEL[item.estado]}</StatusBadge>
+                      </div>
+                      <p className="m-0 text-xs text-muted-foreground">{item.detalle}</p>
+                      {item.estado !== "hecho" && item.faltantes.length > 0 && <p className="m-0 text-xs text-foreground">{t("restaurantes.onboarding.faltaEn", { lista: item.faltantes.join(", ") })}</p>}
+                      {item.estado !== "hecho" && (
+                        <p className="m-0 flex flex-wrap items-center gap-x-3 text-xs text-muted-foreground">
+                          <span>{t("restaurantes.onboarding.loCierra", { responsable: RESPONSABLE_LABEL[item.responsable] })}</span>
+                          <Link className="underline underline-offset-2" to={`/restaurantes/${orgSlug}/${item.pantalla}`}>
+                            {t("restaurantes.onboarding.irPantalla")}
+                          </Link>
+                        </p>
+                      )}
+                    </CardContent>
+                  </Card>
+                </li>
+              ))}
+            </ul>
+          )}
         </>
       )}
     </PageContainer>

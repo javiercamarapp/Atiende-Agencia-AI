@@ -39,7 +39,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { SelectorSucursal, useT, VerticalShellEstado } from "@atiende/ui";
-import type { BottomNavItem, SidebarSection } from "@atiende/ui";
+import type { BottomNavItem, SidebarSection, Traductor } from "@atiende/ui";
 import { VerticalShellConectado } from "../../components/VerticalShellConectado.tsx";
 import { etiquetaRol } from "../../lib/roles.ts";
 import { useVerticalSession } from "../../lib/useVerticalSession.ts";
@@ -162,32 +162,14 @@ const CONVERSACIONES_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "gm", "f
 const MENSAJERIA_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "gm"]);
 const HOUSEKEEPING_NAV_ROLES: ReadonlySet<string> = new Set(["owner", "gm", "frontdesk", "housekeeping", "maintenance"]);
 
-export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: HotelesShellProps) {
-  // Título de pestaña por vertical/organización. El hook va ANTES de los returns condicionales.
-  const t = useT(nav, shell, consola);
-  useDocumentTitle(t("consola.vertical.hoteles"), orgSlug);
-  // Fail-closed: si la organización activa no aparece en la sesión (no debería pasar, ver decideHotelesLandingPath),
-  // cae al rol operativo MÁS bajo de HOTEL_ROLES (nunca uno que active gates administrativos/de F&B de más).
-  const s = useVerticalSession({ adapter: HOTELES_SESSION, apiBaseUrl, orgSlug, onRequireLogin, defaultRole: "housekeeping" });
-
-  if (s.fase === "resolviendo") return <VerticalShellEstado estado="cargando" mensaje={t("shell.cargando")} />;
-  if (s.fase === "sin-sesion") return null; // onRequireLogin ya disparó la redirección
-  if (s.fase === "error") return <VerticalShellEstado estado="error" mensaje={s.error ?? undefined} onReintentar={s.reintentar} />;
-  if (s.fase === "cargando") return <VerticalShellEstado estado="cargando" mensaje={t("consola.cargandoPropiedades")} />;
-  if (s.fase === "vacio") return <VerticalShellEstado estado="vacio" mensaje={t("consola.vacio.sinHotel")} />;
-
-  const { session, branches, activeBranch, propertyId, role } = s;
-
-  // "Pregúntale a tus datos": conexion real con el backend de hoteles (catalogo cerrado, solo owner/gm en el servidor).
-  // El servidor decide el alcance a partir del token; aqui solo van el hotel activo y el texto.
-  const chatConexion = crearChatConexionHoteles(apiBaseUrl, session.token, propertyId);
-
+/** Menu lateral de hoteles por rol (exportado para la guia y sus pruebas; mismo resultado que antes, solo se saco del componente). */
+export function buildSections(t: Traductor, orgSlug: string, role: string): SidebarSection[] {
   const base = `/hoteles/${orgSlug}`;
 
   // UNI-6: categorías en el orden de Likida (Operación, Huéspedes, Finanzas, Agentes, Configuración) con "Resumen" como raíz
   // sin título. Mismas rutas, etiquetas y gates de rol que antes (ver *_NAV_ROLES arriba): solo se reagrupan. Una categoría
   // cuyo rol activo no ve ningún destino se omite por completo (un acordeón vacío confunde).
-  const sections: SidebarSection[] = [
+  return [
     {
       title: t("nav.resumen"),
       siempreAbierto: true,
@@ -243,6 +225,31 @@ export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: 
       ],
     },
   ].filter((sec) => sec.items.length > 0);
+}
+
+export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: HotelesShellProps) {
+  // Título de pestaña por vertical/organización. El hook va ANTES de los returns condicionales.
+  const t = useT(nav, shell, consola);
+  useDocumentTitle(t("consola.vertical.hoteles"), orgSlug);
+  // Fail-closed: si la organización activa no aparece en la sesión (no debería pasar, ver decideHotelesLandingPath),
+  // cae al rol operativo MÁS bajo de HOTEL_ROLES (nunca uno que active gates administrativos/de F&B de más).
+  const s = useVerticalSession({ adapter: HOTELES_SESSION, apiBaseUrl, orgSlug, onRequireLogin, defaultRole: "housekeeping" });
+
+  if (s.fase === "resolviendo") return <VerticalShellEstado estado="cargando" mensaje={t("shell.cargando")} />;
+  if (s.fase === "sin-sesion") return null; // onRequireLogin ya disparó la redirección
+  if (s.fase === "error") return <VerticalShellEstado estado="error" mensaje={s.error ?? undefined} onReintentar={s.reintentar} />;
+  if (s.fase === "cargando") return <VerticalShellEstado estado="cargando" mensaje={t("consola.cargandoPropiedades")} />;
+  if (s.fase === "vacio") return <VerticalShellEstado estado="vacio" mensaje={t("consola.vacio.sinHotel")} />;
+
+  const { session, branches, activeBranch, propertyId, role } = s;
+
+  // "Pregúntale a tus datos": conexion real con el backend de hoteles (catalogo cerrado, solo owner/gm en el servidor).
+  // El servidor decide el alcance a partir del token; aqui solo van el hotel activo y el texto.
+  const chatConexion = crearChatConexionHoteles(apiBaseUrl, session.token, propertyId);
+
+  const base = `/hoteles/${orgSlug}`;
+
+  const sections = buildSections(t, orgSlug, role);
 
   // Hoteles tiene hasta 16 destinos: la barra trae 4 de uso diario (visibles para todos los roles, con etiqueta completa) y
   // "Más" (lo agrega `VerticalShell`) abre TODAS las secciones del mismo árbol que el Sidebar de escritorio, ya filtradas por rol.
@@ -276,6 +283,7 @@ export function HotelesShell({ apiBaseUrl, orgSlug, onRequireLogin, children }: 
       branchSelector={hotelSelector("hoteles-hotel-activo")}
       mobileSelector={branches.length > 1 ? hotelSelector("hoteles-hotel-activo-movil") : null}
       contentKey={propertyId}
+      guia={{ cargar: () => import("./guia-hoteles.ts").then((m) => ({ contenido: m.GUIA_HOTELES, esenciales: m.esencialesHoteles(role) })) }}
     >
       {children({ apiBaseUrl, token: session.token, propertyId, orgSlug, role, staffFullName: session.fullName, staffEmail: session.email, propertyName: activeBranch.nombre })}
     </VerticalShellConectado>
