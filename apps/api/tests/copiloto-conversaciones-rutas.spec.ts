@@ -225,7 +225,9 @@ describe("guardar un turno (POST con conversationId)", () => {
     const body = (await (await h.app.request(chat(h), authedJson(h.ownerToken, { question: "ocupación" }))).json()) as Record<string, unknown>;
     expect(h.repo.appended).toHaveLength(0);
     expect(h.store).toHaveLength(0);
-    expect(Object.keys(body).sort()).toEqual(["blocks", "sources", "status", "text", "toolsUsed"]);
+    // Sin campos de PERSISTENCIA (conversationId, seq, guardado). `coverage` es del motor («x de y fuentes»), aditivo para cualquier cliente.
+    expect(Object.keys(body).sort()).toEqual(["blocks", "coverage", "sources", "status", "text", "toolsUsed"]);
+    expect(body["coverage"]).toEqual({ consulted: 1, withData: 1 });
   });
 
   it("una respuesta de transporte (tope de turnos, rate_limited) no se guarda ni inventa conversacion", async () => {

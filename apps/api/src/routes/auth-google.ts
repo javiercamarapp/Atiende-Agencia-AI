@@ -38,6 +38,7 @@ import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { Errors } from "../errors.ts";
 import { readJsonCapped, requestActor } from "../http-security.ts";
 import { EXCHANGE_CODE_TTL_MS } from "./auth.ts";
+import { completarRegistroConGoogle } from "./registro-restaurantes.ts";
 import type { AppDeps } from "../deps.ts";
 
 const CALLBACK_PATH = "/auth/google/callback";
@@ -201,6 +202,18 @@ export function authGoogleRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
         if (owner && owner.id !== staffId) return c.redirect(vincularRetornoUrl(deps.env.appBaseUrl, verticalVinculo, orgSlug, "google_ya_vinculada").toString(), 302);
         if (!owner) await deps.coreRepo.linkGoogleIdentity({ staffId, sub: claims.sub, email: claims.email.toLowerCase() });
         return c.redirect(vincularRetornoUrl(deps.env.appBaseUrl, verticalVinculo, orgSlug, "ok").toString(), 302);
+      }
+
+      // Registro autoservicio (purpose=signup, restaurantes): el `state` firmado trae el token de la solicitud; Google ya verifico el
+      // correo (verifyGoogleIdToken exige email_verified). Crea la organizacion o manda al registro con un error legible.
+      if (oauthState.purpose === "signup") {
+        if (!oauthState.registroHash) {
+          const url = new URL("/restaurantes/registro", deps.env.appBaseUrl);
+          url.searchParams.set("registro_error", "state_invalido");
+          return c.redirect(url.toString(), 302);
+        }
+        const destino = await completarRegistroConGoogle(deps, c, { registroHash: oauthState.registroHash, correo: claims.email, sub: claims.sub });
+        return c.redirect(destino.toString(), 302);
       }
 
       // 1) ¿Ya existe una identidad de Google vinculada a este `sub`? -- caso más

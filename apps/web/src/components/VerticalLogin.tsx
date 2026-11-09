@@ -9,11 +9,11 @@
 //
 // Decision del dueno (6-nov): el inicio de sesion de las 6 verticales es el de Rovaq AI (`VerticalLoginDs3`, misma API y
 // mismos metodos de acceso) para TODOS, sin bandera: el login ocurre antes de conocer la organizacion, asi que una bandera
-// por organizacion no puede aplicar. La pantalla anterior (`VerticalLoginLegado`) queda solo como interruptor de emergencia
-// de build: `VITE_LOGIN_LEGADO=1` (apagado por omision).
+// por organizacion no puede aplicar. La pantalla anterior (`VerticalLoginLegado`) queda solo bajo el interruptor de emergencia
+// unico del diseno anterior: `VITE_DISENO_LEGADO=1` en el build (apagado por omision; ver `disenoLegadoActivo` de @atiende/ui).
 import { useEffect, useId, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { AtiendeMark, AtiendeWordmark, FormField, GoogleIcon } from "@atiende/ui";
+import { AtiendeMark, AtiendeWordmark, FormField, GoogleIcon, disenoLegadoActivo } from "@atiende/ui";
 import type { FormEvent } from "react";
 import { EtiquetaBoton } from "./EtiquetaBoton.tsx";
 import { OlvidoContrasena } from "../shell/cuenta/OlvidoContrasena.tsx";
@@ -26,14 +26,7 @@ import "../pages/login.css";
 
 export { esCorreoValido, type VerticalLoginHero, type VerticalLoginProps } from "./login-comun.ts";
 
-type EntornoVite = { env?: { VITE_LOGIN_LEGADO?: string } };
-
-/** Interruptor de emergencia: solo `"1"` vuelve a la pantalla anterior; vacio o cualquier otro valor = login de Rovaq. */
-export function loginLegadoActivo(valor: string | undefined = (import.meta as unknown as EntornoVite).env?.VITE_LOGIN_LEGADO): boolean {
-  return (valor ?? "").trim() === "1";
-}
-
-const LOGIN_LEGADO = loginLegadoActivo();
+const LOGIN_LEGADO = disenoLegadoActivo();
 
 /** La constante se lee una vez al cargar el modulo: en una sesion siempre se monta la misma pantalla (los hooks no se mezclan). */
 export function VerticalLogin(props: VerticalLoginProps) {
