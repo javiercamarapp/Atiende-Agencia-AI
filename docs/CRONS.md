@@ -24,9 +24,9 @@ Vercel invoca por GET con `Authorization: Bearer $CRON_SECRET` (mismo valor que 
 
 | Path | Schedule (UTC) | Qué hace |
 |---|---|---|
-| `/internal/licitaciones/discover-tenders` | `0 5 * * *` | Descubre licitaciones nuevas |
+| `/internal/licitaciones/discover-tenders` | `0 5 * * *` | Descubre licitaciones nuevas. L-P3-08/09: detecta cambios de bases de convocatorias conocidas (version + invalidacion de aprobaciones + aviso) y avisa las convocatorias nuevas con match (campana, correo y WhatsApp con opt-in) |
 | `/internal/licitaciones/deadline-reminders` | `0 6 * * *` | Avisos de plazos |
-| `/internal/licitaciones/alert-notifications` | `0 7 * * *` | Alertas de coincidencias |
+| `/internal/licitaciones/alert-notifications` | `0 7 * * *` | Alertas de coincidencias. L-P3-11: ademas emite el resumen semanal por organizacion (una vez por semana, solo si hay algo que contar). L-P3-10: tras el barrido corre el re-tamizado KYC de la cartera contra la edicion MAS RECIENTE de la lista 69-B (respaldo diario e idempotente de la cadena que dispara la descarga mensual de despachos; sin cron nuevo: el plan Pro topa en 40) |
 | `/internal/licitaciones/email-dispatch` | `*/15 * * * *` | Drena el outbox de correo |
 | `/internal/hoteles/identidad-purga` | `0 8 * * *` | Purga de la bóveda de identidad vencida |
 | `/internal/hoteles/night-audit` | `0 9 * * *` | Auditoría nocturna |
