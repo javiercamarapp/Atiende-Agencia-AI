@@ -27,6 +27,8 @@ import {
   pgListarConocimientoPublicado,
 } from "./conocimiento/postgres.ts";
 import { OrderConflictError, WhatsAppAgentConfigConflictError, WhatsappNumberInUseError } from "./errors.ts";
+import { AvisoEnCaminoConfigRechazadaError, mapearContextoAvisoEnCamino } from "./aviso-en-camino.ts";
+import type { EstadoAvisoEnCamino, LecturaConfigAvisoEnCamino, LecturaContextoAvisoEnCamino } from "./aviso-en-camino.ts";
 import type { LecturaResumenConfig, ResumenConfig, VoiceSecretMatch, VoiceToolAuditInput } from "./types.ts";
 import type {
   Branch,
@@ -1545,6 +1547,69 @@ export class PostgresRestaurantesRepository implements RestaurantesRepository {
     }
     const { rows } = await this.db.query<{ phone_number_id: string }>(`select phone_number_id from restaurantes.whatsapp_channel_config where organization_id = $1;`, [organizationId]);
     return rows[0]?.phone_number_id ?? null;
+  }
+
+  // ---- Aviso «va en camino» (migracion 107). Corre dentro de la transaccion del cambio de estado: cada llamada lleva SAVEPOINT; contra la base sin la
+  // 107 (42883/42P01/42703) la lectura responde `disponible: false` (el llamador conserva el aviso anterior) y la marca no hace nada.
+  async leerContextoAvisoEnCamino(organizationId: string, orderId: string): Promise<LecturaContextoAvisoEnCamino> {
+    return runWithSavepointFallback<LecturaContextoAvisoEnCamino>({
+      session: this.db,
+      savepointName: "sp_restaurantes_aviso_en_camino_contexto",
+      primary: async () => {
+        const { rows } = await this.db.query<{ c: Record<string, unknown> | null }>(`select restaurantes.aviso_en_camino_contexto($1::uuid, $2::uuid) as c;`, [organizationId, orderId]);
+        return { disponible: true, contexto: mapearContextoAvisoEnCamino(rows[0]?.c ?? null) };
+      },
+      isRecoverable: (err) => isMigrationPendingError(err),
+      fallback: async () => ({ disponible: false }),
+    });
+  }
+
+  async marcarAvisoEnCamino(organizationId: string, orderId: string, estado: EstadoAvisoEnCamino): Promise<void> {
+    await runWithSavepointFallback<void>({
+      session: this.db,
+      savepointName: "sp_restaurantes_aviso_en_camino_marcar",
+      primary: async () => {
+        await this.db.query(`select restaurantes.aviso_en_camino_marcar($1::uuid, $2::uuid, $3);`, [organizationId, orderId, estado]);
+      },
+      isRecoverable: (err) => isMigrationPendingError(err),
+      fallback: async () => undefined,
+    });
+  }
+
+  async notificarFaltaPlantillaEnCamino(organizationId: string, propertyId: string): Promise<void> {
+    // Clave fija: UNA notificacion por organizacion (el productor deduplica). Sin PII: solo el nombre de la plantilla a dar de alta.
+    await emitirNotificacion(this.db, { evento: "restaurantes.whatsapp.aviso_en_camino_sin_plantilla", organizationId, propertyId, clave: "falta_plantilla" });
+  }
+
+  async leerConfigAvisoEnCamino(organizationId: string): Promise<LecturaConfigAvisoEnCamino> {
+    return runWithSavepointFallback<LecturaConfigAvisoEnCamino>({
+      session: this.db,
+      savepointName: "sp_restaurantes_aviso_en_camino_config_leer",
+      primary: async () => {
+        const { rows } = await this.db.query<{ activo: boolean | null }>(`select restaurantes.aviso_en_camino_config_leer($1::uuid) as activo;`, [organizationId]);
+        return { disponible: true, activo: rows[0]?.activo !== false };
+      },
+      isRecoverable: (err) => isMigrationPendingError(err),
+      fallback: async () => ({ disponible: false, activo: true }),
+    });
+  }
+
+  async guardarConfigAvisoEnCamino(organizationId: string, activo: boolean): Promise<LecturaConfigAvisoEnCamino> {
+    try {
+      return await runWithSavepointFallback<LecturaConfigAvisoEnCamino>({
+        session: this.db,
+        savepointName: "sp_restaurantes_aviso_en_camino_config_guardar",
+        primary: async () => {
+          const { rows } = await this.db.query<{ activo: boolean }>(`select restaurantes.aviso_en_camino_config_guardar($1::uuid, $2::boolean) as activo;`, [organizationId, activo]);
+          return { disponible: true, activo: rows[0]?.activo === true };
+        },
+        isRecoverable: (err) => isMigrationPendingError(err),
+        fallback: async () => ({ disponible: false, activo: true }),
+      });
+    } catch (err) {
+      if ((err as { code?: unknown })?.code === "42501") throw new AvisoEnCaminoConfigRechazadaError();
+      throw err;
+    }
   }
 
   // ---- Fase 9 — bandeja de notificaciones internas al staff (ver

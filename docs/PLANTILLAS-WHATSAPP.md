@@ -48,6 +48,11 @@ Restaurantes (aviso de estado de pedido, ya existente): `pedido_confirmado`, `pe
 `pedido_cancelado`, con `{{1}}` nombre, `{{2}}` sucursal y `{{3}}` total (ver `PLANTILLAS_ESTADO_PEDIDO`). Se declaran en `WHATSAPP_APPROVED_TEMPLATES`;
 este PR no agrega pantalla para ellas.
 
+Restaurantes, aviso «va en camino» (migración 107): ya no usa la lista global. Sale como texto libre dentro de la ventana y, fuera de ella, SOLO con
+la plantilla aprobada del evento `order.en_camino` en el catálogo de la organización (`pedido_en_camino`, utility, es_MX, `{{1}}` sucursal, `{{2}}`
+folio, `{{3}}` tiempo). Sin ella no se envía, el pedido queda `omitido_falta_plantilla` y el dueño recibe una notificación. Texto exacto, registro en el
+catálogo y costo: `docs/restaurantes/AVISO-EN-CAMINO.md`.
+
 Restaurantes, autopiloto del ciclo del pedido (`PLANTILLAS_AUTOPILOTO`, `packages/domain-restaurantes/src/autopiloto/servicio.ts`): todas con `{{1}}` nombre del
 cliente, `{{2}}` sucursal y `{{3}}` detalle. `pedido_aprobado` (detalle = total), `pedido_no_confirmado` (rechazo de un pedido grande), `cancelacion_no_posible`
 (el pedido ya esta en proceso), `compensacion_sin_costo_extra`, `compensacion_reposicion`, `compensacion_descuento` (detalle = codigo de un solo uso) y

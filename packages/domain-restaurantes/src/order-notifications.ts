@@ -30,6 +30,8 @@ import { resolverZonaHorariaNegocio } from "@atiende/core-tenancy";
 import type { TenantDbSession } from "@atiende/core-tenancy";
 import { etiquetaHoraLocal } from "./horarios.ts";
 import { toWhatsAppRecipient } from "./phone.ts";
+import { avisarPedidoEnCamino } from "./aviso-en-camino.ts";
+import type { MotivoAvisoEnCaminoOmitido } from "./aviso-en-camino.ts";
 import { correoConfirmacionPedido } from "./emails/order-templates.ts";
 import type { Order, OrderStatus } from "./types.ts";
 import type { RestaurantesRepository, StaffOrderNotificationEventType } from "./repository.ts";
@@ -120,7 +122,9 @@ export function plantillaParaEstado(order: Order): { readonly name: string; read
 
 export interface CustomerOrderNotificationResult {
   readonly enqueued: boolean;
-  readonly reason?: "status_not_notified" | "no_customer_phone" | "no_whatsapp_channel";
+  readonly reason?: "status_not_notified" | "no_customer_phone" | "no_whatsapp_channel" | Exclude<MotivoAvisoEnCaminoOmitido, "no_customer_phone" | "no_whatsapp_channel">;
+  /** Solo en el aviso «va en camino» con la migracion 107: salio como texto libre (ventana abierta) o como plantilla aprobada. */
+  readonly como?: "texto" | "plantilla";
 }
 
 /**
@@ -142,6 +146,12 @@ export interface CustomerOrderNotificationResult {
  */
 export async function notifyCustomerOnOrderStatusChangeCore(repo: RestaurantesRepository, order: Order): Promise<CustomerOrderNotificationResult> {
   if (!CUSTOMER_NOTIFIED_STATUSES.has(order.status)) return { enqueued: false, reason: "status_not_notified" };
+  // Decision del dueno (9-nov-2026): «en camino» tiene reglas propias (una vez por pedido, texto en ventana, plantilla aprobada fuera, omitido honesto
+  // sin plantilla). `null` = base sin la migracion 107: sigue el aviso anterior de abajo.
+  if (order.status === "en_camino") {
+    const enCamino = await avisarPedidoEnCamino(repo, order);
+    if (enCamino) return enCamino;
+  }
   if (!order.customerPhone) return { enqueued: false, reason: "no_customer_phone" };
   // El telefono guardado son 10 digitos nacionales: Meta exige el numero con codigo de pais (ver phone.ts).
   const recipient = toWhatsAppRecipient(order.customerPhone);

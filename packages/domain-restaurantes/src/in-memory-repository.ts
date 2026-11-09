@@ -11,6 +11,7 @@ import type { VoiceSecretMatch, VoiceToolAuditInput } from "./types.ts";
 import type { OrderFlowContext, OrderFlowSnapshot, OrderFlowState, OrderFlowWriteResult } from "./agent-tools/order-flow.ts";
 import { randomUUID } from "node:crypto";
 import type { ClaveContadorAgente } from "./whatsapp/contadores-agente.ts";
+import type { ContextoAvisoEnCamino, EstadoAvisoEnCamino, LecturaConfigAvisoEnCamino, LecturaContextoAvisoEnCamino } from "./aviso-en-camino.ts";
 import { ClienteMemoriaNoDisponibleError, OrderConflictError, OrderValidationError, WhatsAppAgentConfigConflictError, WhatsappNumberInUseError } from "./errors.ts";
 import { fotoConfigAgente } from "./whatsapp/agent-config-editor.ts";
 import { RestaurantesConfigUnavailableError } from "./repository.ts";
@@ -1307,6 +1308,62 @@ export class InMemoryRestaurantesRepository implements RestaurantesRepository {
       if (orgId === organizationId) return phoneNumberId;
     }
     return null;
+  }
+
+  // ---- Aviso «va en camino» (migracion 107). Sin `configurarAvisoEnCamino` para la organizacion se comporta como la base SIN la 107
+  // (`disponible: false`: el aviso anterior), asi las pruebas existentes no cambian. La marca y la notificacion quedan inspeccionables.
+  private readonly avisoEnCaminoContextos = new Map<string, ContextoAvisoEnCamino>();
+  private readonly avisoEnCaminoMarcas = new Map<string, EstadoAvisoEnCamino>();
+  private readonly notificacionesFaltaPlantillaEnCamino: { organizationId: string; propertyId: string; clave: string }[] = [];
+
+  configurarAvisoEnCamino(organizationId: string, contexto: ContextoAvisoEnCamino | null): void {
+    if (contexto) this.avisoEnCaminoContextos.set(organizationId, contexto);
+    else this.avisoEnCaminoContextos.delete(organizationId);
+  }
+
+  getAvisoEnCaminoMarca(orderId: string): EstadoAvisoEnCamino | null {
+    return this.avisoEnCaminoMarcas.get(orderId) ?? null;
+  }
+
+  getNotificacionesFaltaPlantillaEnCamino(): readonly { organizationId: string; propertyId: string; clave: string }[] {
+    return [...this.notificacionesFaltaPlantillaEnCamino];
+  }
+
+  async leerContextoAvisoEnCamino(organizationId: string, orderId: string): Promise<LecturaContextoAvisoEnCamino> {
+    const contexto = this.avisoEnCaminoContextos.get(organizationId);
+    if (!contexto) return { disponible: false };
+    if (!this.orders.some((o) => o.id === orderId && o.organizationId === organizationId)) return { disponible: true, contexto: null };
+    const marca = this.avisoEnCaminoMarcas.get(orderId);
+    const activo = this.avisoEnCaminoActivo.get(organizationId) ?? contexto.activo;
+    return { disponible: true, contexto: { ...contexto, activo, yaAvisado: marca === "texto" || marca === "plantilla" } };
+  }
+
+  /** `false` simula la base sin la 107 para el interruptor (lectura encendida y no disponible; guardado no disponible). */
+  avisoEnCaminoConfigDisponible = true;
+  private readonly avisoEnCaminoActivo = new Map<string, boolean>();
+
+  async leerConfigAvisoEnCamino(organizationId: string): Promise<LecturaConfigAvisoEnCamino> {
+    if (!this.avisoEnCaminoConfigDisponible) return { disponible: false, activo: true };
+    return { disponible: true, activo: this.avisoEnCaminoActivo.get(organizationId) ?? true };
+  }
+
+  async guardarConfigAvisoEnCamino(organizationId: string, activo: boolean): Promise<LecturaConfigAvisoEnCamino> {
+    if (!this.avisoEnCaminoConfigDisponible) return { disponible: false, activo: true };
+    this.avisoEnCaminoActivo.set(organizationId, activo);
+    return { disponible: true, activo };
+  }
+
+  async marcarAvisoEnCamino(organizationId: string, orderId: string, estado: EstadoAvisoEnCamino): Promise<void> {
+    if (!this.orders.some((o) => o.id === orderId && o.organizationId === organizationId)) return;
+    const actual = this.avisoEnCaminoMarcas.get(orderId);
+    if (actual === "texto" || actual === "plantilla") return;
+    this.avisoEnCaminoMarcas.set(orderId, estado);
+  }
+
+  async notificarFaltaPlantillaEnCamino(organizationId: string, propertyId: string): Promise<void> {
+    // Mismo dedupe que core.emit_notification: una por (organizacion, clave).
+    if (this.notificacionesFaltaPlantillaEnCamino.some((n) => n.organizationId === organizationId && n.clave === "falta_plantilla")) return;
+    this.notificacionesFaltaPlantillaEnCamino.push({ organizationId, propertyId, clave: "falta_plantilla" });
   }
 
   /** Misma regla que `restaurantes.whatsapp_contador_agente` (migracion 047): un contador de mas de 2 h cuenta como 0. */
