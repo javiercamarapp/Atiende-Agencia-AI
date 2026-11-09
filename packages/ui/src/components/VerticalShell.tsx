@@ -25,6 +25,7 @@ import { Sidebar, type SidebarItem, type SidebarPiePildora, type SidebarSection,
 import { I18nContexto, useT, type ContextoI18n } from "../i18n/proveedor";
 import { shell } from "../i18n/mensajes/shell.ts";
 import { GrupoNavContext } from "./PageHeader";
+import { RanuraAvisosProvider, useRanuraAvisosShell } from "./AvisoPagina";
 
 export const VERTICAL_SHELL_MAIN_ID = "contenido-principal";
 
@@ -296,11 +297,12 @@ export function VerticalShell({
   const { pathname } = useLocation();
   const mainRef = React.useRef<HTMLElement>(null);
   const [sinH1, setSinH1] = React.useState(false);
-  // Una pagina sin <h1> propio no deja la pantalla sin encabezado: la barra hace de nivel 1 hasta que la pagina pinte el suyo.
+  // Una pagina sin <h1> propio no deja la pantalla sin encabezado: la barra (y, bajo ds3, el encabezado de respaldo del shell) hace de
+  // nivel 1 hasta que la pagina pinte el suyo. Se mide solo dentro de la pagina: el encabezado de respaldo del shell no cuenta.
   React.useEffect(() => {
     const main = mainRef.current;
     if (!main) return undefined;
-    const medir = () => setSinH1(main.querySelector('h1, [role="heading"][aria-level="1"]') === null);
+    const medir = () => setSinH1(main.querySelector(':scope > .ds3-shell-pagina :is(h1, [role="heading"][aria-level="1"])') === null);
     medir();
     // Sincrono (flushSync): si el cambio se aplicara en una tarea posterior, entre que la pagina pinta su <h1> (p. ej. al bajar
     // su chunk perezoso o sus datos) y que la barra deja de hacer de nivel 1 habria un instante con DOS encabezados de nivel 1.
@@ -311,6 +313,7 @@ export function VerticalShell({
   const [sobrescrito, fijarTitulo] = React.useState<TituloBarra | null>(null);
   const [accionesBarra, fijarAcciones] = React.useState<React.ReactNode>(null);
   const [marco, fijarMarco] = React.useState<HTMLElement | null>(null);
+  const ranuraAvisos = useRanuraAvisosShell();
   // Los destinos del pie del Sidebar ("Ver los otros paneles") tambien son paginas del panel aunque no esten en `sections`:
   // la barra les pone su nombre en vez del titulo de la consola. Van DESPUES de `sections`, asi un destino que ya es de una
   // categoria (p. ej. "Costos de IA" -> "Costos y margen") conserva el nombre de su categoria.
@@ -352,7 +355,7 @@ export function VerticalShell({
 
       <MobileHeader
         title={<AtiendeWordmark className="scale-90 origin-left" />}
-        pagina={{ icon: iconoBarra, title: tituloBarra, comoH1: sinH1 }}
+        pagina={{ icon: iconoBarra, title: tituloBarra, comoH1: sinH1, comoH1Ds3: false }}
         action={
           <div className="ds3-movil-acciones flex items-center gap-1 min-w-0">
             {mobileSelector ? <div className="min-w-0 max-w-[48vw]">{mobileSelector}</div> : null}
@@ -383,12 +386,15 @@ export function VerticalShell({
         {/* ds3: la zona es la barra de 44 px (la cabecera interna se aplana con display:contents) y el boton «Guía» queda junto al
             titulo; vive FUERA de [data-testid="barra-pagina"] para que la barra del diseno actual siga sin botones propios. */}
         <div className="ds3-cabecera-zona hidden md:block shrink-0" data-sin-cabecera={barraDeConsola ? "" : undefined}>
+          {/* Sin <h1> de la pagina, bajo ds3 el nivel 1 es el encabezado de respaldo del contenido (no la barra): la barra pinta su nombre
+              con la pieza ds3 (que nunca es encabezado) y la del diseno actual, que si lo es, queda apagada por ds3-no. */}
           <BarraPagina
             icon={iconoBarra}
             title={tituloBarra}
-            tituloDs3={tituloDs3 !== tituloBarra ? tituloDs3 : undefined}
+            tituloDs3={tituloDs3 !== tituloBarra || sinH1 ? tituloDs3 : undefined}
             acciones={accionesBarra}
             comoH1={sinH1}
+            comoH1Ds3={false}
             className="ds3-cabecera"
           />
           <button
@@ -410,20 +416,31 @@ export function VerticalShell({
           key={contentKey}
           className="ds3-shell-contenido flex-1 min-h-0 overflow-y-auto focus:outline-none px-4 pt-[calc(5.5rem+var(--safe-area-top))] pb-[calc(7rem+var(--safe-area-bottom))] md:px-5 md:pt-3.5 md:pb-5"
         >
-          {/* ds3: antetitulo (= grupo del menu) de las pantallas sin PageHeader ni ResumenLayout, que traen el suyo; ds3/contenido.css lo apaga
-              cuando la pagina ya tiene uno y en el chat. Texto real: nunca un <p> vacio. Fuera de la pagina para no tocar su contenido. */}
-          {grupoNav ? (
-            <p hidden data-testid="eyebrow-pagina" className="ds3-solo ds3-eyebrow-pagina">
-              {grupoNav}
+          {/* ds3: encabezado de respaldo de las pantallas sin PageHeader ni ResumenLayout (que traen el suyo): antetitulo (= categoria del
+              menu) y, si la pagina no pinta ningun <h1>, el nombre de la pantalla como nivel 1 (20/600), juntos y ANTES de los avisos
+              (auditoria R2 #5). ds3/contenido.css lo apaga cuando la pagina ya tiene encabezado y en el chat, y apaga el nombre cuando la
+              pagina trae su propio <h1>. Texto real: nunca un <p> vacio. Fuera de la pagina para no tocar su contenido. */}
+          <header hidden data-testid="encabezado-shell" className="ds3-solo ds3-encabezado-shell">
+            {grupoNav ? (
+              <p hidden data-testid="eyebrow-pagina" className="ds3-solo ds3-eyebrow-pagina">
+                {grupoNav}
+              </p>
+            ) : null}
+            <p role="heading" aria-level={1} data-testid="encabezado-shell-titulo" className="ds3-encabezado-shell-titulo truncate font-display text-xl font-semibold text-foreground">
+              {tituloDs3}
             </p>
-          ) : null}
+          </header>
+          {/* Ranura de avisos de respaldo (banners globales) cuando la pagina no trae encabezado propio con la suya. */}
+          <div ref={ranuraAvisos.refShell} data-testid="ranura-avisos-shell" className="ds3-ranura-avisos" />
           {/* Transicion de navegacion: entrada breve (tokens de motion) al cambiar de ruta, solo con movimiento permitido. Sin `max-w`: ancho completo del marco. */}
           <div key={pathname} className="ds3-shell-pagina motion-safe:animate-page-in">
             <TituloBarraContext.Provider value={fijarTitulo}>
               <AccionesBarraContext.Provider value={fijarAcciones}>
                 <MarcoShellContext.Provider value={marco}>
                   <GrupoNavContext.Provider value={grupoNav}>
-                    <RutaBoundary resetKey={pathname}>{children}</RutaBoundary>
+                    <RanuraAvisosProvider value={ranuraAvisos.valor}>
+                      <RutaBoundary resetKey={pathname}>{children}</RutaBoundary>
+                    </RanuraAvisosProvider>
                   </GrupoNavContext.Provider>
                 </MarcoShellContext.Provider>
               </AccionesBarraContext.Provider>

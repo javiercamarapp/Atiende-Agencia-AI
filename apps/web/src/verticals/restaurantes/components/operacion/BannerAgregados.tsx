@@ -4,6 +4,7 @@
 import { useEffect, useMemo } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { ListPlus } from "lucide-react";
+import { AvisoPagina } from "@atiende/ui";
 import { crearAlertaRepetida, vibrarAviso } from "../../lib/alerta-pedido-nuevo.ts";
 import { textoPendientes } from "../../lib/agregados-presentacion.ts";
 import { leerSonido, reproducirAviso } from "../../lib/sondeo-pedidos.ts";
@@ -34,15 +35,18 @@ export function BannerAgregados({ apiBaseUrl, token, propertyId, orgSlug, activo
   }, [alerta, debeSonar]);
 
   if (!activo || pendientes === 0 || enLaPantalla) return null;
+  // Va en la ranura de avisos de la pantalla (debajo de su encabezado), no entre el antetitulo y el contenido (auditoria R2 #5).
   return (
-    <div role="status" aria-live="polite" data-testid="banner-agregados-global" className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border-2 border-primary bg-card p-3">
-      <p className="flex items-center gap-2 text-base font-bold text-foreground">
-        <ListPlus className="size-5 shrink-0 text-primary" aria-hidden="true" />
-        {textoPendientes(pendientes)}
-      </p>
-      <Link to={destino} className="inline-flex h-12 items-center rounded-full bg-primary px-5 text-base font-semibold text-primary-foreground">
-        Validar ahora
-      </Link>
-    </div>
+    <AvisoPagina>
+      <div role="status" aria-live="polite" data-testid="banner-agregados-global" className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border-2 border-primary bg-card p-3">
+        <p className="flex items-center gap-2 text-base font-bold text-foreground">
+          <ListPlus className="size-5 shrink-0 text-primary" aria-hidden="true" />
+          {textoPendientes(pendientes)}
+        </p>
+        <Link to={destino} className="inline-flex h-12 items-center rounded-full bg-primary px-5 text-base font-semibold text-primary-foreground">
+          Validar ahora
+        </Link>
+      </div>
+    </AvisoPagina>
   );
 }

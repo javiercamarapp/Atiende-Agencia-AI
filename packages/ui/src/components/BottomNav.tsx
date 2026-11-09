@@ -338,6 +338,11 @@ export interface MobileHeaderTitulo {
   readonly title: ReactNode;
   /** Solo si la pagina no pinta ningun <h1>: el nombre hace de encabezado de nivel 1 (visible en movil). */
   readonly comoH1?: boolean;
+  /**
+   * ds3: si el nombre hace de nivel 1 bajo ds3. Por omision, igual que `comoH1`. El `VerticalShell` pasa `false`: bajo ds3 el nivel 1 de una
+   * pagina sin <h1> es su encabezado de respaldo dentro del contenido, asi que aqui el nombre queda solo para lectores de pantalla.
+   */
+  readonly comoH1Ds3?: boolean;
 }
 
 /**
@@ -371,10 +376,16 @@ export function MobileHeader({
             data-testid="mobile-pagina-titulo"
             role={pagina.comoH1 ? "heading" : undefined}
             aria-level={pagina.comoH1 ? 1 : undefined}
-            className="truncate"
+            className={pagina.comoH1 && pagina.comoH1Ds3 === false ? "ds3-no truncate" : "truncate"}
           >
             {pagina.title}
           </p>
+          {/* Bajo ds3, cuando el nivel 1 vive en el contenido, el nombre sigue aqui pero sin ser encabezado (y la fila queda oculta). */}
+          {pagina.comoH1 && pagina.comoH1Ds3 === false ? (
+            <p hidden data-testid="mobile-pagina-titulo-ds3" className="ds3-solo truncate">
+              {pagina.title}
+            </p>
+          ) : null}
         </div>
       )}
     </div>

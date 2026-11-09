@@ -577,7 +577,7 @@ html[data-diseno="ds3"] [data-carga-tamano="pantalla"] .carga-logo { visibility:
   }
   /* Si la pagina no pinta su propio <h1>, el nombre de la cabecera ES el h1: entonces se ve (fila de 32 bajo la cabecera), para que
      ninguna pantalla movil quede sin su nombre a la vista; el contenido baja esos 32 px. */
-  html[data-diseno="ds3"] .ds3-movil-titulo.ds3-movil-titulo:has(> [role="heading"]) {
+  html[data-diseno="ds3"] .ds3-movil-titulo.ds3-movil-titulo:has(> [role="heading"]:not(.ds3-no)) {
     position: static;
     width: auto;
     height: 32px;
@@ -588,7 +588,7 @@ html[data-diseno="ds3"] [data-carga-tamano="pantalla"] .carga-logo { visibility:
     white-space: normal;
     border-top: 1px solid hsl(var(--border));
   }
-  html[data-diseno="ds3"]:has(.ds3-movil-titulo > [role="heading"]) .ds3-shell-contenido.ds3-shell-contenido {
+  html[data-diseno="ds3"]:has(.ds3-movil-titulo > [role="heading"]:not(.ds3-no)) .ds3-shell-contenido.ds3-shell-contenido {
     padding-top: calc(56px + 32px + var(--safe-area-top, 0px) + 16px);
   }
   html[data-diseno="ds3"] .ds3-movil-menu.ds3-movil-menu {
