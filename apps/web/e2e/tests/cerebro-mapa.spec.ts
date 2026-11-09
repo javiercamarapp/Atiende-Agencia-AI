@@ -128,7 +128,12 @@ test.describe("Cerebro de ventas: mapa y ficha @cerebro", () => {
     await abrirMapa(page, iniciarSesion);
     expect(await escala(page)).toBe(1);
     const caja = (await mapaSvg(page).boundingBox())!;
-    await page.mouse.move(caja.x + caja.width / 2, caja.y + caja.height / 2);
+    const cx = caja.x + caja.width / 2;
+    const cy = caja.y + caja.height / 2;
+    // `mouse.wheel` no espera a que el punto sea accionable (un clic si): con ds3 la capa de arranque (#arranque) sigue encima ~600 ms
+    // despues de pintar el mapa, asi que se espera a que el punto del centro sea del mapa, como lo veria quien usa la rueda.
+    await expect.poll(() => page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest('svg[role="img"]') !== null, { x: cx, y: cy })).toBe(true);
+    await page.mouse.move(cx, cy);
     await page.mouse.wheel(0, -600);
     await expect.poll(() => escala(page)).toBeGreaterThan(1.5);
     // Con zoom aparece el boton de casa: vuelve al pais completo.

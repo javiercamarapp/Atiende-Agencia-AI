@@ -13,6 +13,7 @@
 import type { Idioma, Mensaje, Traduccion } from "../tipos.ts";
 import type { comun } from "./comun.ts";
 import type { consola } from "./consola.ts";
+import type { datos } from "./datos.ts";
 import type { nav } from "./nav.ts";
 import type { notif } from "./notif.ts";
 import type { ModulosRestaurantes } from "./restaurantes/index.ts";
@@ -24,6 +25,7 @@ import type { ModulosCitas } from "./citas/index.ts";
 import type { ModulosSuperadmin } from "./superadmin/index.ts";
 import type { rol } from "./rol.ts";
 import type { shell } from "./shell.ts";
+import type { waMeta } from "./waMeta.ts";
 
 /**
  * Modulos que van en el bundle de arranque. Vacio a proposito: la entrada esta en su tope de bundle, asi que TODO modulo es
@@ -51,6 +53,8 @@ interface ModulosDeArea
   readonly rol: typeof rol;
   readonly consola: typeof consola;
   readonly notif: typeof notif;
+  readonly datos: typeof datos;
+  readonly waMeta: typeof waMeta;
 }
 
 type Modulos = typeof MODULOS & ModulosDeArea;
