@@ -2,14 +2,27 @@
 // apps/api/src/routes/verticals/restaurantes/repartidor-perfil.ts y repartidor-historial.ts. Mismo aislamiento que el resto de
 // apps/web: no depende de @atiende/domain-restaurantes (el servidor es la fuente de verdad; la validacion de abajo solo evita
 // ida y vuelta). `disponible: false` = la base aun no tiene la migracion 044 (estado honesto, nunca datos inventados).
+import { etiquetasTraducidas, traductorActivo } from "@atiende/ui";
+import { restaurantesStaff } from "@atiende/ui/i18n/restaurantes/staff";
 import { deleteJson, fetchJson, sendJson } from "./admin-client.ts";
+
+const tr = traductorActivo(restaurantesStaff);
 
 export type VehiculoTipo = "moto" | "bicicleta" | "auto" | "a_pie" | "otro";
 export type Disponibilidad = "disponible" | "en_descanso" | "fuera_de_turno";
 export type LicenciaEstado = "sin_licencia" | "vigente" | "por_vencer" | "vencida";
 
-export const VEHICULO_ETIQUETAS: Readonly<Record<VehiculoTipo, string>> = { moto: "Moto", bicicleta: "Bicicleta", auto: "Auto", a_pie: "A pie", otro: "Otro" };
-export const DISPONIBILIDAD_ETIQUETAS: Readonly<Record<Disponibilidad, string>> = { disponible: "Disponible", en_descanso: "En descanso", fuera_de_turno: "Fuera de turno" };
+/** Etiquetas en el idioma activo (i18n): cada lectura traduce; en espanol, los textos de siempre (mismo orden de claves). */
+export const VEHICULO_ETIQUETAS: Readonly<Record<VehiculoTipo, string>> = etiquetasTraducidas<VehiculoTipo>(
+  ["moto", "bicicleta", "auto", "a_pie", "otro"],
+  (v) => `restaurantes.staff.vehiculo.${v}` as const,
+  restaurantesStaff,
+);
+export const DISPONIBILIDAD_ETIQUETAS: Readonly<Record<Disponibilidad, string>> = etiquetasTraducidas<Disponibilidad>(
+  ["disponible", "en_descanso", "fuera_de_turno"],
+  (d) => `restaurantes.staff.disp.${d}` as const,
+  restaurantesStaff,
+);
 
 export interface PerfilRepartidor {
   readonly userId: string;
@@ -82,19 +95,20 @@ function telefonoValido(t: string): boolean {
 
 export function validarPerfilForm(f: PerfilForm): PerfilFormErrores {
   const e: PerfilFormErrores = {};
-  if (f.placas.trim().length > 15) e.placas = "Máximo 15 caracteres.";
-  if (f.turno.trim().length > 120) e.turno = "Máximo 120 caracteres.";
-  if (f.licenciaNumero.trim().length > 40) e.licenciaNumero = "Máximo 40 caracteres.";
+  if (f.placas.trim().length > 15) e.placas = tr("restaurantes.staff.val.max15");
+  if (f.turno.trim().length > 120) e.turno = tr("restaurantes.staff.val.max120");
+  if (f.licenciaNumero.trim().length > 40) e.licenciaNumero = tr("restaurantes.staff.val.max40");
   const tieneNumero = f.licenciaNumero.trim() !== "";
   const tieneVigencia = f.licenciaVigencia.trim() !== "";
-  if (tieneNumero && !tieneVigencia) e.licenciaVigencia = "Indica hasta cuándo es válida la licencia.";
-  if (!tieneNumero && tieneVigencia) e.licenciaNumero = "Escribe el número de la licencia.";
-  if (f.emergenciaNombre.trim().length > 100) e.emergenciaNombre = "Máximo 100 caracteres.";
+  if (tieneNumero && !tieneVigencia) e.licenciaVigencia = tr("restaurantes.staff.val.vigencia");
+  if (!tieneNumero && tieneVigencia) e.licenciaNumero = tr("restaurantes.staff.val.licencia");
+  if (f.emergenciaNombre.trim().length > 100) e.emergenciaNombre = tr("restaurantes.staff.val.max100");
   const tieneNombre = f.emergenciaNombre.trim() !== "";
   const tieneTel = f.emergenciaTelefono.trim() !== "";
-  if (tieneTel && !telefonoValido(f.emergenciaTelefono)) e.emergenciaTelefono = "Escribe un teléfono de 10 dígitos.";
-  if (tieneNombre && !tieneTel) e.emergenciaTelefono = "Escribe el teléfono del contacto.";
-  if (!tieneNombre && tieneTel && !e.emergenciaTelefono) e.emergenciaNombre = "Escribe el nombre del contacto.";
+  if (tieneTel && !telefonoValido(f.emergenciaTelefono)) e.emergenciaTelefono = tr("restaurantes.staff.val.telefono");
+  if (tieneNombre && !tieneTel) e.emergenciaTelefono = tr("restaurantes.staff.val.telefonoContacto");
+  if (!tieneNombre && tieneTel && !e.emergenciaTelefono) e.emergenciaNombre = tr("restaurantes.staff.val.nombreContacto");
+
   return e;
 }
 

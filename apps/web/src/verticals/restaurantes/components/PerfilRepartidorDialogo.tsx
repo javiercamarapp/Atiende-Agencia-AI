@@ -2,7 +2,8 @@
 // Endpoints reales: GET|PUT|DELETE .../admin/staff/:userId/perfil-repartidor. Carga al abrirse. El servidor decide quien puede (owner/admin);
 // esta pantalla solo se ofrece a ellos. Base sin migrar: estado honesto "no disponible aun", sin formulario.
 import { useCallback, useEffect, useState } from "react";
-import { Button, Callout, EstadoCargando, EstadoError, FormDialog, notify } from "@atiende/ui";
+import { Button, Callout, EstadoCargando, EstadoError, FormDialog, notify, useT } from "@atiende/ui";
+import { restaurantesStaff } from "@atiende/ui/i18n/restaurantes/staff";
 import { fetchPerfilDeRepartidor, formDesdePerfil, guardarPerfilDeRepartidor, suprimirPerfilDeRepartidor, validarPerfilForm, PERFIL_FORM_VACIO } from "../lib/repartidor-perfil-client.ts";
 import type { PerfilForm, PerfilFormErrores, PerfilRespuesta } from "../lib/repartidor-perfil-client.ts";
 import { AlertaLicencia, PerfilRepartidorCampos } from "./PerfilRepartidorCampos.tsx";
@@ -29,6 +30,7 @@ export function PerfilRepartidorDialogo({
   readonly confirmar: (opts: { titulo: string; descripcion: string; tono: "danger"; confirmar: string }) => Promise<boolean>;
   readonly fetchImpl?: typeof fetch;
 }) {
+  const t = useT(restaurantesStaff);
   const [carga, setCarga] = useState<Estado>({ estado: "cargando" });
   const [form, setForm] = useState<PerfilForm>({ ...PERFIL_FORM_VACIO });
   const [errores, setErrores] = useState<PerfilFormErrores>({});
@@ -47,9 +49,9 @@ export function PerfilRepartidorDialogo({
       setCarga({ estado: "listo", datos: r });
       setForm(formDesdePerfil(r.perfil));
     } catch (err) {
-      setCarga({ estado: "error", mensaje: err instanceof Error ? err.message : "No se pudo cargar el perfil." });
+      setCarga({ estado: "error", mensaje: err instanceof Error ? err.message : t("restaurantes.staff.perfilErrorCargar") });
     }
-  }, [apiBaseUrl, token, propertyId, repartidorId, fetchImpl]);
+  }, [apiBaseUrl, token, propertyId, repartidorId, fetchImpl, t]);
   useEffect(() => {
     if (open) void cargar();
   }, [open, cargar]);
@@ -65,9 +67,9 @@ export function PerfilRepartidorDialogo({
       const r = await guardarPerfilDeRepartidor(fetchImpl ?? fetch, apiBaseUrl, token, propertyId, repartidorId, form);
       setCarga({ estado: "listo", datos: r });
       setForm(formDesdePerfil(r.perfil));
-      notify.success("Perfil guardado.");
+      notify.success(t("restaurantes.staff.perfilGuardado"));
     } catch (err) {
-      setErrorAccion(err instanceof Error ? err.message : "No se pudo guardar el perfil.");
+      setErrorAccion(err instanceof Error ? err.message : t("restaurantes.staff.perfilErrorGuardar"));
     } finally {
       setGuardando(false);
     }
@@ -76,20 +78,20 @@ export function PerfilRepartidorDialogo({
   async function suprimir() {
     if (!repartidor) return;
     const ok = await confirmar({
-      titulo: `Suprimir el perfil de ${repartidor.fullName}`,
-      descripcion: "Borra vehículo, placas, turno, licencia y contacto de emergencia. No se puede deshacer. La bitácora solo conserva que se hizo, sin los datos.",
+      titulo: t("restaurantes.staff.suprimirTitulo", { nombre: repartidor.fullName }),
+      descripcion: t("restaurantes.staff.suprimirDesc"),
       tono: "danger",
-      confirmar: "Suprimir perfil",
+      confirmar: t("restaurantes.staff.suprimir"),
     });
     if (!ok) return;
     setSuprimiendo(true);
     setErrorAccion(null);
     try {
       const r = await suprimirPerfilDeRepartidor(fetchImpl ?? fetch, apiBaseUrl, token, propertyId, repartidor.id);
-      notify.success(r.borrado ? "Perfil suprimido." : "Ese repartidor no tenía perfil guardado.");
+      notify.success(t(r.borrado ? "restaurantes.staff.perfilSuprimido" : "restaurantes.staff.sinPerfil"));
       onOpenChange(false);
     } catch (err) {
-      setErrorAccion(err instanceof Error ? err.message : "No se pudo suprimir el perfil.");
+      setErrorAccion(err instanceof Error ? err.message : t("restaurantes.staff.perfilErrorSuprimir"));
     } finally {
       setSuprimiendo(false);
     }
@@ -100,8 +102,8 @@ export function PerfilRepartidorDialogo({
     <FormDialog
       open={open}
       onOpenChange={onOpenChange}
-      titulo={repartidor ? `Perfil de ${repartidor.fullName}` : "Perfil del repartidor"}
-      subtitulo="Vehículo, disponibilidad, licencia y contacto de emergencia. Solo dueños y administradores lo ven."
+      titulo={repartidor ? t("restaurantes.staff.perfilDe", { nombre: repartidor.fullName }) : t("restaurantes.staff.perfilRepartidor")}
+      subtitulo={t("restaurantes.staff.perfilSub")}
       anchoClase="max-w-2xl"
       onGuardar={() => void guardar()}
       bloquearCierre={guardando || suprimiendo}
@@ -109,25 +111,26 @@ export function PerfilRepartidorDialogo({
         listo ? (
           <div className="flex w-full flex-col-reverse gap-2 md:w-auto md:flex-row">
             <Button type="button" variant="danger-outline" onClick={() => void suprimir()} loading={suprimiendo} disabled={guardando}>
-              Suprimir perfil
+              {t("restaurantes.staff.suprimir")}
             </Button>
             <Button type="submit" loading={guardando} disabled={suprimiendo}>
-              Guardar perfil
+              {t("restaurantes.staff.guardarPerfil")}
             </Button>
           </div>
         ) : (
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-            Cerrar
+            {t("restaurantes.staff.cerrar")}
           </Button>
         )
       }
     >
       <div className="grid gap-3">
-        {carga.estado === "cargando" && <EstadoCargando etiqueta="Cargando el perfil…" />}
+        {carga.estado === "cargando" && <EstadoCargando etiqueta={t("restaurantes.staff.cargandoPerfil")} />}
         {carga.estado === "error" && <EstadoError mensaje={carga.mensaje} onReintentar={() => void cargar()} />}
         {carga.estado === "listo" && !carga.datos.disponible && (
-          <Callout tone="info" titulo="El perfil aún no está disponible">
-            No disponible aún: requiere la actualización de base de datos del perfil del repartidor (migración 044).
+          <Callout tone="info" titulo={t("restaurantes.staff.perfilNoDisponible")}>
+            {t("restaurantes.staff.perfilRequiere")}
+
           </Callout>
         )}
         {listo && carga.estado === "listo" && (

@@ -18,7 +18,7 @@ export function formatoMs(ms: number | null): string {
   return ms >= 1000 ? `${(ms / 1000).toFixed(1)} s` : `${Math.round(ms)} ms`;
 }
 
-/** "2026-03-10" -> "10 mar". Se formatea en UTC a propósito: la fecha ya es el día local de la sucursal. */
+/** "2026-03-10" -> "10 mar" ("Mar 10" con la consola en ingles). Se formatea en UTC a propósito: la fecha ya es el día local de la sucursal. */
 export function formatoDia(fecha: string): string {
   const d = new Date(`${fecha}T00:00:00Z`);
   if (Number.isNaN(d.getTime())) return fecha;

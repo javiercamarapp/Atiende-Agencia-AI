@@ -3,7 +3,8 @@
 // Quien cubre cada turno sale del staff de la organizacion (`fetchOrgMembers`, owner/admin) con acceso a esta sucursal.
 import { useEffect, useState } from "react";
 import { Clock } from "lucide-react";
-import { Button, Card, CardContent, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, EstadoVacio, Input, PageContainer } from "@atiende/ui";
+import { Button, Card, CardContent, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, EstadoVacio, Input, PageContainer, traductorActivo, useT } from "@atiende/ui";
+import { restaurantesTurnos } from "@atiende/ui/i18n/restaurantes/turnos";
 import { fetchOrgMembers } from "../lib/staff-client.ts";
 import type { OrgMember } from "../lib/staff-client.ts";
 import { fetchTurnos, guardarTurnos } from "../lib/conversaciones-client.ts";
@@ -11,12 +12,13 @@ import type { CoberturaWire, TurnoWire } from "../lib/conversaciones-client.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 
 const EDITAN = new Set(["owner", "admin"]);
-const DIAS = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"] as const;
+const DIAS = [0, 1, 2, 3, 4, 5, 6] as const;
+const trTurnos = traductorActivo(restaurantesTurnos);
 
-/** Doble turno de PM por omision: 12:00-18:00 y 18:00-01:00 todos los dias. */
+/** Doble turno de PM por omision: 12:00-18:00 y 18:00-01:00 todos los dias. El nombre es un dato del negocio que se guarda: no se traduce. */
 const TURNOS_SUGERIDOS: readonly TurnoWire[] = [
-  { nombre: "Turno 1", dias: [0, 1, 2, 3, 4, 5, 6], inicia: "12:00", termina: "18:00", miembros: [] },
-  { nombre: "Turno 2", dias: [0, 1, 2, 3, 4, 5, 6], inicia: "18:00", termina: "01:00", miembros: [] },
+  { nombre: "Turno 1", dias: [0, 1, 2, 3, 4, 5, 6], inicia: "12:00", termina: "18:00", miembros: [] }, // i18n-ignorar
+  { nombre: "Turno 2", dias: [0, 1, 2, 3, 4, 5, 6], inicia: "18:00", termina: "01:00", miembros: [] }, // i18n-ignorar
 ];
 
 function mensaje(err: unknown, porDefecto: string): string {
@@ -28,7 +30,7 @@ export function nombreTurnoLibre(turnos: readonly Pick<TurnoWire, "nombre">[]): 
   const usados = new Set(turnos.map((t) => t.nombre.trim().toLowerCase()));
   let n = turnos.length + 1;
   while (usados.has(`turno ${n}`)) n += 1;
-  return `Turno ${n}`;
+  return `Turno ${n}`; // i18n-ignorar (dato del negocio que se guarda)
 }
 
 /** Mismas reglas que `validarTurnos` del servidor, para avisar en el cliente sin mandar un guardado que se sabe invalido
@@ -38,17 +40,18 @@ export function validarTurnosLocal(turnos: readonly TurnoWire[]): string | null 
   for (const [i, t] of turnos.entries()) {
     const n = i + 1;
     const nombre = t.nombre.trim();
-    if (nombre.length < 1 || nombre.length > 60) return `El turno ${n} necesita un nombre de 1 a 60 caracteres.`;
-    if (nombres.has(nombre.toLowerCase())) return `El nombre "${nombre}" está repetido: cada turno necesita un nombre distinto.`;
+    if (nombre.length < 1 || nombre.length > 60) return trTurnos("restaurantes.turnos.error.nombre", { n: String(n) });
+    if (nombres.has(nombre.toLowerCase())) return trTurnos("restaurantes.turnos.error.repetido", { nombre });
     nombres.add(nombre.toLowerCase());
-    if (t.dias.length < 1) return `El turno "${nombre}" necesita al menos un día.`;
-    if (!t.inicia || !t.termina) return `El turno "${nombre}" necesita hora de inicio y de fin.`;
-    if (t.inicia === t.termina) return `En el turno "${nombre}" la hora de inicio y la de fin no pueden ser iguales.`;
+    if (t.dias.length < 1) return trTurnos("restaurantes.turnos.error.dias", { nombre });
+    if (!t.inicia || !t.termina) return trTurnos("restaurantes.turnos.error.horas", { nombre });
+    if (t.inicia === t.termina) return trTurnos("restaurantes.turnos.error.iguales", { nombre });
   }
   return null;
 }
 
 export function TurnosPage({ apiBaseUrl, token, propertyId, role }: RestaurantesShellContext) {
+  const t = useT(restaurantesTurnos);
   const puedeEditar = EDITAN.has(role);
   const [turnos, setTurnos] = useState<readonly TurnoWire[] | null>(null);
   const [cobertura, setCobertura] = useState<CoberturaWire | null>(null);
@@ -63,11 +66,11 @@ export function TurnosPage({ apiBaseUrl, token, propertyId, role }: Restaurantes
     let cancelado = false;
     (async () => {
       try {
-        const t = await fetchTurnos(fetch, apiBaseUrl, token, propertyId);
+        const r = await fetchTurnos(fetch, apiBaseUrl, token, propertyId);
         if (cancelado) return;
-        setTurnos(t.turnos);
-        setCobertura(t.cobertura);
-        setDisponible(t.disponible);
+        setTurnos(r.turnos);
+        setCobertura(r.cobertura);
+        setDisponible(r.disponible);
         setError(null);
         if (puedeEditar) {
           try {
@@ -78,7 +81,7 @@ export function TurnosPage({ apiBaseUrl, token, propertyId, role }: Restaurantes
           }
         }
       } catch (err) {
-        if (!cancelado) setError(mensaje(err, "No se pudieron cargar los turnos."));
+        if (!cancelado) setError(mensaje(err, t("restaurantes.turnos.error.cargar")));
       }
     })();
     return () => {
@@ -87,14 +90,14 @@ export function TurnosPage({ apiBaseUrl, token, propertyId, role }: Restaurantes
   }, [apiBaseUrl, token, propertyId, puedeEditar, version]);
 
   function cambiar(i: number, parche: Partial<TurnoWire>) {
-    setTurnos((actual) => (actual ?? []).map((t, j) => (j === i ? { ...t, ...parche } : t)));
+    setTurnos((actual) => (actual ?? []).map((tu, j) => (j === i ? { ...tu, ...parche } : tu)));
   }
 
   function alternarMiembro(i: number, userId: string) {
-    const t = turnos?.[i];
-    if (!t) return;
-    const ya = t.miembros.some((m) => m.userId === userId);
-    const miembros = ya ? t.miembros.filter((m) => m.userId !== userId) : [...t.miembros, { userId, orden: t.miembros.length + 1 }];
+    const tu = turnos?.[i];
+    if (!tu) return;
+    const ya = tu.miembros.some((m) => m.userId === userId);
+    const miembros = ya ? tu.miembros.filter((m) => m.userId !== userId) : [...tu.miembros, { userId, orden: tu.miembros.length + 1 }];
     cambiar(i, { miembros: miembros.map((m, k) => ({ ...m, orden: k + 1 })) });
   }
 
@@ -109,10 +112,10 @@ export function TurnosPage({ apiBaseUrl, token, propertyId, role }: Restaurantes
     setAviso(null);
     try {
       await guardarTurnos(fetch, apiBaseUrl, token, propertyId, turnos);
-      setAviso({ tipo: "ok", texto: "Turnos guardados." });
+      setAviso({ tipo: "ok", texto: t("restaurantes.turnos.guardados") });
       setVersion((n) => n + 1);
     } catch (err) {
-      setAviso({ tipo: "error", texto: mensaje(err, "No se pudieron guardar los turnos.") });
+      setAviso({ tipo: "error", texto: mensaje(err, t("restaurantes.turnos.error.guardar")) });
     } finally {
       setGuardando(false);
     }
@@ -121,29 +124,29 @@ export function TurnosPage({ apiBaseUrl, token, propertyId, role }: Restaurantes
   return (
     <PageContainer padding="none">
       <header>
-        <h1 className="sr-only">Turnos</h1>
-        <p className="m-0 text-ui text-muted-foreground">Quién atiende las conversaciones en cada turno de esta sucursal. El primero de cada turno es el principal; los siguientes son respaldo y reciben el aviso si nadie contesta.</p>
+        <h1 className="sr-only">{t("restaurantes.turnos.titulo")}</h1>
+        <p className="m-0 text-ui text-muted-foreground">{t("restaurantes.turnos.descripcion")}</p>
       </header>
 
       {error && <EstadoError mensaje={error} onReintentar={() => setVersion((n) => n + 1)} />}
       {!error && turnos === null && <EstadoCargando lineas={3} />}
-      {!error && turnos && !disponible && <EstadoVacio icon={Clock} titulo="Turnos no disponibles aún" mensaje="Los turnos de personal todavía no están habilitados en esta base de datos." />}
+      {!error && turnos && !disponible && <EstadoVacio icon={Clock} titulo={t("restaurantes.turnos.noDisponible.titulo")} mensaje={t("restaurantes.turnos.noDisponible.mensaje")} />}
 
       {!error && turnos && disponible && (
         <>
           {cobertura && (
             <Card>
               <CardHeader>
-                <CardTitle>De guardia ahora</CardTitle>
+                <CardTitle>{t("restaurantes.turnos.guardia.titulo")}</CardTitle>
               </CardHeader>
               <CardContent className="text-sm">
                 {cobertura.sinCobertura ? (
-                  <p className="m-0 text-destructive">Nadie está de guardia en este momento.</p>
+                  <p className="m-0 text-destructive">{t("restaurantes.turnos.guardia.nadie")}</p>
                 ) : (
                   <ul className="m-0 pl-4">
                     {cobertura.guardia.map((g) => (
                       <li key={g.userId}>
-                        {g.nombre ?? "Sin nombre"} — {g.turno} ({g.orden === 1 ? "principal" : `respaldo ${g.orden - 1}`})
+                        {g.nombre ?? t("restaurantes.turnos.sinNombre")} — {g.turno} ({g.orden === 1 ? t("restaurantes.turnos.guardia.principal") : t("restaurantes.turnos.guardia.respaldo", { n: String(g.orden - 1) })})
                       </li>
                     ))}
                   </ul>
@@ -153,58 +156,58 @@ export function TurnosPage({ apiBaseUrl, token, propertyId, role }: Restaurantes
           )}
 
           {turnos.length === 0 && (
-            <EstadoVacio icon={Clock} titulo="Sin turnos" mensaje={puedeEditar ? "Define los turnos de esta sucursal (por ejemplo el doble turno de 12 pm a 1 am)." : "Todavía no se han definido turnos para esta sucursal."} />
+            <EstadoVacio icon={Clock} titulo={t("restaurantes.turnos.vacio.titulo")} mensaje={puedeEditar ? t("restaurantes.turnos.vacio.editar") : t("restaurantes.turnos.vacio.leer")} />
           )}
 
-          {turnos.map((t, i) => (
-            <Card key={t.id ?? `nuevo-${i}`}>
+          {turnos.map((tu, i) => (
+            <Card key={tu.id ?? `nuevo-${i}`}>
               <CardContent className="flex flex-col gap-3 pt-4 text-sm">
                 <div className="flex flex-wrap gap-3 items-end">
                   <label className="flex flex-col gap-1">
-                    Nombre
-                    <Input aria-label={`Nombre del turno ${i + 1}`} value={t.nombre} disabled={!puedeEditar} maxLength={60} onChange={(e) => cambiar(i, { nombre: e.target.value })} className="w-auto" />
+                    {t("restaurantes.turnos.campo.nombre")}
+                    <Input aria-label={t("restaurantes.turnos.aria.nombre", { n: String(i + 1) })} value={tu.nombre} disabled={!puedeEditar} maxLength={60} onChange={(e) => cambiar(i, { nombre: e.target.value })} className="w-auto" />
                   </label>
                   <label className="flex flex-col gap-1">
-                    Inicia
-                    <Input type="time" aria-label={`Inicio del turno ${i + 1}`} value={t.inicia} disabled={!puedeEditar} onChange={(e) => cambiar(i, { inicia: e.target.value })} className="w-auto" />
+                    {t("restaurantes.turnos.campo.inicia")}
+                    <Input type="time" aria-label={t("restaurantes.turnos.aria.inicio", { n: String(i + 1) })} value={tu.inicia} disabled={!puedeEditar} onChange={(e) => cambiar(i, { inicia: e.target.value })} className="w-auto" />
                   </label>
                   <label className="flex flex-col gap-1">
-                    Termina (si es menor, cruza la medianoche)
-                    <Input type="time" aria-label={`Fin del turno ${i + 1}`} value={t.termina} disabled={!puedeEditar} onChange={(e) => cambiar(i, { termina: e.target.value })} className="w-auto" />
+                    {t("restaurantes.turnos.campo.termina")}
+                    <Input type="time" aria-label={t("restaurantes.turnos.aria.fin", { n: String(i + 1) })} value={tu.termina} disabled={!puedeEditar} onChange={(e) => cambiar(i, { termina: e.target.value })} className="w-auto" />
                   </label>
                   {puedeEditar && (
                     <Button variant="outline" onClick={() => setTurnos((a) => (a ?? []).filter((_, j) => j !== i))}>
-                      Quitar turno
+                      {t("restaurantes.turnos.quitar")}
                     </Button>
                   )}
                 </div>
-                <div className="flex flex-wrap gap-2" role="group" aria-label={`Días del turno ${i + 1}`}>
-                  {DIAS.map((d, n) => (
+                <div className="flex flex-wrap gap-2" role="group" aria-label={t("restaurantes.turnos.aria.dias", { n: String(i + 1) })}>
+                  {DIAS.map((n) => (
                     <Checkbox
-                      key={d}
-                      label={d}
+                      key={n}
+                      label={t(`restaurantes.turnos.dia.${n}` as const)}
                       disabled={!puedeEditar}
-                      checked={t.dias.includes(n)}
-                      onChange={() => cambiar(i, { dias: t.dias.includes(n) ? t.dias.filter((x) => x !== n) : [...t.dias, n].sort((a, b) => a - b) })}
+                      checked={tu.dias.includes(n)}
+                      onChange={() => cambiar(i, { dias: tu.dias.includes(n) ? tu.dias.filter((x) => x !== n) : [...tu.dias, n].sort((a, b) => a - b) })}
                     />
                   ))}
                 </div>
                 <div>
-                  <p className="m-0 mb-1 font-medium">Personal (en orden: principal y respaldos)</p>
+                  <p className="m-0 mb-1 font-medium">{t("restaurantes.turnos.personal.titulo")}</p>
                   {puedeEditar ? (
                     personal.length === 0 ? (
-                      <p className="m-0 text-muted-foreground">No hay personal con acceso a esta sucursal para asignar.</p>
+                      <p className="m-0 text-muted-foreground">{t("restaurantes.turnos.personal.vacio")}</p>
                     ) : (
                       <div className="flex flex-col gap-1">
                         {personal.map((p) => (
                           <Checkbox
                             key={p.id}
-                            checked={t.miembros.some((m) => m.userId === p.id)}
+                            checked={tu.miembros.some((m) => m.userId === p.id)}
                             onChange={() => alternarMiembro(i, p.id)}
                             label={
                               <>
                                 {p.fullName || p.email}
-                                {t.miembros.find((m) => m.userId === p.id) && <span className="ml-1 text-muted-foreground">#{t.miembros.find((m) => m.userId === p.id)!.orden}</span>}
+                                {tu.miembros.find((m) => m.userId === p.id) && <span className="ml-1 text-muted-foreground">#{tu.miembros.find((m) => m.userId === p.id)!.orden}</span>}
                               </>
                             }
                           />
@@ -212,7 +215,7 @@ export function TurnosPage({ apiBaseUrl, token, propertyId, role }: Restaurantes
                       </div>
                     )
                   ) : (
-                    <p className="m-0">{t.miembros.length === 0 ? "Sin personal asignado." : t.miembros.map((m) => m.nombre ?? "Sin nombre").join(", ")}</p>
+                    <p className="m-0">{tu.miembros.length === 0 ? t("restaurantes.turnos.personal.sinAsignar") : tu.miembros.map((m) => m.nombre ?? t("restaurantes.turnos.sinNombre")).join(", ")}</p>
                   )}
                 </div>
               </CardContent>
@@ -223,16 +226,16 @@ export function TurnosPage({ apiBaseUrl, token, propertyId, role }: Restaurantes
             <div className="flex flex-wrap gap-2">
               {turnos.length < 4 && (
                 <Button variant="outline" onClick={() => setTurnos((a) => [...(a ?? []), turnos.length === 0 ? TURNOS_SUGERIDOS[0]! : { nombre: nombreTurnoLibre(turnos), dias: [0, 1, 2, 3, 4, 5, 6], inicia: "12:00", termina: "18:00", miembros: [] }])}>
-                  Agregar turno
+                  {t("restaurantes.turnos.agregar")}
                 </Button>
               )}
               {turnos.length === 0 && (
                 <Button variant="outline" onClick={() => setTurnos(TURNOS_SUGERIDOS)}>
-                  Usar el doble turno 12 pm - 1 am
+                  {t("restaurantes.turnos.usarDoble")}
                 </Button>
               )}
               <Button disabled={guardando} onClick={guardar}>
-                Guardar turnos
+                {t("restaurantes.turnos.guardar")}
               </Button>
             </div>
           )}
