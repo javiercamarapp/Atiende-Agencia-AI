@@ -45,6 +45,10 @@ export const MODEL_PRICES: Readonly<Record<string, ModelPrice>> = {
   'qwen/qwen3-235b-a22b-2507': { inPerM: 0.25, outPerM: 1, verifiedAt: '2026-10-02' },
   // Respaldo candidato del piloto (1-oct-2026): DeepInfra 0.075/0.20 y Parasail 0.09/0.30 por 1M; se reserva con el MAS CARO.
   'mistralai/mistral-small-3.2-24b-instruct': { inPerM: 0.09, outPerM: 0.3, verifiedAt: '2026-10-01' },
+  // Modelos por actividad (6-nov-2026), endpoints ZDR de EE.UU. leidos en /api/v1/endpoints/zdr; se reserva con el MAS CARO de esos endpoints.
+  'google/gemini-3.1-flash-lite': { inPerM: 0.275, outPerM: 1.65, cachedInPerM: 0.0275, verifiedAt: '2026-11-06' },
+  'xiaomi/mimo-v2.6-flash': { inPerM: 0.14, outPerM: 0.28, verifiedAt: '2026-11-06' },
+  'openai/gpt-oss-120b': { inPerM: 0.2, outPerM: 0.95, verifiedAt: '2026-11-06' },
 };
 
 /** Precio de lista de un modelo, o `undefined` si no esta en la tabla. Acepta el id de OpenRouter

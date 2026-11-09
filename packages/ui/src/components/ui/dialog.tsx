@@ -4,6 +4,8 @@ import { X } from "lucide-react";
 
 import { cn } from "../../lib/utils";
 import { BOTON_CIERRE_MODAL, CAJA_MODAL, CAJA_MODAL_MOVIL, CHIP_ICONO_MODAL, OVERLAY_MODAL, TAMANOS_MODAL, type TamanoModal } from "./superficies";
+import { useT } from "../../i18n/proveedor";
+import { comun } from "../../i18n/mensajes/comun.ts";
 
 const Dialog = DialogPrimitive.Root;
 const DialogTrigger = DialogPrimitive.Trigger;
@@ -38,7 +40,7 @@ const DialogContent = React.forwardRef<
         // Cierre de 44 px solo en movil (objetivo tactil); en escritorio 32 px como los botones de icono de Likida.
         <DialogPrimitive.Close className={BOTON_CIERRE_MODAL}>
           <X aria-hidden="true" className="size-4" strokeWidth={1.75} />
-          <span className="sr-only">Cerrar</span>
+          <TextoCerrar />
         </DialogPrimitive.Close>
       )}
     </DialogPrimitive.Content>
@@ -104,3 +106,8 @@ export {
   DialogTitle,
   DialogDescription,
 };
+
+/** Nombre accesible del boton de cierre, en el idioma de la consola. */
+function TextoCerrar() {
+  return <span className="sr-only">{useT(comun)("comun.cerrar")}</span>;
+}
