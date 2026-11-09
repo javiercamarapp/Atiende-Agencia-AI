@@ -29,6 +29,8 @@ export const CLAVES_ALTA = {
   solicitudes: "alta.registro.solicitudes",
   metodosPago: "alta.metodos-pago-confirmados",
   pruebaAgente: "alta.prueba-agente-whatsapp",
+  /** true en una cuenta recien registrada: el producto nuevo nace sin fila en la sucursal (hay que activarlo en «Disponible aquí»). */
+  productoNaceSinSucursal: "alta.producto-nace-sin-sucursal",
 } as const;
 
 const DESECHABLES = new Set(["mailinator.com", "guerrillamail.com", "10minutemail.com", "tempmail.com", "temp-mail.org", "yopmail.com", "trashmail.com", "maildrop.cc"]);
@@ -105,6 +107,7 @@ function sembrarRestauranteNuevo(estado: EstadoEscenario, s: Solicitud): void {
   estado.guardar("rest.zonasreparto", []);
   estado.guardar(CLAVES_ALTA.metodosPago, false);
   estado.guardar(CLAVES_ALTA.pruebaAgente, false);
+  estado.guardar(CLAVES_ALTA.productoNaceSinSucursal, true);
 }
 
 interface ProductoEstado {
