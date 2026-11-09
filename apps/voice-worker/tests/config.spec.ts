@@ -1,6 +1,6 @@
 // Configuracion del worker: tabla DNIS -> sucursal, modo "no configurado" (nunca atiende a medias), tope mensual y modo de entrada.
 import { describe, expect, it } from "vitest";
-import { cargarConfig, franjaDeHora, modoEntradaDeLlamada, normalizarNumero, parsearTablaDnis, resolverTopeMensualMicroUsd, sinDiagonalFinal } from "../src/config.ts";
+import { TOPE_MENSUAL_VOZ_POR_OMISION_USD, cargarConfig, franjaDeHora, modoEntradaDeLlamada, normalizarNumero, parsearTablaDnis, resolverTopeMensualMicroUsd, sinDiagonalFinal } from "../src/config.ts";
 
 const ORG = "00000000-0000-4000-8000-000000000001";
 const SUC_A = "00000000-0000-4000-8000-0000000000a1";
@@ -130,7 +130,25 @@ describe("cargarConfig: modo NO CONFIGURADO", () => {
   it("VOICE_TOPE_MENSUAL_USD invalido es un motivo; valido se guarda en micro-USD", () => {
     expect(cargarConfig({ ...ENV_BASE, VOICE_TOPE_MENSUAL_USD: "abc" }).motivos.join(" ")).toContain("VOICE_TOPE_MENSUAL_USD");
     expect(cargarConfig({ ...ENV_BASE, VOICE_TOPE_MENSUAL_USD: "12.5" }).topeMensualPlataformaMicroUsd).toBe(12_500_000);
-    expect(cargarConfig(ENV_BASE).topeMensualPlataformaMicroUsd).toBeNull();
+  });
+
+  // Ola 4 (H4): vacío ya NO significa "sin tope". Un worker desplegado sin la variable quedaba sin techo de gasto de voz por
+  // organización: un bucle de llamadas (o un número filtrado) podía gastar sin límite. Por omisión: 50 USD por organización y mes.
+  it("sin VOICE_TOPE_MENSUAL_USD el tope de plataforma es el de omisión (50 USD por organización y mes)", () => {
+    expect(TOPE_MENSUAL_VOZ_POR_OMISION_USD).toBe(50);
+    expect(cargarConfig(ENV_BASE).topeMensualPlataformaMicroUsd).toBe(50_000_000);
+    expect(cargarConfig({ ...ENV_BASE, VOICE_TOPE_MENSUAL_USD: "   " }).topeMensualPlataformaMicroUsd).toBe(50_000_000);
+    expect(cargarConfig(ENV_BASE).motivos).toEqual([]);
+  });
+
+  it("quitar el tope exige decirlo explícito: VOICE_TOPE_MENSUAL_USD=sin_tope", () => {
+    const c = cargarConfig({ ...ENV_BASE, VOICE_TOPE_MENSUAL_USD: "sin_tope" });
+    expect(c.topeMensualPlataformaMicroUsd).toBeNull();
+    expect(c.motivos).toEqual([]);
+  });
+
+  it("el tope por omisión aplica a una organización sin sobreescritura en la tabla DNIS", () => {
+    expect(resolverTopeMensualMicroUsd(cargarConfig(ENV_BASE).topeMensualPlataformaMicroUsd, null)).toBe(50_000_000);
   });
 });
 

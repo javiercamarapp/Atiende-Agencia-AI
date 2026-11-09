@@ -108,7 +108,8 @@ describe("tope mensual de gasto de voz por organizacion", () => {
     la.clienteCuelga();
     await ta.esperarFin();
     expect(a.cuerpos.has("/internal/restaurantes/voz/tope-mensual")).toBe(false);
-    const b = await crearMundoApi({ gastoPrevioMicroUsd: 999_000_000 });
+    // "Sin tope" ahora exige decirlo explicito (Ola 4, H4): vacio es el tope por omision.
+    const b = await crearMundoApi({ gastoPrevioMicroUsd: 999_000_000, envExtra: { VOICE_TOPE_MENSUAL_USD: "sin_tope" } });
     const tb = await escenario(b, () => [new AgenteGuionado([]).escalon()]);
     const lb = tb.telefonia.llamar({ id: "llamada-sin-tope", dnis: NUMERO_SUCURSAL, desde: SIP });
     await vi.waitFor(() => expect(b.peticiones.some((p) => p.endsWith("/conversaciones"))).toBe(true), { timeout: 5_000, interval: 5 });
@@ -133,6 +134,16 @@ describe("tope mensual de gasto de voz por organizacion", () => {
     const agente = new AgenteGuionado([]);
     const t = await escenario(api, () => [agente.escalon()]);
     const llamada = t.telefonia.llamar({ id: "llamada-plat", dnis: NUMERO_SUCURSAL, desde: SIP });
+    await t.esperarFin();
+    expect(agente.aperturasPedidas).toBe(0);
+    expect(pregrabadosQueSonaron(llamada)).toEqual(["tope_mensual"]);
+  });
+
+  it("sin VOICE_TOPE_MENSUAL_USD aplica el tope por omision (50 USD): con 50 USD gastados la llamada nueva no abre el modelo", async () => {
+    const api = await crearMundoApi({ gastoPrevioMicroUsd: 50_000_000 });
+    const agente = new AgenteGuionado([]);
+    const t = await escenario(api, () => [agente.escalon()]);
+    const llamada = t.telefonia.llamar({ id: "llamada-omision", dnis: NUMERO_SUCURSAL, desde: SIP });
     await t.esperarFin();
     expect(agente.aperturasPedidas).toBe(0);
     expect(pregrabadosQueSonaron(llamada)).toEqual(["tope_mensual"]);
