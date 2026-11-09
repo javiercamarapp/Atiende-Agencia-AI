@@ -22,6 +22,7 @@ import type {
   ContratosRepository,
   PlataformaPrivacidadRepository,
   CostosPlanesRepository,
+  CobroPlanesRepository,
   OrgAdminRepository,
   PlatformSwitchRepository,
   ResumenDiarioRepository,
@@ -683,6 +684,10 @@ export interface AppDeps {
    *  `recordEvent` es SOLO-SISTEMA (`withAppSession({ userId: null })`); lo demas, la
    *  sesion del caller. OPCIONAL: ausente -> las rutas responden `disponible: false`/503. */
   readonly costosPlanesRepo?: (db: TenantDbSession) => CostosPlanesRepository;
+  /** Cobro por plan MEDIDO: tarifa del plan (0103) y uso facturable del mes (restaurantes 203). Fabrica por sesion:
+   *  superadmin y organizacion con la sesion del caller; el webhook de cobro con `withAppSession({ userId: null })`.
+   *  OPCIONAL: ausente -> las rutas responden `disponible: false`/503 (ver routes/cobro-planes.ts). */
+  readonly cobroPlanesRepo?: (db: TenantDbSession) => CobroPlanesRepository;
   /** Dashboard ejecutivo CFO, foto mensual de ingreso (NRR) y entradas de las alertas CFO
    *  (packages/db/migrations/0030_superadmin_cfo_dashboard.sql, ver routes/superadmin-cfo.ts y
    *  routes/internal/superadmin-alertas-cfo.ts). Fabrica por sesion: lectura del dashboard con la
