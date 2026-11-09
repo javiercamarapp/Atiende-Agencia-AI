@@ -136,11 +136,12 @@ export interface ApiEnv {
    * profundidad barata, un token de propietario nunca verifica bajo el secreto de
    * staff ni viceversa. */
   readonly rentasOwnerJwtSecret: string;
-  /** MFA obligatoria del superadmin: con `true`, las acciones sensibles exigen un
-   *  step-up verificado AUNQUE el superadmin no haya enrolado todavia (en ese caso
-   *  responden 403 `mfa_enrollment_required`) y fallan cerrado si la migracion de
-   *  MFA no esta aplicada. Sin ella (default), el step-up solo se exige a quien ya
-   *  tiene un factor activo -- ningun flujo actual se rompe antes de enrolar.
+  /** MFA obligatoria del superadmin: con `true`, NINGUNA ruta `/superadmin/*` responde a un
+   *  superadmin sin factor TOTP activo (403 `mfa_enrollment_required`), salvo ver su estado,
+   *  enrolar y activar (`mfaEnrollmentGate`); las acciones sensibles exigen ademas step-up, y
+   *  todo falla cerrado (503) si la migracion de MFA no esta aplicada. Ver
+   *  `resolverMfaObligatoria`: en PRODUCCION es `true` salvo `SUPERADMIN_MFA_REQUIRED=0`
+   *  explicito (escape de emergencia documentado en docs/SUPERADMIN_SEGURIDAD.md).
    *  OPCIONAL: los fixtures de tests no necesitan declararla. */
   readonly superadminMfaRequired?: boolean;
   /** `true` en el ambiente de PRODUCCION (`VERCEL_ENV=production`, o `NODE_ENV=production` si no hay `VERCEL_ENV`). Con el, el step-up
@@ -226,11 +227,24 @@ export function parseGraphApiVersion(raw: string | undefined): string | null {
   return null;
 }
 
+/**
+ * MFA obligatoria del superadmin. `1`/`true` la activan y `0`/`false` la apagan en cualquier
+ * ambiente; sin valor (o con uno no reconocido) es obligatoria SOLO en produccion. Asi un
+ * despliegue de produccion nunca queda con MFA opcional por olvidar la variable, y desarrollo,
+ * previews y pruebas conservan el camino anterior.
+ */
+export function resolverMfaObligatoria(raw: string | undefined, production: boolean): boolean {
+  const v = (raw ?? "").trim().toLowerCase();
+  if (v === "1" || v === "true") return true;
+  if (v === "0" || v === "false") return false;
+  return production;
+}
+
 export function loadApiEnv(): ApiEnv {
   return {
     jwtSecret: requireEnv("JWT_SECRET"),
     production: (process.env.VERCEL_ENV || process.env.NODE_ENV) === "production",
-    superadminMfaRequired: ["1", "true"].includes((process.env.SUPERADMIN_MFA_REQUIRED ?? "").toLowerCase()),
+    superadminMfaRequired: resolverMfaObligatoria(process.env.SUPERADMIN_MFA_REQUIRED, (process.env.VERCEL_ENV || process.env.NODE_ENV) === "production"),
     mfaEncryptionKey: process.env.SUPERADMIN_MFA_ENCRYPTION_KEY || undefined,
     accessTokenTtlSeconds: Number(process.env.ACCESS_TOKEN_TTL_SECONDS ?? 900),
     refreshTokenTtlSeconds: Number(process.env.REFRESH_TOKEN_TTL_SECONDS ?? 60 * 60 * 24 * 30),

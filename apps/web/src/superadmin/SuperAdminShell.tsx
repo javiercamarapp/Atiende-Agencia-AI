@@ -11,7 +11,7 @@
 // conversacion.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { useLocation } from "react-router-dom";
+import { Navigate, useLocation } from "react-router-dom";
 import { Bell, LayoutGrid, MessageCircle } from "lucide-react";
 import { useT, VerticalShell, VerticalShellEstado } from "@atiende/ui";
 import type { BottomNavItem, SidebarPiePildora, SidebarSection, Traductor } from "@atiende/ui";
@@ -26,6 +26,7 @@ import { RUTA_COPILOTO } from "./lib/copiloto-cliente.ts";
 import { COPILOTO, MOVIL_SUPERADMIN, PIE_SUPERADMIN, RESUMEN, SECCIONES } from "./rutas.ts";
 import { CLAVE_SECCION_SUPERADMIN, claveRutaSuperadmin } from "./rutas-i18n.ts";
 import { limpiarStepUp } from "./lib/stepup.ts";
+import { RUTA_SEGURIDAD, useEnrolamientoMfaPendiente } from "./lib/mfa-obligatoria.ts";
 import { nav } from "@atiende/ui/i18n/nav";
 import { shell } from "@atiende/ui/i18n/shell";
 import { consola } from "@atiende/ui/i18n/consola";
@@ -111,6 +112,8 @@ export function SuperAdminShell({ apiBaseUrl, onRequireLogin, children }: SuperA
   // `session?.token ?? ""` deja montar el hook mientras la sesión resuelve/no
   // existe; useNotifications ya tolera un token vacío (ver su cabecera).
   const notif = useNotifications(apiBaseUrl, session?.token ?? "");
+  // MFA obligatoria sin factor activo: todo /superadmin/* salvo Seguridad responde 403 en el API; se manda a enrolar.
+  const debeEnrolar = useEnrolamientoMfaPendiente(apiBaseUrl, session?.token ?? "", pathname);
 
   if (!resuelto) return <VerticalShellEstado estado="cargando" mensaje={t("shell.cargando")} />;
   if (!session) return null; // onRequireLogin ya disparó la redirección
@@ -144,7 +147,11 @@ export function SuperAdminShell({ apiBaseUrl, onRequireLogin, children }: SuperA
       <div className="grid min-w-0 gap-4">
         <ImpersonacionBanner apiBaseUrl={apiBaseUrl} token={session.token} />
         <StepUpDialog />
-        {children({ apiBaseUrl, token: session.token, staffFullName: session.fullName, staffEmail: session.email })}
+        {debeEnrolar && pathname !== RUTA_SEGURIDAD ? (
+          <Navigate to={RUTA_SEGURIDAD} replace />
+        ) : (
+          children({ apiBaseUrl, token: session.token, staffFullName: session.fullName, staffEmail: session.email })
+        )}
       </div>
     </VerticalShell>
   );

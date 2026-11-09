@@ -11,6 +11,10 @@
 //   - Base sin migrar (0025 sin aplicar) o `mfaRepo` ausente: sin cambios, salvo
 //     SUPERADMIN_MFA_REQUIRED=1, que falla CERRADO con 503 (el operador pidio
 //     obligatoriedad: no se degrada en silencio a "sin MFA").
+//   - MFA obligatoria (`env.superadminMfaRequired`, por omision en produccion):
+//     `mfaEnrollmentGate` corta CUALQUIER ruta `/superadmin/*` de un superadmin sin
+//     factor activo, salvo las de enrolamiento (ENROLLMENT_ROUTES). Asi no hay una
+//     sola accion de superadmin -- ni lectura -- antes de enrolar el TOTP.
 import type { Context, MiddlewareHandler } from "hono";
 import { ApiError, TokenExpiredError, verifyStepUpToken } from "@atiende/core-auth";
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
@@ -75,6 +79,24 @@ export const SENSITIVE_ROUTES: readonly SensitiveRoute[] = [
   { method: "PUT", pattern: /^\/superadmin\/organizaciones\/[^/]+\/whatsapp-meta\/numeros$/, label: "asignar un numero de WhatsApp a una sucursal y una app de Meta" },
 ];
 
+/**
+ * Lo unico que un superadmin SIN factor activo puede hacer cuando la MFA es obligatoria: ver su
+ * estado, generar el secreto y activarlo con el primer codigo. Lista cerrada a proposito; el resto
+ * de `/superadmin/*` responde 403 `mfa_enrollment_required` hasta que el factor quede activo.
+ * Enrolar no reemplaza un factor ya activo (la funcion SQL lo rechaza con 55006), asi que esta
+ * excepcion no abre un camino para cambiar el TOTP de quien ya enrolo.
+ */
+export const ENROLLMENT_ROUTES: readonly { readonly method: string; readonly pattern: RegExp }[] = [
+  { method: "GET", pattern: /^\/superadmin\/mfa\/estado$/ },
+  { method: "POST", pattern: /^\/superadmin\/mfa\/enrolar$/ },
+  { method: "POST", pattern: /^\/superadmin\/mfa\/verificar$/ },
+];
+
+export function isEnrollmentRoute(method: string, path: string): boolean {
+  const m = method.toUpperCase();
+  return ENROLLMENT_ROUTES.some((r) => r.method === m && r.pattern.test(path));
+}
+
 export function isSensitiveRoute(method: string, path: string): boolean {
   const m = method.toUpperCase();
   return SENSITIVE_ROUTES.some((r) => r.method === m && r.pattern.test(path));
@@ -94,20 +116,7 @@ export async function exigirStepUp(deps: AppDeps, c: Context<CoreAuthHonoEnv>, o
   const required = opciones.obligatorio || deps.env.superadminMfaRequired === true;
   const userId = c.get("userId");
 
-  if (!deps.mfaRepo) {
-    if (required) throw Errors.serviceUnavailable("La MFA es obligatoria pero no está disponible en este despliegue.");
-    return;
-  }
-  const mfaRepo = deps.mfaRepo;
-  const { availability, factor } = await deps.engine.withAppSession({ userId: null }, (db) => mfaRepo(db).getFactor(userId));
-  if (availability === "not_migrated") {
-    if (required) throw Errors.serviceUnavailable("La MFA es obligatoria pero la migración 0025 aún no está aplicada.");
-    return;
-  }
-  if (factor?.status !== "active") {
-    if (required) throw new ApiError(403, "mfa_enrollment_required", "La MFA es obligatoria: enrola tu autenticador en Seguridad antes de ejecutar esta acción.");
-    return;
-  }
+  if (!(await tieneFactorActivo(deps, userId, required))) return;
 
   const stepUp = c.req.header(STEPUP_HEADER);
   const bearer = c.req.header("authorization")?.slice("Bearer ".length).trim() ?? "";
@@ -118,6 +127,42 @@ export async function exigirStepUp(deps: AppDeps, c: Context<CoreAuthHonoEnv>, o
     if (err instanceof TokenExpiredError) throw new ApiError(403, "stepup_required", "Tu verificación MFA expiró. Verifica de nuevo y reintenta.");
     throw stepUpRequiredError();
   }
+}
+
+/**
+ * `true` si `userId` tiene un factor TOTP activo. Sin factor, sin repositorio o con la base sin
+ * migrar devuelve `false` -- o, si `required`, falla CERRADO (403 `mfa_enrollment_required` / 503).
+ */
+async function tieneFactorActivo(deps: AppDeps, userId: string, required: boolean): Promise<boolean> {
+  if (!deps.mfaRepo) {
+    if (required) throw Errors.serviceUnavailable("La MFA es obligatoria pero no está disponible en este despliegue.");
+    return false;
+  }
+  const mfaRepo = deps.mfaRepo;
+  const { availability, factor } = await deps.engine.withAppSession({ userId: null }, (db) => mfaRepo(db).getFactor(userId));
+  if (availability === "not_migrated") {
+    if (required) throw Errors.serviceUnavailable("La MFA es obligatoria pero la migración 0025 aún no está aplicada.");
+    return false;
+  }
+  if (factor?.status !== "active") {
+    if (required) throw new ApiError(403, "mfa_enrollment_required", "La MFA es obligatoria: enrola tu autenticador en Seguridad antes de ejecutar esta acción.");
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Con la MFA obligatoria, ninguna ruta `/superadmin/*` (lectura incluida) responde a un superadmin
+ * sin factor activo, salvo las de ENROLLMENT_ROUTES. Sin MFA obligatoria no hace nada (no consulta
+ * la base). Se monta despues de la autenticacion y del gateo de superadmin.
+ */
+export function mfaEnrollmentGate(deps: AppDeps): MiddlewareHandler<CoreAuthHonoEnv> {
+  return async (c, next) => {
+    if (deps.env.superadminMfaRequired === true && !isEnrollmentRoute(c.req.method, c.req.path)) {
+      await tieneFactorActivo(deps, c.get("userId"), true);
+    }
+    await next();
+  };
 }
 
 export function stepUpMiddleware(deps: AppDeps): MiddlewareHandler<CoreAuthHonoEnv> {
