@@ -1,16 +1,19 @@
 // ds3 «Guía» de despachos: el recorrido de cada rol sale de SU menu real (buildSidebarSections), toda pantalla del menu tiene contenido
 // propio en ES y EN, ninguna entrada de contenido apunta a una pantalla que no existe y el corto mide 7 pasos.
 import { describe, expect, it } from "vitest";
-import { construirTour, contarPasos, pantallasDelMenu, rutaRelativa, TIPOS_ILUSTRACION } from "@atiende/ui";
+import { construirTour, contarPasos, crearTraductor, pantallasDelMenu, registrarModuloEs, rutaRelativa, TIPOS_ILUSTRACION } from "@atiende/ui";
+import { nav } from "@atiende/ui/i18n/nav";
 import { buildSidebarSections } from "../src/verticals/despachos/DespachosShell.tsx";
 import { COPILOTO_DESPACHOS_ROLES } from "../src/verticals/despachos/pages/Copiloto.tsx";
 import { esencialesDespachos, GUIA_DESPACHOS } from "../src/verticals/despachos/guia-despachos.ts";
 
 const ORG = "despacho-demo";
 const BASE = `/despachos/${ORG}`;
+registrarModuloEs(nav);
+const t = crearTraductor("es");
 const ROLES = ["admin", "contador", "auditor", "readonly"];
 /** Mismo armado que DespachosShell (el Copiloto depende del rol); `conCopiloto` forzado cubre ambas formas del menu. */
-const menuDe = (rol: string, conCopiloto = COPILOTO_DESPACHOS_ROLES.has(rol)) => buildSidebarSections(ORG, conCopiloto);
+const menuDe = (rol: string, conCopiloto = COPILOTO_DESPACHOS_ROLES.has(rol)) => buildSidebarSections(t, ORG, conCopiloto);
 
 describe("guia de despachos", () => {
   for (const rol of ROLES) {
@@ -42,7 +45,7 @@ describe("guia de despachos", () => {
   });
 
   it("sin contenido huerfano: cada entrada es una pantalla real del menu de algun rol", () => {
-    const reales = new Set([true, false].flatMap((c) => pantallasDelMenu(buildSidebarSections(ORG, c)).map((p) => rutaRelativa(p.href, BASE))));
+    const reales = new Set([true, false].flatMap((c) => pantallasDelMenu(buildSidebarSections(t, ORG, c)).map((p) => rutaRelativa(p.href, BASE))));
     for (const clave of Object.keys(GUIA_DESPACHOS)) expect(reales.has(clave), `contenido sin pantalla: «${clave}»`).toBe(true);
   });
 

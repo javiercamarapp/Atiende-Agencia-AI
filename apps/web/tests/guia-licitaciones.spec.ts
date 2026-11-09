@@ -1,16 +1,19 @@
 // ds3 «Guía» de licitaciones: el recorrido de cada rol sale de SU menu real (buildSidebarSections), toda pantalla del menu tiene
 // contenido propio en ES y EN, ninguna entrada apunta a una pantalla que no existe y el corto mide 7 pasos para los 6 roles.
 import { describe, expect, it } from "vitest";
-import { construirTour, contarPasos, pantallasDelMenu, rutaRelativa, TIPOS_ILUSTRACION } from "@atiende/ui";
+import { construirTour, contarPasos, crearTraductor, pantallasDelMenu, registrarModuloEs, rutaRelativa, TIPOS_ILUSTRACION } from "@atiende/ui";
+import { nav } from "@atiende/ui/i18n/nav";
 import { buildSidebarSections } from "../src/verticals/licitaciones/LicitacionesShell.tsx";
 import { STAFF_NAV_ROLES, puedeVerPrivacidad } from "../src/verticals/licitaciones/roles-nav.ts";
 import { esencialesLicitaciones, GUIA_LICITACIONES } from "../src/verticals/licitaciones/guia-licitaciones.ts";
 
 const ORG = "constructora";
 const BASE = `/licitaciones/${ORG}`;
+registrarModuloEs(nav);
+const t = crearTraductor("es");
 const ROLES = ["owner", "admin", "analyst", "writer", "reviewer", "viewer"];
 /** Mismo armado que LicitacionesShell. */
-const menuDe = (rol: string) => buildSidebarSections(ORG, STAFF_NAV_ROLES.has(rol), puedeVerPrivacidad(rol));
+const menuDe = (rol: string) => buildSidebarSections(t, ORG, STAFF_NAV_ROLES.has(rol), puedeVerPrivacidad(rol));
 
 describe("guia de licitaciones", () => {
   for (const rol of ROLES) {

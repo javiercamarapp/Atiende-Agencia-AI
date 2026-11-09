@@ -2,16 +2,19 @@
 // contenido propio en ES y EN, ninguna entrada de contenido apunta a una pantalla que no existe y el corto mide 7 pasos (limpieza: 4,
 // ver abajo).
 import { describe, expect, it } from "vitest";
-import { construirTour, contarPasos, pantallasDelMenu, rutaRelativa, TIPOS_ILUSTRACION } from "@atiende/ui";
+import { construirTour, contarPasos, crearTraductor, pantallasDelMenu, registrarModuloEs, rutaRelativa, TIPOS_ILUSTRACION } from "@atiende/ui";
+import { nav } from "@atiende/ui/i18n/nav";
 import { buildSections } from "../src/verticals/rentas/RentasShell.tsx";
 import { esencialesRentas, excluirRentas, GUIA_RENTAS } from "../src/verticals/rentas/guia-rentas.ts";
 
 const ORG = "gestora";
 const BASE = `/rentas/${ORG}`;
+registrarModuloEs(nav);
+const t = crearTraductor("es");
 /** Los 6 roles de packages/domain-rentas/src/roles.ts (RENTAS_VERTICAL_ROLES; apps/web no depende de ese paquete). */
 const RENTAS_VERTICAL_ROLES = ["admin_gestora", "operador:acceso_total", "operador:calendario_mensajeria", "operador:solo_calendario", "contador", "limpieza"] as const;
 /** Mismo armado que RentasShell (COPILOTO_ROLES = admin_gestora/contador; Privacidad solo admin_gestora). */
-const menuDe = (rol: string) => buildSections(ORG, rol === "admin_gestora" || rol === "contador", rol === "admin_gestora");
+const menuDe = (rol: string) => buildSections(t, ORG, rol === "admin_gestora" || rol === "contador", rol === "admin_gestora");
 const opciones = (rol: string) => ({ base: BASE, contenido: GUIA_RENTAS, excluir: excluirRentas(rol) });
 
 describe("guia de rentas", () => {

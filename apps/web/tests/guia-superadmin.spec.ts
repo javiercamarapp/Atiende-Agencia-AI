@@ -1,11 +1,17 @@
 // ds3 «Guía» de la consola de plataforma: el recorrido sale del menu real (SECTIONS), toda pantalla del menu tiene contenido propio en
 // ES y EN, ninguna entrada de contenido apunta a una pantalla que no existe y el corto mide 7 pasos.
 import { describe, expect, it } from "vitest";
-import { construirTour, contarPasos, pantallasDelMenu, rutaRelativa, TIPOS_ILUSTRACION } from "@atiende/ui";
-import { SECTIONS } from "../src/superadmin/SuperAdminShell.tsx";
+import { construirTour, contarPasos, crearTraductor, pantallasDelMenu, registrarModuloEs, rutaRelativa, TIPOS_ILUSTRACION } from "@atiende/ui";
+import { nav } from "@atiende/ui/i18n/nav";
+import { consola } from "@atiende/ui/i18n/consola";
+import { construirSecciones } from "../src/superadmin/SuperAdminShell.tsx";
 import { ESENCIALES_SUPERADMIN, GUIA_SUPERADMIN } from "../src/superadmin/guia-superadmin.ts";
 
 const BASE = "/superadmin";
+registrarModuloEs(nav);
+registrarModuloEs(consola);
+const t = crearTraductor("es");
+const SECTIONS = construirSecciones(t);
 
 describe("guia del superadmin", () => {
   it("cada pantalla del menu tiene contenido propio (ES y EN)", () => {

@@ -1,16 +1,19 @@
 // ds3 «Guía» de citas: el recorrido de cada rol sale de SU menu real (buildSections de CitasShell), toda pantalla del menu tiene
 // contenido propio en ES y EN, ninguna entrada de contenido apunta a una pantalla que no existe y el corto mide 7 pasos.
 import { describe, expect, it } from "vitest";
-import { construirTour, contarPasos, pantallasDelMenu, rutaRelativa, TIPOS_ILUSTRACION } from "@atiende/ui";
+import { construirTour, contarPasos, crearTraductor, pantallasDelMenu, registrarModuloEs, rutaRelativa, TIPOS_ILUSTRACION } from "@atiende/ui";
+import { nav } from "@atiende/ui/i18n/nav";
 import { buildSections } from "../src/verticals/citas/CitasShell.tsx";
 import { COPILOTO_CITAS_ROLES } from "../src/verticals/citas/pages/Copiloto.tsx";
 import { esencialesCitas, GUIA_CITAS } from "../src/verticals/citas/guia-citas.ts";
 
 const ORG = "clinica";
 const BASE = `/citas/${ORG}`;
+registrarModuloEs(nav);
+const t = crearTraductor("es");
 const ROLES = ["owner", "admin", "staff"];
 /** Mismo armado que CitasShell. */
-const menuDe = (rol: string) => buildSections(ORG, COPILOTO_CITAS_ROLES.has(rol));
+const menuDe = (rol: string) => buildSections(t, ORG, COPILOTO_CITAS_ROLES.has(rol));
 
 describe("guia de citas", () => {
   for (const rol of ROLES) {
