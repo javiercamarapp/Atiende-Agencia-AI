@@ -27,8 +27,12 @@ const TARIFA: TarifaPlanRow = {
   precioConversacionWaExcedenteCentavos: 150,
   usoJustoPct: 150,
   cuotaAltaCentavos: null,
+  cuotaAltaPorSucursalCentavos: null,
   tasaIvaBp: 1600,
   organizacionExclusivaId: null,
+  tramosSucursal: [],
+  bandasUso: [],
+  margenMinimoPct: null,
 };
 
 async function setup(opts: { sinRepo?: boolean; noMigrado?: boolean } = {}) {

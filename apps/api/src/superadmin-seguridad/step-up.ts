@@ -54,6 +54,9 @@ export const SENSITIVE_ROUTES: readonly SensitiveRoute[] = [
   { method: "PUT", pattern: /^\/superadmin\/planes\/[^/]+$/, label: "editar un plan del catalogo" },
   { method: "PUT", pattern: /^\/superadmin\/planes\/[^/]+\/limites\/[^/]+$/, label: "fijar un limite de plan" },
   { method: "PUT", pattern: /^\/superadmin\/planes\/[^/]+\/tarifa$/, label: "fijar la tarifa medida de un plan" },
+  { method: "PUT", pattern: /^\/superadmin\/planes\/[^/]+\/tabulador$/, label: "fijar el tabulador, bandas o margen minimo de un plan" },
+  { method: "PUT", pattern: /^\/superadmin\/cobro\/costos-unitarios\/[^/]+$/, label: "capturar un costo unitario del margen" },
+  { method: "POST", pattern: /^\/superadmin\/cotizador\/crear-plan$/, label: "crear el plan negociado de una organizacion" },
   { method: "DELETE", pattern: /^\/superadmin\/planes\/[^/]+\/limites\/[^/]+$/, label: "quitar un limite de plan" },
   { method: "POST", pattern: /^\/superadmin\/planes\/asignaciones\/[^/]+\/confirmar$/, label: "confirmar asignacion de plan a una organizacion" },
   // Contrato por cliente (SA-43): cambiar las condiciones comerciales de una organizacion.

@@ -8,6 +8,8 @@ export * from './tenant-verification.ts';
 export * from './iva.ts';
 export * from './per-seat.ts';
 export * from './plan-medido.ts';
+export * from './proyeccion.ts';
+export * from './cotizador.ts';
 export * from './cost-margin.ts';
 export * from './cfo.ts';
 export * from './pyl.ts';
