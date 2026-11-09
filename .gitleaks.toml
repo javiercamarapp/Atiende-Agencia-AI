@@ -74,3 +74,20 @@ regexTarget = "line"
 regexes = [
   '''variables:\s*\["DEEPGRAM_API_KEY",\s*"VOZ_CASCADA_V2_HABILITADA"\]''',
 ]
+
+# Agregados de las mediciones del agente de PM (docs/evals/agente-pm/resultados/<medicion>/AGREGADO.txt): la linea de conteo de tokens
+# `tokens agente: entrada=<n> salida=<n> llamadas=<n> | por conversacion: entrada=<n> salida=<n> | costo estimado gateway=<x> USD` son CONTEOS
+# de tokens del LLM (solo digitos), no credenciales; la heuristica generica la confunde con una llave por la palabra «tokens» y la cifra contigua.
+# Excepcion estrecha: una regla, solo archivos AGREGADO* bajo esa carpeta Y solo esa linea exacta (condicion AND; el escaneo es del historial
+# completo, asi que los commits que la introdujeron tambien deben quedar cubiertos).
+[[allowlists]]
+description = "Conteos de tokens del LLM en los AGREGADO.txt de las mediciones del agente de PM"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = [
+  '''(^|/)docs/evals/agente-pm/resultados/[^/]+/AGREGADO[^/]*$''',
+]
+regexTarget = "line"
+regexes = [
+  '''^tokens agente: entrada=\d+ salida=\d+ llamadas=\d+ \| por conversacion: entrada=\d+ salida=\d+ \| costo estimado gateway=\d+(\.\d+)? USD$''',
+]
