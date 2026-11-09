@@ -5,6 +5,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
 import { dialogo } from "../../helpers/dialogos.ts";
+import { esperarAnimaciones } from "../../helpers/esperas.ts";
 import { expect, test } from "../../helpers/fixtures.ts";
 import { ir } from "../../helpers/recorrido.ts";
 
@@ -23,13 +24,13 @@ async function foto(page: Page, nombre: string, vista: string): Promise<void> {
   const destino = process.env["CAPTURAS_R0B_DIR"];
   if (!destino) return;
   mkdirSync(destino, { recursive: true });
-  await page.waitForTimeout(700);
+  await esperarAnimaciones(page);
   await page.screenshot({ path: join(destino, `${nombre}-${vista}-despues.png`) });
   await page.evaluate(() => document.documentElement.setAttribute("data-ambito", "ninguno"));
-  await page.waitForTimeout(350);
+  await esperarAnimaciones(page); // la transicion de colores al quitar el ambito termina
   await page.screenshot({ path: join(destino, `${nombre}-${vista}-antes.png`) });
   await page.evaluate(() => document.documentElement.setAttribute("data-ambito", "restaurantes"));
-  await page.waitForTimeout(150);
+  await esperarAnimaciones(page);
 }
 
 test.describe("UNI-R0b capturas antes/despues @recorrido @oscuro", () => {

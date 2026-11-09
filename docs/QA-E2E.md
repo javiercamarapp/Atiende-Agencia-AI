@@ -171,7 +171,11 @@ Notas de la matriz visual: el movil usa el Pixel 7 de la config (375x812); el 39
 
 - Localizadores por rol y nombre accesible (`getByRole`, `getByLabel`, `getByText`); si falta un nombre accesible,
   se arregla la UI, no se usa CSS fragil. El unico XPath aceptado es el de acotar una fila repetida (ver restaurantes/Staff).
-- Sin `waitForTimeout`: esperas por aserciones web-first y `expect.poll`.
+- Sin `waitForTimeout`: esperas por aserciones web-first (`toBeVisible`, `toHaveText`, `toHaveCount`), `expect.poll`,
+  `page.waitForResponse`, `page.waitForFunction` y los helpers de `e2e/helpers/esperas.ts` (`esperarAnimaciones`: terminan las
+  animaciones y transiciones finitas; `esperarCuadros`: n cuadros de pintado; `esperarQuieto`: la caja de un elemento deja de moverse).
+  Guard en vitest: `apps/web/tests/e2e-sin-waitfortimeout.spec.ts` (cero en `e2e/`; en `e2e-ds3/` quedan 10 en `carga-y-fps.spec.ts`
+  y `marco-shell.spec.ts`, que la regla «los specs ds3 solo se agregan» no deja modificar: trinquete que solo baja).
 - Titulos en espanol, con etiqueta de grupo (`@humo`, `@ds`, `@errores`) y `@oscuro` solo donde aplique.
 - Datos ficticios: dominio `example.test`, telefonos `+52999555xxxx`, ningun literal con forma de credencial.
 - Las pruebas no corrigen codigo del producto: cuando una prueba revela un defecto real, se reporta con el formato de
@@ -212,6 +216,73 @@ Defectos conocidos:
 `.github/workflows/e2e.yml`: `pull_request` (con `paths`) y manual; instala solo chromium con cache; `timeout-minutes: 25`;
 sin secretos y sin `pull_request_target`. **No es un check requerido y no forma parte de `ci-checks`**: informativo hasta
 medir la tasa de flake (objetivo < 1 % antes de promoverlo). Reintentos: 0 en local, 1 en CI.
+
+### Hacerlo requerido en `main` (decision de Javier; nadie lo cambia sin su OK)
+
+El nombre del check es el `name:` del job `e2e` de `.github/workflows/e2e.yml`: **`e2e (chromium, escritorio y movil)`**.
+Ojo: el workflow tiene `paths`, asi que un PR que no toca `apps/web/**`, `packages/ui/**`, `package-lock.json` ni el propio
+workflow nunca reporta ese check y, si es requerido, se queda esperando para siempre. Antes de hacerlo requerido hay que quitar el
+filtro `paths` (o agregar un job hermano con el mismo nombre que pase en verde cuando no aplique) y confirmar que Actions corre.
+
+Desde la web: Settings → Branches → regla de `main` (Edit) → «Require status checks to pass before merging» → buscar
+`e2e (chromium, escritorio y movil)` → Save changes. (Si `main` usa *rulesets*: Settings → Rules → Rulesets → el de `main` →
+«Require status checks to pass» → Add checks.)
+
+Con `gh`. Primero lee lo que hay: al 9-nov-2026 `gh api repos/javiercamarapp/Atiende-Agencia-AI/branches/main/protection/required_status_checks`
+respondia `404 Branch not protected` y no habia *rulesets* (`gh api repos/javiercamarapp/Atiende-Agencia-AI/rulesets` vacio).
+
+- **Si `main` ya tiene proteccion** (la lectura devuelve `{strict, contexts}`), agrega el check sin quitar los demas:
+
+  ```bash
+  gh api -X POST repos/javiercamarapp/Atiende-Agencia-AI/branches/main/protection/required_status_checks/contexts \
+    -f 'contexts[]=e2e (chromium, escritorio y movil)'
+  ```
+
+- **Si no la tiene** (404 como hoy), hay que crearla; este `PUT` solo exige checks (sin revisiones obligatorias ni restricciones de
+  quien empuja) e incluye el agregador de CI (`typecheck + lint + test:unit + build de apps/web`, job `ci-checks` de `ci-checks.yml`):
+
+  ```bash
+  gh api -X PUT repos/javiercamarapp/Atiende-Agencia-AI/branches/main/protection --input - <<'JSON'
+  {"required_status_checks": {"strict": false, "contexts": ["typecheck + lint + test:unit + build de apps/web", "e2e (chromium, escritorio y movil)"]},
+   "enforce_admins": false, "required_pull_request_reviews": null, "restrictions": null}
+  JSON
+  ```
+
+Para revertir solo el check: `gh api -X DELETE repos/javiercamarapp/Atiende-Agencia-AI/branches/main/protection/required_status_checks/contexts -f 'contexts[]=e2e (chromium, escritorio y movil)'`
+(o quitar toda la proteccion creada arriba: `gh api -X DELETE repos/javiercamarapp/Atiende-Agencia-AI/branches/main/protection`).
+
+## Accesibilidad con axe (`e2e-ds3/axe.spec.ts`)
+
+`@axe-core/playwright` (devDependency de `apps/web`, version fija) audita con las etiquetas `wcag2a`, `wcag2aa`, `wcag21a`,
+`wcag21aa` y `wcag22aa` el login de las 6 verticales (sin sesion) y el Resumen `/<vertical>/<org>` de cada una con su owner de
+`e2e/mock-api/personas.ts`, en cada proyecto de `playwright.ds3.config.ts` (d1440 claro/oscuro, m390 claro, m360 oscuro). Corre
+con el resto de `npm run e2e:ds3`, contra la API simulada.
+
+**Trinquete** contra `apps/web/e2e-ds3/axe-baseline.json`, formato `[{ "ruta": "/citas/login @d1440-claro", "regla": "color-contrast",
+"nodos": 3 }]` (la ruta lleva el proyecto porque el contraste cambia con el tema y el ancho): una violacion que no esta en la baseline
+o con mas nodos **falla**; una entrada que bajo o desaparecio **tambien falla** y pide bajar o borrar la entrada (el piso solo
+desciende). La logica vive en `e2e-ds3/axe-trinquete.ts` y la prueba `apps/web/tests/axe-trinquete.spec.ts` (vitest, sin navegador).
+El detalle de cada violacion (selector de cada nodo y enlace de ayuda) va adjunto al reporte como `axe-<pantalla>.json`.
+
+**La baseline esta vacia (`[]`) hasta medir**: el PR que trajo el arnes no corrio Playwright. Mientras este vacia, cualquier violacion
+real hace fallar el spec. Para llenarla con mediciones reales (desde la raiz del repo, con chromium ya instalado):
+
+```bash
+cd apps/web
+rm -rf test-results-ds3/axe-medicion
+VITE_API_BASE_URL=http://127.0.0.1:8788 npx vite build --outDir dist-e2e --emptyOutDir   # o deja que el webServer construya
+E2E_SKIP_BUILD=1 AXE_MEDIR=1 npx playwright test -c playwright.ds3.config.ts axe.spec.ts
+node --experimental-strip-types e2e-ds3/axe-unir-baseline.ts
+git diff e2e-ds3/axe-baseline.json
+```
+
+`AXE_MEDIR=1` no afirma nada: escribe un JSON por pantalla y proyecto en `test-results-ds3/axe-medicion/`, y
+`axe-unir-baseline.ts` los junta ordenados en `axe-baseline.json` (valida el formato). Mide con la matriz por omision (sin
+`DS3_MATRIZ=completa`): un proyecto que no esta en la baseline falla ante cualquier violacion. Revisa el diff antes de comitear: la
+baseline es deuda declarada, no permiso; cada entrada deberia tener su arreglo pendiente.
+
+El spec `e2e-ds3/login.spec.ts` conserva su camino viejo con `AXE_CORE_JS` (exige cero violaciones si se define); no se toco porque
+la serie ds3 solo agrega specs.
 
 ## Lo que sigue (pasos siguientes del plan)
 

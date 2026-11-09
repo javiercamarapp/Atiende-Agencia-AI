@@ -8,6 +8,7 @@ import { join } from "node:path";
 import type { Page } from "@playwright/test";
 import { afirmarModo, afirmarSinScrollHorizontal } from "../helpers/ds.ts";
 import { dialogo } from "../helpers/dialogos.ts";
+import { esperarAnimaciones } from "../helpers/esperas.ts";
 import { expect, test } from "../helpers/fixtures.ts";
 import { afirmarPantallaSana } from "../helpers/humo.ts";
 import { ir } from "../helpers/recorrido.ts";
@@ -21,7 +22,7 @@ async function foto(page: Page, nombre: string, proyecto: string): Promise<void>
   if (!destino) return;
   mkdirSync(destino, { recursive: true });
   await page.evaluate(() => document.querySelector("main")?.scrollTo(0, 0));
-  await page.waitForTimeout(400); // asienta animaciones de entrada y teselas
+  await esperarAnimaciones(page); // asienta animaciones de entrada (el mapa con teselas esta oculto)
   await page.screenshot({ path: join(destino, `${nombre}-${proyecto}.png`), fullPage: true });
 }
 

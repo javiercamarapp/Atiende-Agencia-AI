@@ -5,6 +5,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { Page } from "@playwright/test";
 import { afirmarModo, afirmarSinScrollHorizontal } from "../../helpers/ds.ts";
+import { esperarAnimaciones } from "../../helpers/esperas.ts";
 import { expect, test } from "../../helpers/fixtures.ts";
 import { ARGUMENTOS_MICROFONO_FALSO, simularLlamada } from "../../helpers/llamada-simulada.ts";
 import { BASE } from "../../helpers/recorrido.ts";
@@ -17,7 +18,7 @@ async function foto(page: Page, nombre: string, proyecto: string): Promise<void>
   const destino = process.env["CAPTURAS_R4_DIR"];
   if (!destino) return;
   mkdirSync(destino, { recursive: true });
-  await page.waitForTimeout(600); // deja terminar las animaciones de entrada
+  await esperarAnimaciones(page); // deja terminar las animaciones de entrada
   await page.screenshot({ path: join(destino, `${nombre}-${proyecto}.png`) });
 }
 

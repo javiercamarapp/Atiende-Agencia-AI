@@ -63,60 +63,63 @@ export function ProgramadosPanel({
       ) : (
         <div className="overflow-hidden rounded-xl border border-border">
           {visibles.map((o) => (
-            <div key={o.id} onClick={() => onAbrir(o)} data-testid={`programado-${o.id}`} className="cursor-pointer border-b border-dashed border-border p-3 transition-colors last:border-0 hover:bg-muted/40">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex min-w-0 items-center gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10">
-                    <CalendarClock className="h-5 w-5 text-primary" strokeWidth={1.75} aria-hidden="true" />
-                  </div>
-                  <div className="min-w-0 space-y-0.5">
-                    <button type="button" onClick={(e) => { e.stopPropagation(); onAbrir(o); }} className="block max-w-full truncate rounded text-left text-ui font-medium text-foreground" aria-label={`Abrir el pedido de ${o.customerName}`}>
-                      {o.customerName}
-                    </button>
-                    <p className="font-mono text-eyebrow uppercase tracking-[0.06em] text-muted-foreground">
-                      Pedido #{idCortoPedido(o.id)}
-                      {o.orderNumber != null && (
-                        <>
-                          {" "}· Venta <span className="tabular-nums">{String(o.orderNumber).padStart(4, "0")}</span>
-                        </>
+            // La fila entera abre el pedido con un <button> real (Tab, Enter y Espacio nativos, anillo de foco global de @atiende/ui).
+            // Las acciones «Enviar a cocina ahora» y «Cancelar pedido» quedan FUERA del boton: no se anidan controles (HTML valido, sin
+            // nested-interactive). Dentro del boton solo hay contenido de frase (span), por eso los bloques son <span className="block">.
+            <div key={o.id} data-testid={`programado-${o.id}`} className="border-b border-dashed border-border p-3 transition-colors last:border-0 hover:bg-muted/40">
+              <button type="button" onClick={() => onAbrir(o)} className="block w-full cursor-pointer rounded-lg text-left" aria-label={`Abrir el pedido de ${o.customerName}`} data-testid={`programado-abrir-${o.id}`}>
+                <span className="flex items-start justify-between gap-3">
+                  <span className="flex min-w-0 items-center gap-3">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10">
+                      <CalendarClock className="h-5 w-5 text-primary" strokeWidth={1.75} aria-hidden="true" />
+                    </span>
+                    <span className="block min-w-0 space-y-0.5">
+                      <span className="block max-w-full truncate text-ui font-medium text-foreground">{o.customerName}</span>
+                      <span className="block font-mono text-eyebrow uppercase tracking-[0.06em] text-muted-foreground">
+                        Pedido #{idCortoPedido(o.id)}
+                        {o.orderNumber != null && (
+                          <>
+                            {" "}· Venta <span className="tabular-nums">{String(o.orderNumber).padStart(4, "0")}</span>
+                          </>
+                        )}
+                      </span>
+                      {o.customerAddress && (
+                        <span className="flex items-center gap-1 truncate text-xs text-muted-foreground">
+                          <MapPin className="h-3 w-3 shrink-0" strokeWidth={1.75} aria-hidden="true" /> <span className="truncate">{o.customerAddress}</span>
+                        </span>
                       )}
-                    </p>
-                    {o.customerAddress && (
-                      <p className="flex items-center gap-1 truncate text-xs text-muted-foreground">
-                        <MapPin className="h-3 w-3 shrink-0" strokeWidth={1.75} aria-hidden="true" /> <span className="truncate">{o.customerAddress}</span>
-                      </p>
+                      {o.branch && (
+                        <span className="flex items-center gap-1 text-eyebrow text-muted-foreground">
+                          <Store className="h-3 w-3 shrink-0" strokeWidth={1.75} aria-hidden="true" /> {o.branch}
+                        </span>
+                      )}
+                    </span>
+                  </span>
+                  <span className="block shrink-0 space-y-1 text-right">
+                    <span className="block font-display text-ui font-semibold tabular-nums text-foreground">{montoFila(o.total)}</span>
+                    {o.programadoPara && (
+                      <>
+                        <span className="block text-pill font-medium tabular-nums text-primary" data-testid={`programado-para-${o.id}`}>
+                          {fechaCortaHoraEsMx(o.programadoPara)}
+                        </span>
+                        <span className="block text-eyebrow text-muted-foreground">{faltaPara(o.programadoPara, ahoraMs)}</span>
+                        <span className="block text-eyebrow text-muted-foreground">entra a cocina a las {hora24EsMx(new Date(Date.parse(o.programadoPara) - ANTICIPACION_PROMOCION_MIN * 60_000))}</span>
+                      </>
                     )}
-                    {o.branch && (
-                      <p className="flex items-center gap-1 text-eyebrow text-muted-foreground">
-                        <Store className="h-3 w-3 shrink-0" strokeWidth={1.75} aria-hidden="true" /> {o.branch}
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <div className="shrink-0 space-y-1 text-right">
-                  <p className="font-display text-ui font-semibold tabular-nums text-foreground">{montoFila(o.total)}</p>
-                  {o.programadoPara && (
-                    <>
-                      <p className="text-pill font-medium tabular-nums text-primary" data-testid={`programado-para-${o.id}`}>
-                        {fechaCortaHoraEsMx(o.programadoPara)}
-                      </p>
-                      <p className="text-eyebrow text-muted-foreground">{faltaPara(o.programadoPara, ahoraMs)}</p>
-                      <p className="text-eyebrow text-muted-foreground">entra a cocina a las {hora24EsMx(new Date(Date.parse(o.programadoPara) - ANTICIPACION_PROMOCION_MIN * 60_000))}</p>
-                    </>
+                  </span>
+                </span>
+                <span className="mt-2 flex flex-wrap items-center gap-1.5 sm:ml-[52px]">
+                  {o.canal && (
+                    <StatusBadge tone="neutral" dot={false} className="text-2xs">
+                      {o.canal === "recoger" ? "Recoger" : "Domicilio"}
+                    </StatusBadge>
                   )}
-                </div>
-              </div>
-              <div className="mt-2 flex flex-wrap items-center gap-1.5 sm:ml-[52px]">
-                {o.canal && (
-                  <StatusBadge tone="neutral" dot={false} className="text-2xs">
-                    {o.canal === "recoger" ? "Recoger" : "Domicilio"}
+                  <StatusBadge tone={statusTone(ORDER_STATUS_TONES, o.status)} className="text-2xs">
+                    {ORDER_STATUS_LABELS[o.status]}
                   </StatusBadge>
-                )}
-                <StatusBadge tone={statusTone(ORDER_STATUS_TONES, o.status)} className="text-2xs">
-                  {ORDER_STATUS_LABELS[o.status]}
-                </StatusBadge>
-              </div>
-              <div className={cn("mt-2.5 flex flex-wrap items-center gap-1.5 sm:ml-[52px]")} onClick={(e) => e.stopPropagation()}>
+                </span>
+              </button>
+              <div className={cn("mt-2.5 flex flex-wrap items-center gap-1.5 sm:ml-[52px]")}>
                 <Button type="button" size="sm" variant="outline" className="h-7 rounded-full px-3 text-eyebrow" loading={changingId === o.id} disabled={changingId === o.id} onClick={() => onAdelantar(o)}>
                   Enviar a cocina ahora
                 </Button>
