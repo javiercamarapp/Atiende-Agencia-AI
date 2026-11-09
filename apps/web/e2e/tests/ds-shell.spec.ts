@@ -1,7 +1,7 @@
 // Aserciones del sistema de diseno sobre el shell compartido (VerticalShell): se ejercitan con citas porque su
 // fixture es la mas completa; el shell es el mismo en las 6 verticales y en superadmin.
 // Las pruebas marcadas @oscuro corren tambien en los proyectos escritorio-oscuro y movil-oscuro.
-import { afirmarModo, afirmarSinScrollHorizontal, afirmarSkipLink, afirmarUnSoloMain } from "../helpers/ds.ts";
+import { afirmarEncabezadoResumen, afirmarModo, afirmarSinScrollHorizontal, afirmarSkipLink, afirmarUnSoloMain } from "../helpers/ds.ts";
 import { expect, test } from "../helpers/fixtures.ts";
 import { afirmarPantallaSana } from "../helpers/humo.ts";
 import { citas } from "../mock-api/fixtures/citas.ts";
@@ -47,7 +47,7 @@ test.describe("DS del shell @ds", () => {
   test("cada pantalla tiene un solo <h1> (BUG-E2E-002)", async ({ page, iniciarSesion }) => {
     await iniciarSesion("citas", "owner");
     await page.goto(RESUMEN);
-    await expect(page.getByRole("heading", { name: /^(Buenos días|Buenas tardes|Buenas noches), /, level: 1 })).toBeVisible();
-    await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
+    // ds3 por omision (#758): el nivel 1 del Resumen es «Resumen», no el saludo legado (ver afirmarEncabezadoResumen).
+    await afirmarEncabezadoResumen(page);
   });
 });

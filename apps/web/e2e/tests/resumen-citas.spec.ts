@@ -3,7 +3,7 @@
 // barra inferior en movil. Las pruebas @oscuro corren tambien en los proyectos oscuros. Con CAPTURAS_RESUMEN=1 guarda capturas en
 // docs/diseno-ux-capturas-uni-res-citas/ (nunca en CI).
 import { expect, test } from "../helpers/fixtures.ts";
-import { afirmarSinScrollHorizontal } from "../helpers/ds.ts";
+import { afirmarEncabezadoResumen, afirmarSinScrollHorizontal } from "../helpers/ds.ts";
 import { afirmarPantallaSana } from "../helpers/humo.ts";
 import { barraMovil, esMovil } from "../helpers/navegacion.ts";
 import { citas } from "../mock-api/fixtures/citas.ts";
@@ -16,8 +16,8 @@ test.describe("resumen de citas @resumen", () => {
     await page.goto(RUTA);
     await afirmarPantallaSana(page, "resumen citas");
 
-    await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
-    await expect(page.getByRole("heading", { level: 1 })).toContainText(/^(Buenos días|Buenas tardes|Buenas noches), /);
+    // ds3 por omision (#758): el nivel 1 del Resumen es «Resumen», no el saludo legado (ver afirmarEncabezadoResumen).
+    await afirmarEncabezadoResumen(page);
     await expect(page.getByTestId("odometro")).toContainText("Citas hoy");
     const kpi = (nombre: string) => page.getByRole("link", { name: new RegExp(nombre) }).first();
     await expect(kpi("Citas esta semana")).toContainText("9");
