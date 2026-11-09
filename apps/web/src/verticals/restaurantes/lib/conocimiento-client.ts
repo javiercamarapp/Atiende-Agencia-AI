@@ -1,16 +1,19 @@
 // Cliente real de apps/api/src/routes/verticals/restaurantes/admin-conocimiento.ts (migracion 053): conocimiento del negocio (politicas,
 // preguntas frecuentes y avisos temporales) e interruptor del agente de WhatsApp por sucursal. Mismo criterio de `fetchImpl` inyectado que
 // el resto de lib/*.ts (ver admin-client.ts). Nada se inventa en el cliente: `disponible: false` es el estado honesto de la base sin migrar.
+import { etiquetasTraducidas } from "@atiende/ui";
+import { restaurantesConocimiento } from "@atiende/ui/i18n/restaurantes/conocimiento";
 import { deleteJson, fetchJson, sendJson } from "./admin-client.ts";
 
 export type TipoConocimiento = "politica" | "faq" | "aviso_temporal";
 export type EstadoConocimiento = "borrador" | "publicado";
 
-export const TIPO_CONOCIMIENTO_LABEL: Readonly<Record<TipoConocimiento, string>> = {
-  politica: "Política",
-  faq: "Pregunta frecuente",
-  aviso_temporal: "Aviso temporal",
-};
+/** Etiqueta en el idioma activo (i18n): cada lectura traduce; en espanol, los textos de siempre. */
+export const TIPO_CONOCIMIENTO_LABEL: Readonly<Record<TipoConocimiento, string>> = etiquetasTraducidas<TipoConocimiento>(
+  ["politica", "faq", "aviso_temporal"],
+  (t) => `restaurantes.conocimiento.tipo.${t}` as const,
+  restaurantesConocimiento,
+);
 
 export const TEXTO_MAX = 2000;
 export const TITULO_MAX = 120;
