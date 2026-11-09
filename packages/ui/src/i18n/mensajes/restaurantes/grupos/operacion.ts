@@ -3,10 +3,14 @@ import type { restaurantesOperacion } from "../operacion.ts";
 import type { restaurantesCaptura } from "../captura.ts";
 import type { restaurantesViajes } from "../viajes.ts";
 import type { restaurantesAgregados } from "../agregados.ts";
+import type { restaurantesChofer } from "../chofer.ts";
+import type { restaurantesAccesoChofer } from "../accesoChofer.ts";
 
 export interface ModulosRestaurantesOperacion {
   readonly restaurantesOperacion: typeof restaurantesOperacion;
   readonly restaurantesCaptura: typeof restaurantesCaptura;
   readonly restaurantesViajes: typeof restaurantesViajes;
   readonly restaurantesAgregados: typeof restaurantesAgregados;
+  readonly restaurantesChofer: typeof restaurantesChofer;
+  readonly restaurantesAccesoChofer: typeof restaurantesAccesoChofer;
 }

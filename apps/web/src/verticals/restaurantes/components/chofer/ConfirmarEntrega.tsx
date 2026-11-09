@@ -2,7 +2,9 @@
 // registrada) trae el campo «Monto cobrado» ya lleno con el total (la opcion «Cobrado $X»): se deja tal cual, se corrige si cobro otra cantidad o se
 // vacia si no cobro. Con tarjeta no hay efectivo que registrar. El `ConfirmDialog` mantiene el boton en carga mientras la promesa de `onConfirmar`
 // no termina, asi un segundo toque no dispara otra entrega.
-import { ConfirmDialog, formatMoney } from "@atiende/ui";
+import { ConfirmDialog, formatMoney, useT } from "@atiende/ui";
+import { restaurantesChofer } from "@atiende/ui/i18n/restaurantes/chofer";
+import { restaurantesComun } from "@atiende/ui/i18n/restaurantes/comun";
 import type { EntregaChofer } from "@atiende/domain-restaurantes/operacion";
 
 export const COBRADO_MAXIMO = 100_000;
@@ -24,6 +26,7 @@ export interface ConfirmarEntregaProps {
 }
 
 export function ConfirmarEntrega({ entrega, onCerrar, onConfirmar }: ConfirmarEntregaProps) {
+  const t = useT(restaurantesComun, restaurantesChofer);
   const ofreceCobro = entrega !== null && entrega.pago.forma !== "tarjeta";
   return (
     <ConfirmDialog
@@ -33,19 +36,23 @@ export function ConfirmarEntrega({ entrega, onCerrar, onConfirmar }: ConfirmarEn
       onOpenChange={(abierto) => {
         if (!abierto) onCerrar();
       }}
-      titulo={entrega ? `¿Entregaste el pedido #${entrega.numero}?` : "Entregar pedido"}
-      descripcion={entrega ? `Para ${entrega.clienteNombre}. Total $${formatMoney(entrega.total)}.${ofreceCobro ? " Si cobraste en efectivo, deja el monto; si no cobraste, vacíalo." : ""}` : undefined}
+      titulo={entrega ? t("restaurantes.chofer.confirmar.titulo", { numero: String(entrega.numero) }) : t("restaurantes.chofer.confirmar.tituloVacio")}
+      descripcion={
+        entrega
+          ? `${t("restaurantes.chofer.confirmar.descripcion", { cliente: entrega.clienteNombre, total: formatMoney(entrega.total) })}${ofreceCobro ? t("restaurantes.chofer.confirmar.cobro") : ""}`
+          : undefined
+      }
       botonesGrandes
-      confirmar="Sí, entregado"
-      cancelar="Volver"
+      confirmar={t("restaurantes.chofer.confirmar.si")}
+      cancelar={t("restaurantes.volver")}
       {...(ofreceCobro && entrega
         ? {
             campo: {
-              etiqueta: "Monto cobrado",
+              etiqueta: t("restaurantes.chofer.confirmar.monto"),
               valorInicial: String(entrega.total),
               requerido: false,
               maxLength: 12,
-              validar: (valor: string) => (interpretarMonto(valor) === undefined ? "Escribe un monto válido, por ejemplo 708 o 708.50." : null),
+              validar: (valor: string) => (interpretarMonto(valor) === undefined ? t("restaurantes.chofer.confirmar.montoInvalido") : null),
             },
           }
         : {})}
