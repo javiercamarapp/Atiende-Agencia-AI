@@ -19,6 +19,8 @@ import { BottomNav, CampanaMovil, MAS_ABRIR_EVENTO, MobileHeader, type BottomNav
 import { BarraPagina } from "./BarraPagina";
 import { EstadoCargando } from "./EstadoCargando";
 import { EstadoError } from "./EstadoError";
+import { RecuperarCarga } from "./RecuperarCarga";
+import { esErrorDeCarga } from "../lib/recuperar-carga";
 import { EstadoVacio } from "./EstadoVacio";
 import { MobileAccountMenu } from "./MobileAccountMenu";
 import { Sidebar, type SidebarItem, type SidebarPiePildora, type SidebarSection, type SidebarUser } from "./Sidebar";
@@ -184,6 +186,8 @@ export class RutaBoundary extends React.Component<RutaBoundaryProps, RutaBoundar
 
   override render(): React.ReactNode {
     if (this.state.error) {
+      // Chunk que no bajo: reintentar el render no sirve (React.lazy guarda el rechazo); se recarga o se limpia la cache.
+      if (esErrorDeCarga(this.state.error)) return <RecuperarCarga />;
       return (
         <EstadoError
           titulo={this.context.t("shell.errorRuta.titulo")}

@@ -45,7 +45,10 @@
     "packages/ui/src/components/ui/form-field.tsx",
     "packages/ui/src/components/ui/drawer.tsx",
     "packages/ui/src/components/VerticalNoEncontrado.tsx",
-    "apps/web/src/superadmin/pages/WhatsappMeta.tsx"
+    "apps/web/src/superadmin/pages/WhatsappMeta.tsx",
+    "apps/web/src/lib/carga-perezosa.tsx",
+    "packages/ui/src/components/RecuperarCarga.tsx",
+    "packages/ui/src/lib/recuperar-carga.ts"
   ],
   "excluir": [
     "packages/ui/src/i18n/mensajes"

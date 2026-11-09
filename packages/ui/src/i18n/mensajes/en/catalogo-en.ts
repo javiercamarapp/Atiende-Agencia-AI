@@ -3,6 +3,7 @@
  * una traduccion por cada modulo de `MODULOS` (y ninguna de mas). Para agregar un modulo: su archivo aqui + una linea abajo.
  */
 import type { ModulosTraducidos } from "../index.ts";
+import { cargaEn } from "./carga.ts";
 import { comunEn } from "./comun.ts";
 import { consolaEn } from "./consola.ts";
 import { datosEn } from "./datos.ts";
@@ -21,4 +22,5 @@ export const MODULOS_EN = {
   notif: notifEn,
   datos: datosEn,
   waMeta: waMetaEn,
+  carga: cargaEn,
 } as const satisfies ModulosTraducidos;
