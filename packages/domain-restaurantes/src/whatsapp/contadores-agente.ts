@@ -20,6 +20,20 @@ export function pideRepetir(texto: string): boolean {
   return /\b(no (le )?entend[ií]|no (logro|alcanc[eé])( a)? (entender|escuchar)|me (puede|podr[ií]a) repetir|puede repetir(me)?|podr[ií]a repetir(me)?|repita(me)? (por favor|su)|¿me repite)/i.test(texto);
 }
 
+/**
+ * Cerebro v2 (C4 ROB-04): ¿el mensaje del cliente es SOLO un nombre de persona («Gerardo Uc», «soy María José Pech»)? Un nombre no es un intento fallido de dar la
+ * colonia: si el modelo lo manda a buscar_sucursal_cercana, no cuenta para el contador de colonia no reconocida. Conservador: 1 a 5 palabras de letras, sin
+ * numeros ni palabras de direccion o de frase. Pura.
+ */
+export function pareceSoloNombre(texto: string): boolean {
+  const t = String(texto ?? "").trim().replace(/^(?:soy|me llamo|mi nombre es|a nombre de)\s+/i, "").replace(/[.!]+$/, "");
+  if (!t || /\d/.test(t)) return false;
+  const palabras = t.split(/\s+/);
+  if (palabras.length < 1 || palabras.length > 5) return false;
+  if (!palabras.every((p) => /^[\p{L}'´-]+$/u.test(p))) return false;
+  return !palabras.some((p) => /^(?:en|col|colonia|fracc|fraccionamiento|calle|av|avenida|privada|cerca|frente|junto|por|del?|la|el|los|las|no|si|sí|es|esta|está|que|centro|norte|sur|oriente|poniente)$/i.test(p));
+}
+
 /** Cuenta (o reinicia) y devuelve el valor; `null` = no hay donde contar (base sin migrar): el llamador usa su cuenta local del turno. */
 export async function contarAgente(repo: RestaurantesRepository, organizationId: string, phone: string, clave: ClaveContadorAgente, accion: "incrementar" | "reiniciar"): Promise<number | null> {
   return repo.contadorAgenteWhatsApp(organizationId, phone, clave, accion);

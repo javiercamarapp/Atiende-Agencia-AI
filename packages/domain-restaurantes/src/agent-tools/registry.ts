@@ -2188,6 +2188,25 @@ async function dispatchTool(
           lng: municipio.lng,
         });
       }
+      // Cerebro v2 (C4 POL-08/PED-22): el modelo manda a veces la DIRECCION completa como colonia («calle 9 #120 x 2 y 4 cordemex, casa amarilla…») y no se reconocia,
+      // lo que sumaba al contador de colonia no reconocida hasta escalar. Se prueba con la colonia que trae la direccion (candidatosDeColonia), la primera que se reconozca.
+      if (ctx.cerebroV2 && perfilAgente === "taqueria_pm" && match.estado === "no_reconocida" && coloniaDicha && !coordenadasValidas) {
+        for (const candidata of candidatosDeColonia(String(input.colonia))) {
+          const otra = await assignBranch(repo, {
+            organizationId,
+            radioMaximoKm: radioRepartoDelPerfil(perfilAgente, configAgente?.radioRepartoKm),
+            ...(usarPropuestas ? { coordenadasPropuestas: COORDENADAS_PROPUESTAS_PM } : {}),
+            sucursalesQueNoReparten: SUCURSALES_QUE_NO_REPARTEN_PM,
+            ...(geocercasActivas() ? { geocercas: GEOCERCAS_PM } : {}),
+            ...(ctx.entryPropertyId ? { sucursalDeEntregaPreferidaPropertyId: ctx.entryPropertyId } : {}),
+            colonia: candidata,
+          });
+          if (otra.estado !== "no_reconocida") {
+            match = otra;
+            break;
+          }
+        }
+      }
       // QA-PM-R5-whatsapp-08: una colonia ESCRITA manda sobre el pin compartido (la colonia dicha despues del pin es una correccion), pero el servidor no sabe en que orden llegaron.
       // Si el pin compartido cae en OTRA sucursal que la de la colonia, se avisa al modelo para que le pregunte al cliente cual vale en vez de asignar en silencio.
       let conflictoPin: { readonly slug: string; readonly nombre: string } | null = null;
@@ -2207,6 +2226,14 @@ async function dispatchTool(
       // «si, entregamos» desde la sucursal equivocada ni omita el telefono.
       const otraSucursal = match.estado === "asignada" ? await sucursalDeOtroChat(repo, ctx, organizationId, match.branchSlug) : null;
       const otraReferencia = match.estado === "sugerida" && match.sugerida ? await sucursalDeOtroChat(repo, ctx, organizationId, match.sugerida.slug, false) : null;
+      // Cerebro v2 (C4 POL-11): POLITICAS v2 manda decir SOLO el tiempo que dan las herramientas; con la sucursal asignada igual a la del chat no venia ninguno y el agente
+      // contestaba «la sucursal le confirma el tiempo». Se manda el de esa sucursal (el mismo deliveryTimeText que ya usa atiende_otra_sucursal).
+      const tiempoAsignada = ctx.cerebroV2 && match.estado === "asignada" && !otraSucursal
+        ? await (async () => {
+            const b = await buscarSucursalParaClientes(repo, organizationId, { slug: match.branchSlug }).catch(() => null);
+            return b ? ((await repo.findWhatsAppAgentConfig(organizationId, b.propertyId).catch(() => null))?.deliveryTimeText?.trim() || null) : null;
+          })()
+        : null;
       const result =
         match.estado === "asignada"
           ? {
@@ -2223,6 +2250,7 @@ async function dispatchTool(
                 : {}),
               branch_slug: match.branchSlug,
               branch_name: match.branchName,
+              ...(tiempoAsignada ? { tiempo_entrega: tiempoAsignada } : {}),
               distancia_km: match.distanceKm,
               ...(match.distanceKm === null && match.kmReferencia !== null ? { distancia_aprox_km: match.kmReferencia } : {}),
               distancia_texto: match.distanceKm !== null ? kmAproxTexto(match.distanceKm) : match.kmReferencia !== null ? kmAproxTexto(match.kmReferencia) : null,
@@ -2965,6 +2993,26 @@ export function municipioFueraDeCoberturaPm(colonia: string): { readonly lat: nu
   const plano = colonia.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
   if (!plano) return null;
   return MUNICIPIOS_FUERA_DE_COBERTURA_PM.find((m) => m.nombres.some((n) => new RegExp(`(?:^| )${n}(?: |$)`).test(plano))) ?? null;
+}
+
+/**
+ * Cerebro v2 (C4): las colonias candidatas dentro de una DIRECCION completa que el modelo mando como colonia: por cada trozo separado por coma / punto y coma /
+ * salto, lo que va despues del ultimo numero o del ultimo «en / col. / colonia / fracc.» («calle 9 #120 x 2 y 4 cordemex» -> «cordemex»; «es en cordemex» ->
+ * «cordemex»), y el trozo entero si no tiene numeros («Itzimná»). Sin el texto original completo; a lo mas 4. [] si el texto es un solo trozo sin nada que quitar. Pura.
+ */
+export function candidatosDeColonia(texto: string): string[] {
+  const trozos = String(texto ?? "").split(/[,;\n]+/).map((t) => t.trim()).filter(Boolean);
+  const salida: string[] = [];
+  for (const trozo of trozos) {
+    const palabras = trozo.split(/\s+/);
+    let corte = -1;
+    palabras.forEach((p, i) => {
+      if (/\d/.test(p) || /^(?:en|col\.?|colonia|fracc\.?|fraccionamiento)$/i.test(p)) corte = i;
+    });
+    const resto = palabras.slice(corte + 1).join(" ").replace(/^(?:x|y|e|entre)\s+/i, "").trim();
+    if (resto && /[\p{L}]{3,}/u.test(resto) && resto !== String(texto).trim() && !salida.includes(resto)) salida.push(resto);
+  }
+  return salida.slice(0, 4);
 }
 
 /** motivoOtroPedidoEnSesion del suelto con los cancelados/entregados que sabe la base (findOrderById de los pedidos de la sesion; un fallo de lectura = no se sabe). */

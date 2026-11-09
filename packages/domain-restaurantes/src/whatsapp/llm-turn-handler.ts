@@ -43,7 +43,7 @@ import { planCierreDeterminista } from "../agent-tools/cierre-determinista.ts";
 import { loteAdmiteResumenSinVuelta, type LlamadaDelLote } from "./cerebro-v2/resumen-sin-vuelta.ts";
 import { bloqueCantidadNoMultiplo, bloqueGringasYMestizasComoOrdenes, bloqueProductoNoManejado } from "../unidades-pm.ts";
 import { bloquePedidoPendienteTrasFalla } from "./falla-pendiente.ts";
-import { CONTADOR_AGENTE_UMBRAL, COPY_ESCALACION_CONTADOR, contarAgente, pideRepetir } from "./contadores-agente.ts";
+import { CONTADOR_AGENTE_UMBRAL, COPY_ESCALACION_CONTADOR, contarAgente, pareceSoloNombre, pideRepetir } from "./contadores-agente.ts";
 import { bloqueDatosYaConsultados } from "./datos-ya-consultados.ts";
 import { BLOQUE_CONTEXTO_PRECARGADO, BLOQUE_CONTEXTO_PRECARGADO_V2, PRECARGA_V2_TOPE_MS, coloniaDelMensaje, firmaDeLecturaPrecargable, intercambioPrecargado, mensajeParaPrecargaV2, mensajeSinColonia, precargarBusquedas, resultadoClientePrecargado } from "./contexto-precargado.ts";
 import type { ConversationMessage, RestaurantesRepository } from "../repository.ts";
@@ -1858,7 +1858,10 @@ export function createLlmWhatsAppTurnHandler(repo: RestaurantesRepository, gatew
           }
           if (perfil === "taqueria_pm" && call.name === "buscar_sucursal_cercana" && !isToolErrorResult(result)) {
             const estado = (result as { estado?: unknown } | null)?.estado;
-            if (estado === "no_reconocida") {
+            // Cerebro v2 (C4 ROB-04): si lo que el cliente acaba de escribir es solo su nombre, no fue un intento de dar la colonia: no cuenta.
+            const pidioNombre = /\bnombre\b/i.test(String(hiloPrevioV2.filter((m) => m.role === "assistant").slice(-1)[0]?.content ?? ""));
+            const soloNombre = cerebroV2 && pidioNombre && pareceSoloNombre(pendientes.map((m) => m.content).join(" "));
+            if (estado === "no_reconocida" && !soloNombre) {
               const n = (await contar(repo, organizationId, phone, "colonia_no_reconocida", "incrementar")) ?? (coloniaFallosEnTurno += 1);
               if (n >= CONTADOR_AGENTE_UMBRAL) return escalarPorContador("zona_no_reconocida", `La colonia no se reconoció ${CONTADOR_AGENTE_UMBRAL} veces seguidas. Último mensaje: ${(mensajesSinResponder(messages).slice(-1)[0]?.content ?? "").slice(0, 300)}`);
             } else if (estado === "asignada" || estado === "fuera_de_zona") {
