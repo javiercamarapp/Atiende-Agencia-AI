@@ -33,4 +33,13 @@ export default tseslint.config(
       globals: globals.browser,
     },
   },
+  {
+    // AudioWorklet servido desde public/ (voz/captura-pcm-worklet.js): corre en AudioWorkletGlobalScope, no en window;
+    // sus globals reales son AudioWorkletProcessor, registerProcessor, sampleRate, etc. (va despues del bloque de navegador para ganarle).
+    files: ["apps/web/public/**/*-worklet.js"],
+    languageOptions: {
+      sourceType: "script",
+      globals: globals.audioWorklet,
+    },
+  },
 );
