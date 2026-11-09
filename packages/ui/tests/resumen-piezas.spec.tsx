@@ -193,16 +193,20 @@ describe("RadioSegmentado", () => {
     expect(radios.map((r) => r.checked)).toEqual([true, false, false]);
   });
 
-  it("pildora activa en azul de marca e inactiva con hairline; 12.5 px, rounded-lg", () => {
+  // Cambio intencional (auditoria R2 #8): el activo pasa del azul solido al primario suave de Rovaq (tinte, texto ink y anillo de 1 px),
+  // 28 px de alto y radio de control (8 px bajo ds3).
+  it("activa en primario suave (tinte + ink + borde 1 px al 30 %) e inactiva con hairline; 12.5 px, 28 px, radio de control", () => {
     const { el } = montar(<Controlado />);
     const [a, b] = Array.from(el.querySelectorAll("label"));
-    expect(a!.className).toContain("bg-primary text-primary-foreground");
+    expect(a!.className).toContain("border-primary/30 bg-primary-soft text-primary-ink");
+    expect(a!.className).not.toMatch(/(^|\s)bg-primary(\s|$)/);
+    expect(a!.className).not.toContain("text-primary-foreground");
     expect(a!.className).toContain("text-pill");
     expect(a!.className).toContain("font-medium");
-    expect(a!.className).toContain("rounded-lg");
+    expect(a!.className).toContain("rounded-control");
+    expect(a!.className).toContain("min-h-7");
     expect(a!.className).toContain("px-3");
-    expect(a!.className).toContain("py-1.5");
-    expect(b!.className).toContain("border border-border bg-card");
+    expect(b!.className).toContain("border-border bg-card");
     expect(b!.className).not.toContain("bg-primary");
   });
 
@@ -211,8 +215,8 @@ describe("RadioSegmentado", () => {
     const radios = el.querySelectorAll<HTMLInputElement>("input");
     act(() => radios[1]!.click());
     expect(radios[1]!.checked).toBe(true);
-    expect(el.querySelectorAll("label")[1]!.className).toContain("bg-primary");
-    expect(el.querySelectorAll("label")[0]!.className).not.toContain("bg-primary");
+    expect(el.querySelectorAll("label")[1]!.className).toContain("bg-primary-soft");
+    expect(el.querySelectorAll("label")[0]!.className).not.toContain("bg-primary-soft");
   });
 
   it("disabled bloquea los radios", () => {
