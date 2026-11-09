@@ -5,7 +5,7 @@
 // destinatarios SIEMPRE salen de `core.platform_superadmin` -> `core.
 // staff_user.email` en vivo -- nunca una lista hardcodeada ni una variable
 // de entorno nueva (requisito explícito del diseño).
-import { escapeHtml, renderCorreo } from "@atiende/core-email";
+import { escapeHtml, renderCorreo, resumirErrorResend } from "@atiende/core-email";
 import type { AppDeps } from "../deps.ts";
 import type { DiarioAgregados } from "./motor.ts";
 
@@ -105,8 +105,9 @@ export async function enviarCorreoResumenDiarioSiCorresponde(deps: AppDeps, fech
       body: JSON.stringify({ from: deps.env.resend.from, to: destinatarios, subject, html, text }),
     });
     if (!res.ok) {
-      const bodyText = await res.text().catch(() => "");
-      console.error(`resumen-diario correo: Resend respondió ${res.status} para ${fecha}: ${bodyText.slice(0, 300)}`);
+      // Solo estado y código de Resend: el cuerpo crudo puede repetir destinatarios o contenido (ver resumirErrorResend).
+      const { status, codigo } = resumirErrorResend(res.status, await res.text().catch(() => ""));
+      console.error(`resumen-diario correo: Resend respondió ${status} (${codigo}) para ${fecha}.`);
       return { enviado: false, motivo: "error_envio" };
     }
   } catch (err) {
