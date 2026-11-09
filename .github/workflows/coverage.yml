@@ -6,21 +6,25 @@ name: Cobertura (informativo)
 # build) sigue siendo rapido y es el que debe pedirse como check obligatorio. Este SI falla si baja del
 # umbral (trinquete anti-regresion) configurado en vitest.config.ts::coverage.thresholds; ver docs/COBERTURA.md.
 # Sin secretos, sin despliegue, contents: read, sin pull_request_target.
+#
+# Cuando corre (desaturar Actions, nov-2026): YA NO en cada push de PR. Era ~18% de los minutos de Actions
+# (doble costo de la suite por push, en ~35 PRs abiertos) y con la cola llena chocaba con el timeout de 40 min.
+# Ahora: cada push a main (el trinquete del umbral sigue protegiendo main: el commit que lo baje queda en rojo
+# en main), una corrida nocturna y manual (workflow_dispatch, tambien sobre la rama de un PR si se quiere el
+# numero antes de fusionar). El umbral NO cambia. No es un check requerido de PR.
 on:
-  pull_request:
-    paths:
-      - "**"
-      - "!**/*.md"
-      - "!docs/**"
-      - "apps/**"
-      - "packages/**"
   push:
     branches: [main]
+  schedule:
+    # 07:23 UTC = 01:23 en Merida; fuera del pico de la cola.
+    - cron: "23 7 * * *"
   workflow_dispatch: {}
 
+# En main NO se cancela la corrida en curso (cada commit conserva su veredicto); GitHub si colapsa las
+# corridas PENDIENTES del mismo grupo, asi que con varios merges seguidos queda una en curso + la ultima.
 concurrency:
-  group: coverage-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -29,21 +33,19 @@ jobs:
   coverage:
     name: test:coverage (v8) + umbral
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    # La suite sin instrumentar ya tarda ~24-25 min en un solo job (por eso test:unit va en 3 shards); con v8
+    # pasaba de 40 min y se cancelaba sin veredicto. 75 min de margen. No se parte en shards: el umbral se
+    # evalua sobre la cobertura TOTAL, y fuera del camino de los PRs el tiempo de reloj ya no bloquea a nadie.
+    timeout-minutes: 75
     steps:
       - name: Checkout
         uses: actions/checkout@v7
         with:
           persist-credentials: false
 
-      - name: Setup Node
-        uses: actions/setup-node@v7
-        with:
-          node-version: "22"
-          cache: npm
-
-      - name: npm ci
-        run: npm ci
+      # Node 22 + npm ci, o node_modules restaurado del cache de main (ver .github/actions/node-deps).
+      - name: Node + dependencias
+        uses: ./.github/actions/node-deps
 
       - name: Tests con cobertura (falla si baja del umbral)
         run: npm run test:coverage

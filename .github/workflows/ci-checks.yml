@@ -73,6 +73,8 @@ name: CI (typecheck, lint, tests, build)
 # Actions evalúa los patrones en secuencia y el último que matchea gana.
 on:
   pull_request:
+    # ready_for_review: al salir de borrador vuelve a correr la suite completa (en borrador se omite test:unit).
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "**"
       - "!**/*.md"
@@ -94,7 +96,7 @@ on:
   workflow_dispatch: {}
 
 concurrency:
-  group: ci-checks-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   # cancel-in-progress solo para pull_request: en push a main, cancelar la
   # corrida de un commit porque el siguiente merge ya llegó deja ese commit
   # de main sin veredicto propio (queda "cancelled" en vez de pass/fail).
@@ -119,14 +121,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Setup Node
-        uses: actions/setup-node@v7
-        with:
-          node-version: "22"
-          cache: npm
-
-      - name: npm ci
-        run: npm ci
+      # Node 22 + npm ci, o node_modules restaurado del cache de main (ver .github/actions/node-deps).
+      - name: Node + dependencias
+        uses: ./.github/actions/node-deps
 
       - name: Typecheck (raíz + --workspaces --if-present, incluye apps/web)
         run: npm run typecheck
@@ -156,6 +153,9 @@ jobs:
   # minutos totales; cada shard corre en paralelo (~8 min).
   unit-shard:
     name: test:unit (shard ${{ matrix.shard }}/3)
+    # En PR en borrador no se corre la suite (~25 min de runner por push); typecheck/lint/build (`estatico`)
+    # SI corren para dar retroalimentacion rapida. Al marcar el PR como listo (ready_for_review) corre todo.
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     timeout-minutes: 25
     strategy:
@@ -166,14 +166,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Setup Node
-        uses: actions/setup-node@v7
-        with:
-          node-version: "22"
-          cache: npm
-
-      - name: npm ci
-        run: npm ci
+      # Node 22 + npm ci, o node_modules restaurado del cache de main (ver .github/actions/node-deps).
+      - name: Node + dependencias
+        uses: ./.github/actions/node-deps
 
       - name: Tests unitarios (vitest run, repositorios en memoria)
         run: npm run test:unit -- --shard=${{ matrix.shard }}/3
@@ -191,8 +186,15 @@ jobs:
       - name: Veredicto de los shards
         env:
           SHARDS: ${{ needs.unit-shard.result }}
+          BORRADOR: ${{ github.event_name == 'pull_request' && github.event.pull_request.draft }}
         run: |
-          echo "unit-shard=$SHARDS"
+          echo "unit-shard=$SHARDS borrador=$BORRADOR"
+          # Unica excepcion: PR en borrador, donde los shards se omiten a proposito. Un borrador no se puede
+          # fusionar, y al pasar a "listo" (ready_for_review) este workflow corre de nuevo con la suite completa.
+          if [ "$BORRADOR" = "true" ] && [ "$SHARDS" = "skipped" ]; then
+            echo "::notice::PR en borrador: test:unit se omite; corre al marcarlo como listo para revision"
+            exit 0
+          fi
           if [ "$SHARDS" != "success" ]; then
             echo "::error::Algún shard de test:unit no terminó en success"
             exit 1

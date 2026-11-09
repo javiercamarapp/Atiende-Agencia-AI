@@ -22,6 +22,7 @@ import type {
   DataRightsRequestRow,
   DataRightsRequestsFiltro,
   DataRightsRequestsPage,
+  OpenDataRightsLookup,
   RegisterDataRightsOutcome,
   UpdateDataRightsStatusResult,
 } from "./data-rights.ts";
@@ -136,6 +137,22 @@ export class InMemoryPrivacidadRepository implements PrivacidadRepository {
       : this.replace(pending.id, { status: "cancelada_titular" });
     this.event(next, "titular", confirm ? "confirmada" : "cancelada_por_titular", "pendiente_confirmacion", next.status);
     return { available: true, found: true, id: next.id, rightType: next.rightType, status: next.status, responseDueAt: next.responseDueAt, executionDueAt: next.executionDueAt };
+  }
+
+  async findOpenDataRightsRequestAsSystem(organizationId: string, customerPhone: string): Promise<OpenDataRightsLookup> {
+    if (!this.migrada) return { available: false };
+    const now = this.reloj();
+    const open = [...this.requests]
+      .reverse()
+      .find(
+        (r) =>
+          r.organizationId === organizationId &&
+          r.customerPhone === customerPhone &&
+          OPEN_FOR_DEDUPE.includes(r.status) &&
+          (r.status !== "pendiente_confirmacion" || r.createdAtMs >= now - DATA_RIGHTS_CONFIRMATION_WINDOW_HOURS * 3600_000),
+      );
+    if (!open) return { available: true, found: false };
+    return { available: true, found: true, id: open.id, rightType: open.rightType, status: open.status, responseDueAt: open.responseDueAt };
   }
 
   async setVoiceRecordingConsent(_organizationId: string, conversationId: string, consent: RecordingConsent): Promise<SetRecordingConsentResult> {
