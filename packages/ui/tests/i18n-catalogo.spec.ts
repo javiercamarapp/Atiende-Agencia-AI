@@ -86,6 +86,13 @@ const IGUALES_PERMITIDOS = new Set<string>([
   "{n} vertical",
   "Plan",
   "Onboarding",
+  // Resumen de hoteles: siglas de la industria hotelera y nombre del proceso, iguales en ingles.
+  "ADR",
+  "RevPAR",
+  "RevPAR · {periodo}",
+  "{propiedad} · RevPAR {periodo}: ",
+  "OK",
+  "Night audit",
 ]);
 
 

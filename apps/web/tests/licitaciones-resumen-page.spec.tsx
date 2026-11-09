@@ -5,12 +5,14 @@
 // muestra el error con reintento; los agentes sin bitacora dicen "Sin corridas registradas.".
 import { act } from "react";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { PanelPage } from "../src/verticals/licitaciones/pages/Panel.tsx";
 import type { LicitacionesShellContext } from "../src/verticals/licitaciones/LicitacionesShell.tsx";
 import { cierranEnVentana, convocatoriasAbiertas, corridaKyc, corridaSeguimiento, fechaMasReciente, saludoEnZona, ultimaCorridaPorFuente, zonaEfectiva } from "../src/verticals/licitaciones/lib/resumen.ts";
 import type { TenderSummary } from "../src/verticals/licitaciones/lib/tenders-client.ts";
 import { flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+import { IdiomaProvider, cargarIdioma } from "@atiende/ui";
+import { fijarIdiomaActivo } from "../../../packages/ui/src/i18n/activo.ts";
 
 let rendered: RenderedComponent | undefined;
 
@@ -323,5 +325,33 @@ describe("helpers del Resumen de licitaciones", () => {
     expect(filas[0]).toMatchObject({ source: "a", nombre: "Fuente A" });
     expect(filas[0]!.estado).toBeUndefined();
     expect(filas[1]).toMatchObject({ source: "zzz", nombre: "zzz", estado: { tone: "warning", etiqueta: "Bloqueada por captcha" } });
+  });
+});
+
+describe("Resumen de licitaciones en ingles (i18n ES/EN)", () => {
+  beforeAll(() => cargarIdioma("en"));
+  beforeEach(() => {
+    document.documentElement.dataset.diseno = "ds3";
+  });
+  afterEach(() => {
+    fijarIdiomaActivo("es");
+    delete document.documentElement.dataset.diseno;
+  });
+
+  it("KPIs y secciones en ingles; los nombres de las fuentes (datos) no cambian", async () => {
+    stubFetch(COMPLETAS);
+    rendered = renderComponent(
+      <IdiomaProvider idiomaInicial="en">
+        <MemoryRouter>
+          <PanelPage {...CTX} />
+        </MemoryRouter>
+      </IdiomaProvider>,
+    );
+    await settle();
+    expect(texto()).toContain("Proposals in progress");
+    expect(texto()).toContain("Deadline reminders");
+    expect(texto()).toContain("CompraNet");
+    expect(rendered.container.querySelector("h1")?.textContent).toMatch(/^(Good morning|Good afternoon|Good evening), Ana$/);
+    for (const es of ["Propuestas en preparación", "Recordatorios de plazo"]) expect(texto()).not.toContain(es);
   });
 });
