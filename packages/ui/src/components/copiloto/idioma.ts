@@ -188,6 +188,8 @@ const ES = {
   recortado: "La tabla se recortó: hay más filas en el sistema de las que se muestran.",
   sinFuente: "Sin fuente declarada para esta consulta.",
   notaCalculo: "Cifras leídas por consultas fijas del catálogo de Atiende: el modelo no inventa números.",
+  coberturaUna: "{x} de 1 fuente con datos",
+  coberturaVarias: "{x} de {y} fuentes con datos",
 } as const;
 
 export type ClaveCopiloto = keyof typeof ES;
@@ -375,6 +377,8 @@ const EN: Readonly<Record<ClaveCopiloto, string>> = {
   recortado: "The table was cut: the system has more rows than shown.",
   sinFuente: "No source declared for this query.",
   notaCalculo: "Figures read by fixed queries from Atiende's catalog: the model never makes up numbers.",
+  coberturaUna: "{x} of 1 source with data",
+  coberturaVarias: "{x} of {y} sources with data",
 };
 
 const CATALOGOS: Readonly<Record<Idioma, Readonly<Record<ClaveCopiloto, string>>>> = { es: ES, en: EN };

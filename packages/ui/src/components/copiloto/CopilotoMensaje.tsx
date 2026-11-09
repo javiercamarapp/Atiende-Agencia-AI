@@ -9,9 +9,22 @@ import { CopilotoTarjetaAccion, TOOL_PROPONER_ACCION, propuestaDeBloque } from "
 import { GraficaBloque, Sparkline, planGrafica } from "./CopilotoGraficas";
 import { formatoCelda, rutaInternaSegura } from "./formato";
 import { traductorCopiloto, useIdiomaCopiloto, type TraducirCopiloto } from "./idioma";
-import type { CopilotoAccionesCliente, CopilotoBloque, CopilotoMensaje, CopilotoStatus, CopilotoTransporte } from "./tipos";
+import type { CopilotoAccionesCliente, CopilotoBloque, CopilotoCobertura, CopilotoMensaje, CopilotoStatus, CopilotoTransporte } from "./tipos";
 
 const MAX_FILAS = 10;
+
+/** «2 de 3 fuentes con datos» (Rovaq): solo con la cobertura que mando el servidor para ESTA respuesta; sin ella no se pinta nada. */
+export function CoberturaFuentes({ cobertura }: { readonly cobertura: CopilotoCobertura | undefined }) {
+  const { t } = useIdiomaCopiloto();
+  if (!cobertura || cobertura.consultadas <= 0 || cobertura.conDatos < 0 || cobertura.conDatos > cobertura.consultadas) return null;
+  const texto = cobertura.consultadas === 1 ? t("coberturaUna", { x: cobertura.conDatos }) : t("coberturaVarias", { x: cobertura.conDatos, y: cobertura.consultadas });
+  return (
+    <span data-testid="copiloto-cobertura" className="font-medium text-foreground">
+      {texto}
+      <span aria-hidden="true" className="ml-1.5 text-muted-foreground">·</span>
+    </span>
+  );
+}
 
 /** Texto del aviso por `status`. `null` = el estado no lleva aviso (se muestra el texto de la respuesta). Sin `t`, en espanol. */
 export function textoAviso(m: Pick<CopilotoMensaje, "status" | "reintentarEnSeg" | "limiteDiario">, t: TraducirCopiloto = traductorCopiloto("es")): string | null {
@@ -218,6 +231,7 @@ export function CopilotoMensajeVista({
 
       {exito && mensaje.sources && mensaje.sources.length > 0 ? (
         <div data-ds3="fuentes" className="ml-6 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+          <CoberturaFuentes cobertura={mensaje.cobertura} />
           <span>{t("fuentes")}</span>
           {mensaje.sources.map((s, i) => {
             const ruta = rutaInternaSegura(rutasFuente?.[s.tool]);

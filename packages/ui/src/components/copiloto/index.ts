@@ -16,6 +16,7 @@ export type {
   CopilotoBloque,
   CopilotoCategoria,
   CopilotoCelda,
+  CopilotoCobertura,
   CopilotoColumna,
   CopilotoColumnaTipo,
   CopilotoDirecta,
