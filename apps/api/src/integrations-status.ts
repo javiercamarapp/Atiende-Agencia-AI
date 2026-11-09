@@ -175,9 +175,9 @@ export const INTEGRATIONS: readonly IntegrationDefinition[] = [
   },
   {
     id: "sentry",
-    nombre: "Sentry (alertas, opcional)",
+    nombre: "Sentry (alertas y errores 500, opcional)",
     habilita:
-      "Evento a Sentry via su API HTTP de envelopes -- sin SDK ni dependencia nueva. Solo si SENTRY_DSN esta definido y es un DSN https valido; con piso por hora y datos sensibles redactados. Sin DSN queda apagado.",
+      "Evento a Sentry via su API HTTP de envelopes -- sin SDK ni dependencia nueva: las alertas de plataforma (piso por hora) y cada error no controlado de la API (500 de app.onError, tope por minuto, sin cuerpo/cabeceras/query/usuario). Solo si SENTRY_DSN esta definido y es un DSN https valido; datos sensibles redactados. Sin DSN queda apagado.",
     variables: ["SENTRY_DSN"],
   },
 
@@ -322,6 +322,9 @@ export const OPERATIONAL_ENV_VARS: readonly string[] = [
   // prefija las claves del circuit breaker compartido (`cb:<entorno>:<modelo>`) para que preview no abra el
   // breaker de produccion. No es una credencial; sin el, cae a NODE_ENV y luego a `development`.
   "VERCEL_ENV",
+  // `production/deps.ts` (reportador de errores a Sentry) y `salud/health.ts` -- sha del commit que Vercel inyecta; se usa como
+  // `release` del evento de Sentry y en /health. No es una credencial; sin el, el evento sale sin release.
+  "VERCEL_GIT_COMMIT_SHA",
   // `env.ts::voiceRequireCallToken` -- opt-in ("true") para que las tools de voz de restaurantes
   // exijan el token por llamada. Apagado por defecto; nunca bloquea el arranque.
   "VOICE_REQUIRE_CALL_TOKEN",
