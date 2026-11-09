@@ -140,6 +140,7 @@ Dos productos reales y distintos, **misma cuenta/key**:
 |---|---|:-:|---|---|:-:|
 | `STRIPE_SECRET_KEY` | Stripe Dashboard → Developers → API keys | Sí | (1) Checkout/webhook de la suscripción SaaS de Atiende a sus organizaciones clientes (`POST /billing/checkout`, `routes/billing.ts`) **y** (2) cobro con tarjeta al huésped de un folio de hoteles, PaymentIntents (`hotelesPaymentsPort`) | Ambos quedan `notProductionReady`/`undefined` — las rutas responden 503 honesto, nunca fingen un cobro | No |
 | `STRIPE_WEBHOOK_SECRET` | Stripe Dashboard → Developers → Webhooks → tu endpoint (`whsec_...`, un secreto POR endpoint configurado, distinto de `STRIPE_SECRET_KEY` y que NO rota junto con ella) | Sí | Verifica la firma del webhook de (1) (`verificarFirmaWebhookStripe`) | `POST /billing/webhook` responde 503 explícito, nunca procesa un evento sin firma verificada | No |
+| `STRIPE_IVA_TAX_RATE_ID` | Stripe Dashboard → Product catalog → Tax rates → tasa de IVA 16 % **exclusiva** (ID `txr_...`; identificador, no credencial) | No | IVA de la suscripción por plan medido: `POST /billing/checkout-plan` y la suscripción SPEI del superadmin (`routes/cobro-stripe.ts`); ver `docs/COBRO-PLANES-MEDIDOS.md` | Esas rutas responden 503 con el motivo, nunca emiten una factura sin IVA; el resto de Stripe sigue igual | No |
 
 ## PACs de CFDI (timbrado fiscal de hospedaje, hoteles)
 
