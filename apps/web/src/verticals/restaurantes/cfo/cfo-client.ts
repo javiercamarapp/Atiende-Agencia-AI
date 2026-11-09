@@ -46,7 +46,8 @@ export { guardarArchivo };
 export type { ArchivoExportado };
 
 /** Texto en espanol (referencia de pruebas); en pantalla se usa `mensajeSinAccesoCfo()`, que sigue al idioma activo. */
-export const MENSAJE_SIN_ACCESO_CFO = "Tu rol no tiene acceso al CFO"; // i18n-ignorar: espejo del catalogo (restaurantes.cfo.sinAcceso)
+// i18n-ignorar: espejo del catalogo (restaurantes.cfo.sinAcceso)
+export const MENSAJE_SIN_ACCESO_CFO = "Tu rol no tiene acceso al CFO";
 export const mensajeSinAccesoCfo = (): string => tr("restaurantes.cfo.sinAcceso");
 
 /** Base sin migrar (404/503 o `disponible: false`) en una LECTURA del CFO. Hereda de VozNoDisponibleError (los estados «no disponible» la reconocen) pero con texto propio del CFO. */

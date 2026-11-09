@@ -5,7 +5,8 @@ import { useMemo, useRef, useState } from "react";
 import { Upload } from "lucide-react";
 import { MAX_RENGLONES_SR } from "@atiende/domain-restaurantes/cfo";
 import type { AlcanceVista, ImportacionSrVista, TipoLayoutSr, VistaPreviaSr } from "@atiende/domain-restaurantes/cfo";
-import { Button, Callout, Checkbox, DataTable, FormDialog, FormField, Label, Selector, notify } from "@atiende/ui";
+import { Button, Callout, Checkbox, DataTable, FormDialog, FormField, Label, Selector, notify, useT } from "@atiende/ui";
+import { restaurantesCfoSr } from "@atiende/ui/i18n/restaurantes/cfoSr";
 import { importarSr, vistaPreviaSr, type ContextoCfo, type CuerpoImportarSr } from "./cfo-client.ts";
 import { MapeoColumnasSr } from "./MapeoColumnasSr.tsx";
 import {
@@ -27,6 +28,7 @@ import {
 } from "./sr-importacion-navegador.ts";
 import { entero } from "./formato.ts";
 
+// i18n-ignorar: referencia en espanol; en pantalla sale restaurantes.cfoSr.yaCargado
 export const MENSAJE_YA_CARGADO = "Este archivo ya estaba cargado";
 
 export interface ImportarSrDialogoProps {
@@ -42,6 +44,7 @@ const mensajeDe = (err: unknown, porDefecto: string): string => (err instanceof 
 const MB = IMPORTACION_MAX_BYTES / (1024 * 1024);
 
 export function ImportarSrDialogo({ abierto, onCerrar, api, sucursales, onTerminado }: ImportarSrDialogoProps) {
+  const t = useT(restaurantesCfoSr);
   const [propertyId, setPropertyId] = useState<string>(sucursales.length === 1 ? sucursales[0]!.propertyId : "");
   const [tipo, setTipo] = useState<TipoLayoutSr>("resumen_servicio");
   const [archivo, setArchivo] = useState<ArchivoSrLeido | null>(null);
@@ -113,7 +116,7 @@ export function ImportarSrDialogo({ abierto, onCerrar, api, sucursales, onTermin
       sugerir(leido.filas, f, t);
     } catch (err) {
       setArchivo(null);
-      setError(err instanceof ArchivoImportacionError ? err.message : mensajeDe(err, "No se pudo leer el archivo."));
+      setError(err instanceof ArchivoImportacionError ? err.message : mensajeDe(err, t("restaurantes.cfoSr.errorLeer")));
     } finally {
       setLeyendo(false);
     }
@@ -132,7 +135,7 @@ export function ImportarSrDialogo({ abierto, onCerrar, api, sucursales, onTermin
       setVista(await vistaPreviaSr(api, cuerpo()));
     } catch (err) {
       setVista(null);
-      setError(mensajeDe(err, "No se pudo revisar el archivo."));
+      setError(mensajeDe(err, t("restaurantes.cfoSr.errorRevisar")));
     } finally {
       setTrabajando(false);
     }
@@ -145,11 +148,11 @@ export function ImportarSrDialogo({ abierto, onCerrar, api, sucursales, onTermin
     try {
       const r = await importarSr(api, cuerpo());
       setResultado(r);
-      if (r.creado) notify.success(`Reporte importado: ${entero(r.aceptados)} renglones aceptados.`);
-      else notify.info(`${MENSAJE_YA_CARGADO}: no se volvió a escribir nada.`);
+      if (r.creado) notify.success(t("restaurantes.cfoSr.toastImportado", { n: entero(r.aceptados) }));
+      else notify.info(t("restaurantes.cfoSr.toastYaCargado"));
       onTerminado();
     } catch (err) {
-      setError(mensajeDe(err, "No se pudo importar el reporte."));
+      setError(mensajeDe(err, t("restaurantes.cfoSr.errorImportar")));
     } finally {
       setTrabajando(false);
     }
@@ -167,31 +170,31 @@ export function ImportarSrDialogo({ abierto, onCerrar, api, sucursales, onTermin
       onOpenChange={(o) => {
         if (!o) cerrar();
       }}
-      titulo="Importar reporte de SoftRestaurant"
-      subtitulo="Sube el reporte que exportas de SoftRestaurant para ver cuánto vendes en mostrador y cuadrar tus pedidos a domicilio. No se manda nada a SoftRestaurant."
+      titulo={t("restaurantes.cfoSr.seccionImportar")}
+      subtitulo={t("restaurantes.cfoSr.dialogoSub")}
       anchoClase="max-w-3xl"
       bloquearCierre={trabajando}
       footer={
         resultado ? (
           <>
             <Button type="button" variant="outline" className="rounded-full px-6" onClick={reiniciar}>
-              Importar otro archivo
+              {t("restaurantes.cfoSr.importarOtro")}
             </Button>
             <Button type="button" className="rounded-full px-6" onClick={cerrar}>
-              Cerrar
+              {t("restaurantes.cfoSr.cerrar")}
             </Button>
           </>
         ) : (
           <>
             <Button type="button" variant="outline" className="rounded-full px-6" onClick={cerrar} disabled={trabajando}>
-              Cancelar
+              {t("restaurantes.cfoSr.cancelar")}
             </Button>
             <Button type="button" variant="outline" className="rounded-full px-6" onClick={() => void revisar()} disabled={!puedeRevisar} loading={trabajando && !vista}>
-              Revisar vista previa
+              {t("restaurantes.cfoSr.revisar")}
             </Button>
             <Button type="button" className="rounded-full px-6" onClick={() => void confirmar()} disabled={!vista || vista.aceptados === 0 || trabajando} loading={trabajando && vista !== null}>
               <Upload />
-              {vista ? `Importar ${entero(vista.aceptados)} ${vista.aceptados === 1 ? "renglón" : "renglones"}` : "Importar reporte"}
+              {vista ? t("restaurantes.cfoSr.importarN", { count: vista.aceptados, n: entero(vista.aceptados) }) : t("restaurantes.cfoSr.importarReporte")}
             </Button>
           </>
         )
@@ -201,7 +204,7 @@ export function ImportarSrDialogo({ abierto, onCerrar, api, sucursales, onTermin
         {!resultado && (
           <>
             <div className="grid gap-3 sm:grid-cols-2">
-              <FormField label="Sucursal del reporte" required hint="Un archivo corresponde a una sola sucursal.">
+              <FormField label={t("restaurantes.cfoSr.sucursalReporte")} required hint={t("restaurantes.cfoSr.sucursalAyuda")}>
                 <Selector
                   id="sr-sucursal"
                   size="sm"
@@ -212,7 +215,7 @@ export function ImportarSrDialogo({ abierto, onCerrar, api, sucursales, onTermin
                   }}
                   data-testid="sr-sucursal"
                 >
-                  <option value="">Elige la sucursal…</option>
+                  <option value="">{t("restaurantes.cfoSr.eligeSucursal")}</option>
                   {sucursales.map((s) => (
                     <option key={s.propertyId} value={s.propertyId}>
                       {s.nombre}
@@ -220,7 +223,7 @@ export function ImportarSrDialogo({ abierto, onCerrar, api, sucursales, onTermin
                   ))}
                 </Selector>
               </FormField>
-              <FormField label="Tipo de reporte" required hint={TIPOS_REPORTE_SR.find((t) => t.valor === tipo)?.ayuda}>
+              <FormField label={t("restaurantes.cfoSr.tipoReporte")} required hint={TIPOS_REPORTE_SR.find((t) => t.valor === tipo)?.ayuda}>
                 <Selector
                   id="sr-tipo"
                   size="sm"
@@ -241,7 +244,7 @@ export function ImportarSrDialogo({ abierto, onCerrar, api, sucursales, onTermin
               </FormField>
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="sr-archivo">Archivo (.csv o .xlsx, hasta {MB} MB)</Label>
+              <Label htmlFor="sr-archivo">{t("restaurantes.cfoSr.archivo", { mb: MB })}</Label>
               <input
                 id="sr-archivo"
                 ref={inputRef}
@@ -251,7 +254,7 @@ export function ImportarSrDialogo({ abierto, onCerrar, api, sucursales, onTermin
                 onChange={(e) => void elegirArchivo(e.target.files?.[0])}
                 disabled={trabajando}
               />
-              {leyendo && <p className="m-0 text-xs text-muted-foreground">Leyendo el archivo…</p>}
+              {leyendo && <p className="m-0 text-xs text-muted-foreground">{t("restaurantes.cfoSr.leyendo")}</p>}
             </div>
           </>
         )}
@@ -265,16 +268,16 @@ export function ImportarSrDialogo({ abierto, onCerrar, api, sucursales, onTermin
         {archivo && !resultado && (
           <div className="flex flex-col gap-3">
             <p className="m-0 text-xs text-muted-foreground">
-              {archivo.nombre}: {entero(filasDatos)} {filasDatos === 1 ? "renglón" : "renglones"} de datos.
+              {archivo.nombre}: {t("restaurantes.cfoSr.filasDatos", { count: filasDatos, n: entero(filasDatos) })}
             </p>
             {(erroresLocales.length > 0 || confirmarFolio) && (
               <div className="flex flex-col gap-1.5" data-testid="sr-errores-locales">
                 {erroresLocales.length > 0 && (
                   <>
                     <p role="alert" className="m-0 text-sm font-semibold text-destructive">
-                      {descartadosLocales > 0 ? `${entero(descartadosLocales)} ${descartadosLocales === 1 ? "renglón no se enviará" : "renglones no se enviarán"} (un dato obligatorio no tiene la forma que espera su campo)` : ""}
+                      {descartadosLocales > 0 ? t("restaurantes.cfoSr.descartados", { count: descartadosLocales, n: entero(descartadosLocales) }) : ""}
                       {descartadosLocales > 0 && vaciadosLocales > 0 ? "; " : ""}
-                      {vaciadosLocales > 0 ? `${entero(vaciadosLocales)} ${vaciadosLocales === 1 ? "dato opcional se enviará vacío" : "datos opcionales se enviarán vacíos"}` : ""}
+                      {vaciadosLocales > 0 ? t("restaurantes.cfoSr.vaciados", { count: vaciadosLocales, n: entero(vaciadosLocales) }) : ""}
                     </p>
                     <ul className="m-0 max-h-32 list-disc overflow-auto pl-5 text-xs text-foreground">
                       {erroresLocales.slice(0, 20).map((e) => (
@@ -290,7 +293,7 @@ export function ImportarSrDialogo({ abierto, onCerrar, api, sucursales, onTermin
                       setConfirmarFolio(e.target.checked);
                       setVista(null);
                     }}
-                    label="Confirmo que la columna del folio es el folio de la cuenta y no un teléfono"
+                    label={t("restaurantes.cfoSr.confirmoFolio")}
                     wrapperClassName="text-sm"
                     data-testid="sr-confirmar-folio"
                   />
@@ -299,10 +302,10 @@ export function ImportarSrDialogo({ abierto, onCerrar, api, sucursales, onTermin
             )}
             {excedeTope && (
               <p role="alert" className="m-0 text-sm text-destructive">
-                El archivo tiene más de {entero(maximo)} renglones: divídelo por periodos e impórtalo en partes.
+                {t("restaurantes.cfoSr.excedeTope", { n: entero(maximo) })}
               </p>
             )}
-            <FormField label="Renglón de los encabezados" hint="Es la fila con los nombres de las columnas; el reporte puede traer títulos arriba.">
+            <FormField label={t("restaurantes.cfoSr.filaEncabezado")} hint={t("restaurantes.cfoSr.filaEncabezadoAyuda")}>
               <Selector
                 id="sr-fila-encabezado"
                 size="sm"
@@ -318,7 +321,7 @@ export function ImportarSrDialogo({ abierto, onCerrar, api, sucursales, onTermin
               >
                 {archivo.filas.slice(0, 40).map((f, i) => (
                   <option key={i} value={i}>
-                    {`Renglón ${i + 1}: ${f.filter((c) => c.trim() !== "").slice(0, 3).join(" · ").slice(0, 60) || "(vacío)"}`}
+                    {t("restaurantes.cfoSr.opcionRenglon", { n: String(i + 1), vista: f.filter((c) => c.trim() !== "").slice(0, 3).join(" · ").slice(0, 60) || t("restaurantes.cfoSr.vacio") })}
                   </option>
                 ))}
               </Selector>
@@ -353,12 +356,12 @@ export function ImportarSrDialogo({ abierto, onCerrar, api, sucursales, onTermin
         {vista && !resultado && (
           <div className="flex flex-col gap-2" data-testid="sr-vista-previa">
             <p className="m-0 text-sm text-foreground">
-              <strong>{entero(vista.aceptados)}</strong> {vista.aceptados === 1 ? "renglón aceptado" : "renglones aceptados"} y <strong>{entero(vista.rechazados + descartadosLocales)}</strong> {vista.rechazados + descartadosLocales === 1 ? "rechazado" : "rechazados"}
-              {descartadosLocales > 0 ? ` (${entero(descartadosLocales)} no se enviaron desde tu navegador)` : ""}
-              {vista.omitidos > 0 ? ` (${entero(vista.omitidos)} renglones de totales se omiten)` : ""}
-              {vista.fechaMin && vista.fechaMax ? `, del ${vista.fechaMin} al ${vista.fechaMax}` : ""}.
+              <strong>{entero(vista.aceptados)}</strong> {t("restaurantes.cfoSr.aceptados", { count: vista.aceptados })} {t("restaurantes.cfoSr.y")} <strong>{entero(vista.rechazados + descartadosLocales)}</strong> {t("restaurantes.cfoSr.rechazados", { count: vista.rechazados + descartadosLocales })}
+              {descartadosLocales > 0 ? t("restaurantes.cfoSr.noEnviados", { n: entero(descartadosLocales) }) : ""}
+              {vista.omitidos > 0 ? t("restaurantes.cfoSr.omitidos", { n: entero(vista.omitidos) }) : ""}
+              {vista.fechaMin && vista.fechaMax ? t("restaurantes.cfoSr.fechas", { desde: vista.fechaMin, hasta: vista.fechaMax }) : ""}.
             </p>
-            <p className="m-0 text-xs text-muted-foreground">{vista.avisoAlias} Huella del contenido: {vista.huella.slice(0, 12)}…</p>
+            <p className="m-0 text-xs text-muted-foreground">{vista.avisoAlias} {t("restaurantes.cfoSr.huella", { huella: vista.huella.slice(0, 12) })}</p>
             {vista.advertencias.length > 0 && (
               <Callout tone="warning">
                 <ul className="m-0 list-disc pl-4">
@@ -371,22 +374,22 @@ export function ImportarSrDialogo({ abierto, onCerrar, api, sucursales, onTermin
             {vista.errores.length > 0 && (
               <div className="flex flex-col gap-1" data-testid="sr-errores">
                 <p className="m-0 text-sm font-semibold text-destructive">
-                  {entero(vista.errores.length)} {vista.errores.length === 1 ? "error" : "errores"} por renglón (esos renglones no se importan)
+                  {t("restaurantes.cfoSr.erroresPorRenglon", { count: vista.errores.length, n: entero(vista.errores.length) })}
                 </p>
                 <ul className="m-0 max-h-40 list-disc overflow-auto pl-5 text-xs text-foreground">
                   {vista.errores.map((e, i) => (
                     <li key={`${e.renglon}-${e.campo}-${i}`}>
-                      Renglón {e.renglon + desplazamiento}, {e.campo}: {e.motivo}
+                      {t("restaurantes.cfoSr.errorRenglon", { renglon: String(e.renglon + desplazamiento), campo: e.campo, motivo: e.motivo })}
                     </li>
                   ))}
                 </ul>
               </div>
             )}
-            {vista.aceptados === 0 && <p className="m-0 text-sm text-destructive">Ningún renglón es válido: revisa el mapeo de columnas.</p>}
+            {vista.aceptados === 0 && <p className="m-0 text-sm text-destructive">{t("restaurantes.cfoSr.ningunoValido")}</p>}
             {vista.muestra.length > 0 && (
               <div data-testid="sr-muestra">
                 <DataTable<Readonly<Record<string, string | number | boolean | null>>>
-                  etiqueta="Primeros renglones normalizados (sin datos de clientes)"
+                  etiqueta={t("restaurantes.cfoSr.muestra")}
                   filas={vista.muestra.slice(0, 5)}
                   obtenerId={(f) => JSON.stringify(f)}
                   paginacion={false}
@@ -401,21 +404,21 @@ export function ImportarSrDialogo({ abierto, onCerrar, api, sucursales, onTermin
         {resultado && (
           <div className="flex flex-col gap-2" data-testid="sr-resultado">
             {resultado.creado ? (
-              <Callout tone="success" titulo="Reporte importado">
-                Se aceptaron {entero(resultado.aceptados)} renglones y se rechazaron {entero(resultado.rechazados + descartadosLocales)}
-                {descartadosLocales > 0 ? ` (${entero(descartadosLocales)} no se enviaron desde tu navegador)` : ""}. Ya puedes ver el cuadre de tus pedidos a domicilio.
+              <Callout tone="success" titulo={t("restaurantes.cfoSr.importado")}>
+                {t("restaurantes.cfoSr.importadoTexto", { a: entero(resultado.aceptados), r: entero(resultado.rechazados + descartadosLocales) })}
+                {descartadosLocales > 0 ? t("restaurantes.cfoSr.noEnviados", { n: entero(descartadosLocales) }) : ""}
+                {t("restaurantes.cfoSr.importadoFin")}
               </Callout>
             ) : (
-              <Callout tone="info" titulo={MENSAJE_YA_CARGADO} data-testid="sr-ya-cargado">
-                Es el mismo contenido con el mismo mapeo de una importación anterior: no se volvió a escribir nada. Estas son las cifras de la primera vez ({entero(resultado.aceptados)} aceptados,{" "}
-                {entero(resultado.rechazados + descartadosLocales)} rechazados).
+              <Callout tone="info" titulo={t("restaurantes.cfoSr.yaCargado")} data-testid="sr-ya-cargado">
+                {t("restaurantes.cfoSr.yaCargadoTexto", { a: entero(resultado.aceptados), r: entero(resultado.rechazados + descartadosLocales) })}
               </Callout>
             )}
             {resultado.errores.length > 0 && (
               <ul className="m-0 max-h-32 list-disc overflow-auto pl-5 text-xs">
                 {resultado.errores.map((e, i) => (
                   <li key={`${e.renglon}-${i}`}>
-                    Renglón {e.renglon + desplazamiento}, {e.campo}: {e.motivo}
+                    {t("restaurantes.cfoSr.errorRenglon", { renglon: String(e.renglon + desplazamiento), campo: e.campo, motivo: e.motivo })}
                   </li>
                 ))}
               </ul>

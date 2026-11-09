@@ -8,6 +8,8 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { AtiendeWordmark } from "../AtiendeLogo";
+import { useT } from "../../i18n/proveedor";
+import { comun } from "../../i18n/mensajes/comun.ts";
 
 /** Anchos unicos de las superposiciones (px). Un ancho heredado se redondea al estandar con `tamanoDrawerPara`. */
 export const ANCHOS_SUPERPOSICION = {
@@ -93,7 +95,7 @@ function Cabecera({ titulo, subtitulo }: { titulo: React.ReactNode; subtitulo?: 
       </div>
       <DialogPrimitive.Close className="ds3-ov-cerrar relative -mr-1 flex size-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors duration-fast ease-brand after:absolute after:-inset-2 after:content-[''] hover:bg-soft hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         <X aria-hidden="true" className="size-3.5" strokeWidth={1.75} />
-        <span className="sr-only">Cerrar</span>
+        <TextoCerrar />
       </DialogPrimitive.Close>
     </header>
   );
@@ -228,4 +230,9 @@ export function Modal({ open, onOpenChange, titulo, subtitulo, pie, notaPie, tam
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>
   );
+}
+
+/** Nombre accesible del boton de cierre, en el idioma de la consola. */
+function TextoCerrar() {
+  return <span className="sr-only">{useT(comun)("comun.cerrar")}</span>;
 }

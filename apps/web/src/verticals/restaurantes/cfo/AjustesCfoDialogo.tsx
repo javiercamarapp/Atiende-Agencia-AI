@@ -3,7 +3,9 @@
 // Solo el dueño o un admin de toda la organización guarda; un admin acotado la lee. Incluye el aviso de no sustitución.
 import { useEffect, useState } from "react";
 import type { CfoConfig, ConfigVista } from "@atiende/domain-restaurantes/cfo";
-import { Button, Callout, EstadoCargando, EstadoError, FormDialog, FormField, Input, notify } from "@atiende/ui";
+import { Button, Callout, EstadoCargando, EstadoError, FormDialog, FormField, Input, notify, traductorActivo, useT } from "@atiende/ui";
+import type { Clave } from "@atiende/ui";
+import { restaurantesCfoAjustes } from "@atiende/ui/i18n/restaurantes/cfoAjustes";
 import { fetchConfig, guardarConfig, type CambiosConfigCfo, type ContextoCfo } from "./cfo-client.ts";
 import { AvisoNoSustitucion } from "./piezas.tsx";
 import { useCargaCfo } from "./use-carga-cfo.ts";
@@ -19,62 +21,68 @@ interface Campo {
   readonly centavos?: boolean;
 }
 
+const tr = traductorActivo(restaurantesCfoAjustes);
+const UNIDADES: Readonly<Record<string, Clave>> = { pedidos: "restaurantes.cfoAjustes.unidad.pedidos", dias: "restaurantes.cfoAjustes.unidad.dias", veces: "restaurantes.cfoAjustes.unidad.veces" };
+
+/** Campo con sus textos en el idioma activo (cada lectura traduce; en espanol, los de siempre). Las unidades simbolo (min, %, $, pp) no se traducen. */
+function campo(llave: Llave, unidad: string, entero: boolean, centavos?: true): Campo {
+  return {
+    llave,
+    get etiqueta() {
+      return tr(`restaurantes.cfoAjustes.${llave}.etiqueta` as Clave);
+    },
+    get ayuda() {
+      return tr(`restaurantes.cfoAjustes.${llave}.ayuda` as Clave);
+    },
+    entero,
+    get unidad() {
+      const clave = UNIDADES[unidad];
+      return clave ? tr(clave) : unidad;
+    },
+    ...(centavos ? { centavos } : {}),
+  };
+}
+
+function grupo(clave: Clave, campos: readonly Campo[]): { readonly titulo: string; readonly campos: readonly Campo[] } {
+  return {
+    get titulo() {
+      return tr(clave);
+    },
+    campos,
+  };
+}
+
 const GRUPOS: ReadonlyArray<{ readonly titulo: string; readonly campos: readonly Campo[] }> = [
-  {
-    titulo: "Cliente frecuente",
-    campos: [
-      { llave: "frecuenteN", etiqueta: "Pedidos para ser frecuente", ayuda: "Un cliente es frecuente si hizo al menos este número de pedidos…", entero: true, unidad: "pedidos" },
-      { llave: "frecuenteDias", etiqueta: "…dentro de estos días", ayuda: "Ventana en la que se cuentan esos pedidos.", entero: true, unidad: "días" },
-      { llave: "activoDias", etiqueta: "Cliente activo si pidió en los últimos", ayuda: "Pasado ese tiempo sin pedir pasa a dormido.", entero: true, unidad: "días" },
-      { llave: "perdidoDias", etiqueta: "Cliente perdido tras", ayuda: "Sin pedir durante este tiempo se considera perdido.", entero: true, unidad: "días" },
-    ],
-  },
-  {
-    titulo: "Entrega",
-    campos: [
-      { llave: "promesaMin", etiqueta: "Promesa de entrega", ayuda: "Lo que le prometes al cliente; sobre ella se mide el retraso.", entero: true, unidad: "min" },
-      { llave: "entregaP90MaxMin", etiqueta: "Entrega p90 máxima", ayuda: "Si 9 de cada 10 entregas tardan más que esto, se avisa.", entero: true, unidad: "min" },
-    ],
-  },
-  {
-    titulo: "Impuestos y comisiones",
-    campos: [
-      { llave: "ivaPct", etiqueta: "IVA", ayuda: "Se usa para estimar las ventas sin IVA (cifra estimada).", entero: false, unidad: "%" },
-      { llave: "comisionTerminalPct", etiqueta: "Comisión de terminal", ayuda: "Sobre las ventas con tarjeta. Déjalo vacío si aún no la capturas: la línea quedará como «captura pendiente».", entero: false, unidad: "%" },
-    ],
-  },
-  {
-    titulo: "Cuadre con SoftRestaurant (domicilio)",
-    campos: [
-      { llave: "srCuadreVerdePct", etiqueta: "Cuadra hasta", ayuda: "Diferencia diaria entre tus pedidos a domicilio y el «domicilio» de SoftRestaurant que se considera cuadrada.", entero: false, unidad: "%" },
-      { llave: "srCuadreVerdeCentavos", etiqueta: "…y hasta este monto", ayuda: "Además de lo anterior, la diferencia en pesos no debe pasar de esto para estar en verde.", entero: false, unidad: "$", centavos: true },
-      { llave: "srCuadreAmbarPct", etiqueta: "Se revisa hasta", ayuda: "Entre lo que cuadra y este porcentaje sale «Revisar»; más allá, «No cuadra».", entero: false, unidad: "%" },
-    ],
-  },
-  {
-    titulo: "Umbrales de «Lo más importante»",
-    campos: [
-      { llave: "caidaPct", etiqueta: "Caída de ventas", ayuda: "Avisa si la venta cae más que esto contra su promedio.", entero: false, unidad: "%" },
-      { llave: "ticketBajaPct", etiqueta: "Baja del ticket", ayuda: "Avisa si el ticket baja más que esto.", entero: false, unidad: "%" },
-      { llave: "cancelacionXMediana", etiqueta: "Cancelación vs. mediana", ayuda: "Veces la mediana de las sucursales.", entero: false, unidad: "veces" },
-      { llave: "descuentoMaxPct", etiqueta: "Descuento máximo", ayuda: "Avisa si el descuento supera este porcentaje de la venta bruta.", entero: false, unidad: "%" },
-      { llave: "costoAgenteAlzaPct", etiqueta: "Alza del costo del agente", ayuda: "Avisa si el costo por pedido sube más que esto.", entero: false, unidad: "%" },
-      { llave: "cierreBajaPp", etiqueta: "Baja de la tasa de cierre", ayuda: "Puntos porcentuales que debe bajar el cierre del agente.", entero: false, unidad: "pp" },
-    ],
-  },
+  grupo("restaurantes.cfoAjustes.grupo.frecuente", [
+    campo("frecuenteN", "pedidos", true),
+    campo("frecuenteDias", "dias", true),
+    campo("activoDias", "dias", true),
+    campo("perdidoDias", "dias", true),
+  ]),
+  grupo("restaurantes.cfoAjustes.grupo.entrega", [campo("promesaMin", "min", true), campo("entregaP90MaxMin", "min", true)]),
+  grupo("restaurantes.cfoAjustes.grupo.impuestos", [campo("ivaPct", "%", false), campo("comisionTerminalPct", "%", false)]),
+  grupo("restaurantes.cfoAjustes.grupo.sr", [campo("srCuadreVerdePct", "%", false), campo("srCuadreVerdeCentavos", "$", false, true), campo("srCuadreAmbarPct", "%", false)]),
+  grupo("restaurantes.cfoAjustes.grupo.umbrales", [
+    campo("caidaPct", "%", false),
+    campo("ticketBajaPct", "%", false),
+    campo("cancelacionXMediana", "veces", false),
+    campo("descuentoMaxPct", "%", false),
+    campo("costoAgenteAlzaPct", "%", false),
+    campo("cierreBajaPp", "pp", false),
+  ]),
 ];
 
 const textoDe = (v: number | null, c?: Campo): string => (v === null ? "" : String(c?.centavos ? v / 100 : v));
 
 function interpretar(texto: string, campo: Campo, rango: readonly [number, number] | undefined): { readonly valor: number | null; readonly error: string | null } {
   const t = texto.trim();
-  if (t === "") return campo.llave === "comisionTerminalPct" ? { valor: null, error: null } : { valor: null, error: "Escribe un número." };
-  if (!/^\d{1,9}(\.\d{1,2})?$/.test(t) || (campo.entero && t.includes("."))) return { valor: null, error: campo.entero ? "Escribe un número entero." : "Escribe un número (máximo 2 decimales)." };
+  if (t === "") return campo.llave === "comisionTerminalPct" ? { valor: null, error: null } : { valor: null, error: tr("restaurantes.cfoAjustes.error.numero") };
+  if (!/^\d{1,9}(\.\d{1,2})?$/.test(t) || (campo.entero && t.includes("."))) return { valor: null, error: tr(campo.entero ? "restaurantes.cfoAjustes.error.entero" : "restaurantes.cfoAjustes.error.decimales") };
   const escrito = Number(t);
   const n = campo.centavos ? Math.round(escrito * 100) : escrito;
   if (rango && (n < rango[0] || n > rango[1])) {
     const [min, max] = campo.centavos ? [rango[0] / 100, rango[1] / 100] : rango;
-    return { valor: null, error: `Debe estar entre ${min} y ${max}.` };
+    return { valor: null, error: tr("restaurantes.cfoAjustes.error.rango", { min: String(min), max: String(max) }) };
   }
   return { valor: n, error: null };
 }
@@ -87,18 +95,19 @@ export interface AjustesCfoDialogoProps {
 }
 
 export function AjustesCfoDialogo({ abierto, onCerrar, api, onGuardado }: AjustesCfoDialogoProps) {
+  const t = useT(restaurantesCfoAjustes);
   const { carga, recargar } = useCargaCfo(() => (abierto ? fetchConfig(api) : Promise.reject(new Error("cerrado"))), [abierto, api.propertyId, api.token]);
   return (
-    <FormDialog open={abierto} onOpenChange={(o) => !o && onCerrar()} titulo="Ajustes del CFO" subtitulo="Definiciones y umbrales con los que se calculan los indicadores y los hallazgos." anchoClase="max-w-3xl" anchoRiel="200px" footer={<span />}>
+    <FormDialog open={abierto} onOpenChange={(o) => !o && onCerrar()} titulo={t("restaurantes.cfoAjustes.titulo")} subtitulo={t("restaurantes.cfoAjustes.subtitulo")} anchoClase="max-w-3xl" anchoRiel="200px" footer={<span />}>
       <div className="space-y-3 pr-1" data-testid="ajustes-cfo">
         {!abierto ? null : carga.estado === "cargando" ? (
-          <EstadoCargando etiqueta="Cargando los ajustes…" />
+          <EstadoCargando etiqueta={t("restaurantes.cfoAjustes.cargando")} />
         ) : carga.estado === "error" ? (
           <EstadoError mensaje={carga.mensaje} onReintentar={recargar} />
         ) : carga.estado === "no_disponible" ? (
-          <Callout tone="info">Los ajustes del CFO todavía no están disponibles en este negocio (falta aplicar la actualización de base de datos).</Callout>
+          <Callout tone="info">{t("restaurantes.cfoAjustes.noDisponible")}</Callout>
         ) : carga.estado === "sin_acceso" ? (
-          <Callout tone="warning">Tu rol no tiene acceso al CFO.</Callout>
+          <Callout tone="warning">{t("restaurantes.cfoAjustes.sinAcceso")}</Callout>
         ) : (
           <Formulario config={carga.datos} api={api} onCerrar={onCerrar} onGuardado={onGuardado} />
         )}
@@ -109,6 +118,7 @@ export function AjustesCfoDialogo({ abierto, onCerrar, api, onGuardado }: Ajuste
 }
 
 function Formulario({ config, api, onCerrar, onGuardado }: { readonly config: ConfigVista; readonly api: ContextoCfo; readonly onCerrar: () => void; readonly onGuardado: () => void }) {
+  const t = useT(restaurantesCfoAjustes);
   const campos = GRUPOS.flatMap((g) => g.campos);
   const [valores, setValores] = useState<Readonly<Record<string, string>>>(() => Object.fromEntries(campos.map((c) => [c.llave, textoDe(config.config[c.llave], c)])));
   const [guardando, setGuardando] = useState(false);
@@ -129,9 +139,9 @@ function Formulario({ config, api, onCerrar, onGuardado }: { readonly config: Co
   const cruzadoSr = verde !== null && ambar !== null && verde > ambar;
   const interpretados = base.map((i) =>
     cruzado && i.campo.llave === "perdidoDias" && i.error === null
-      ? { ...i, error: "Debe ser mayor que los días de cliente activo." }
+      ? { ...i, error: t("restaurantes.cfoAjustes.error.perdido") }
       : cruzadoSr && i.campo.llave === "srCuadreAmbarPct" && i.error === null
-        ? { ...i, error: "Debe ser igual o mayor que el porcentaje que cuadra." }
+        ? { ...i, error: t("restaurantes.cfoAjustes.error.ambar") }
         : i,
   );
   const cambios: Record<string, number | null> = {};
@@ -147,11 +157,11 @@ function Formulario({ config, api, onCerrar, onGuardado }: { readonly config: Co
     setError(null);
     try {
       await guardarConfig(api, cambios as CambiosConfigCfo);
-      notify.success("Ajustes del CFO guardados.");
+      notify.success(t("restaurantes.cfoAjustes.guardados"));
       onGuardado();
       onCerrar();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudieron guardar los ajustes.");
+      setError(err instanceof Error ? err.message : t("restaurantes.cfoAjustes.errorGuardar"));
     } finally {
       setGuardando(false);
     }
@@ -165,8 +175,8 @@ function Formulario({ config, api, onCerrar, onGuardado }: { readonly config: Co
         void guardar();
       }}
     >
-      {lectura && <Callout tone="info">Solo el dueño o un administrador de toda la organización puede cambiar estos ajustes. Tú puedes verlos.</Callout>}
-      {!config.configurada && <Callout tone="neutral">Todavía no guardas tu configuración: se usan los valores de fábrica.</Callout>}
+      {lectura && <Callout tone="info">{t("restaurantes.cfoAjustes.soloLectura")}</Callout>}
+      {!config.configurada && <Callout tone="neutral">{t("restaurantes.cfoAjustes.deFabrica")}</Callout>}
       {error && <Callout tone="danger">{error}</Callout>}
       {GRUPOS.map((g) => (
         <fieldset key={g.titulo} className="space-y-3">
@@ -185,7 +195,7 @@ function Formulario({ config, api, onCerrar, onGuardado }: { readonly config: Co
       ))}
       <div className="flex justify-end">
         <Button type="submit" loading={guardando} disabled={lectura || guardando || hayErrores || nCambios === 0}>
-          {nCambios === 0 ? "Sin cambios" : `Guardar ${nCambios} ${nCambios === 1 ? "cambio" : "cambios"}`}
+          {nCambios === 0 ? t("restaurantes.cfoAjustes.sinCambios") : t("restaurantes.cfoAjustes.guardarN", { count: nCambios })}
         </Button>
       </div>
     </form>

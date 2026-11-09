@@ -11,7 +11,7 @@ name: Verificacion visual ds3 (capturas, medidor y regla de specs)
 # el checkout no persiste credenciales; las entradas del dispatch viajan por variables de entorno, no dentro del script.
 on:
   pull_request:
-    types: [opened, synchronize, reopened, labeled]
+    types: [opened, synchronize, reopened, labeled, ready_for_review]
     paths:
       - "apps/web/**"
       - "packages/ui/**"
@@ -42,7 +42,7 @@ on:
         default: humo
 
 concurrency:
-  group: capturas-ds3-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -68,7 +68,8 @@ jobs:
 
   capturas-ds3:
     name: capturas-ds3 (barrido + medidor + carga/fps)
-    if: github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'ds3')
+    # 60 min de runner: tampoco en PR en borrador (corre al marcarlo como listo, ready_for_review).
+    if: github.event_name == 'workflow_dispatch' || (contains(github.event.pull_request.labels.*.name, 'ds3') && !github.event.pull_request.draft)
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
@@ -85,14 +86,9 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Setup Node
-        uses: actions/setup-node@v7
-        with:
-          node-version: "22"
-          cache: npm
-
-      - name: npm ci
-        run: npm ci
+      # Node 22 + npm ci, o node_modules restaurado del cache de main (ver .github/actions/node-deps).
+      - name: Node + dependencias
+        uses: ./.github/actions/node-deps
 
       - name: Version de Playwright
         id: pw

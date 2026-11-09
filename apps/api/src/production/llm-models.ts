@@ -46,6 +46,9 @@ export const COMPACTACION_HISTORIAL_ROLE = "plataforma:compactacion_historial";
  *  Studio / Vertex (`GOOGLE_HOSTS`, en la lista permitida). Si ningun escalon acepta la peticion, el llamador conserva el comportamiento de
  *  "pedir al cliente que escriba". */
 export const RESTAURANTES_TRANSCRIPCION_ROLE = "restaurantes:transcripcion";
+/** Alta autoservicio: extraccion del menu (PDF o foto) a un borrador de productos/precios que el dueño revisa antes de guardar
+ *  (llamador: apps/api/src/routes/verticals/restaurantes/admin-menu-importar.ts). Entrada de imagen/PDF: actividad `extraccion_menu`. */
+export const RESTAURANTES_EXTRACCION_MENU_ROLE = "restaurantes:extraccion_menu";
 export const NEW_PLATFORM_LLM_ROLES: readonly string[] = [
   REPORTE_ANALISIS_FINANCIERO_ROLE,
   REPORTE_ANALISIS_GENERAL_ROLE,
@@ -301,11 +304,12 @@ export type ActividadLlm =
   | "tareas_cortas"
   | "transcripcion_audio"
   | "extraccion_documentos"
+  | "extraccion_menu"
   | "borradores"
   | "conciliacion"
   | "demo_publica";
 
-export type ModalidadLlm = "texto" | "texto_herramientas" | "audio";
+export type ModalidadLlm = "texto" | "texto_herramientas" | "audio" | "imagen_pdf";
 
 export interface ActividadLlmConfig {
   readonly descripcion: string;
@@ -336,6 +340,9 @@ export const ACTIVIDADES_LLM: Readonly<Record<ActividadLlm, ActividadLlmConfig>>
   // por nota y p50 ~1.8-2.0 s; MiMo V2.6 Flash (DeepInfra) rechaza `input_audio` (422). Antes: Gemini 2.5 Flash-Lite, que NO tiene endpoint ZDR.
   transcripcion_audio: { descripcion: "Notas de voz de WhatsApp a texto", modalidad: "audio", decision: "medicion", route: ruta({ ...FLASH_LITE_31, minMaxTokens: 800 }, FLASH_LITE_35) },
   extraccion_documentos: { descripcion: "Extraccion de requisitos de bases de licitacion (texto extraido por pagina)", modalidad: "texto", decision: "precio", route: ruta(LUNA_LOW, DEEPSEEK_FLASH) },
+  // Sin bake-off propio (decision "precio"): los dos modelos baratos con ZDR que aceptan imagen y PDF (`MODELOS_CON_IMAGEN_PDF`); salida
+  // estructurada (json_schema) y piso de tokens alto porque un menu de 150 productos rebasa los 4 mil tokens de salida.
+  extraccion_menu: { descripcion: "Alta de restaurante: menu en PDF o foto a borrador de productos y precios (lo revisa el dueño)", modalidad: "imagen_pdf", decision: "precio", route: ruta({ ...FLASH_LITE_35, minMaxTokens: 12000 }, { ...GEMINI_38_FLASH, minMaxTokens: 12000 }) },
   borradores: { descripcion: "Borradores (preguntas de junta, propuesta tecnica, mensajes de rentas)", modalidad: "texto_herramientas", decision: "precio", route: ruta(LUNA_LOW, HAIKU_55) },
   conciliacion: { descripcion: "Conciliacion bancaria de despachos: sugerir coincidencias", modalidad: "texto_herramientas", decision: "precio", route: ruta(LUNA_LOW, HAIKU_55) },
   demo_publica: { descripcion: "Demo publica del sitio (chat sin herramientas)", modalidad: "texto", decision: "precio", route: ruta(LUNA_LOW, HAIKU_55) },
@@ -359,6 +366,7 @@ export const ACTIVIDAD_POR_ROL: Readonly<Record<string, ActividadLlm>> = {
   [TITULOS_RESUMENES_ROLE]: "tareas_cortas",
   [COMPACTACION_HISTORIAL_ROLE]: "tareas_cortas",
   [RESTAURANTES_TRANSCRIPCION_ROLE]: "transcripcion_audio",
+  [RESTAURANTES_EXTRACCION_MENU_ROLE]: "extraccion_menu",
   "licitaciones:requirement_extractor": "extraccion_documentos",
   "licitaciones:junta_question_agent": "borradores",
   "licitaciones:proposal_draft_agent": "borradores",
@@ -370,6 +378,10 @@ export const ACTIVIDAD_POR_ROL: Readonly<Record<string, ActividadLlm>> = {
 /** Modelos con entrada de AUDIO verificada (`architecture.input_modalities` de OpenRouter, 6-nov-2026) y que la aceptan por la API de chat
  *  (`input_audio`): una actividad de modalidad "audio" solo puede usar estos. MiMo V2.6 Flash lista audio pero DeepInfra rechaza `input_audio` (422). */
 export const MODELOS_CON_AUDIO: ReadonlySet<string> = new Set(["google/gemini-3.5-flash-lite", "google/gemini-3.1-flash-lite", "google/gemini-3.8-flash"]);
+
+/** Modelos con entrada de IMAGEN y PDF verificada (`architecture.input_modalities` de OpenRouter, notas de `VERIFIED_MODEL_HOSTS`): una
+ *  actividad de modalidad "imagen_pdf" solo puede usar estos. MiMo V2.6 Flash acepta imagen pero no PDF: fuera. */
+export const MODELOS_CON_IMAGEN_PDF: ReadonlySet<string> = new Set(["google/gemini-3.5-flash-lite", "google/gemini-3.1-flash-lite", "google/gemini-3.8-flash"]);
 
 /** Actividad de un rol: clave exacta > "*:sufijo". `undefined` = rol sin actividad declarada (usa `DEFAULT_ROUTE`). */
 export function actividadDeRol(role: string): ActividadLlm | undefined {

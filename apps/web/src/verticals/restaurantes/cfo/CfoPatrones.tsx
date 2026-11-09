@@ -4,7 +4,8 @@ import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { ShieldCheck } from "lucide-react";
 import type { ColoniaApi, PatronesVista } from "@atiende/domain-restaurantes/cfo";
-import { BarChartSimple, Callout, ChartCard, DataTable, EstadoVacio, Heatmap, PageContainer, RankingBarras, StatCard, TablaDatosGrafica } from "@atiende/ui";
+import { BarChartSimple, Callout, ChartCard, DataTable, EstadoVacio, Heatmap, PageContainer, RankingBarras, StatCard, TablaDatosGrafica, useT } from "@atiende/ui";
+import { restaurantesCfoPatrones } from "@atiende/ui/i18n/restaurantes/cfoPatrones";
 import type { CeldaHeatmapUi } from "@atiende/ui";
 import { fetchPatrones } from "./cfo-client.ts";
 import { enlaceDeAccion, type CfoPaginaProps } from "./contexto.ts";
@@ -48,18 +49,19 @@ function Semanal({ d }: { readonly d: PatronesVista }) {
   const conDato = filas.filter((f) => f.promedioDiaCentavos !== null);
   const media = conDato.length > 0 ? conDato.reduce((s, f) => s + (f.promedioDiaCentavos ?? 0), 0) / conDato.length : 0;
   const picos = conDato.filter((f) => media > 0 && (f.promedioDiaCentavos ?? 0) >= media * UMBRAL_PICO);
+  const t = useT(restaurantesCfoPatrones);
   return (
-    <ChartCard titulo="Venta por día de la semana" subtitulo="Promedio de ventas netas de cada día (día de negocio)" tamano="M">
-      <BarChartSimple datos={filas.map((f) => ({ dia: DIAS_CORTOS[f.dow - 1] ?? f.etiqueta, valor: f.promedioDiaCentavos ?? 0 }))} etiquetaValor={pesos} sinDatos="Sin ventas en este periodo" />
+    <ChartCard titulo={t("restaurantes.cfoPatrones.semanal")} subtitulo={t("restaurantes.cfoPatrones.semanalSub")} tamano="M">
+      <BarChartSimple datos={filas.map((f) => ({ dia: DIAS_CORTOS[f.dow - 1] ?? f.etiqueta, valor: f.promedioDiaCentavos ?? 0 }))} etiquetaValor={pesos} sinDatos={t("restaurantes.cfoPatrones.sinVentas")} />
       {picos.length > 0 && (
         <p className="mt-2 text-xs" data-testid="dias-pico">
-          <span className="font-medium">Días pico: </span>
-          {picos.map((p) => p.etiqueta).join(", ")} (venta {Math.round((UMBRAL_PICO - 1) * 100)} % o más por encima del promedio de la semana).
+          <span className="font-medium">{t("restaurantes.cfoPatrones.diasPico")}</span>
+          {t("restaurantes.cfoPatrones.diasPicoNota", { dias: picos.map((p) => p.etiqueta).join(", "), pct: Math.round((UMBRAL_PICO - 1) * 100) })}
         </p>
       )}
       <TablaDatosGrafica
-        titulo="Venta por día de la semana"
-        encabezados={["Día", "Pedidos", "Ventas netas", "Promedio por día"]}
+        titulo={t("restaurantes.cfoPatrones.semanal")}
+        encabezados={[t("restaurantes.cfoPatrones.col.dia"), t("restaurantes.cfoPatrones.col.pedidos"), t("restaurantes.cfoPatrones.col.neta"), t("restaurantes.cfoPatrones.col.promedioDia")]}
         filas={filas.map((f) => [f.etiqueta, entero(f.pedidos), pesosExactos(f.netaCentavos), pesosExactos(f.promedioDiaCentavos)])}
       />
     </ChartCard>
@@ -68,15 +70,19 @@ function Semanal({ d }: { readonly d: PatronesVista }) {
 
 function Mensual({ d }: { readonly d: PatronesVista }) {
   const filas = d.estacionalidadMensual;
+  const t = useT(restaurantesCfoPatrones);
   return (
-    <ChartCard titulo="Venta por mes" subtitulo="Ventas netas de cada mes; un mes incompleto trae menos días" tamano="M">
-      <BarChartSimple datos={filas.map((m) => ({ dia: etiquetaMes(m.mes).slice(0, 3), valor: m.netaCentavos }))} etiquetaValor={pesos} sinDatos="Sin ventas en este periodo" />
-      <TablaDatosGrafica titulo="Venta por mes" encabezados={["Mes", "Días del periodo", "Pedidos", "Ventas netas"]} filas={filas.map((m) => [etiquetaMes(m.mes), entero(m.dias), entero(m.pedidos), pesosExactos(m.netaCentavos)])} />
+    <ChartCard titulo={t("restaurantes.cfoPatrones.mensual")} subtitulo={t("restaurantes.cfoPatrones.mensualSub")} tamano="M">
+      <BarChartSimple datos={filas.map((m) => ({ dia: etiquetaMes(m.mes).slice(0, 3), valor: m.netaCentavos }))} etiquetaValor={pesos} sinDatos={t("restaurantes.cfoPatrones.sinVentas")} />
+      <TablaDatosGrafica titulo={t("restaurantes.cfoPatrones.mensual")} encabezados={[t("restaurantes.cfoPatrones.col.mes"), t("restaurantes.cfoPatrones.col.diasPeriodo"), t("restaurantes.cfoPatrones.col.pedidos"), t("restaurantes.cfoPatrones.col.neta")]} filas={filas.map((m) => [etiquetaMes(m.mes), entero(m.dias), entero(m.pedidos), pesosExactos(m.netaCentavos)])} />
     </ChartCard>
   );
 }
 
 function Colonias({ d }: { readonly d: PatronesVista }) {
+  const t = useT(restaurantesCfoPatrones);
+  // «(otras)» es un marcador de los datos: se pinta en el idioma activo.
+  const mostrar = (colonia: string): string => (colonia === NOMBRE_OTRAS ? t("restaurantes.cfoPatrones.otras") : colonia);
   const nombres = new Map(d.sucursales.map((s) => [s.propertyId, s.nombre]));
   const filas = useMemo(() => agruparColoniasChicas(d.colonias).sort((a, b) => b.pedidos - a.pedidos || (a.colonia < b.colonia ? -1 : 1)), [d.colonias]);
   const { ranking, otras, totalPedidos } = useMemo(() => {
@@ -87,43 +93,43 @@ function Colonias({ d }: { readonly d: PatronesVista }) {
     const top = [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, 7);
     // «(otras)» siempre cierra el ranking: es lo que protege la privacidad y tiene que verse.
     const lista = [...top, ...(otras > 0 ? ([[NOMBRE_OTRAS, otras]] as Array<[string, number]>) : [])];
-    return { ranking: lista.map(([colonia, pedidos]) => ({ id: colonia, etiqueta: colonia, valor: pedidos })), otras, totalPedidos: filas.reduce((s, c) => s + c.pedidos, 0) };
-  }, [filas]);
+    return { ranking: lista.map(([colonia, pedidos]) => ({ id: colonia, etiqueta: mostrar(colonia), valor: pedidos })), otras, totalPedidos: filas.reduce((s, c) => s + c.pedidos, 0) };
+  }, [filas, t]);
   return (
-    <ChartCard titulo="Colonias" subtitulo="Pedidos a domicilio por colonia, con la sucursal de despacho más cercana" tamano="L">
+    <ChartCard titulo={t("restaurantes.cfoPatrones.colonias")} subtitulo={t("restaurantes.cfoPatrones.coloniasSub")} tamano="L">
       <Callout tone="info" className="mb-2" data-testid="colonias-privacidad" icon={<ShieldCheck className="size-4" aria-hidden="true" />}>
-        Por privacidad, las colonias con menos de {K_COLONIAS} pedidos o {K_COLONIAS} clientes se agrupan en «{NOMBRE_OTRAS}». Nunca se muestran direcciones.
+        {t("restaurantes.cfoPatrones.privacidad", { k: K_COLONIAS, otras: t("restaurantes.cfoPatrones.otras") })}
       </Callout>
       {filas.length === 0 ? (
         <p role="status" className="py-6 text-center text-xs text-faint">
-          Sin pedidos a domicilio por colonia en este periodo.
+          {t("restaurantes.cfoPatrones.sinColonias")}
         </p>
       ) : (
         <>
-          <RankingBarras filas={ranking} formato={entero} sinDatos="Sin pedidos a domicilio en este periodo" />
+          <RankingBarras filas={ranking} formato={entero} sinDatos={t("restaurantes.cfoPatrones.sinDomicilio")} />
           {otras > 0 && (
             <p className="mt-2 text-xs text-muted-foreground" data-testid="colonias-otras">
-              «{NOMBRE_OTRAS}» junta {entero(otras)} pedidos ({totalPedidos > 0 ? `${Math.round((otras / totalPedidos) * 100)} %` : SIN_DATO} de los domicilios) de colonias con muy pocos pedidos.
+              {t("restaurantes.cfoPatrones.otrasJunta", { otras: t("restaurantes.cfoPatrones.otras"), n: entero(otras), pct: totalPedidos > 0 ? t("restaurantes.cfoPatrones.pct", { n: Math.round((otras / totalPedidos) * 100) }) : SIN_DATO })}
             </p>
           )}
           <div className="mt-3">
             <DataTable<ColoniaApi>
-              etiqueta="Colonias con pedidos a domicilio"
+              etiqueta={t("restaurantes.cfoPatrones.coloniasTabla")}
               filas={filas}
               obtenerId={(f) => `${f.propertyId}-${f.colonia}`}
               paginacion={{ tamano: 10 }}
               vista="tabla"
               atributosFila={(f) => ({ "data-colonia": f.colonia })}
               columnas={[
-                { id: "c", encabezado: "Colonia", principal: true, celda: (f) => f.colonia },
-                { id: "s", encabezado: "Sucursal", celda: (f) => nombres.get(f.propertyId) ?? SIN_DATO },
-                { id: "p", encabezado: "Pedidos", alinear: "right", className: "tabular-nums", celda: (f) => entero(f.pedidos) },
-                { id: "t", encabezado: "Ticket", alinear: "right", className: "tabular-nums", celda: (f) => textoCifra(f.ticket, "centavos") },
-                { id: "e", encabezado: "Entrega prom.", alinear: "right", className: "tabular-nums", celda: (f) => minutos(f.entregaPromedioMin.valor) },
+                { id: "c", encabezado: t("restaurantes.cfoPatrones.col.colonia"), principal: true, celda: (f) => mostrar(f.colonia) },
+                { id: "s", encabezado: t("restaurantes.cfoPatrones.col.sucursal"), celda: (f) => nombres.get(f.propertyId) ?? SIN_DATO },
+                { id: "p", encabezado: t("restaurantes.cfoPatrones.col.pedidos"), alinear: "right", className: "tabular-nums", celda: (f) => entero(f.pedidos) },
+                { id: "t", encabezado: t("restaurantes.cfoPatrones.col.ticket"), alinear: "right", className: "tabular-nums", celda: (f) => textoCifra(f.ticket, "centavos") },
+                { id: "e", encabezado: t("restaurantes.cfoPatrones.col.entregaProm"), alinear: "right", className: "tabular-nums", celda: (f) => minutos(f.entregaPromedioMin.valor) },
                 {
                   id: "d",
-                  encabezado: "Despacho más cercano",
-                  celda: (f) => (f.sucursalCercanaId === null ? SIN_DATO : `${nombres.get(f.sucursalCercanaId) ?? "Otra sucursal"}${f.distanciaKm === null ? "" : ` · ${f.distanciaKm.toFixed(1)} km`}`),
+                  encabezado: t("restaurantes.cfoPatrones.col.despacho"),
+                  celda: (f) => (f.sucursalCercanaId === null ? SIN_DATO : `${nombres.get(f.sucursalCercanaId) ?? t("restaurantes.cfoPatrones.otraSucursal")}${f.distanciaKm === null ? "" : ` · ${f.distanciaKm.toFixed(1)} km`}`),
                 },
               ]}
             />
@@ -137,13 +143,14 @@ function Colonias({ d }: { readonly d: PatronesVista }) {
 function CanalPorHora({ d }: { readonly d: PatronesVista }) {
   const fuentes = [...new Set(d.canalPorHora.map((c) => c.source))].sort();
   const celdas: CeldaHeatmapUi[] = d.canalPorHora.map((c) => ({ fila: fuentes.indexOf(c.source), columna: c.hora, valor: c.pedidos }));
+  const t = useT(restaurantesCfoPatrones);
   return (
-    <ChartCard titulo="Canal por hora" subtitulo="Pedidos de WhatsApp y de voz en cada hora del día" tamano="M">
-      <Heatmap celdas={celdas} filas={Math.max(1, fuentes.length)} etiquetasFilas={fuentes.map(etiquetaSource)} formato={entero} metrica="pedidos" sinDatos="Sin pedidos por canal en este periodo" />
+    <ChartCard titulo={t("restaurantes.cfoPatrones.canalHora")} subtitulo={t("restaurantes.cfoPatrones.canalHoraSub")} tamano="M">
+      <Heatmap celdas={celdas} filas={Math.max(1, fuentes.length)} etiquetasFilas={fuentes.map(etiquetaSource)} formato={entero} metrica="pedidos" sinDatos={t("restaurantes.cfoPatrones.sinCanal")} />
       <TablaDatosGrafica
-        titulo="Pedidos por canal y hora"
-        encabezados={["Canal", "Hora", "Pedidos", "Ventas netas"]}
-        filas={[...d.canalPorHora].sort((a, b) => (a.source < b.source ? -1 : a.source > b.source ? 1 : a.hora - b.hora)).map((c) => [etiquetaSource(c.source), `${c.hora} h`, entero(c.pedidos), pesosExactos(c.netaCentavos)])}
+        titulo={t("restaurantes.cfoPatrones.canalHoraTabla")}
+        encabezados={[t("restaurantes.cfoPatrones.col.canal"), t("restaurantes.cfoPatrones.col.hora"), t("restaurantes.cfoPatrones.col.pedidos"), t("restaurantes.cfoPatrones.col.neta")]}
+        filas={[...d.canalPorHora].sort((a, b) => (a.source < b.source ? -1 : a.source > b.source ? 1 : a.hora - b.hora)).map((c) => [etiquetaSource(c.source), t("restaurantes.cfoPatrones.hora", { hora: c.hora }), entero(c.pedidos), pesosExactos(c.netaCentavos)])}
       />
     </ChartCard>
   );
@@ -151,16 +158,17 @@ function CanalPorHora({ d }: { readonly d: PatronesVista }) {
 
 export function CfoPatrones(props: CfoPaginaProps) {
   const { api, filtros } = props;
+  const t = useT(restaurantesCfoPatrones);
   const { carga, recargando, recargar } = useCargaCfo(() => fetchPatrones(api, filtros), [claveCarga(filtros), api.propertyId, api.token]);
   const promos = enlaceDeAccion("/cfo/platillos", props.base, filtros, props.pestanasDisponibles);
   return (
     <PageContainer padding="none" aria-busy={recargando} data-testid="cfo-patrones">
-      <CargaCfoVista carga={carga} onReintentar={recargar} etiqueta="Cargando los patrones…">
+      <CargaCfoVista carga={carga} onReintentar={recargar} etiqueta={t("restaurantes.cfoPatrones.cargando")}>
         {(d) =>
           d.estacionalidadSemanal.every((f) => f.pedidos === 0) && d.colonias.length === 0 && d.canalPorHora.length === 0 ? (
             <>
               <AvisosCfo vista={d} />
-              <EstadoVacio icon={ShieldCheck} titulo="Sin patrones todavía" mensaje="No hay pedidos en el periodo elegido. Cuando los haya verás aquí qué días, horas y colonias pesan más." />
+              <EstadoVacio icon={ShieldCheck} titulo={t("restaurantes.cfoPatrones.sinPatrones")} mensaje={t("restaurantes.cfoPatrones.sinPatronesMensaje")} />
             </>
           ) : (
             <>
@@ -171,9 +179,9 @@ export function CfoPatrones(props: CfoPaginaProps) {
               </div>
               {promos && (
                 <p className="text-xs text-muted-foreground" data-testid="patrones-promos">
-                  ¿Un pico viene de una promoción?{" "}
+                  {t("restaurantes.cfoPatrones.picoPromo")}{" "}
                   <Link to={promos} className="font-medium text-primary underline-offset-4 hover:underline">
-                    Revisa el efecto de las promociones por platillo
+                    {t("restaurantes.cfoPatrones.revisaPromos")}
                   </Link>
                   .
                 </p>
@@ -183,14 +191,14 @@ export function CfoPatrones(props: CfoPaginaProps) {
               <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3" data-testid="patrones-frecuencia">
                 <StatCard
                   icon={ShieldCheck}
-                  label="Días entre pedidos (mediana)"
-                  value={d.diasEntrePedidos.valor === null ? SIN_DATO : `${entero(d.diasEntrePedidos.valor)} días`}
-                  nota="La mitad de los clientes vuelve a pedir antes de este plazo"
-                  {...(d.diasEntrePedidos.valor === null ? { sinDato: "Aún no hay clientes con dos pedidos para medirlo." } : {})}
+                  label={t("restaurantes.cfoPatrones.diasEntre")}
+                  value={d.diasEntrePedidos.valor === null ? SIN_DATO : t("restaurantes.cfoPatrones.nDias", { n: entero(d.diasEntrePedidos.valor) })}
+                  nota={t("restaurantes.cfoPatrones.diasEntreNota")}
+                  {...(d.diasEntrePedidos.valor === null ? { sinDato: t("restaurantes.cfoPatrones.diasEntreSinDato") } : {})}
                 />
               </div>
               <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                Cifra del conjunto de tus clientes <ChipDeCifra cifra={d.diasEntrePedidos} mostrarMedido />. La distribución completa (histograma) aún no la entrega el servicio del CFO: aquí va la mediana.
+                {t("restaurantes.cfoPatrones.cifraConjunto")}{" "}<ChipDeCifra cifra={d.diasEntrePedidos} mostrarMedido />{t("restaurantes.cfoPatrones.histograma")}
               </p>
             </>
           )

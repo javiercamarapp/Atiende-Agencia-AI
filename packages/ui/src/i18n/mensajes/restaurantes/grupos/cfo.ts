@@ -6,6 +6,12 @@ import type { restaurantesCfoPlatillos } from "../cfoPlatillos.ts";
 import type { restaurantesCfoResultados } from "../cfoResultados.ts";
 import type { restaurantesCfoClientes } from "../cfoClientes.ts";
 import type { restaurantesCfoCostos } from "../cfoCostos.ts";
+import type { restaurantesCfoSucursales } from "../cfoSucursales.ts";
+import type { restaurantesCfoPatrones } from "../cfoPatrones.ts";
+import type { restaurantesCfoOperacion } from "../cfoOperacion.ts";
+import type { restaurantesCfoAjustes } from "../cfoAjustes.ts";
+import type { restaurantesCfoAnalisis } from "../cfoAnalisis.ts";
+import type { restaurantesCfoSr } from "../cfoSr.ts";
 
 export interface ModulosRestaurantesCfo {
   readonly restaurantesCfo: typeof restaurantesCfo;
@@ -15,4 +21,10 @@ export interface ModulosRestaurantesCfo {
   readonly restaurantesCfoResultados: typeof restaurantesCfoResultados;
   readonly restaurantesCfoClientes: typeof restaurantesCfoClientes;
   readonly restaurantesCfoCostos: typeof restaurantesCfoCostos;
+  readonly restaurantesCfoSucursales: typeof restaurantesCfoSucursales;
+  readonly restaurantesCfoPatrones: typeof restaurantesCfoPatrones;
+  readonly restaurantesCfoOperacion: typeof restaurantesCfoOperacion;
+  readonly restaurantesCfoAjustes: typeof restaurantesCfoAjustes;
+  readonly restaurantesCfoAnalisis: typeof restaurantesCfoAnalisis;
+  readonly restaurantesCfoSr: typeof restaurantesCfoSr;
 }
