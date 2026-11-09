@@ -27,6 +27,9 @@ export interface ManejadoresSesion {
   usuarioDijo?(texto: string): void;
   /** El agente pide una herramienta; la respuesta se devuelve al proveedor tal cual. */
   ejecutarTool(llamada: ToolCallPedida): Promise<unknown>;
+  /** Lecturas que la vertical quiere PRECARGAR antes de la primera vuelta del modelo en este turno del cliente (`turno` empieza en 1): solo herramientas de LECTURA
+   * (buscar producto, sucursal, cliente). La sesion las corre con `ejecutarTool` y le entrega al modelo la llamada y su resultado como si el las hubiera pedido. */
+  precargar?(texto: string, turno: number): readonly { readonly nombre: string; readonly args: Readonly<Record<string, unknown>> }[];
   /** Audio PCM16 del agente (24 kHz mono en Gemini) para reproducirlo al cliente; solo en sesiones con audio. */
   audioAgente?(pcm16: Uint8Array): void;
   /** Costo adicional (micro-USD) desde el ultimo aviso. `real` = sale de los tokens que reporto el proveedor (`usageMetadata`), no de una tarifa. */

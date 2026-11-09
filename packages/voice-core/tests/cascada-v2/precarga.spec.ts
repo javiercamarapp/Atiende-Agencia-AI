@@ -24,7 +24,7 @@ describe("precarga de lecturas de la vertical antes de la primera vuelta", () =>
   it("corre las lecturas ANTES del modelo y le entrega llamada + resultado en el historial", async () => {
     const { llm, orden } = await armar(() => [{ nombre: "buscar_producto", args: { query: "tacos de pastor", branch_slug: "t7" } }], { buscar_producto: { productos: [{ id: "p1", name: "Taco al pastor", price: 42 }] } });
     expect(orden).toEqual(["tool:buscar_producto", "llm"]);
-    const msgs = llm.peticiones[0]!.mensajes as { role: string; toolCalls?: { nombre: string; argsJson: string }[]; content?: string }[];
+    const msgs = llm.peticiones[0]!.mensajes as unknown as { role: string; toolCalls?: { nombre: string; argsJson: string }[]; content?: string }[];
     const asist = msgs.find((x) => x.role === "assistant" && x.toolCalls?.length);
     expect(asist?.toolCalls?.[0]?.nombre).toBe("buscar_producto");
     expect(msgs.some((x) => x.role === "tool" && String(x.content).includes("Taco al pastor"))).toBe(true);
@@ -32,7 +32,7 @@ describe("precarga de lecturas de la vertical antes de la primera vuelta", () =>
 
   it("un resultado con error no entra al historial (el modelo lo pide si lo necesita)", async () => {
     const { llm } = await armar(() => [{ nombre: "buscar_cliente", args: {} }], { buscar_cliente: { error: "telefono_pendiente" } });
-    const msgs = llm.peticiones[0]!.mensajes as { role: string }[];
+    const msgs = llm.peticiones[0]!.mensajes as unknown as { role: string }[];
     expect(msgs.some((x) => x.role === "tool")).toBe(false);
   });
 

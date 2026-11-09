@@ -17,7 +17,7 @@
 import { VOZ_PLATAFORMA, costoDeepgramAura2MicroUsd, costoDeepgramMicroUsd, costoElevenLabsSttMicroUsd, costoElevenLabsTtsMicroUsd } from "../../config-plataforma.ts";
 import type { ConfigPlataformaVoz } from "../../config-plataforma.ts";
 import { VozNoConfiguradaError, VozProveedorError } from "../../provider.ts";
-import type { MensajeLlmVoz, PuertoLlmVoz, RespuestaLlmVoz } from "../cascada-openrouter.ts";
+import type { MensajeLlmVoz, PuertoLlmVoz, RespuestaLlmVoz, ToolCallLlmVoz } from "../cascada-openrouter.ts";
 import { eventoSinPII } from "../log-sin-pii.ts";
 import type { SumideroLog } from "../log-sin-pii.ts";
 import type { AbrirSesionLlamada, AperturaLlamada, ManejadoresSesion, VozSesionLlamada } from "../sesion.ts";
@@ -569,6 +569,7 @@ class SesionCascadaV2 implements VozSesionLlamada {
         }, ACUSE_ESPERA_MS)
       : null;
     let errorLlm: unknown = null;
+    await this.precargarLecturas(texto, vigente);
     try {
       let vuelta = 0;
       let vacios = 0;
@@ -753,6 +754,29 @@ class SesionCascadaV2 implements VozSesionLlamada {
     } finally {
       if (this.generacion === mia) this.ocupada = false;
     }
+  }
+
+  /** Corre las lecturas que precarga la vertical (ver `ManejadoresSesion.precargar`) y entrega al modelo las que trajeron resultado, como un intercambio
+   * assistant(tool_calls) + tool. Hasta `PRECARGA_MAX` lecturas en paralelo y `PRECARGA_MAX_CHARS` por resultado; una con error o vacia no entra (el modelo la pide). */
+  private async precargarLecturas(texto: string, vigente: () => boolean): Promise<void> {
+    const pedidas = this.h.precargar?.(texto, this.turnosCliente) ?? [];
+    if (pedidas.length === 0 || !vigente()) return;
+    const t0 = this.ahora();
+    const llamadas: ToolCallLlmVoz[] = pedidas.slice(0, PRECARGA_MAX).map((p, i) => ({ id: `precarga_${this.turnosCliente}_${i}`, nombre: p.nombre, argsJson: JSON.stringify(p.args) }));
+    const resultados = await Promise.all(
+      llamadas.map(async (tc) => {
+        try {
+          return { tc, salida: await this.h.ejecutarTool({ id: tc.id, nombre: tc.nombre, args: JSON.parse(tc.argsJson) as Record<string, unknown> }) };
+        } catch {
+          return { tc, salida: null };
+        }
+      }),
+    );
+    const utiles = resultados.filter((r) => resultadoUtil(r.salida));
+    this.log("v2_precarga", { cantidad: utiles.length, ms: Math.round(this.ahora() - t0) });
+    if (utiles.length === 0 || !vigente()) return;
+    this.mensajes.push({ role: "assistant", content: "", toolCalls: utiles.map((u) => u.tc) });
+    for (const u of utiles) this.mensajes.push({ role: "tool", toolCallId: u.tc.id, content: JSON.stringify(u.salida).slice(0, PRECARGA_MAX_CHARS) });
   }
 
   /** Hay un pedido en juego (cotizado, resumen leido o esperando el «si»): «ya quedó» / «ya está» se refieren a el. */
@@ -982,6 +1006,19 @@ function armarPilaStt(opts: CascadaV2Opciones, config: ConfigPlataformaVoz, aper
     tts: opts.tts ?? (ttsDg ? ttsConRespaldo(ttsEl, ttsDg, vozAura, avisar) : ttsEl),
     voz: vozEl,
   };
+}
+
+/** Lecturas precargadas por turno y caracteres por resultado (el contexto precargado no debe encarecer el prompt mas de lo que ahorra). */
+export const PRECARGA_MAX = 4;
+export const PRECARGA_MAX_CHARS = 3_000;
+
+/** Resultado de lectura que vale la pena entregar: sin error y con contenido (una lista vacia o `null` no). */
+function resultadoUtil(salida: unknown): boolean {
+  if (salida === null || salida === undefined || typeof salida !== "object") return false;
+  const o = salida as Record<string, unknown>;
+  if (("error" in o && o["error"] !== undefined && o["error"] !== null && o["error"] !== false) || o["ok"] === false) return false;
+  if (Array.isArray(salida)) return salida.length > 0;
+  return Object.values(o).some((v) => (Array.isArray(v) ? v.length > 0 : v !== null && v !== undefined && v !== ""));
 }
 
 /** Acuses NEUTROS del acuse rapido (revision #752 P1-2): no afirman nada del pedido, del menu ni de la cuenta; ningun modelo los escribe. */
