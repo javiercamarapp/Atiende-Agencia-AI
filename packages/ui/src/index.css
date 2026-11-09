@@ -1348,7 +1348,8 @@
   }
 
   /* ds3 / 3.1 Button. Las clases `ds3-btn*` las pone ui/button.tsx; sin la bandera no coinciden con nada. Doble clase para ganar al `rounded-md`/`h-*`
-     de base y a las reglas `ambito-boton*` (misma capa, despues de ellas); radio, relleno, texto y peso respetan los `ambito-ov-*` de quien llama.
+     de base y a las reglas `ambito-boton*` (misma capa, despues de ellas); radio, relleno, texto, peso y alto de 56 px o mas (operacion)
+     respetan los `ambito-ov-*` de quien llama.
      Alto = --control-xs/sm/md/lg (24/28/32/36; tactil 32/36/44/44), fuente 12/500, gap 6, icono 14 (xs 12), radio 8. Sin escala de press ni
      elevacion al hover (§3.1/E10). El foco lo pinta el anillo global de ds3 (:focus-visible); aqui nunca se quita el outline. */
   html[data-diseno="ds3"] .ds3-btn.ds3-btn {
@@ -1368,10 +1369,10 @@
   html[data-diseno="ds3"] .ds3-btn.ds3-btn-xs svg:not([class*="size-"]),
   html[data-diseno="ds3"] .ds3-btn.ds3-btn-icon-xs svg:not([class*="size-"]) { width: 0.75rem; height: 0.75rem; }
 
-  html[data-diseno="ds3"] .ds3-btn.ds3-btn-xs { height: var(--control-xs); }
-  html[data-diseno="ds3"] .ds3-btn.ds3-btn-sm { height: var(--control-sm); }
-  html[data-diseno="ds3"] .ds3-btn.ds3-btn-md { height: var(--control-md); }
-  html[data-diseno="ds3"] .ds3-btn.ds3-btn-lg { height: var(--control-lg); }
+  html[data-diseno="ds3"] .ds3-btn.ds3-btn-xs:not([class~="ambito-ov-alto"]) { height: var(--control-xs); }
+  html[data-diseno="ds3"] .ds3-btn.ds3-btn-sm:not([class~="ambito-ov-alto"]) { height: var(--control-sm); }
+  html[data-diseno="ds3"] .ds3-btn.ds3-btn-md:not([class~="ambito-ov-alto"]) { height: var(--control-md); }
+  html[data-diseno="ds3"] .ds3-btn.ds3-btn-lg:not([class~="ambito-ov-alto"]) { height: var(--control-lg); }
   html[data-diseno="ds3"] .ds3-btn.ds3-btn-icon { height: var(--control-md); width: var(--control-md); padding: 0; }
   html[data-diseno="ds3"] .ds3-btn.ds3-btn-icon-sm { height: var(--control-sm); width: var(--control-sm); padding: 0; }
   html[data-diseno="ds3"] .ds3-btn.ds3-btn-icon-xs { height: var(--control-xs); width: var(--control-xs); padding: 0; }
