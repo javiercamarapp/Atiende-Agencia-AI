@@ -446,7 +446,7 @@ export function buildProductionDeps(): AppDeps {
     dataChat: buildProductionDataChat(llmGateway, engine),
     turnHandler: llmGateway
       ? conBitacoraDeTurno(
-          // Ola 4 (H1): techo duro de gasto del agente de WhatsApp por organizacion (avisa al 100 %, corta al 120 % por omision).
+          // Ola 4 (H1): gasto del agente de WhatsApp por organizacion: avisa por umbral; solo corta si se configuro un corte (por omision, nunca).
           conTechoDeGastoWhatsApp(buildRealRestaurantesTurnHandler(engine, llmGateway, observabilidadTurnosRestaurantes(env.whatsappAppSecret)), {
             leer: lectorTechoPostgres(engine),
             avisar: avisosTechoPostgres(engine),
