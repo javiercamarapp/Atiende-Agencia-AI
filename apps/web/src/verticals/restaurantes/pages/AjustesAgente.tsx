@@ -8,7 +8,7 @@
 // La voz, el saludo por sucursal y el conocimiento automatico viven aqui mismo como secciones propias.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Info } from "lucide-react";
-import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, Selector, PageContainer, RadioSegmentado, StatusBadge, Switch, formatMoney } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, Selector, PageContainer, PageHeader, RadioSegmentado, StatusBadge, Switch, formatMoney } from "@atiende/ui";
 import { fechaCortaEsMx } from "../../../lib/formato-fecha.ts";
 import { fetchAjustesAgente, guardarAjustesAgente } from "../lib/ajustes-agente-client.ts";
 import type { AjustesAgente, AjustesAgenteVista, ModeloAgenteVista } from "../lib/ajustes-agente-client.ts";
@@ -138,10 +138,8 @@ export function AjustesAgentePage({ apiBaseUrl, token, propertyId, crearAudio }:
 
   return (
     <PageContainer padding="none">
-      <div>
-        <h1 className="sr-only">Ajustes del agente</h1>
-        <p className="text-ui text-muted-foreground">Modelo, temperatura, voz, sonido de fondo y conocimiento del agente que atiende WhatsApp y las llamadas de tu restaurante.</p>
-      </div>
+      <PageHeader titulo="Ajustes del agente" />
+      <p className="m-0 text-ui text-muted-foreground">Modelo, temperatura, voz, sonido de fondo y conocimiento del agente que atiende WhatsApp y las llamadas de tu restaurante.</p>
 
       {carga.estado === "cargando" ? <EstadoCargando etiqueta="Cargando los ajustes del agente…" /> : null}
       {carga.estado === "error" ? <EstadoError mensaje={carga.mensaje} onReintentar={reintentar} /> : null}

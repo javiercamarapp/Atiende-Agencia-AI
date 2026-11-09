@@ -30,6 +30,7 @@ import {
   Input,
   Selector,
   PageContainer,
+  PageHeader,
   StatusBadge,
   statusTone,
   useConfirm,
@@ -234,7 +235,17 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role, staffEmail }: R
 
   return (
     <PageContainer padding="none">
-      <h1 className="sr-only">Staff</h1>
+      <PageHeader
+        titulo="Staff"
+        acciones={
+          canManage ? (
+            <Button type="button" onClick={abrirInvitar}>
+              <UserPlus />
+              Invitar a alguien
+            </Button>
+          ) : undefined
+        }
+      />
 
       {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
 
@@ -242,14 +253,6 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role, staffEmail }: R
         <Callout tone="info">Invitar o revocar staff está reservado a dueños y administradores. Con tu rol actual ({role}) solo puedes ver a los repartidores ya activos.</Callout>
       )}
 
-      {canManage && (
-        <div className="flex justify-end">
-          <Button type="button" onClick={abrirInvitar}>
-            <UserPlus />
-            Invitar a alguien
-          </Button>
-        </div>
-      )}
 
       {canManage && lastCreated && (
         <Callout tone="success" titulo={`Invitación creada para ${lastCreated.email} (${ROLE_LABELS[lastCreated.verticalRole]})`}>

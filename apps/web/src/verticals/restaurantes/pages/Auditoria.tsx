@@ -19,7 +19,7 @@
 //    trae todo el historial en un solo request).
 import { useEffect, useRef, useState } from "react";
 import { ClipboardList } from "lucide-react";
-import { Button, Callout, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, DataTable, Input, Label, Selector, PageContainer, StatusBadge } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, DataTable, Input, Label, Selector, PageContainer, PageHeader, StatusBadge } from "@atiende/ui";
 import { AUDIT_LOG_ENTITY_TYPE_LABELS, AUDIT_LOG_ENTITY_TYPES, fetchAuditoria } from "../lib/auditoria-client.ts";
 import type { AuditLogEntityType, AuditLogEntry } from "../lib/auditoria-client.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
@@ -122,10 +122,7 @@ export function AuditoriaPage({ apiBaseUrl, token, propertyId, role }: Restauran
 
   return (
     <PageContainer padding="none">
-      <header>
-        <h1 className="sr-only">Auditoría</h1>
-        <p className="m-0 text-ui text-muted-foreground">Qué hizo cada miembro del staff: precios, promociones, pedidos cancelados, repartidor y staff.</p>
-      </header>
+      <PageHeader titulo="Auditoría" descripcion="Qué hizo cada miembro del staff: precios, promociones, pedidos cancelados, repartidor y staff." />
 
       {!puedeLeer ? (
         <Callout tone="info">
