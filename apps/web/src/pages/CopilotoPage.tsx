@@ -7,6 +7,7 @@ import { useSearchParams } from "react-router-dom";
 import { Lock, Sparkles } from "lucide-react";
 import { Callout, ChatDatosShell, EstadoCargando, EstadoError, EstadoVacio, useBarraDeConsola, useIdiomaCopiloto } from "@atiende/ui";
 import type { CopilotoTransporte } from "@atiende/ui";
+import { configEnIdioma } from "../lib/copiloto/config/idioma.ts";
 import type { CopilotoConfigVertical } from "../lib/copiloto/config/tipos.ts";
 import type { EstadoCopiloto } from "../lib/copiloto/transporte.ts";
 
@@ -36,11 +37,13 @@ export function rutasFuenteDe(rutas: Readonly<Record<string, string>>, orgSlug: 
   return out;
 }
 
-export function CopilotoPage({ config, transporte, consultarEstado, propertyId, orgSlug, contexto, zonaHoraria }: CopilotoPageProps) {
+export function CopilotoPage({ config: configEs, transporte, consultarEstado, propertyId, orgSlug, contexto, zonaHoraria }: CopilotoPageProps) {
   // Decision del dueno: «Pregúntale a tus datos» NUNCA va en el encabezado. La barra lleva el titulo de la consola; el nombre vive en el
   // menu (pildora del pie) y en el unico h1 de la portada.
   useBarraDeConsola();
-  const { t } = useIdiomaCopiloto();
+  const { t, idioma } = useIdiomaCopiloto();
+  // Textos, temas y chips en el idioma de la consola; las consultas directas en ingles apuntan a la misma herramienta.
+  const config = useMemo(() => configEnIdioma(configEs, idioma), [configEs, idioma]);
   const [carga, setCarga] = useState<Carga>({ fase: "cargando" });
   const [intento, setIntento] = useState(0);
   const [params, setParams] = useSearchParams();
