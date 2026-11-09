@@ -66,6 +66,11 @@ export interface InvoiceRecord {
   /** Estado del comprobante ante el SAT. `pendiente` = nunca verificado (default); lo captura el staff. */
   readonly estadoSat?: EstadoSatCfdi;
   readonly estadoSatVerificadoEn?: string | null;
+  /** paridad3 D-P3-19: detalle de cancelacion que devuelve el SAT (027). `undefined`/`null` = nunca consultado o base sin migrar. */
+  readonly esCancelable?: string | null;
+  readonly estatusCancelacion?: string | null;
+  readonly codigoEstatus?: string | null;
+  readonly validacionEfos?: string | null;
 }
 
 export interface NewInvoiceInput {

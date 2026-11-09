@@ -54,7 +54,7 @@ export function interpretarRespuestaSat(xml: string): ConsultaCfdiSatResultado {
   const estadoRaw = (elemento(xml, "Estado") ?? "").toLowerCase();
   const estado = estadoRaw === "vigente" ? "vigente" : estadoRaw === "cancelado" ? "cancelado" : estadoRaw === "no encontrado" ? "no_encontrado" : null;
   if (estado === null) return consultaNoConcluida("respuesta_invalida");
-  return { consultado: true, estado, esCancelable: elemento(xml, "EsCancelable"), estatusCancelacion: elemento(xml, "EstatusCancelacion") };
+  return { consultado: true, estado, esCancelable: elemento(xml, "EsCancelable"), estatusCancelacion: elemento(xml, "EstatusCancelacion"), codigoEstatus: elemento(xml, "CodigoEstatus"), validacionEfos: elemento(xml, "ValidacionEFOS") };
 }
 
 export class ConsultaCfdiSatSoap implements ConsultaCfdiSatPort {

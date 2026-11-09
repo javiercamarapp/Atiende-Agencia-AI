@@ -25,16 +25,31 @@ export interface ClienteFicha {
   readonly actualizadoEn: string;
 }
 
+export type SemaforoDocumentos = "verde" | "amarillo" | "rojo" | "sin_solicitud";
+
+/** Documentos que el despacho le pidio al cliente para el periodo que se cierra (paridad3 D-31). `null` = base sin la migracion 027. */
+export interface DocumentosCliente {
+  readonly semaforo: SemaforoDocumentos;
+  readonly total: number;
+  readonly pendientes: number;
+  readonly enRevision: number;
+  readonly recibidos: number;
+  readonly noAplica: number;
+}
+
 export interface ClienteCartera {
   readonly propertyId: string;
   readonly nombre: string;
   readonly ficha: ClienteFicha | null;
+  readonly documentos?: DocumentosCliente | null;
 }
 
 export interface CarteraRespuesta {
   /** `no_disponible`: la base aun no tiene la migracion de cartera; los clientes llegan SIN ficha. */
   readonly estado: "disponible" | "no_disponible";
   readonly puedeDarDeAlta: boolean;
+  /** Periodo (AAAA-MM) al que se refiere el semaforo de documentos; `disponible: false` = base sin la migracion 027. */
+  readonly documentosPeriodo?: { readonly periodo: string; readonly disponible: boolean };
   readonly clientes: readonly ClienteCartera[];
 }
 

@@ -346,3 +346,16 @@ Sin llamadas al SAT ni a un PAC.
 4. RESICO: tope de $3,500,000.00 acumulado del ejercicio (hoy solo se advierte) y retención de 1.25% por personas morales.
 5. IVA acreditable de CFDI con uso I01-I08 y de gastos con IVA parcialmente no acreditable (se acredita el IVA completo).
 6. Layout/validación del XML de contabilidad electrónica contra el validador del SAT (no se cotejó).
+
+## paridad3 — documentos al cliente, estatus SAT a escala, cierre en piloto automatico y entrega (migracion 027)
+
+- **Solicitudes de documentos (D-31)** (`src/piloto/`): checklist por cliente y periodo (`solicitud_documentos` + renglones). El cliente sube el archivo PARA un renglon desde
+  el portal; el renglon pasa a `recibido` cuando el staff acepta el documento (trigger en la base) y a `pendiente` si lo rechaza. El staff puede marcar «no aplica» con motivo.
+- **Estatus SAT (D-P3-19)**: el barrido diario es priorizado (nunca consultados, cancelacion «En proceso», recientes, vigentes del ejercicio en curso y el anterior) con tope por cliente
+  y persiste `es_cancelable`, `estatus_cancelacion`, `codigo_estatus` y `validacion_efos`.
+- **Cierre en piloto automatico (D-P3-15)** (`src/cierre-mensual/piloto.ts`): el estado de los modulos lo calcula `despachos.cierre_estado_modulos`; las validaciones (balanza, polizas,
+  CFDI sin poliza, conciliacion >= 80 %, papel de pagos provisionales, documentos del cliente) bloquean `cerrar` con un 409; un admin puede forzar con motivo.
+  **Hueco declarado**: las validaciones de IVA, ISR y nomina del suelto necesitan insumos que hoy no se persisten por periodo.
+- **Entrega al cliente (D-P3-21)**: opt-in por cliente (apagado por omision). Al cerrar se generan el PDF de impuestos, la DIOT y la balanza, se publican en el portal y se encola un
+  correo con enlace; idempotente por periodo. Resend no admite adjuntos aqui: el enlace lleva al portal.
+- Compatibilidad con la base sin migrar: todo el TypeScript cae a «no disponible aun» dentro de SAVEPOINT (`PostgresPilotoRepository`, `PostgresCronSatRepository`); nunca un 500.

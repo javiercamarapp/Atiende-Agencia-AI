@@ -97,14 +97,92 @@ export function validarArchivoLocal(archivo: { readonly name: string; readonly t
   return null;
 }
 
-export async function subirDocumentoPortal(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, archivo: ArchivoParaSubir): Promise<{ readonly id: string; readonly estado: PortalDocumentoEstado; readonly duplicado: boolean; readonly nombreArchivo: string }> {
+export interface ResultadoSubida {
+  readonly id: string;
+  readonly estado: PortalDocumentoEstado;
+  readonly duplicado: boolean;
+  readonly nombreArchivo: string;
+  /** Solo si se subio PARA un renglon de la solicitud: `vinculado: false` = el archivo quedo recibido pero el renglon ya no aplica o no es del cliente. */
+  readonly renglon?: { readonly vinculado: boolean; readonly estado?: string };
+}
+
+export async function subirDocumentoPortal(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, archivo: ArchivoParaSubir, renglonId?: string): Promise<ResultadoSubida> {
   const bytes = await archivo.arrayBuffer();
-  const res = await llamarPublico(fetchImpl, apiBaseUrl, token, "/portal-cliente/documentos", {
+  const res = await llamarPublico(fetchImpl, apiBaseUrl, token, `/portal-cliente/documentos${renglonId ? `?renglonId=${encodeURIComponent(renglonId)}` : ""}`, {
     method: "POST",
     headers: { "content-type": archivo.type, "x-nombre-archivo": encodeURIComponent(archivo.name) },
     body: bytes,
   });
-  return (await res.json()) as { id: string; estado: PortalDocumentoEstado; duplicado: boolean; nombreArchivo: string };
+  return (await res.json()) as ResultadoSubida;
+}
+
+// ------------------------------------------------------------------ solicitudes de documentos y reportes del cierre (paridad3 D-31 / D-P3-21)
+export type PortalEstadoRenglon = "pendiente" | "en_revision" | "recibido" | "no_aplica";
+export interface PortalRenglonSolicitud {
+  readonly id: string;
+  readonly tipo: string;
+  readonly etiqueta: string;
+  readonly estado: PortalEstadoRenglon;
+  readonly motivo: string | null;
+}
+export interface PortalSolicitud {
+  readonly id: string;
+  readonly ejercicio: number;
+  readonly mes: number;
+  readonly estado: "abierta" | "completa";
+  readonly renglones: readonly PortalRenglonSolicitud[];
+}
+export interface PortalArchivoReporte {
+  readonly id: string;
+  readonly tipo: "impuestos" | "diot" | "balanza";
+  readonly nombreArchivo: string;
+  readonly tamanoBytes: number;
+}
+export interface PortalReporteCierre {
+  readonly anio: number;
+  readonly mes: number;
+  readonly publicadaEn: string;
+  readonly archivos: readonly PortalArchivoReporte[];
+}
+
+/** Lo que el despacho le pidio al cliente. `null` = no disponible aun en este ambiente (503): la pantalla oculta la seccion. */
+export async function fetchPortalSolicitudes(fetchImpl: typeof fetch, apiBaseUrl: string, token: string): Promise<readonly PortalSolicitud[] | null> {
+  try {
+    const r = await llamarPublico(fetchImpl, apiBaseUrl, token, "/portal-cliente/solicitudes", { method: "GET" });
+    const lista = ((await r.json()) as { solicitudes?: readonly PortalSolicitud[] }).solicitudes;
+    return Array.isArray(lista) ? lista : null;
+  } catch (err) {
+    if (err instanceof PortalClienteError && err.status === 503) return null;
+    throw err;
+  }
+}
+
+export async function fetchPortalReportes(fetchImpl: typeof fetch, apiBaseUrl: string, token: string): Promise<readonly PortalReporteCierre[] | null> {
+  try {
+    const r = await llamarPublico(fetchImpl, apiBaseUrl, token, "/portal-cliente/reportes", { method: "GET" });
+    const lista = ((await r.json()) as { reportes?: readonly PortalReporteCierre[] }).reportes;
+    return Array.isArray(lista) ? lista : null;
+  } catch (err) {
+    if (err instanceof PortalClienteError && err.status === 503) return null;
+    throw err;
+  }
+}
+
+export async function descargarReportePortal(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, archivo: PortalArchivoReporte): Promise<{ readonly blob: Blob; readonly nombre: string }> {
+  const res = await llamarPublico(fetchImpl, apiBaseUrl, token, `/portal-cliente/reportes/${encodeURIComponent(archivo.id)}`, { method: "GET" });
+  return { blob: await res.blob(), nombre: archivo.nombreArchivo };
+}
+
+export const ETIQUETA_RENGLON_PORTAL: Readonly<Record<PortalEstadoRenglon, { readonly etiqueta: string; readonly tono: "warning" | "info" | "success" | "neutral" }>> = {
+  pendiente: { etiqueta: "Falta", tono: "warning" },
+  en_revision: { etiqueta: "Recibido, en revisión", tono: "info" },
+  recibido: { etiqueta: "Listo", tono: "success" },
+  no_aplica: { etiqueta: "No aplica", tono: "neutral" },
+};
+
+/** Solo se sube a un renglon que aun falta o esta en revision (si ya esta recibido o no aplica no hay nada que mandar). */
+export function renglonAdmiteArchivo(estado: PortalEstadoRenglon): boolean {
+  return estado === "pendiente" || estado === "en_revision";
 }
 
 export async function enviarMensajePortal(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, cuerpo: string): Promise<void> {

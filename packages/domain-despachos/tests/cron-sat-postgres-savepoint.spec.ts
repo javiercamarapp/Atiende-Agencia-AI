@@ -35,6 +35,45 @@ describe("PostgresCronSatRepository -- base sin la migracion 022", () => {
     await usable(session);
   });
 
+  it("base con 022 pero SIN 027: el barrido priorizado (4 argumentos) cae a la funcion de 2 argumentos dentro de un SAVEPOINT", async () => {
+    let n = 0;
+    const session = new AbortAwareFakeSession([
+      {
+        match: /system_cfdi_pendientes_estatus_sat/,
+        respond: () => (++n === 1 ? undefinedFunction("system_cfdi_pendientes_estatus_sat") : [{ out_invoice_id: "i1", out_organization_id: "o1", out_property_id: "p1", out_folio_fiscal: "u1", out_rfc_emisor: "AAA010101AA1", out_rfc_receptor: "BBB010101BB1", out_total: "116.00", out_estado_sat: "pendiente" }]),
+      },
+      SIGUIENTE,
+    ]);
+    const filas = await new PostgresCronSatRepository(session).listarCfdiPendientesEstatusSat(10, 6, 2, 15);
+    expect(filas).toEqual([{ invoiceId: "i1", organizationId: "o1", propertyId: "p1", folioFiscal: "u1", rfcEmisor: "AAA010101AA1", rfcReceptor: "BBB010101BB1", total: 116, estadoSat: "pendiente" }]);
+    expect(n).toBe(2);
+    expect(session.calls.some((c) => c.startsWith("rollback to savepoint sp_cron_cfdi_pendientes_sat_v2"))).toBe(true);
+    await usable(session);
+  });
+
+  it("base con 022 pero SIN 027: registrar con detalle (6 argumentos) cae a la funcion de 2 argumentos y la transaccion sigue utilizable", async () => {
+    let n = 0;
+    const session = new AbortAwareFakeSession([
+      {
+        match: /system_cfdi_registrar_estatus_sat/,
+        respond: () => (++n === 1 ? undefinedFunction("system_cfdi_registrar_estatus_sat") : [{ out_organization_id: "o1", out_property_id: "p1", out_estado_anterior: "pendiente", out_estado_nuevo: "vigente", out_cambio_a_cancelado: false }]),
+      },
+      SIGUIENTE,
+    ]);
+    const r = await new PostgresCronSatRepository(session).registrarEstatusSatSistema("i1", "vigente", { esCancelable: null, estatusCancelacion: "En proceso", codigoEstatus: null, validacionEfos: null });
+    expect(r).toEqual({ organizationId: "o1", propertyId: "p1", estadoAnterior: "pendiente", estadoNuevo: "vigente", cambioACancelado: false, cancelacionEnProcesoNueva: false });
+    expect(session.calls.some((c) => c.startsWith("rollback to savepoint sp_cron_cfdi_registrar_sat_v2"))).toBe(true);
+    await usable(session);
+  });
+
+  it("base migrada (027): registra con el detalle y reporta la cancelacion en proceso nueva", async () => {
+    const session = new AbortAwareFakeSession([
+      { match: /system_cfdi_registrar_estatus_sat/, respond: () => [{ out_organization_id: "o1", out_property_id: "p1", out_estado_anterior: "vigente", out_estado_nuevo: "vigente", out_cambio_a_cancelado: false, out_cancelacion_en_proceso_nueva: true }] },
+    ]);
+    const r = await new PostgresCronSatRepository(session).registrarEstatusSatSistema("i1", "vigente", { esCancelable: "Cancelable con aceptación", estatusCancelacion: "En proceso", codigoEstatus: "S - ok", validacionEfos: "200" });
+    expect(r.cancelacionEnProcesoNueva).toBe(true);
+  });
+
   it("un error de Postgres que NO es 'migracion pendiente' se propaga tal cual (no se enmascara como no disponible)", async () => {
     const real = Object.assign(new Error("deadlock detected"), { code: "40P01" });
     const session = new AbortAwareFakeSession([{ match: /system_cfdi_pendientes_estatus_sat/, respond: () => real }, SIGUIENTE]);

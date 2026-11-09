@@ -43,7 +43,7 @@ import {
   totalesBalanza,
   validarPolizaEntrada,
 } from "@atiende/domain-despachos";
-import type { CarteraRepository, LibroRepository } from "@atiende/domain-despachos";
+import type { CarteraRepository, LibroRepository, PaqueteContabilidadElectronica } from "@atiende/domain-despachos";
 import { Errors } from "../../../errors.ts";
 import { exigirStepUpDespachos } from "./step-up.ts";
 import { auditarAccesoDespachos } from "./auditoria-acceso.ts";
@@ -65,6 +65,21 @@ export function traducirLibro(err: unknown): never {
   if (err instanceof LibroNoEncontradoError) throw Errors.notFound(err.message);
   if (err instanceof LibroDatosInvalidosError) throw Errors.validation(err.message);
   throw err;
+}
+
+/**
+ * Paquete de contabilidad electronica (catalogo + balanza XML) del mes desde el libro persistido, o `null` si no se puede armar (cliente sin ficha,
+ * libro no disponible en esta base o sin movimientos en el periodo). Lo usa la pre-generacion al cerrar el periodo; NO audita ni exige segundo
+ * factor porque no entrega nada al navegador (se guarda en la base para que el contador lo descargue con segundo factor).
+ */
+export async function generarPaqueteContabilidadDelLibro(deps: AppDeps, db: TenantDbSession, propertyId: string, ejercicio: number, mes: number): Promise<PaqueteContabilidadElectronica | null> {
+  const ficha = await (deps.carteraRepo ? deps.carteraRepo(db) : new PostgresCarteraRepository(db)).obtenerFicha(propertyId);
+  if (!ficha) return null;
+  const repo = deps.libroRepo ? deps.libroRepo(db) : new PostgresLibroRepository(db);
+  const cuentas = await repo.listarCuentas(propertyId);
+  const balanza = await repo.balanza(propertyId, ejercicio, mes);
+  if (cuentas.estado === "no_disponible" || balanza.estado === "no_disponible" || balanza.datos.length === 0) return null;
+  return generarPaqueteDesdeLibro({ cuentas: cuentas.datos, balanza: balanza.datos, ejercicio, mes, rfc: ficha.rfc, razonSocial: ficha.razonSocial, generadoEn: new Date().toISOString() });
 }
 
 export function despachosLibroRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {

@@ -9,7 +9,7 @@ import { EFOS_NO_DISPONIBLE } from "./cfdi/efos.ts";
 import { NOMBRE_IMPUESTO } from "./cfdi/modelo-cfdi.ts";
 import type { DireccionCfdi, EstadoSatCfdi, ImpuestoCfdiRecord } from "./cfdi/modelo-cfdi.ts";
 import type { EfosConsulta, EfosContribuyente } from "./cfdi/efos.ts";
-import type { DespachosRepository, EfosAfectadosResultado, EfosEstadoLista, EfosIngestaResultado, EmailOutboxJobRow, InvoicePage, OrganizationNotificationRecipient } from "./repository.ts";
+import type { DespachosRepository, DetalleCancelacionSat, EfosAfectadosResultado, EfosEstadoLista, EfosIngestaResultado, EmailOutboxJobRow, InvoicePage, OrganizationNotificationRecipient } from "./repository.ts";
 import type {
   CollectionEventRecord,
   DeadlineEscalationRecord,
@@ -222,6 +222,15 @@ export class InMemoryDespachosRepository implements DespachosRepository {
     if (!invoice || invoice.propertyId !== propertyId) throw new InvoiceNoEncontradoError();
     if (invoice.estadoSat === "cancelado" && estado !== "cancelado") throw new EstadoSatInvalidoError("un CFDI cancelado no cambia de estado");
     this.invoices.set(invoiceId, { ...invoice, estadoSat: estado, estadoSatVerificadoEn: new Date().toISOString() });
+  }
+
+  async registrarDetalleSatInvoice(propertyId: string, invoiceId: string, estado: EstadoSatCfdi, detalle: DetalleCancelacionSat): Promise<{ readonly cancelacionEnProcesoNueva: boolean }> {
+    const antes = this.invoices.get(invoiceId);
+    await this.registrarEstadoSatInvoice(propertyId, invoiceId, estado);
+    const invoice = this.invoices.get(invoiceId)!;
+    const enProceso = (v: string | null | undefined) => /^en proceso/i.test((v ?? "").trim());
+    this.invoices.set(invoiceId, { ...invoice, ...detalle });
+    return { cancelacionEnProcesoNueva: enProceso(detalle.estatusCancelacion) && !enProceso(antes?.estatusCancelacion) };
   }
 
   async findInvoice(propertyId: string, invoiceId: string): Promise<InvoiceRecord | null> {

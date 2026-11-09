@@ -12,7 +12,8 @@ import { authMiddleware, assertVerticalRole, dbSession, requirePropertyMembershi
 import type { CoreAuthHonoEnv } from "@atiende/core-auth";
 import { hoyFechaNegocio } from "@atiende/core-tenancy";
 import { PostgresLibroRepository, TIPOS_REPORTE_CLIENTE, VER_REPORTES_ROLES, XLSX_CONTENT_TYPE, construirReporteCliente, leerFuenteOpcional, reporteAXlsx } from "@atiende/domain-despachos";
-import type { TipoReporteCliente } from "@atiende/domain-despachos";
+import type { ReporteCliente, TipoReporteCliente } from "@atiende/domain-despachos";
+import type { TenantDbSession } from "@atiende/core-tenancy";
 import { Errors } from "../../../errors.ts";
 import type { AppDeps } from "../../../deps.ts";
 import { resolverZonaHorariaDespachosProperty } from "./zona-horaria.ts";
@@ -34,6 +35,32 @@ function periodoAnterior(hoy: string): string {
   return month === 1 ? `${year - 1}-12` : `${year}-${String(month - 1).padStart(2, "0")}`;
 }
 
+/**
+ * Construye el reporte de cliente (balanza, DIOT, nomina o impuestos) de un periodo desde los datos persistidos. UNA sola implementacion para
+ * `GET .../reportes/:tipo` y para la entrega al cliente al cerrar el periodo (cierre-mensual.ts). Lanza `ApiError` 503 si la base no tiene la
+ * migracion 006 (fecha de emision del CFDI).
+ */
+export async function construirReporteDelPeriodo(deps: AppDeps, db: TenantDbSession, organizationId: string, propertyId: string, tipo: TipoReporteCliente, periodo: string, hoy: string): Promise<ReporteCliente> {
+  const repo = deps.despachosRepo(db);
+  const branches = await repo.listPropertiesForOrganization(organizationId);
+  const nombre = branches.find((b) => b.propertyId === propertyId)?.name ?? "Contribuyente";
+  // El filtro por período de `listInvoices` usa `invoice.fecha` (migración 006). Contra una base que
+  // todavía no la tiene (SQLSTATE 42703/42P01/42883) la lectura corre en su propio SAVEPOINT y se
+  // responde un 503 honesto ("no disponible aún"), nunca un 500 ni un reporte vacío engañoso.
+  const invoicesDelPeriodo = await leerFuenteOpcional(repo, () => repo.listInvoices(propertyId, { periodo }));
+  if (invoicesDelPeriodo === null) {
+    throw Errors.serviceUnavailable("Los reportes por período aún no están disponibles en esta base de datos: falta aplicar la migración 006 (fecha de emisión del CFDI).");
+  }
+  const vencimientos = await repo.listDeadlines(propertyId);
+  // D-24: la balanza sale del libro contable persistido cuando hay pólizas en el periodo; base sin migrar (020) o sin pólizas -> "sin datos".
+  const balanzaLibro =
+    tipo === "balanza"
+      ? (await (deps.libroRepo ? deps.libroRepo(db) : new PostgresLibroRepository(db)).balanza(propertyId, Number(periodo.slice(0, 4)), Number(periodo.slice(5, 7)))).datos
+      : undefined;
+  const reporte = construirReporteCliente(tipo, { periodo, generadoEn: hoy, contribuyente: { nombre } }, { invoicesDelPeriodo, vencimientosDelPeriodo: vencimientos.filter((v) => v.periodo === periodo), balanzaLibro });
+  return reporte;
+}
+
 export function despachosReportesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
   const app = new Hono<CoreAuthHonoEnv>();
 
@@ -51,23 +78,7 @@ export function despachosReportesRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
     const hoy = hoyFechaNegocio(await resolverZonaHorariaDespachosProperty(repo, propertyId));
     const periodo = c.req.query("periodo") ?? periodoAnterior(hoy);
     if (!PERIODO_RE.test(periodo)) throw Errors.validation("periodo: se esperaba el formato YYYY-MM.");
-
-    const branches = await repo.listPropertiesForOrganization(c.get("organizationId"));
-    const nombre = branches.find((b) => b.propertyId === propertyId)?.name ?? "Contribuyente";
-    // El filtro por período de `listInvoices` usa `invoice.fecha` (migración 006). Contra una base que
-    // todavía no la tiene (SQLSTATE 42703/42P01/42883) la lectura corre en su propio SAVEPOINT y se
-    // responde un 503 honesto ("no disponible aún"), nunca un 500 ni un reporte vacío engañoso.
-    const invoicesDelPeriodo = await leerFuenteOpcional(repo, () => repo.listInvoices(propertyId, { periodo }));
-    if (invoicesDelPeriodo === null) {
-      throw Errors.serviceUnavailable("Los reportes por período aún no están disponibles en esta base de datos: falta aplicar la migración 006 (fecha de emisión del CFDI).");
-    }
-    const vencimientos = await repo.listDeadlines(propertyId);
-    // D-24: la balanza sale del libro contable persistido cuando hay pólizas en el periodo; base sin migrar (020) o sin pólizas -> "sin datos".
-    const balanzaLibro =
-      tipo === "balanza"
-        ? (await (deps.libroRepo ? deps.libroRepo(c.get("db")) : new PostgresLibroRepository(c.get("db"))).balanza(propertyId, Number(periodo.slice(0, 4)), Number(periodo.slice(5, 7)))).datos
-        : undefined;
-    const reporte = construirReporteCliente(tipo, { periodo, generadoEn: hoy, contribuyente: { nombre } }, { invoicesDelPeriodo, vencimientosDelPeriodo: vencimientos.filter((v) => v.periodo === periodo), balanzaLibro });
+    const reporte = await construirReporteDelPeriodo(deps, c.get("db"), c.get("organizationId"), propertyId, tipo, periodo, hoy);
 
     if (formato === "json") return c.json(reporte);
 

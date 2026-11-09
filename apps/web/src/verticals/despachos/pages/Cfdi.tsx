@@ -33,7 +33,7 @@ import { fetchEfosAlertas, resumenEfos } from "../lib/efos-client.ts";
 import type { EfosAlerta, EfosAlertasRespuesta } from "../lib/efos-client.ts";
 import { aprobarRevision, fetchRevisionesPendientes, rechazarRevision } from "../lib/revisiones-client.ts";
 import type { RevisionCfdi } from "../lib/revisiones-client.ts";
-import { formatDate, formatDireccionCfdi, formatEstadoSat, formatMoney, tonoEstadoSat } from "../lib/format.ts";
+import { formatDate, formatDireccionCfdi, formatEstadoSat, formatEstatusCancelacion, formatMoney, tonoEstadoSat } from "../lib/format.ts";
 import type { DespachosShellContext } from "../DespachosShell.tsx";
 import { ImportarLoteDialog } from "../components/ImportarLoteDialog.tsx";
 
@@ -400,6 +400,14 @@ export function CfdiPage({ apiBaseUrl, token, propertyId, orgSlug, role }: Despa
             { id: "moneda", encabezado: "Moneda", celda: (inv) => <span className="font-mono text-xs text-muted-foreground">{inv.moneda ?? "—"}</span> },
             { id: "estatus", encabezado: "Estatus", celda: (inv) => <ValidoBadge valido={inv.valido} /> },
             { id: "sat", encabezado: "SAT", celda: (inv) => <StatusBadge tone={tonoEstadoSat(inv.estadoSat)}>{formatEstadoSat(inv.estadoSat)}</StatusBadge> },
+            {
+              id: "cancelacion",
+              encabezado: "Cancelación",
+              celda: (inv) => {
+                const c = formatEstatusCancelacion(inv.estatusCancelacion);
+                return c ? <StatusBadge tone={c.tono}>{c.texto}</StatusBadge> : <span className="text-muted-foreground">—</span>;
+              },
+            },
             {
               id: "revision",
               encabezado: "Revisión",
