@@ -115,7 +115,8 @@ test.describe("UNI-R4 pruebas del agente @recorrido @oscuro", () => {
     // En escritorio la vista previa cubre tambien la barra superior (como el original).
     if (!info.project.name.startsWith("movil")) {
       const caja = await vista.boundingBox();
-      const barra = await page.getByTestId("barra-pagina").boundingBox();
+      // La barra se aplana (display: contents) dentro de la zona del encabezado del marco: se mide la zona.
+      const barra = await page.locator(".ds3-cabecera-zona").boundingBox();
       expect(caja!.y).toBeLessThanOrEqual(barra!.y + 1);
     }
     await expect(vista.getByTestId("chip-estado")).toHaveText("Vista previa");

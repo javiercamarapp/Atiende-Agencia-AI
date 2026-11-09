@@ -57,6 +57,9 @@ export interface ApiEnv {
   readonly rentasAccessKey: string | null;
   /** Version de la llave de arriba (`RENTAS_ACCESS_KEY_VERSION`, default 1); se guarda en cada fila para la rotacion futura. */
   readonly rentasAccessKeyVersion: number;
+  /** Llave AES-256 (32 bytes en base64) de las credenciales de Meta por organizacion (migracion 0090). Ausente = funcion apagada. */
+  readonly whatsappCredentialsKey?: string | null;
+  readonly whatsappCredentialsKeyVersion?: number;
   /** D-28 -- URL del CSV publico "Listado completo 69-B" del SAT para el cron mensual (`EFOS_69B_URL`). Vacia = valor oficial por defecto, marcado NO VERIFICADO en `HttpEfos69bSource`. OPCIONAL: ningun fixture la exige. */
   readonly efos69bUrl?: string;
   /** Secreto compartido para rutas internas invocadas por un scheduler externo
@@ -250,6 +253,8 @@ export function loadApiEnv(): ApiEnv {
     hotelesIdentityKeyVersion: Number(process.env.HOTELES_IDENTITY_KEY_VERSION ?? 1),
     rentasAccessKey: process.env.RENTAS_ACCESS_KEY ?? null,
     rentasAccessKeyVersion: Number(process.env.RENTAS_ACCESS_KEY_VERSION ?? 1),
+    whatsappCredentialsKey: process.env.WHATSAPP_CREDENTIALS_KEY?.trim() || null,
+    whatsappCredentialsKeyVersion: Number(process.env.WHATSAPP_CREDENTIALS_KEY_VERSION ?? 1),
     efos69bUrl: process.env.EFOS_69B_URL || undefined,
     internalSecret: requireEnv("INTERNAL_SECRET"),
     allowedOrigins: (process.env.ALLOWED_ORIGINS ?? "http://localhost:5173").split(",").map((s) => s.trim()).filter(Boolean),
