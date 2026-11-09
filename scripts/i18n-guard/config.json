@@ -62,7 +62,9 @@
     "apps/web/src/verticals/hoteles/pages/Copiloto.tsx",
     "apps/web/src/verticals/licitaciones/pages/Copiloto.tsx",
     "apps/web/src/verticals/rentas/pages/Copiloto.tsx",
-    "apps/web/src/verticals/restaurantes/pages/Copiloto.tsx"
+    "apps/web/src/verticals/restaurantes/pages/Copiloto.tsx",
+    "apps/web/src/verticals/restaurantes/pages/ResumenGeneral.tsx",
+    "apps/web/src/verticals/restaurantes/lib/resumen-general.ts"
   ],
   "excluir": [
     "packages/ui/src/i18n/mensajes",

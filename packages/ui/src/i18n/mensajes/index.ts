@@ -27,6 +27,7 @@ import type { resumen } from "./resumen.ts";
 import type { rol } from "./rol.ts";
 import type { shell } from "./shell.ts";
 import type { waMeta } from "./waMeta.ts";
+import type { general } from "./general.ts";
 
 /**
  * Modulos que van en el bundle de arranque. Vacio a proposito: la entrada esta en su tope de bundle, asi que TODO modulo es
@@ -57,6 +58,7 @@ interface ModulosDeArea
   readonly datos: typeof datos;
   readonly waMeta: typeof waMeta;
   readonly resumen: typeof resumen;
+  readonly general: typeof general;
 }
 
 type Modulos = typeof MODULOS & ModulosDeArea;

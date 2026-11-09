@@ -3,6 +3,7 @@ import type { nav } from "../nav.ts";
 
 export const navEn: Traduccion<typeof nav> = {
   "nav.resumen": "Overview",
+  "nav.resumenGeneral": "Company overview",
   "nav.copiloto": "Copilot",
   "nav.cfo": "CFO",
   "nav.operacion": "Operations",

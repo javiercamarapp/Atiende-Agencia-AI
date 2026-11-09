@@ -49,6 +49,20 @@ export function CopilotoPage({ config: configEs, transporte, consultarEstado, pr
   const [params, setParams] = useSearchParams();
   // La conversacion abierta se refleja en `?c=<id>` para poder volver a ella; se lee UNA vez (el shell la abre al montar).
   const [conversacionInicial] = useState(() => params.get("c") ?? undefined);
+  // `?q=<pregunta>`: una pregunta que llega de otra pantalla (Resumen general). Se lee UNA vez y se quita de la URL para que recargar
+  // la pagina no la vuelva a enviar; el servidor la valida igual que una escrita (tope, alcance por membresia, rol).
+  const [preguntaInicial] = useState(() => params.get("q")?.trim().slice(0, config.maxCaracteres) || undefined);
+  useEffect(() => {
+    if (!params.has("q")) return;
+    setParams(
+      (prev) => {
+        const sig = new URLSearchParams(prev);
+        sig.delete("q");
+        return sig;
+      },
+      { replace: true },
+    );
+  }, []);
 
   useEffect(() => {
     const ctl = new AbortController();
@@ -135,6 +149,7 @@ export function CopilotoPage({ config: configEs, transporte, consultarEstado, pr
         vertical={config.vertical}
         {...(estado.usoHoyPct !== null ? { uso: { pct: estado.usoHoyPct, etiqueta: t("usoHoy") } } : {})}
         {...(conversacionInicial ? { conversacionInicial } : {})}
+        {...(preguntaInicial && !conversacionInicial ? { preguntaInicial } : {})}
         onConversacionCambia={alCambiarConversacion}
         {...(zonaHoraria ? { zonaHoraria } : {})}
       />

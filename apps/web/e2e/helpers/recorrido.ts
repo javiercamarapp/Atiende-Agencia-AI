@@ -19,6 +19,7 @@ export interface Destino {
 export const DESTINOS: readonly Destino[] = [
   { sub: "", nombre: "Resumen", soloGestion: false },
   { sub: "/copiloto", nombre: "Copiloto", soloGestion: false },
+  { sub: "/general", nombre: "Resumen general", soloGestion: true },
   { sub: "/cfo", nombre: "CFO", soloGestion: true },
   { sub: "/operacion/agregados", nombre: "Agregados", soloGestion: false },
   { sub: "/pedidos", nombre: "Pedidos", soloGestion: false },

@@ -6,6 +6,7 @@ import type { ModulosTraducidos } from "../index.ts";
 import { comunEn } from "./comun.ts";
 import { consolaEn } from "./consola.ts";
 import { datosEn } from "./datos.ts";
+import { generalEn } from "./general.ts";
 import { navEn } from "./nav.ts";
 import { notifEn } from "./notif.ts";
 import { MODULOS_EN_RESTAURANTES } from "./restaurantes/index.ts";
@@ -37,4 +38,5 @@ export const MODULOS_EN = {
   ...MODULOS_EN_CITAS,
   ...MODULOS_EN_SUPERADMIN,
   resumen: resumenEn,
+  general: generalEn,
 } as const satisfies ModulosTraducidos;
