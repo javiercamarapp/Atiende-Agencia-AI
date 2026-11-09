@@ -226,10 +226,14 @@ export function cargarConfig(env: Readonly<Record<string, string | undefined>>, 
   }
   const { tabla, problemas } = parsearTablaDnis(env.VOICE_DNIS_MAP, env);
   motivos.push(...problemas);
-  let tope: number | null = null;
+  // Tope de plataforma por organizacion y mes. Vacio = TOPE_MENSUAL_VOZ_POR_OMISION_USD (Ola 4, H4: antes vacio era "sin
+  // tope"); quitarlo exige `sin_tope` explicito.
+  let tope: number | null = Math.round(TOPE_MENSUAL_VOZ_POR_OMISION_USD * 1_000_000);
   if (lleno(env.VOICE_TOPE_MENSUAL_USD)) {
-    const usd = Number(env.VOICE_TOPE_MENSUAL_USD);
-    if (!Number.isFinite(usd) || usd <= 0) motivos.push("VOICE_TOPE_MENSUAL_USD debe ser un numero mayor que 0.");
+    const crudo = env.VOICE_TOPE_MENSUAL_USD.trim();
+    const usd = Number(crudo);
+    if (crudo.toLowerCase() === "sin_tope") tope = null;
+    else if (!Number.isFinite(usd) || usd <= 0) motivos.push("VOICE_TOPE_MENSUAL_USD debe ser un numero mayor que 0 (o sin_tope).");
     else tope = Math.round(usd * 1_000_000);
   }
   if ((opts.pregrabadosFaltantes?.length ?? 0) > 0) motivos.push(`Faltan ${opts.pregrabadosFaltantes?.length} audios pregrabados en assets/ (corre scripts/voz-pregrabados.ts).`);
@@ -262,6 +266,11 @@ export function cargarConfig(env: Readonly<Record<string, string | undefined>>, 
 }
 
 /** Tope mensual efectivo en micro-USD: la sobreescritura de la organizacion gana; sin ella, el de plataforma; sin ninguno, sin tope. */
+/** Tope de gasto de voz por organizacion y mes cuando VOICE_TOPE_MENSUAL_USD no esta configurada (Ola 4, H4). Corta un
+ *  descontrol sin estorbar un piloto normal (US$31-97 al mes en T7 segun docs/VOZ-ACTIVACION.md, donde se recomienda fijar 100);
+ *  el aviso in-app sale al 80 %. */
+export const TOPE_MENSUAL_VOZ_POR_OMISION_USD = 50;
+
 export function resolverTopeMensualMicroUsd(plataformaMicroUsd: number | null, organizacionUsd: number | null): number | null {
   if (organizacionUsd !== null && Number.isFinite(organizacionUsd) && organizacionUsd > 0) return Math.round(organizacionUsd * 1_000_000);
   return plataformaMicroUsd !== null && plataformaMicroUsd > 0 ? plataformaMicroUsd : null;
