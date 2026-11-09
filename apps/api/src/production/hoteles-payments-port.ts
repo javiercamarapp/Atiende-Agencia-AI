@@ -30,6 +30,19 @@ import type { PaymentChargeInput, PaymentChargeResult, PaymentsPort } from "@ati
 
 export interface StripePaymentsConfig {
   readonly secretKey: string | null;
+  /** Tope de la llamada HTTP a Stripe. Por omisión `STRIPE_TIMEOUT_MS_DEFAULT`. */
+  readonly timeoutMs?: number;
+}
+
+/** 20 s: Stripe confirma un PaymentIntent en 1-3 s; por encima de esto la conexión está
+ *  colgada y el request de recepción no debe quedarse esperando hasta el límite de la función.
+ *  Un timeout NO dice si Stripe cobró: el reintento con la misma Idempotency-Key lo resuelve. */
+export const STRIPE_TIMEOUT_MS_DEFAULT = 20_000;
+
+type StripePaymentIntentJson = { id?: string; status?: string; error?: { type?: string; code?: string; message?: string } };
+
+function isTimeoutError(err: unknown): boolean {
+  return err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError");
 }
 
 /** Estados reales de un PaymentIntent de Stripe que terminan en captura exitosa. */
@@ -67,21 +80,41 @@ export class StripeHotelesPaymentsPort implements PaymentsPort {
       off_session: "true",
     });
 
-    const response = await this.fetchImpl("https://api.stripe.com/v1/payment_intents", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${this.config.secretKey}`,
-        "Content-Type": "application/x-www-form-urlencoded",
-        // Mismo criterio que Resend (ver email-dispatch.ts): la idempotencyKey del
-        // caller (repositorio de folios, ver postgres-repository.ts) es la MISMA
-        // que cierra la ventana de "Stripe sí cobró pero el worker murió antes de
-        // registrar el pago" — un reintento nunca duplica el cargo real.
-        "Idempotency-Key": input.idempotencyKey,
-      },
-      body,
-    });
+    const timeoutMs = this.config.timeoutMs ?? STRIPE_TIMEOUT_MS_DEFAULT;
+    let response: Response;
+    try {
+      response = await this.fetchImpl("https://api.stripe.com/v1/payment_intents", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.config.secretKey}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+          // Mismo criterio que Resend (ver email-dispatch.ts): la idempotencyKey del
+          // caller (repositorio de folios, ver postgres-repository.ts) es la MISMA
+          // que cierra la ventana de "Stripe sí cobró pero el worker murió antes de
+          // registrar el pago" — un reintento nunca duplica el cargo real.
+          "Idempotency-Key": input.idempotencyKey,
+        },
+        body,
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+    } catch (err) {
+      if (isTimeoutError(err)) {
+        throw new Error(`Stripe no respondió en ${timeoutMs} ms (el cobro puede o no haberse hecho: reintenta con la misma Idempotency-Key).`, { cause: err });
+      }
+      throw err;
+    }
 
-    const json = (await response.json()) as { id?: string; status?: string; error?: { type?: string; code?: string; message?: string } };
+    // El cuerpo se lee UNA sola vez como texto y luego se parsea: un proxy o balanceador
+    // puede devolver HTML (502/503) y `response.json()` reventaría con un SyntaxError opaco
+    // (y dejaría el cuerpo consumido para el mensaje de error).
+    const raw = await response.text();
+    let json: StripePaymentIntentJson;
+    try {
+      json = JSON.parse(raw) as StripePaymentIntentJson;
+    } catch {
+      throw new Error(`Stripe respondió ${response.status} con un cuerpo no-JSON (${raw.slice(0, 80).replace(/\s+/g, " ")}).`);
+    }
+    if (json === null || typeof json !== "object") throw new Error(`Stripe respondió ${response.status} con un cuerpo no-JSON.`);
 
     if (!response.ok) {
       // Un `card_error` (tarjeta rechazada, fondos insuficientes, CVC inválido) es
@@ -94,7 +127,7 @@ export class StripeHotelesPaymentsPort implements PaymentsPort {
       if (json.error?.type === "card_error") {
         return { status: "fallido", externalPaymentId: json.id ?? `stripe_error_${input.idempotencyKey}` };
       }
-      throw new Error(`Stripe respondió ${response.status}: ${json.error?.message ?? await response.text().catch(() => "")}`);
+      throw new Error(`Stripe respondió ${response.status}: ${json.error?.message ?? json.error?.type ?? "sin detalle"}`);
     }
 
     if (!json.id || !json.status) throw new Error("Stripe respondió 200 sin id/status de PaymentIntent");
