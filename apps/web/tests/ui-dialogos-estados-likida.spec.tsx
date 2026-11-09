@@ -311,23 +311,22 @@ describe("medidas de los demas pop-ups y estados", () => {
     expect(onReintentar).toHaveBeenCalledTimes(1);
   });
 
-  it("EstadoCargando: filas skeleton de 14 px (h-3.5) con space-y-2 y la ultima al 60 %; sin pulso", () => {
+  it("EstadoCargando: solo el logo de panel, sin filas de esqueleto ni pulso, con la altura minima del bloque", () => {
     montar(<EstadoCargando lineas={3} />);
     const raiz = rendered!.container.firstElementChild as HTMLElement;
-    tiene(raiz, "space-y-2");
-    const filas = [...raiz.querySelectorAll<HTMLElement>(".ds-skeleton")];
-    expect(filas).toHaveLength(3);
-    for (const f of filas) tiene(f, "h-3.5", "rounded-md", "bg-canvas");
-    expect(dentro(espacioPx(3.5), 14)).toBe(true);
-    tiene(filas[0], "w-full");
-    tiene(filas[2], "w-3/5");
-    for (const f of filas) expect(clases(f)).not.toContain("animate-pulse");
+    tiene(raiz, "min-h-24");
+    expect(raiz.getAttribute("data-carga-tamano")).toBe("panel");
+    expect(raiz.querySelectorAll(".ds-skeleton")).toHaveLength(0);
+    expect(raiz.querySelectorAll(".animate-pulse")).toHaveLength(0);
   });
 
-  it("Skeleton: barrido de Likida (ds-skeleton) sobre canvas", () => {
+  it("Skeleton: sin barrido ni lienzo (hueco que conserva medidas, oculto a lectores)", () => {
     montar(<Skeleton className="h-4" />);
-    tiene(rendered!.container.firstElementChild, "ds-skeleton", "bg-canvas", "rounded-md");
-    expect(CSS).toMatch(/\.ds-skeleton\s*\{[^}]*ds-shimmer 1\.4s/);
+    const s = rendered!.container.firstElementChild as HTMLElement;
+    tiene(s, "rounded-md", "h-4");
+    expect(clases(s)).not.toContain("ds-skeleton");
+    expect(clases(s)).not.toContain("bg-canvas");
+    expect(s.getAttribute("aria-hidden")).toBe("true");
   });
 });
 

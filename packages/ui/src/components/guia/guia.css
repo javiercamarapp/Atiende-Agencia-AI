@@ -1,0 +1,240 @@
+/* «Guía» (recorrido guiado, invitación, menú y «Primeros pasos»). Port de Rovaq (components/onboarding/onboarding.css + setup.css) con la
+   paleta de Atiende: resalte = azul de Atiende (--primary), aro y punto = cielo (--highlight). Solo tokens del sistema (sin hex): claro y
+   oscuro salen solos. Solo clases y variables escritas por CSSOM: sin estilos en el marcado.
+   Bandera: TODO vive bajo html[data-diseno="ds3"]; sin ella la guía no se pinta (la producción no cambia). */
+
+.guia-raiz {
+  --guia-resalte: hsl(var(--primary));
+  --guia-resalte-suave: hsl(var(--primary-soft));
+  --guia-resalte-tinta: hsl(var(--primary-ink));
+  --guia-cielo: hsl(var(--highlight, var(--primary)));
+  --guia-fondo: hsl(var(--card));
+  --guia-suave: hsl(var(--soft, var(--muted)));
+  --guia-borde: hsl(var(--border));
+  --guia-borde-fuerte: hsl(var(--border-strong, var(--border)));
+  --guia-tinta: hsl(var(--foreground));
+  --guia-gris: hsl(var(--muted-foreground));
+  --guia-velo: rgba(8, 10, 16, 0.55);
+  --guia-sombra: 0 12px 32px -8px rgba(23, 24, 28, 0.18), 0 2px 6px rgba(23, 24, 28, 0.06);
+  --guia-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --guia-ease-tour: cubic-bezier(0.2, 0.8, 0.2, 1);
+  display: contents;
+  font-family: var(--font-sans, inherit);
+}
+html:not([data-diseno="ds3"]) .guia-raiz { display: none !important; }
+
+/* ---- Tarjeta, invitación y menú ---------------------------------------------------------------------------------------------- */
+.guia-tarjeta, .guia-invitacion, .guia-menu {
+  position: fixed; z-index: 47; box-sizing: border-box; border: 1px solid var(--guia-borde-fuerte); border-radius: 12px;
+  background: var(--guia-fondo); color: var(--guia-tinta); box-shadow: var(--guia-sombra);
+}
+.guia-tarjeta { left: var(--guia-x, auto); top: var(--guia-y, auto); width: min(380px, calc(100vw - 32px)); padding: 14px 18px 16px; }
+/* Escritorio: hasta medir, abajo a la derecha (en movil manda la hoja inferior de abajo; esta regla no debe ganarle). */
+@media (min-width: 768px) { .guia-tarjeta:not([data-posicionada]) { right: 24px; bottom: 24px; } }
+.guia-invitacion { right: 24px; bottom: 24px; width: min(380px, calc(100vw - 32px)); padding: 16px 18px; }
+.guia-tarjeta h2, .guia-invitacion h2 { margin: 0 0 6px; font: 600 16px/1.35 var(--font-sans, inherit); letter-spacing: -0.01em; }
+.guia-tarjeta p, .guia-invitacion p { margin: 0 0 10px; font-size: 13px; line-height: 1.55; color: var(--guia-gris); }
+.guia-cab { display: flex; justify-content: space-between; gap: 8px; margin: 0 0 6px; }
+.guia-tarjeta .guia-contador { margin: 0; font: 500 11px/1.4 var(--font-mono, ui-monospace, monospace); text-transform: uppercase; letter-spacing: 0.06em; color: var(--guia-gris); }
+.guia-avance, .guia-cuenta-barra { display: block; width: 100%; border: 0; border-radius: 999px; overflow: hidden; background: var(--guia-suave); accent-color: var(--guia-resalte); appearance: none; }
+.guia-avance { height: 4px; margin: 0 0 12px; }
+.guia-cuenta-barra { height: 3px; }
+.guia-avance::-webkit-progress-bar, .guia-cuenta-barra::-webkit-progress-bar { background: var(--guia-suave); }
+.guia-avance::-webkit-progress-value, .guia-cuenta-barra::-webkit-progress-value { background: var(--guia-resalte); transition: width 250ms var(--guia-ease); }
+.guia-avance::-moz-progress-bar, .guia-cuenta-barra::-moz-progress-bar { background: var(--guia-resalte); }
+.guia-tarjeta .guia-nota { padding: 6px 10px; border-radius: 8px; background: var(--guia-suave); font-size: 12px; }
+.guia-tarjeta .guia-fallo { border: 1px solid var(--guia-borde-fuerte); }
+.guia-cuenta { margin: 0 0 10px; }
+.guia-cuenta-texto { margin: 0 0 6px; font-size: 13px; }
+.guia-acciones { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin: 0; }
+.guia-btn, .guia-btn-sec {
+  display: inline-flex; align-items: center; min-height: 32px; padding: 0 12px; border-radius: 8px;
+  font: 500 13px/1 var(--font-sans, inherit); cursor: pointer; transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+/* Primario suave (azul tenue + texto azul), como el de Rovaq. */
+.guia-btn { border: 1px solid color-mix(in srgb, var(--guia-resalte) 30%, transparent); background: var(--guia-resalte-suave); color: var(--guia-resalte-tinta); }
+.guia-btn:hover { background: hsl(var(--primary-soft-hover, var(--primary-soft))); }
+.guia-btn-sec { border: 1px solid var(--guia-borde-fuerte); background: transparent; color: var(--guia-tinta); }
+.guia-btn-sec:hover { background: var(--guia-suave); }
+.guia-btn:focus-visible, .guia-btn-sec:focus-visible, .guia-menu button:focus-visible, .guia-pp a:focus-visible, .guia-pp button:focus-visible {
+  outline: 2px solid var(--guia-resalte); outline-offset: 2px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .guia-btn:active, .guia-btn-sec:active { transform: scale(0.98); }
+}
+
+/* Ruta del recorrido: ventana corta de pantallas, la actual marcada con el cielo. */
+.guia-ruta { display: flex; flex-wrap: wrap; gap: 2px 6px; margin: 0 0 12px; padding: 0; list-style: none; font: 500 12px/1.5 var(--font-sans, inherit); color: var(--guia-gris); }
+.guia-ruta li + li::before { content: "·"; margin-right: 6px; color: var(--guia-borde-fuerte); }
+.guia-ruta li[data-actual] { color: var(--guia-tinta); font-weight: 600; }
+.guia-ruta li[data-actual]::after { content: ""; display: block; height: 2px; background: var(--guia-cielo); border-radius: 2px; }
+
+/* ---- Ilustración ------------------------------------------------------------------------------------------------------------ */
+.guia-ilu-marco { display: grid; place-items: center; height: 104px; margin: 0 0 10px; border-radius: 8px; background: var(--guia-suave); overflow: hidden; }
+.guia-tarjeta[data-tipo="cierre"] .guia-ilu-marco { height: 120px; }
+.guia-ilu { width: auto; height: 92px; fill: none; stroke: var(--guia-gris); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; overflow: visible; }
+.guia-ilu .ilu-l { stroke: var(--guia-borde-fuerte); }
+.guia-ilu .ilu-a { stroke: var(--guia-resalte); }
+.guia-ilu .ilu-f { fill: var(--guia-fondo); stroke: var(--guia-borde-fuerte); }
+.guia-ilu .ilu-fa { fill: var(--guia-resalte); stroke: none; }
+.guia-ilu .ilu-bordea { stroke: var(--guia-resalte); }
+.guia-ilu .ilu-sup { fill: var(--guia-fondo); stroke: var(--guia-resalte); }
+.guia-ilu .ilu-t { stroke: var(--guia-fondo); }
+.guia-ilu .ilu-sin-relleno { fill: none; }
+.guia-ilu .ilu-grueso { stroke-width: 4; }
+.guia-ilu .ilu-anillo { stroke-width: 7; }
+.guia-ilu .ilu-traza { stroke-dasharray: 1; stroke-dashoffset: 0; }
+.guia-ilu .ilu-arco { fill: none; stroke-width: 7; stroke-linecap: butt; stroke-dasharray: 0.72 1; transform: rotate(-90deg); transform-origin: 125px 46px; }
+.guia-ilu .ilu-barra, .guia-ilu .ilu-pop, .guia-ilu .ilu-punto { transform-box: fill-box; transform-origin: center; }
+.guia-ilu .ilu-barra { transform-origin: 50% 100%; }
+
+/* ---- Capa de foco: NUNCA recibe clics; el recorte deja el elemento visible y usable --------------------------------------------- */
+.guia-capa { position: fixed; inset: 0; z-index: 45; pointer-events: none; }
+.guia-capa[data-sin-foco][data-velo] { background: var(--guia-velo); }
+.guia-capa[data-sin-foco] .guia-foco { display: none; }
+.guia-foco {
+  position: absolute; left: 0; top: 0; width: var(--tour-w, 0px); height: var(--tour-h, 0px);
+  transform: translate(var(--tour-x, 0px), var(--tour-y, 0px)); border-radius: 12px;
+  box-shadow: 0 0 0 2px var(--guia-fondo), 0 0 0 4px var(--guia-cielo), 0 0 0 9999px var(--guia-velo);
+}
+.guia-foco::after { content: ""; position: absolute; inset: -4px; border: 2px solid var(--guia-cielo); border-radius: 12px; opacity: 0; }
+
+/* Etiqueta «Haz clic aquí» con flecha, junto al elemento real. */
+.guia-etiqueta { position: fixed; left: 0; top: 0; z-index: 46; pointer-events: none; visibility: hidden; transform: translate(var(--lab-x, 0px), var(--lab-y, 0px)); }
+.guia-etiqueta[data-lado="abajo"] { --bx: 0px; --by: -5px; }
+.guia-etiqueta[data-lado="arriba"] { --bx: 0px; --by: 5px; }
+.guia-etiqueta[data-lado="der"] { --bx: -5px; --by: 0px; }
+.guia-etiqueta[data-lado="izq"] { --bx: 5px; --by: 0px; }
+.guia-etq-in {
+  display: inline-flex; align-items: center; gap: 6px; max-width: min(300px, calc(100vw - 16px)); padding: 6px 10px; border-radius: 8px;
+  background: var(--guia-resalte); color: hsl(var(--primary-foreground)); font: 600 12px/1.3 var(--font-sans, inherit); box-shadow: 0 4px 14px rgba(8, 10, 16, 0.3);
+}
+.guia-etq-flecha { flex: none; width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.guia-etiqueta[data-lado="arriba"] .guia-etq-flecha { transform: rotate(180deg); }
+.guia-etiqueta[data-lado="der"] .guia-etq-flecha { transform: rotate(-90deg); }
+.guia-etiqueta[data-lado="izq"] .guia-etq-flecha { transform: rotate(90deg); }
+
+/* ---- Menú «Guía» (257 px en Rovaq) -------------------------------------------------------------------------------------------- */
+.guia-menu { top: 60px; right: 16px; display: grid; gap: 2px; width: 257px; max-width: calc(100vw - 32px); max-height: calc(100vh - 80px); overflow: auto; padding: 8px; }
+.guia-menu-ctx { margin: 0; padding: 6px 8px 8px; font-size: 12px; color: var(--guia-gris); border-bottom: 1px solid var(--guia-borde); }
+.guia-menu button { min-height: 32px; padding: 0 8px; border: 0; border-radius: 8px; background: transparent; color: var(--guia-tinta); font: 500 13px/1.3 var(--font-sans, inherit); text-align: left; cursor: pointer; }
+.guia-menu button:hover { background: var(--guia-suave); }
+.guia-menu-pantallas { display: grid; gap: 1px; margin: 4px 0; padding: 4px 0; border-top: 1px solid var(--guia-borde); border-bottom: 1px solid var(--guia-borde); max-height: min(40vh, 300px); overflow: auto; }
+.guia-menu-sub { margin: 0; padding: 4px 8px; font: 500 11px/1.4 var(--font-mono, ui-monospace, monospace); text-transform: uppercase; letter-spacing: 0.06em; color: var(--guia-gris); }
+.guia-menu-pantallas button { font-weight: 400; }
+.guia-menu-pantallas button[aria-current="step"] { background: var(--guia-suave); font-weight: 600; box-shadow: inset 2px 0 0 var(--guia-cielo); }
+
+/* ---- Movimiento (solo con movimiento permitido; con «reducir» todo es instantáneo y queda en su estado final) ------------------ */
+@media (prefers-reduced-motion: no-preference) {
+  .guia-tarjeta, .guia-invitacion, .guia-menu { animation: guia-entra 180ms var(--guia-ease); }
+  @keyframes guia-entra { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  .guia-tarjeta[data-animar] { transition: left 360ms var(--guia-ease-tour), top 360ms var(--guia-ease-tour); }
+  .guia-capa[data-animar] .guia-foco { transition: transform 380ms var(--guia-ease-tour), width 380ms var(--guia-ease-tour), height 380ms var(--guia-ease-tour); }
+  .guia-etiqueta { transition: transform 380ms var(--guia-ease-tour); }
+  .guia-foco::after { animation: guia-pulso 1800ms ease-out infinite; }
+  @keyframes guia-pulso { from { opacity: 0.8; transform: scale(1); } to { opacity: 0; transform: scale(1.12); } }
+  .guia-etq-in { animation: guia-flecha 900ms ease-in-out infinite; }
+  @keyframes guia-flecha { 0%, 100% { transform: none; } 50% { transform: translate(var(--bx, 0px), var(--by, 0px)); } }
+  .guia-ilu-marco .ilu-traza { animation: guia-traza 900ms ease-out both; }
+  @keyframes guia-traza { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+  .guia-ilu-marco .ilu-arco { animation: guia-arco 1100ms ease-out 200ms both; }
+  @keyframes guia-arco { from { stroke-dashoffset: 0.72; } to { stroke-dashoffset: 0; } }
+  .guia-ilu-marco .ilu-barra { animation: guia-barra 650ms var(--guia-ease-tour) both; }
+  @keyframes guia-barra { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+  .guia-ilu-marco .ilu-pop { animation: guia-pop 450ms cubic-bezier(0.2, 0.9, 0.3, 1.2) both; }
+  @keyframes guia-pop { from { opacity: 0; transform: scale(0.4); } to { opacity: 1; transform: scale(1); } }
+  .guia-ilu-marco .ilu-entra { animation: guia-sube 520ms var(--guia-ease-tour) both; }
+  @keyframes guia-sube { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+  .guia-ilu-marco .ilu-cae { animation: guia-cae 600ms cubic-bezier(0.3, 0.9, 0.4, 1) both; }
+  @keyframes guia-cae { from { opacity: 0; transform: translateY(-18px); } to { opacity: 1; transform: none; } }
+  .guia-ilu-marco .ilu-punto { animation: guia-punto 900ms ease-in-out infinite alternate both; }
+  @keyframes guia-punto { from { opacity: 0.25; } to { opacity: 1; } }
+  .guia-ilu-marco .ilu-onda, .guia-ilu-marco .ilu-chispa { animation: guia-aparece 700ms ease-out both; }
+  @keyframes guia-aparece { from { opacity: 0; } to { opacity: 1; } }
+  .guia-ilu-marco .d1 { animation-delay: 80ms; }
+  .guia-ilu-marco .d2 { animation-delay: 200ms; }
+  .guia-ilu-marco .d3 { animation-delay: 320ms; }
+  .guia-ilu-marco .d4 { animation-delay: 440ms; }
+  .guia-ilu-marco .d5 { animation-delay: 560ms; }
+  .guia-ilu-marco .d6 { animation-delay: 680ms; }
+}
+
+/* ---- Móvil: hoja inferior por encima de la barra inferior (nunca la tapa); sube arriba si el objetivo queda debajo ------------- */
+@media (max-width: 767px) {
+  .guia-tarjeta, .guia-invitacion {
+    left: 12px !important; right: 12px; top: auto !important; width: auto;
+    /* Por encima de la barra inferior: --nav-total = alto de la barra + safe area + respiro (index.css). */
+    bottom: calc(var(--nav-total, 4.25rem) + 8px); border-radius: 16px;
+  }
+  .guia-tarjeta[data-hoja="arriba"] { top: calc(56px + var(--safe-area-top, 0px) + 12px) !important; bottom: auto; }
+  .guia-tarjeta { max-height: min(62vh, 440px); overflow: auto; padding: 12px 14px 14px; }
+  .guia-tarjeta::before { content: ""; display: block; width: 36px; height: 4px; margin: -4px auto 8px; border-radius: 999px; background: var(--guia-borde-fuerte); }
+  .guia-ilu-marco { height: 64px; }
+  .guia-ilu { height: 56px; }
+  .guia-tarjeta[data-tipo="cierre"] .guia-ilu-marco { height: 80px; }
+  .guia-ruta li:not([data-actual], .guia-ruta-mas) { display: none; }
+  .guia-ruta li + li::before { content: none; }
+  .guia-menu { top: auto; right: 12px; left: 12px; bottom: calc(var(--nav-total, 4.25rem) + 8px); width: auto; border-radius: 16px; }
+  .guia-btn, .guia-btn-sec, .guia-menu button { min-height: 44px; }
+  @media (prefers-reduced-motion: no-preference) {
+    .guia-tarjeta, .guia-invitacion, .guia-menu { animation: guia-hoja 250ms var(--guia-ease); }
+    @keyframes guia-hoja { from { opacity: 0; transform: translateY(32px); } to { opacity: 1; transform: none; } }
+  }
+}
+
+@media (forced-colors: active) {
+  .guia-tarjeta, .guia-invitacion, .guia-menu { border-color: CanvasText; }
+  .guia-foco { box-shadow: none; outline: 3px solid Highlight; outline-offset: 3px; }
+  .guia-etq-in { border: 1px solid CanvasText; background: Canvas; color: CanvasText; }
+  .guia-ilu * { stroke: CanvasText; }
+}
+
+/* ---- «Primeros pasos» (patrón /setup de Rovaq: progreso «3 de 6», tarjetas con estado, recomendado) --------------------------- */
+.guia-pp { --guia-resalte: hsl(var(--primary)); --guia-cielo: hsl(var(--highlight, var(--primary))); --guia-ease: cubic-bezier(0.22, 1, 0.36, 1); display: grid; gap: 16px; max-width: 880px; }
+.guia-pp-cab { display: grid; gap: 6px; }
+.guia-pp-como { margin: 0; font-size: 13px; color: hsl(var(--muted-foreground)); }
+.guia-pp-progreso { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; font-size: 13px; color: hsl(var(--muted-foreground)); }
+.guia-pp-progreso strong { color: hsl(var(--foreground)); font-weight: 600; }
+.guia-pp-barra { position: relative; width: 160px; height: 8px; border-radius: 999px; background: hsl(var(--soft, var(--muted))); overflow: hidden; }
+.guia-pp-barra > span { position: absolute; inset: 0 auto 0 0; width: var(--guia-pct, 0%); border-radius: inherit; background: var(--guia-resalte); }
+.guia-pp-espera { padding-left: 10px; border-left: 1px solid hsl(var(--border-strong, var(--border))); }
+.guia-pp-lista { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.guia-pp-paso { display: grid; gap: 6px; padding: 14px 16px; border: 1px solid hsl(var(--border)); border-radius: 12px; background: hsl(var(--card)); }
+.guia-pp-paso[data-siguiente] { border-color: var(--guia-resalte); box-shadow: inset 3px 0 0 var(--guia-cielo); }
+.guia-pp-paso[data-estado="hecho"] { background: hsl(var(--soft, var(--muted)) / 0.5); }
+.guia-pp-paso-cab { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; }
+.guia-pp-paso h3 { margin: 0; font: 600 14px/1.4 var(--font-sans, inherit); color: hsl(var(--foreground)); }
+.guia-pp-paso p { margin: 0; font-size: 13px; line-height: 1.55; color: hsl(var(--muted-foreground)); }
+.guia-pp-meta { font: 500 12px/1.5 var(--font-sans, inherit); }
+.guia-pp-rotulo { font-weight: 600; color: hsl(var(--foreground)); }
+.guia-pp-pildora { display: inline-flex; align-items: center; gap: 6px; padding: 1px 8px; border: 1px solid hsl(var(--border-strong, var(--border))); border-radius: 999px; font: 500 12px/1.6 var(--font-sans, inherit); color: hsl(var(--foreground)); white-space: nowrap; }
+.guia-pp-pildora::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: hsl(var(--muted-foreground)); }
+.guia-pp-pildora[data-estado="hecho"]::before { background: hsl(var(--success, 142 71% 45%)); }
+.guia-pp-pildora[data-estado="parcial"]::before { background: hsl(var(--warning, 38 92% 50%)); }
+.guia-pp-pildora[data-estado="pendiente"]::before { background: var(--guia-resalte); }
+.guia-pp-pildora[data-estado="externo"]::before { background: var(--guia-cielo); }
+.guia-pp-recomendado { font: 600 12px/1.5 var(--font-sans, inherit); color: hsl(var(--primary-ink, var(--primary))); }
+.guia-pp-accion { display: inline-flex; align-items: center; min-height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid color-mix(in srgb, var(--guia-resalte) 30%, transparent); background: hsl(var(--primary-soft)); color: hsl(var(--primary-ink, var(--primary))); font: 500 13px/1 var(--font-sans, inherit); text-decoration: none; justify-self: start; }
+.guia-pp-mas summary { min-height: 36px; display: inline-flex; align-items: center; cursor: pointer; font-size: 13px; color: hsl(var(--muted-foreground)); }
+.guia-pp-mas[open] summary { margin-bottom: 10px; }
+.guia-pp-check { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+/* Celebración sutil: una sola vez por hito, sin confeti; un anillo que se dibuja y la tarjeta que sube. */
+.guia-pp-celebra { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border: 1px solid color-mix(in srgb, var(--guia-resalte) 30%, transparent); border-radius: 12px; background: hsl(var(--primary-soft)); color: hsl(var(--foreground)); }
+.guia-pp-celebra h2 { margin: 0; font: 600 14px/1.4 var(--font-sans, inherit); }
+.guia-pp-celebra p { margin: 0; font-size: 13px; color: hsl(var(--muted-foreground)); }
+.guia-pp-celebra svg { flex: none; width: 36px; height: 36px; fill: none; stroke: var(--guia-resalte); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+@media (prefers-reduced-motion: no-preference) {
+  .guia-pp-lista > li { animation: guia-sube-pp 260ms var(--guia-ease) both; }
+  .guia-pp-lista > li:nth-child(2) { animation-delay: 40ms; }
+  .guia-pp-lista > li:nth-child(3) { animation-delay: 80ms; }
+  .guia-pp-lista > li:nth-child(4) { animation-delay: 120ms; }
+  .guia-pp-lista > li:nth-child(n + 5) { animation-delay: 160ms; }
+  @keyframes guia-sube-pp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  .guia-pp-barra > span { transition: width 360ms var(--guia-ease); }
+  .guia-pp-celebra { animation: guia-sube-pp 360ms var(--guia-ease) both; }
+  .guia-pp-celebra .ilu-traza { stroke-dasharray: 1; animation: guia-traza-pp 900ms ease-out both; }
+  .guia-pp-celebra .d4 { animation-delay: 320ms; }
+  @keyframes guia-traza-pp { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+}
+@media (max-width: 767px) { .guia-pp-paso { padding: 12px 14px; } .guia-pp-barra { width: 100%; } .guia-pp-accion { min-height: 44px; } }
+@media (forced-colors: active) { .guia-pp-paso, .guia-pp-celebra { border-color: CanvasText; } }

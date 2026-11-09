@@ -1,13 +1,14 @@
 // Notificaciones de punta a punta contra la API simulada, en las 7 consolas (6 verticales + superadmin):
 // la campana YA NO va en el encabezado (orden del dueno): es la pildora "Notificaciones" del pie del menu lateral (escritorio) y de
-// "Mas" > Cuenta (movil). Su punto rojo (SIN numero) se enciende con avisos sin leer y se APAGA al leerlos, lleva a
+// "Mas" > Cuenta (movil). Su aviso (punto rojo, o el contador de sin leer cuando la consola lo da, pintado por CSS: la fila no gana
+// texto) se enciende con avisos sin leer y se APAGA al leerlos, lleva a
 // la pagina (lista, filtros, marcar leida / todas, 'Resolver' a la pantalla origen) y una notificacion que llega
 // despues enciende el punto sin recargar (en movil el punto se ve en la pestana "Mas").
 import { expect, test } from "../helpers/fixtures.ts";
 import type { ObjetivoLogin } from "../helpers/fixtures.ts";
 import { afirmarPantallaSana } from "../helpers/humo.ts";
 import { abrirMasMovil, barraMovil, esMovil, sidebar } from "../helpers/navegacion.ts";
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 
 const CONSOLAS: ReadonlyArray<{ objetivo: ObjetivoLogin; destino: RegExp }> = [
   { objetivo: "superadmin", destino: /\/superadmin\/salud$/ },
@@ -30,19 +31,24 @@ async function irANotificaciones(page: Page): Promise<void> {
   await expect(page).toHaveURL(/\/notificaciones$/);
 }
 
+/** Aviso de sin leer de la pildora: el punto rojo o, si la consola da el numero, el contador (uno de los dos esta visible). */
+function avisoDePildora(pildora: Locator): Locator {
+  return pildora.locator('[data-testid="pildora-indicador"]:visible, [data-testid="pildora-contador"]:visible');
+}
+
 for (const { objetivo, destino } of CONSOLAS) {
   test.describe(`notificaciones: ${objetivo}`, () => {
     test("el punto rojo se enciende con avisos, se apaga al leerlos y vuelve al llegar uno nuevo", async ({ page, iniciarSesion, mock, vigilante }) => {
       await iniciarSesion(objetivo, objetivo === "superadmin" ? undefined : "owner");
       await afirmarPantallaSana(page, `${objetivo}: aterrizaje`);
-      // El encabezado de escritorio no trae campana, chat ni fecha. Decision de Omar 7-nov-2026: la cabecera movil SI lleva la campana, pero
-      // es solo-ds3 (sin la bandera existe oculta); estas pruebas corren con el diseno actual.
+      // El encabezado de escritorio no trae campana, chat ni fecha. Decision de Omar 7-nov-2026: la cabecera movil SI lleva la campana.
       await expect(page.getByTestId("barra-pagina").locator('[aria-label^="Notificaciones"]')).toHaveCount(0);
-      await expect(page.getByTestId("mobile-header").locator('[aria-label^="Notificaciones"]:visible')).toHaveCount(0);
+      if (esMovil(page)) await expect(page.getByTestId("mobile-header").locator('[aria-label^="Notificaciones"]:visible')).toHaveCount(1);
       const pildora = sidebar(page).getByRole("link", { name: "Notificaciones" });
-      const punto = pildora.locator('[data-testid="pildora-indicador"]');
+      const punto = avisoDePildora(pildora);
 
-      // Hay dos sin leer en la semilla: punto rojo, sin ningun numero (escritorio; en movil la pildora esta dentro de "Mas").
+      // Hay dos sin leer en la semilla: punto rojo o contador, sin numero en el texto de la fila (escritorio; en movil la pildora esta
+      // dentro de "Mas").
       if (!esMovil(page)) {
         await expect(punto).toBeVisible();
         expect(((await pildora.textContent()) ?? "").trim()).not.toMatch(/\d/);
@@ -118,7 +124,7 @@ for (const { objetivo, destino } of CONSOLAS) {
       await page.getByTestId("notificacion").filter({ hasText: "Hay algo nuevo por atender" }).getByRole("button", { name: "Marcar leído" }).click();
       await expect(page.getByRole("alert")).toContainText("El servidor no pudo atender la solicitud");
       await expect(page.getByTestId("notificacion")).toHaveCount(2);
-      await expect(sidebar(page).getByRole("link", { name: "Notificaciones" }).locator('[data-testid="pildora-indicador"]')).toBeVisible();
+      await expect(avisoDePildora(sidebar(page).getByRole("link", { name: "Notificaciones" }))).toBeVisible();
       vigilante.verificar();
     });
   });

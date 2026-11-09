@@ -77,7 +77,29 @@ export function agregarNotificacion(estado: EstadoEscenario, nueva: Partial<Noti
   return fila;
 }
 
+/** Clave del estado del escenario: la «Guía» ve a la persona por primera vez (la fija `POST /__mock/escenarios/:id/config`). */
+export const GUIA_PRIMER_INGRESO = "guia-primer-ingreso";
+/** Progreso de quien ya vio y descarto la invitacion de la guia (fecha vieja: cualquier cambio local real gana al reconciliar). */
+const GUIA_YA_DESCARTADA = { visto: true, descartado: true, activo: false, terminado: false, modo: null, paso: null, actualizado: "2026-01-01T00:00:00.000Z" };
+
 export const rutasComunes: readonly Ruta[] = [
+  // ds3 «Guía»: progreso del recorrido por persona y pista (doble de GET/PUT /v1/onboarding/progreso; misma forma de respuesta).
+  // Con ds3 por omision la invitacion de la guia saldria en CADA login y taparia la pantalla de las pruebas que no son de la guia: por
+  // omision la persona ya la descarto; solo las pruebas de la guia piden el primer ingreso (`mock.configurar({ guiaPrimerIngreso: true })`).
+  { metodo: "GET", patron: "/v1/onboarding/progreso", manejador: (p) => {
+    const filas = p.estado.obtener<Record<string, unknown>>("guia-progreso", () => ({}));
+    const primerIngreso = p.estado.obtener<boolean>(GUIA_PRIMER_INGRESO, () => false);
+    const fila = filas[`${p.persona?.id ?? "anon"}|${p.query.get("org") ?? ""}|${p.query.get("pista") ?? ""}`];
+    return { disponible: true, progreso: fila ?? (primerIngreso ? null : GUIA_YA_DESCARTADA) };
+  } },
+  { metodo: "PUT", patron: "/v1/onboarding/progreso", manejador: (p) => {
+    const c = (p.cuerpo ?? {}) as Record<string, unknown>;
+    const filas = p.estado.obtener<Record<string, unknown>>("guia-progreso", () => ({}));
+    const actualizado = new Date().toISOString();
+    filas[`${p.persona?.id ?? "anon"}|${String(c.org ?? "")}|${String(c.pista ?? "")}`] = { ...c, actualizado };
+    p.estado.guardar("guia-progreso", filas);
+    return { disponible: true, actualizado };
+  } },
   // El banner de plan (BannerPlan) pide /billing/uso en todas las verticales; la API simulada responde el estado honesto "no disponible".
   { metodo: "GET", patron: "/billing/uso", manejador: () => ({ disponible: false, motivo: "Plan y uso no disponible en la API simulada de e2e." }) },
   { metodo: "GET", patron: "/notifications/unread-count", manejador: (p) => ({ unreadCount: noLeidas(lista(p.estado, p.persona)) }) },
