@@ -446,6 +446,22 @@ export { AlertasDuenioNoDisponibleError, AlertasDuenioParametrosError, AlertasDu
 export type { CandidatoSilencio, ResultadoSilencio, UmbralesAlertasDuenio } from "./alertas-duenio/silencio.ts";
 export { avisarPresupuestoIaAlDuenio } from "./alertas-duenio/presupuesto.ts";
 export type { ResultadoAvisoPresupuesto, UmbralPresupuestoIa } from "./alertas-duenio/presupuesto.ts";
+export {
+  CATEGORIA_PAQUETES,
+  CATEGORIA_SIN_CLASIFICAR,
+  ESQUEMA_EXTRACCION_MENU,
+  ImportacionMenuInvalida,
+  MAX_PRODUCTOS_IMPORTACION,
+  PROMPT_EXTRACCION_MENU,
+  armarBorrador,
+  borradorDesdeCsv,
+  borradorDesdeExtraccion,
+  claveProductoImportacion,
+  parsearPrecio as parsearPrecioMenu,
+  slugCategoria,
+  validarImportacionAprobada,
+} from "./importador-menu.ts";
+export type { BorradorMenu, BorradorProducto, DudaImportacion, ProductoAGuardar } from "./importador-menu.ts";
 
 // Clasificador de frases que afirman el registro del pedido (lo usa tambien la cascada de voz: no se dice «quedó registrado» antes de crear_pedido).
 export { afirmaPedidoRegistrado } from "./whatsapp/guards.ts";

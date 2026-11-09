@@ -16,6 +16,8 @@ import { IconoDeCarga } from "./CargandoDelegado";
 import { FormField } from "./ui/form-field";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
+import { useT } from "../i18n/proveedor";
+import { comun } from "../i18n/mensajes/comun.ts";
 
 export type ConfirmTono = "default" | "danger";
 
@@ -84,12 +86,15 @@ export function ConfirmDialog({
   titulo,
   descripcion,
   tono = "default",
-  confirmar = "Confirmar",
-  cancelar = "Cancelar",
+  confirmar: confirmarProp,
+  cancelar: cancelarProp,
   campo,
   botonesGrandes = false,
   onConfirm,
 }: ConfirmDialogProps) {
+  const t = useT(comun);
+  const confirmar = confirmarProp ?? t("comun.confirmar");
+  const cancelar = cancelarProp ?? t("comun.cancelar");
   const [valor, setValor] = React.useState(campo?.valorInicial ?? "");
   const [tocado, setTocado] = React.useState(false);
   const [enCurso, setEnCurso] = React.useState(false);
