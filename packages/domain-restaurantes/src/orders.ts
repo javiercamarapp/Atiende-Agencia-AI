@@ -896,11 +896,9 @@ export async function quoteOrder(
       code: promotion.code,
       name: promotion.name,
       motivo,
-      mensaje:
-        promotion.type === "cortesia"
-          ? `Hoy, para recoger, "${promotion.name}": por cada producto de la promoción van ${promotion.courtesyQuantity ?? 0} pieza(s) de cortesía a elegir por el cliente (sin costo). Ofrézcalo y, si acepta, agregue esas piezas como renglones del pedido y vuelva a cotizar.`
-          : `Hoy, para recoger, aplica "${promotion.name}"${promotion.description ? `: ${promotion.description}` : ""}. Con este pedido todavía no se cumple: ofrézcalo y, si acepta, agregue los productos y vuelva a cotizar.`,
-      ...(promotion.type === "cortesia" && promotion.courtesyProductIds
+      mensaje: mensajePromocionSugerida(promotion, motivo, nombreDeProducto),
+      // Las opciones de cortesia solo cuando el disparador ya esta en el pedido: sin el, listarlas invitaba a agregarlas (y se cobraban).
+      ...(promotion.type === "cortesia" && promotion.courtesyProductIds && motivo === "falta_elegir_cortesia"
         ? {
             opcionesCortesia: promotion.courtesyProductIds
               .map((productId) => ({ productId, name: nombreDeProducto(productId) }))
@@ -917,6 +915,21 @@ export async function quoteOrder(
     cierraA: reglas.apertura?.cierraA ?? null,
     ...(programadoPara ? { programadoPara } : {}),
   };
+}
+
+/** Texto para el agente de una promocion sugerida (WhatsApp y voz). Combo de cortesia SIN el producto disparador en el pedido: nombra el disparador y dice que sin el
+ * las bebidas se cobran; NUNCA pide agregar las piezas de cortesia (E2E voz r3: el modelo agrego 2 horchatas sin nachos y se cobraron). Con el disparador, pide elegirlas. */
+export function mensajePromocionSugerida(promotion: Promotion, motivo: "faltan_productos" | "falta_elegir_cortesia", nombreDeProducto: (id: string) => string | null): string {
+  if (promotion.type !== "cortesia") {
+    return `Hoy, para recoger, aplica "${promotion.name}"${promotion.description ? `: ${promotion.description}` : ""}. Con este pedido todavía no se cumple: ofrézcalo y, si acepta, agregue los productos y vuelva a cotizar.`;
+  }
+  const n = promotion.courtesyQuantity ?? 0;
+  const disparadores = (promotion.productIds ?? []).map((id) => nombreDeProducto(id)).filter((x): x is string => x !== null);
+  const queLleva = disparadores.length > 0 ? disparadores.join(" o ") : "el producto de la promoción";
+  if (motivo === "falta_elegir_cortesia") {
+    return `Hoy, para recoger, "${promotion.name}": por cada ${queLleva} del pedido van ${n} pieza(s) de cortesía a elegir por el cliente (sin costo). Pregúntele cuáles, agregue esas piezas como renglones del pedido y vuelva a cotizar.`;
+  }
+  return `Hoy, para recoger, "${promotion.name}": solo si el pedido lleva ${queLleva}; por cada uno van ${n} pieza(s) de cortesía. Este pedido NO lo lleva: puede ofrecer ${queLleva}, pero no ofrezca ni agregue bebidas «de cortesía» si el cliente no lo pide; sin ${queLleva}, las bebidas se cobran.`;
 }
 
 /** Cotiza con un CODIGO que dicto el cliente (misma validacion y calculo que `createOrder`): devuelve la forma de `selectAutomaticPromotion`
