@@ -109,6 +109,18 @@ const INTERNAL_NUMBER_RE = /^(\d+)_/;
 // "<ruta relativa al repo, con '/'>:<número interno>". Cualquier colisión NUEVA
 // (fuera de esta lista) hace fallar el guard.
 const KNOWN_INTERNAL_NUMBER_DUPLICATES: ReadonlySet<string> = new Set([
+  // Ola 4 (G1): 0008..0014 de packages/db existían dos veces en la historia real
+  // (staff_google_identity/magic_link/... aplicadas como 000110..000119 y luego
+  // auth_exchange_code/billing_saas/... como 000121+). Las primeras solo vivían en
+  // el espejo; al importarlas como fuente canónica la colisión queda visible, pero
+  // ambas series ya están aplicadas en producción y no se renumeran.
+  "packages/db/migrations:0008",
+  "packages/db/migrations:0009",
+  "packages/db/migrations:0010",
+  "packages/db/migrations:0011",
+  "packages/db/migrations:0012",
+  "packages/db/migrations:0013",
+  "packages/db/migrations:0014",
   "packages/db/migrations:0015",
   "packages/domain-citas/migrations:007",
   "packages/domain-citas/migrations:015",
