@@ -89,7 +89,8 @@ test.describe("restaurantes alta autoservicio: primer valor en <30 min @recorrid
     const [prod] = await esperarEscrituras(mock, { metodo: "POST", ruta: "/admin/products" });
     expect(cuerpoDe(prod)).toMatchObject({ name: "Cochinita pibil (torta)", price: 65 });
     await expect(d).toBeHidden();
-    const filaProducto = main(page).getByRole("row").filter({ hasText: "Cochinita pibil (torta)" });
+    // Escritorio: fila de la tabla; movil: tarjeta de la lista «catálogo de productos de esta sucursal».
+    const filaProducto = main(page).getByRole("row").or(main(page).getByRole("listitem")).filter({ hasText: "Cochinita pibil (torta)" });
     await filaProducto.getByRole("button", { name: "No disponible" }).click();
     const [disp] = await esperarEscrituras(mock, { metodo: "PATCH", ruta: "/branch-availability" });
     expect(cuerpoDe(disp)).toEqual({ isAvailable: true });
