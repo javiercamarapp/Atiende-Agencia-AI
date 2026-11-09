@@ -124,14 +124,11 @@ describe("IdiomaProvider", () => {
     expect(c.textContent?.startsWith("Try again")).toBe(true);
   });
 
-  it("sin ds3 todo queda en espanol aunque haya EN guardado; al encender ds3 cambia en caliente", async () => {
+  it("por omision (diseno nuevo, sin atributo en <html> ni parametros) el EN guardado aplica desde el primer render", async () => {
     delete document.documentElement.dataset.diseno;
     window.localStorage.setItem(CLAVE_IDIOMA, "en");
     const c = montar(createElement(IdiomaProvider, null, createElement(Muestra)));
-    expect(c.textContent?.startsWith("Reintentar")).toBe(true);
-    expect(document.documentElement.lang).toBe("es-MX");
     await act(async () => {
-      document.documentElement.dataset.diseno = "ds3";
       await new Promise((r) => setTimeout(r, 0));
     });
     expect(c.textContent?.startsWith("Try again")).toBe(true);
