@@ -118,6 +118,7 @@ import { crearLectorTokenMetaGraph } from "../salud/salud-meta.ts";
 import type { SaludMetaDeps } from "../salud/salud-meta.ts";
 import { cifradorAccesoDeEntorno } from "../routes/verticals/rentas/acceso-cipher.ts";
 import { loadApiEnv } from "../env.ts";
+import { crearGeocodificador, leerConfigGeocodificacion } from "../geocodificacion.ts";
 import type { AppDeps } from "../deps.ts";
 import { ProductionCoreRepository } from "./core-repository.ts";
 import { ProductionRentasOwnerPortalRepository } from "./rentas-owner-portal-repository.ts";
@@ -693,6 +694,8 @@ export function buildProductionDeps(): AppDeps {
     saasBillingPortalClient: env.stripe.secretKey ? new StripeSaasBillingCheckoutPort(fetch, { secretKey: env.stripe.secretKey }) : undefined,
     saasBillingCustomerLookup: env.stripe.secretKey ? new StripeSaasBillingCustomerLookup(fetch, { secretKey: env.stripe.secretKey }) : undefined,
     saasBillingWebhookSecret: env.stripe.webhookSecret,
+    // Pin de sucursal: proveedor de mapas elegido por GEOCODING_PROVIDER (apagado por omision -> 503 honesto). La llave, si la hay, nunca sale del servidor.
+    geocodificador: crearGeocodificador(leerConfigGeocodificacion(process.env), fetch),
   };
   return cached;
 }

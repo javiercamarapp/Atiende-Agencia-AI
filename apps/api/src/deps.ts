@@ -81,6 +81,7 @@ import type { SuperadminCopilotoDeps } from "./superadmin-copiloto/deps.ts";
 import type { LlmRouteConfig } from "./production/llm-models.ts";
 import type { SaludMetaDeps } from "./salud/salud-meta.ts";
 import type { WhatsAppMetaDeps } from "./whatsapp-credenciales/index.ts";
+import type { Geocodificador } from "./geocodificacion.ts";
 
 /** Todo lo que las rutas necesitan, inyectado — nunca construido dentro de una ruta.
  * En tests, `coreRepo`/`restaurantesRepo`/`hotelesRepo`/`rentasRepo` son los
@@ -663,6 +664,9 @@ export interface AppDeps {
    * "no bloquea", ver su comentario de cabecera), solo pierde ese cruce
    * adicional de defensa en profundidad. */
   readonly saasBillingCustomerLookup?: CustomerLookup | null;
+  /** Pin de sucursal (restaurantes): busqueda de direcciones y direccion de un punto DEL LADO DEL SERVIDOR (`geocodificacion.ts`). `null`/ausente sin
+   *  `GEOCODING_PROVIDER` configurado: `GET .../admin/geocodificar` responde 503 honesto. Opcional (`?:`) para no tocar los fixtures existentes. */
+  readonly geocodificador?: Geocodificador | null;
   /** MFA TOTP del superadmin (packages/db/migrations/0025_...sql, ver
    *  routes/superadmin-mfa.ts). Fabrica por sesion: las funciones que reciben el
    *  resultado de la verificacion se llaman en `withAppSession({ userId: null })`

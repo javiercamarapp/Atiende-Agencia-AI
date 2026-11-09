@@ -128,6 +128,18 @@ antes de salir por cualquier canal. El piso por hora usa Upstash Redis si `UPSTA
 están configuradas (global entre instancias); sin Redis cuenta **por instancia serverless** (el tope real es
 entonces N por hora por instancia). Si Redis falla, el aviso sale (fail-open) en vez de perderse.
 
+## Geocodificación (pin de sucursal en restaurantes)
+
+La búsqueda «dirección o colonia» y la dirección sugerida al mover el pin salen **del servidor** (`apps/api/src/geocodificacion.ts`,
+`GET .../admin/geocodificar[/inverso]`): ninguna llave llega al navegador. Apagada por omisión.
+
+| Variable | Dónde se obtiene | Secreta | Habilita | Sin ella | Arranque |
+|---|---|:-:|---|---|:-:|
+| `GEOCODING_PROVIDER` | Se decide: `nominatim` (OpenStreetMap, sin llave) o `google` (Geocoding API) | No | Elige el proveedor | 503 honesto «no disponible aún»; el panel sigue aceptando coordenadas pegadas de Google Maps | No |
+| `GEOCODING_CONTACT_EMAIL` | Un buzón de operación de Atiende | No | Con `nominatim`: contacto obligatorio por la política de uso de OSM (va en cada consulta) | Con `nominatim`, la geocodificación queda apagada | No |
+| `GEOCODING_BASE_URL` | Solo si se usa un Nominatim propio o compatible (https) | No | Con `nominatim`: cambia el servidor | Se usa `https://nominatim.openstreetmap.org` | No |
+| `GEOCODING_API_KEY` | Google Cloud Console → APIs → Geocoding API (restringirla por API) | Sí | Con `google`: la llave del servidor | Con `google`, la geocodificación queda apagada | No |
+
 ## Stripe (suscripción SaaS de Atiende + cobro a huésped en hoteles)
 
 Dos productos reales y distintos, **misma cuenta/key**:
