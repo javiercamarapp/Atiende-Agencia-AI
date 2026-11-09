@@ -3,6 +3,11 @@
 // cobertura de entrega, número de WhatsApp por sucursal y marcas "no se vende a domicilio".
 // Mismo criterio de `fetchImpl` inyectado que el resto de lib/*.ts (ver admin-client.ts).
 import { deleteJson, fetchJson, sendJson } from "./admin-client.ts";
+import { etiquetasTraducidas, traductorActivo } from "@atiende/ui";
+import type { Clave } from "@atiende/ui";
+import { restaurantesReglas } from "@atiende/ui/i18n/restaurantes/reglas";
+
+const tr = traductorActivo(restaurantesReglas);
 
 export type PropinaPolitica = "nunca" | "siempre" | "solo_tarjeta";
 
@@ -114,7 +119,12 @@ export async function deletePuente(fetchImpl: typeof fetch, apiBaseUrl: string, 
 
 // ---- helpers de formulario (puros, con test) ----
 
-export const NOMBRES_DIAS = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"] as const;
+/** Dom..Sáb en el idioma activo (i18n): cada lectura de un indice traduce; se usa igual que un arreglo (`NOMBRES_DIAS[d]`, `.map`). */
+export const NOMBRES_DIAS: readonly string[] = (() => {
+  const dias: string[] = [];
+  for (let d = 0; d < 7; d++) Object.defineProperty(dias, d, { enumerable: true, get: () => tr(`restaurantes.reglas.dia.${d}` as Clave) });
+  return Object.freeze(dias);
+})();
 
 /** "" -> null (sin mínimo); número >= 0 -> número; cualquier otra cosa -> undefined (inválido). */
 export function parseMontoOpcional(raw: string): number | null | undefined {
@@ -126,10 +136,13 @@ export function parseMontoOpcional(raw: string): number | null | undefined {
 
 /** Texto legible de un turno: "Lun–Vie 12:00 a 01:00 (+1 día)". */
 export function describirTurno(turno: TurnoHorario): string {
-  const dias = turno.dias.length === 7 ? "Todos los días" : turno.dias.map((d) => NOMBRES_DIAS[d]).join(", ");
-  const cruza = turno.cierra <= turno.abre ? " (cierra al día siguiente)" : "";
-  const ultimos = [turno.ultimoPedidoDomicilio ? `último pedido a domicilio ${turno.ultimoPedidoDomicilio}` : null, turno.ultimoPedidoRecoger ? `para recoger ${turno.ultimoPedidoRecoger}` : null].filter((x) => x !== null);
-  return `${dias} ${turno.abre} a ${turno.cierra}${cruza}${ultimos.length > 0 ? `; ${ultimos.join(", ")}` : ""}`;
+  const dias = turno.dias.length === 7 ? tr("restaurantes.reglas.turno.todosLosDias") : turno.dias.map((d) => NOMBRES_DIAS[d]).join(", ");
+  const cruza = turno.cierra <= turno.abre ? tr("restaurantes.reglas.turno.cruza") : "";
+  const ultimos = [
+    turno.ultimoPedidoDomicilio ? tr("restaurantes.reglas.turno.ultimoDomicilio", { hora: turno.ultimoPedidoDomicilio }) : null,
+    turno.ultimoPedidoRecoger ? tr("restaurantes.reglas.turno.ultimoRecoger", { hora: turno.ultimoPedidoRecoger }) : null,
+  ].filter((x) => x !== null);
+  return `${tr("restaurantes.reglas.turno.texto", { dias, abre: turno.abre, cierra: turno.cierra, cruza })}${ultimos.length > 0 ? `; ${ultimos.join(", ")}` : ""}`;
 }
 
 // ---- reporte de colonias ambiguas (X42): solo lectura, GET .../admin/config/colonias-ambiguas ----
@@ -161,13 +174,13 @@ export interface ReporteColoniasAmbiguas {
   readonly filas: readonly FilaColoniaAmbigua[];
 }
 
-export const ETIQUETA_MOTIVO_COLONIA: Readonly<Record<MotivoRevisionColonia, string>> = {
-  ambigua: "Las dos sucursales más cercanas quedan a menos de 1 km",
-  sin_asignar: "Ninguna sucursal la cubre todavía: el agente la pasa a una persona",
-  contradice_distancia: "La sucursal asignada no es la más cercana según el piloto",
-  reasignada_desde_galerias: "La más cercana (Galerías) no reparte: se asignó la siguiente",
-  distancia_de_otra_direccion_de_pensiones: "La distancia del piloto a Pensiones se calculó desde otra dirección",
-};
+/** Etiqueta en el idioma activo (i18n): cada lectura traduce; en espanol, los textos de siempre. */
+export const ETIQUETA_MOTIVO_COLONIA: Readonly<Record<MotivoRevisionColonia, string>> = etiquetasTraducidas<MotivoRevisionColonia>(
+  ["ambigua", "sin_asignar", "contradice_distancia", "reasignada_desde_galerias", "distancia_de_otra_direccion_de_pensiones"],
+  (m) => `restaurantes.reglas.motivo.${m}` as const,
+  restaurantesReglas,
+);
+
 
 export async function fetchColoniasAmbiguas(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string): Promise<ReporteColoniasAmbiguas> {
   return fetchJson<ReporteColoniasAmbiguas>(fetchImpl, `${apiBaseUrl}/v1/restaurantes/${propertyId}/admin/config/colonias-ambiguas`, token);

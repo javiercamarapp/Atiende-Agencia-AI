@@ -2,7 +2,8 @@
 // ("chela", "flautas"); el agente los usa para encontrarlo. Se normalizan igual que en el servidor
 // (admin-catalog.ts::optionalSearchKeywords): minúsculas, sin acentos, espacios colapsados y sin duplicados.
 import { useState } from "react";
-import { FormField, Input, StatusBadge } from "@atiende/ui";
+import { FormField, Input, StatusBadge, useT } from "@atiende/ui";
+import { restaurantesProductos } from "@atiende/ui/i18n/restaurantes/productos";
 import { X } from "lucide-react";
 
 export const MAX_ALIAS = 30;
@@ -24,6 +25,7 @@ export interface AliasChipsProps {
 }
 
 export function AliasChips({ alias, onChange, disabled = false, onBorradorChange }: AliasChipsProps) {
+  const t = useT(restaurantesProductos);
   const [borrador, setBorrador] = useState("");
   const [aviso, setAviso] = useState<string | null>(null);
   const cambiarBorrador = (texto: string) => {
@@ -38,17 +40,17 @@ export function AliasChips({ alias, onChange, disabled = false, onBorradorChange
       const limpio = normalizarAlias(parte);
       if (!limpio) continue;
       if (limpio.length > MAX_ALIAS_LARGO) {
-        setAviso(`Cada alias admite hasta ${MAX_ALIAS_LARGO} caracteres.`);
+        setAviso(t("restaurantes.productos.alias.largo", { max: MAX_ALIAS_LARGO }));
         return false;
       }
       if (!ALIAS_VALIDO.test(limpio)) {
-        setAviso("Usa solo letras, números, espacios, punto o guion.");
+        setAviso(t("restaurantes.productos.alias.invalido"));
         return false;
       }
       if (!alias.includes(limpio) && !nuevos.includes(limpio)) nuevos.push(limpio);
     }
     if (alias.length + nuevos.length > MAX_ALIAS) {
-      setAviso(`Máximo ${MAX_ALIAS} alias por producto.`);
+      setAviso(t("restaurantes.productos.alias.maximo", { max: MAX_ALIAS }));
       return false;
     }
     setAviso(null);
@@ -63,21 +65,21 @@ export function AliasChips({ alias, onChange, disabled = false, onBorradorChange
 
   return (
     <FormField
-      label="Alias o palabras clave"
-      hint="Así lo piden los clientes (ej. «chela» para cerveza). El agente los usa para encontrar este producto. Enter o coma para agregar."
+      label={t("restaurantes.productos.alias.campo")}
+      hint={t("restaurantes.productos.alias.ayuda")}
       error={aviso ?? undefined}
     >
       {(control) => (
       <div className="grid gap-2">
         {alias.length > 0 ? (
-          <ul className="flex flex-wrap gap-1.5" aria-label="Alias del producto">
+          <ul className="flex flex-wrap gap-1.5" aria-label={t("restaurantes.productos.alias.lista")}>
             {alias.map((a) => (
               <li key={a}>
                 <StatusBadge tone="info" dot={false} className="gap-1 pr-1">
                   {a}
                   <button
                     type="button"
-                    aria-label={`Quitar alias ${a}`}
+                    aria-label={t("restaurantes.productos.alias.quitar", { alias: a })}
                     disabled={disabled}
                     onClick={() => onChange(alias.filter((x) => x !== a))}
                     className="inline-flex size-4 items-center justify-center rounded-full hover:bg-info/10 disabled:opacity-50"
@@ -89,11 +91,12 @@ export function AliasChips({ alias, onChange, disabled = false, onBorradorChange
             ))}
           </ul>
         ) : (
-          <p className="text-xs text-muted-foreground">Todavía no tiene alias.</p>
+          <p className="text-xs text-muted-foreground">{t("restaurantes.productos.alias.vacio")}</p>
         )}
         <Input
           {...control}
-          placeholder="Escribe un alias (ej. flautas)"
+          placeholder={t("restaurantes.productos.alias.ph")}
+
           value={borrador}
           disabled={disabled}
           onChange={(e) => {

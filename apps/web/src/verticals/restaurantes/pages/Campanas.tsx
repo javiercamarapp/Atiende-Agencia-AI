@@ -5,7 +5,8 @@
 // Todo viene del API real; sin datos inventados. Sin telefonos ni nombres de clientes en pantalla.
 import { useCallback, useEffect, useState } from "react";
 import { CircleCheck, CircleX, Megaphone } from "lucide-react";
-import { Button, Callout, Card, CardContent, CardHeader, CardTitle, Checkbox, DataTable, EstadoCargando, EstadoError, EstadoVacio, FormField, Input, PageContainer, StatCard, StatusBadge, notify, useConfirm } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, CardHeader, CardTitle, Checkbox, DataTable, EstadoCargando, EstadoError, EstadoVacio, FormField, Input, PageContainer, StatCard, StatusBadge, etiquetasTraducidas, notify, useConfirm, useT } from "@atiende/ui";
+import { restaurantesCampanas } from "@atiende/ui/i18n/restaurantes/campanas";
 import { fechaHoraEsMx } from "../../../lib/formato-fecha.ts";
 import { decidirCampana, ETIQUETA_SEGMENTO, fetchMarketing, guardarConfigMarketing, recompraIncremental } from "../lib/marketing-client.ts";
 import type { CampanaMarketing, ConfigMarketing, EstadoCampana, PanelMarketing } from "../lib/marketing-client.ts";
@@ -15,9 +16,17 @@ import { formatoMxn, pesosACentavos } from "../voz/formato-kpi.ts";
 import type { RestaurantesShellContext } from "../RestaurantesShell.tsx";
 
 const ROLES_CAMPANAS: ReadonlySet<string> = new Set(["owner", "admin"]);
+// Codigos de rol y nombre tecnico de plantilla de Meta: se muestran tal cual en los dos idiomas (no son texto de interfaz).
+const ROL_OWNER = "owner";
+const ROL_ADMIN = "admin";
+const PLANTILLA_EJEMPLO = "reactivacion_promo";
 
 const TONO_ESTADO: Readonly<Record<EstadoCampana, "info" | "success" | "neutral" | "warning">> = { borrador: "info", aprobada: "success", rechazada: "neutral", expirada: "warning" };
-const ETIQUETA_ESTADO: Readonly<Record<EstadoCampana, string>> = { borrador: "Por aprobar", aprobada: "Aprobada", rechazada: "Rechazada", expirada: "Expirada sin decidir" };
+const ETIQUETA_ESTADO: Readonly<Record<EstadoCampana, string>> = etiquetasTraducidas<EstadoCampana>(
+  ["borrador", "aprobada", "rechazada", "expirada"],
+  (e) => `restaurantes.campanas.estado.${e}` as const,
+  restaurantesCampanas,
+);
 
 function centavosAPesos(c: number | null): string {
   return c === null ? "" : (c / 100).toFixed(2);
@@ -29,6 +38,7 @@ function fecha(iso: string): string {
 }
 
 export function CampanasPage({ apiBaseUrl, token, propertyId, role, fetchImpl }: RestaurantesShellContext & { readonly fetchImpl?: typeof fetch }) {
+  const t = useT(restaurantesCampanas);
   const puedeVer = ROLES_CAMPANAS.has(role);
   const f = fetchImpl ?? fetch;
   const [datos, setDatos] = useState<Carga<PanelMarketing>>({ estado: "cargando" });
@@ -46,7 +56,7 @@ export function CampanasPage({ apiBaseUrl, token, propertyId, role, fetchImpl }:
         const panel = await fetchMarketing(f, apiBaseUrl, token, propertyId);
         if (!cancelado) setDatos({ estado: "listo", datos: panel });
       } catch (err) {
-        if (!cancelado) setDatos(desdeError(err, "No se pudieron cargar las campañas."));
+        if (!cancelado) setDatos(desdeError(err, t("restaurantes.campanas.error.cargar")));
       }
     })();
     return () => {
@@ -58,21 +68,21 @@ export function CampanasPage({ apiBaseUrl, token, propertyId, role, fetchImpl }:
   async function decidir(c: CampanaMarketing, accion: "aprobar" | "rechazar") {
     if (accion === "aprobar") {
       const ok = await confirmar({
-        titulo: "Aprobar campaña",
-        descripcion: `Se enviará la promoción ${c.promoCodigo} por WhatsApp a unos ${c.conteo} clientes que dieron su consentimiento (la cifra exacta se recalcula al aprobar, solo con quienes sigan con consentimiento). Costo estimado de Meta (aprox.): ${formatoMxn(c.costoEstimadoCentavos)}. Los mensajes salen en horario de atención.`,
-        confirmar: "Aprobar y enviar",
-        cancelar: "Volver",
+        titulo: t("restaurantes.campanas.aprobarTitulo"),
+        descripcion: t("restaurantes.campanas.aprobarDesc", { codigo: c.promoCodigo, conteo: c.conteo, costo: formatoMxn(c.costoEstimadoCentavos) }),
+        confirmar: t("restaurantes.campanas.aprobarEnviar"),
+        cancelar: t("restaurantes.campanas.volver"),
       });
       if (!ok) return;
     }
     setDecidiendo(c.id);
     try {
       const r = await decidirCampana(f, apiBaseUrl, token, propertyId, c.id, accion);
-      notify.success(r.estado === "aprobada" ? `Campaña aprobada: ${r.encolados} mensajes en cola.` : "Campaña rechazada: no se envió nada.");
+      notify.success(r.estado === "aprobada" ? t("restaurantes.campanas.aprobada", { n: r.encolados }) : t("restaurantes.campanas.rechazada"));
       recargar();
     } catch (err) {
       // El servidor responde "requiere X" (tarifa, plantilla aprobada, WhatsApp conectado, tope mensual): se muestra tal cual.
-      notify.error(err instanceof Error ? err.message : "No se pudo registrar la decisión.");
+      notify.error(err instanceof Error ? err.message : t("restaurantes.campanas.error.decision"));
     } finally {
       setDecidiendo(null);
     }
@@ -82,22 +92,22 @@ export function CampanasPage({ apiBaseUrl, token, propertyId, role, fetchImpl }:
     <PageContainer padding="none">
       <header className="flex min-w-0 items-start justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="font-display truncate text-xl font-semibold">Campañas</h1>
-          <p className="mt-1 truncate text-ui text-muted-foreground">Reactiva a clientes que llevan tiempo sin pedir. Nada se envía hasta que apruebes.</p>
+          <h1 className="font-display truncate text-xl font-semibold">{t("restaurantes.campanas.titulo")}</h1>
+          <p className="mt-1 truncate text-ui text-muted-foreground">{t("restaurantes.campanas.subtitulo")}</p>
         </div>
       </header>
 
       {!puedeVer ? (
         <Callout tone="info">
-          Solo los roles <strong className="text-foreground">owner</strong>/<strong className="text-foreground">admin</strong> con acceso a toda la organización ven las campañas — tu rol actual es <strong className="text-foreground">{role}</strong>.
+          {t("restaurantes.campanas.soloRoles.antes")}<strong className="text-foreground">{ROL_OWNER}</strong>/<strong className="text-foreground">{ROL_ADMIN}</strong>{t("restaurantes.campanas.soloRoles.despues")}<strong className="text-foreground">{role}</strong>.
         </Callout>
       ) : datos.estado === "cargando" ? (
-        <EstadoCargando etiqueta="Cargando campañas…" />
+        <EstadoCargando etiqueta={t("restaurantes.campanas.cargando")} />
       ) : datos.estado === "no_disponible" ? (
         <EstadoVacio
           icon={Megaphone}
-          titulo="Campañas no disponibles todavía"
-          mensaje="Las campañas de reactivación aún no están activas en este negocio (requieren la actualización de base de datos pendiente). Cuando lo estén, aquí verás los borradores para aprobar."
+          titulo={t("restaurantes.campanas.noDisponibleTitulo")}
+          mensaje={t("restaurantes.campanas.noDisponible")}
         />
       ) : datos.estado === "error" ? (
         <EstadoError mensaje={datos.mensaje} onReintentar={recargar} />
@@ -139,29 +149,30 @@ function Contenido({
   readonly fetchImpl: typeof fetch;
 }) {
   const { config, campanas } = panel;
+  const t = useT(restaurantesCampanas);
   const requisitosOk = config.tarifaCentavos !== null && config.plantillaAprobada && config.whatsappConectado;
   return (
     <div className="space-y-2.5" data-testid="campanas">
       <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
-        <StatCard icon={Megaphone} label="Con consentimiento" value={String(config.consentimientosVigentes)} nota="Clientes que aceptaron promociones por WhatsApp" />
-        <StatCard icon={Megaphone} label="Gastado este mes" value={formatoMxn(config.gastadoMesCentavos)} nota={config.topeMensualCentavos === null ? "Sin tope mensual" : `Tope mensual ${formatoMxn(config.topeMensualCentavos)}`} />
-        <StatCard icon={Megaphone} label="Campañas por aprobar" value={String(campanas.filter((c) => c.estado === "borrador").length)} nota="Nada se envía sin tu aprobación" />
+        <StatCard icon={Megaphone} label={t("restaurantes.campanas.kpi.consentimiento")} value={String(config.consentimientosVigentes)} nota={t("restaurantes.campanas.kpi.consentimientoNota")} />
+        <StatCard icon={Megaphone} label={t("restaurantes.campanas.kpi.gastado")} value={formatoMxn(config.gastadoMesCentavos)} nota={config.topeMensualCentavos === null ? t("restaurantes.campanas.kpi.sinTope") : t("restaurantes.campanas.kpi.tope", { monto: formatoMxn(config.topeMensualCentavos) })} />
+        <StatCard icon={Megaphone} label={t("restaurantes.campanas.kpi.porAprobar")} value={String(campanas.filter((c) => c.estado === "borrador").length)} nota={t("restaurantes.campanas.kpi.porAprobarNota")} />
       </div>
 
       <Card>
         <CardHeader className="p-3 pb-2">
-          <CardTitle>Para poder enviar</CardTitle>
+          <CardTitle>{t("restaurantes.campanas.requisitos")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-1.5 p-3 pt-0">
           <ul className="m-0 list-none space-y-1 p-0">
-            <Requisito cumplido={config.activo} texto="Las campañas están activadas." falta="Las campañas están apagadas: actívalas abajo para que se armen borradores." />
-            <Requisito cumplido={config.hayPromocionVigente} texto="Hay una promoción vigente (la campaña nunca inventa descuentos)." falta="Requiere una promoción vigente en Promociones: sin ella no se arma ningún borrador." />
-            <Requisito cumplido={config.tarifaCentavos !== null} texto={`Tarifa por mensaje de Meta: ${formatoMxn(config.tarifaCentavos)}.`} falta="Requiere la tarifa por mensaje de marketing de Meta para mostrar el costo antes de aprobar." />
-            <Requisito cumplido={config.plantillaAprobada} texto={`Plantilla de marketing aprobada por Meta: ${config.plantillaNombre ?? ""}.`} falta="Requiere una plantilla de marketing aprobada por Meta (con 2 variables: nombre y código de la promoción)." />
-            <Requisito cumplido={config.whatsappConectado} texto="WhatsApp conectado." falta="Requiere WhatsApp conectado." />
+            <Requisito cumplido={config.activo} texto={t("restaurantes.campanas.req.activas")} falta={t("restaurantes.campanas.req.activasFalta")} />
+            <Requisito cumplido={config.hayPromocionVigente} texto={t("restaurantes.campanas.req.promo")} falta={t("restaurantes.campanas.req.promoFalta")} />
+            <Requisito cumplido={config.tarifaCentavos !== null} texto={t("restaurantes.campanas.req.tarifa", { monto: formatoMxn(config.tarifaCentavos) })} falta={t("restaurantes.campanas.req.tarifaFalta")} />
+            <Requisito cumplido={config.plantillaAprobada} texto={t("restaurantes.campanas.req.plantilla", { nombre: config.plantillaNombre ?? "" })} falta={t("restaurantes.campanas.req.plantillaFalta")} />
+            <Requisito cumplido={config.whatsappConectado} texto={t("restaurantes.campanas.req.whatsapp")} falta={t("restaurantes.campanas.req.whatsappFalta")} />
           </ul>
           {!requisitosOk ? (
-            <p className="m-0 text-xs text-muted-foreground">Mientras falte algo de lo anterior, los borradores se arman pero no se pueden aprobar: el envío queda como «requiere…».</p>
+            <p className="m-0 text-xs text-muted-foreground">{t("restaurantes.campanas.req.mientras")}</p>
           ) : null}
         </CardContent>
       </Card>
@@ -170,26 +181,26 @@ function Contenido({
 
       <Card>
         <CardHeader className="p-3 pb-2">
-          <CardTitle>Campañas</CardTitle>
+          <CardTitle>{t("restaurantes.campanas.titulo")}</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           <DataTable<CampanaMarketing>
-            etiqueta="Campañas de reactivación"
+            etiqueta={t("restaurantes.campanas.tabla")}
             filas={[...campanas]}
             obtenerId={(c) => c.id}
             atributosFila={(c) => ({ "data-campana": c.id, "data-estado": c.estado })}
-            vacio={{ titulo: "Sin campañas", mensaje: "Cuando haya clientes con consentimiento que lleven días sin pedir, una promoción vigente y las campañas estén activas, aquí aparecerá el borrador." }}
+            vacio={{ titulo: t("restaurantes.campanas.sinCampanas"), mensaje: t("restaurantes.campanas.sinCampanasMensaje") }}
             paginacion={false}
             columnas={[
-              { id: "segmento", encabezado: "Segmento", principal: true, celda: (c) => ETIQUETA_SEGMENTO[c.segmento] },
-              { id: "estado", encabezado: "Estado", celda: (c) => <StatusBadge tone={TONO_ESTADO[c.estado]}>{ETIQUETA_ESTADO[c.estado]}</StatusBadge> },
-              { id: "promo", encabezado: "Promoción", celda: (c) => `${c.promoNombre} (${c.promoCodigo})` },
-              { id: "clientes", encabezado: "Clientes", alinear: "right", className: "tabular-nums", celda: (c) => (c.estado === "aprobada" ? (c.encolados ?? 0) : c.conteo) },
-              { id: "costo", encabezado: "Costo estimado", alinear: "right", className: "tabular-nums", celda: (c) => formatoMxn(c.costoEstimadoCentavos) },
-              { id: "creada", encabezado: "Creada", alinear: "right", celda: (c) => fecha(c.creadaAt) },
+              { id: "segmento", encabezado: t("restaurantes.campanas.col.segmento"), principal: true, celda: (c) => ETIQUETA_SEGMENTO[c.segmento] },
+              { id: "estado", encabezado: t("restaurantes.campanas.col.estado"), celda: (c) => <StatusBadge tone={TONO_ESTADO[c.estado]}>{ETIQUETA_ESTADO[c.estado]}</StatusBadge> },
+              { id: "promo", encabezado: t("restaurantes.campanas.col.promo"), celda: (c) => `${c.promoNombre} (${c.promoCodigo})` },
+              { id: "clientes", encabezado: t("restaurantes.campanas.col.clientes"), alinear: "right", className: "tabular-nums", celda: (c) => (c.estado === "aprobada" ? (c.encolados ?? 0) : c.conteo) },
+              { id: "costo", encabezado: t("restaurantes.campanas.col.costo"), alinear: "right", className: "tabular-nums", celda: (c) => formatoMxn(c.costoEstimadoCentavos) },
+              { id: "creada", encabezado: t("restaurantes.campanas.col.creada"), alinear: "right", celda: (c) => fecha(c.creadaAt) },
               {
                 id: "resultado",
-                encabezado: "Recompra a 7 días",
+                encabezado: t("restaurantes.campanas.col.recompra"),
                 celda: (c) => <Resultado c={c} />,
               },
               {
@@ -199,11 +210,11 @@ function Contenido({
                 celda: (c) =>
                   c.estado === "borrador" ? (
                     <div className="flex justify-end gap-1.5">
-                      <Button type="button" size="sm" variant="outline" disabled={decidiendo !== null} onClick={() => onDecidir(c, "rechazar")} aria-label={`Rechazar la campaña de ${ETIQUETA_SEGMENTO[c.segmento]}`}>
-                        Rechazar
+                      <Button type="button" size="sm" variant="outline" disabled={decidiendo !== null} onClick={() => onDecidir(c, "rechazar")} aria-label={t("restaurantes.campanas.rechazarAria", { segmento: ETIQUETA_SEGMENTO[c.segmento] })}>
+                        {t("restaurantes.campanas.rechazar")}
                       </Button>
-                      <Button type="button" size="sm" loading={decidiendo === c.id} disabled={decidiendo !== null} onClick={() => onDecidir(c, "aprobar")} aria-label={`Aprobar la campaña de ${ETIQUETA_SEGMENTO[c.segmento]}`}>
-                        Aprobar
+                      <Button type="button" size="sm" loading={decidiendo === c.id} disabled={decidiendo !== null} onClick={() => onDecidir(c, "aprobar")} aria-label={t("restaurantes.campanas.aprobarAria", { segmento: ETIQUETA_SEGMENTO[c.segmento] })}>
+                        {t("restaurantes.campanas.aprobar")}
                       </Button>
                     </div>
                   ) : null,
@@ -217,15 +228,16 @@ function Contenido({
 }
 
 function Resultado({ c }: { readonly c: CampanaMarketing }) {
+  const t = useT(restaurantesCampanas);
   if (c.estado !== "aprobada") return <span className="text-muted-foreground">—</span>;
   const inc = recompraIncremental(c);
-  const tratados = `${c.recompraTratados} de ${c.encolados ?? 0} con mensaje`;
-  const control = `${c.recompraControl} de ${c.conteoControl} sin mensaje`;
+  const tratados = t("restaurantes.campanas.res.tratados", { recompra: c.recompraTratados, total: c.encolados ?? 0 });
+  const control = t("restaurantes.campanas.res.control", { recompra: c.recompraControl, total: c.conteoControl });
   return (
     <div className="text-xs" data-testid={`resultado-${c.id}`}>
       <div>{tratados}</div>
       <div className="text-muted-foreground">{control}</div>
-      <div className="font-medium">{inc === null ? (c.ventanaCerrada ? "Sin grupo de control para comparar" : "Ventana de 7 días en curso") : `Incremental: ${inc > 0 ? "+" : ""}${inc} puntos`}</div>
+      <div className="font-medium">{inc === null ? t(c.ventanaCerrada ? "restaurantes.campanas.res.sinControl" : "restaurantes.campanas.res.enCurso") : t("restaurantes.campanas.res.incremental", { signo: inc > 0 ? "+" : "", puntos: inc })}</div>
     </div>
   );
 }
@@ -245,6 +257,7 @@ function ConfigForm({
   readonly propertyId: string;
   readonly fetchImpl: typeof fetch;
 }) {
+  const t = useT(restaurantesCampanas);
   const [activo, setActivo] = useState(config.activo);
   const [tarifa, setTarifa] = useState(centavosAPesos(config.tarifaCentavos));
   const [tope, setTope] = useState(centavosAPesos(config.topeMensualCentavos));
@@ -258,18 +271,18 @@ function ConfigForm({
     const tarifaCentavos = pesosACentavos(tarifa);
     const topeCentavos = pesosACentavos(tope);
     const minimoN = Number(minimo);
-    if (tarifaCentavos === undefined || (tarifaCentavos !== null && tarifaCentavos > 10000)) return setError("La tarifa por mensaje debe ser un monto en pesos entre $0.01 y $100.00 (o vacío si aún no la conoces).");
-    if (topeCentavos === undefined) return setError("El tope mensual debe ser un monto en pesos válido (o vacío para no poner tope).");
-    if (!Number.isInteger(minimoN) || minimoN < 1 || minimoN > 10000) return setError("El mínimo de clientes por campaña debe ser un entero entre 1 y 10,000.");
-    if (plantilla.trim() !== "" && !/^[a-z0-9_]{1,255}$/.test(plantilla.trim())) return setError("El nombre de la plantilla usa minúsculas, dígitos y guion bajo, igual que en Meta.");
+    if (tarifaCentavos === undefined || (tarifaCentavos !== null && tarifaCentavos > 10000)) return setError(t("restaurantes.campanas.cfg.errorTarifa"));
+    if (topeCentavos === undefined) return setError(t("restaurantes.campanas.cfg.errorTope"));
+    if (!Number.isInteger(minimoN) || minimoN < 1 || minimoN > 10000) return setError(t("restaurantes.campanas.cfg.errorMinimo"));
+    if (plantilla.trim() !== "" && !/^[a-z0-9_]{1,255}$/.test(plantilla.trim())) return setError(t("restaurantes.campanas.cfg.errorPlantilla"));
     setError(null);
     setGuardando(true);
     try {
       await guardarConfigMarketing(fetchImpl, apiBaseUrl, token, propertyId, { activo, tarifaCentavos, topeMensualCentavos: topeCentavos, minimoSegmento: minimoN, plantillaNombre: plantilla.trim() === "" ? null : plantilla.trim(), plantillaIdioma: config.plantillaIdioma });
-      notify.success("Configuración de campañas guardada.");
+      notify.success(t("restaurantes.campanas.cfg.guardada"));
       onGuardado();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo guardar la configuración.");
+      setError(err instanceof Error ? err.message : t("restaurantes.campanas.cfg.errorGuardar"));
     } finally {
       setGuardando(false);
     }
@@ -278,19 +291,20 @@ function ConfigForm({
   return (
     <Card>
       <CardHeader className="p-3 pb-2">
-        <CardTitle>Configuración</CardTitle>
+        <CardTitle>{t("restaurantes.campanas.cfg.titulo")}</CardTitle>
       </CardHeader>
       <CardContent className="p-3 pt-0">
         <form onSubmit={guardar} className="space-y-2.5" data-testid="campanas-config">
           <label className="flex items-start gap-2 text-sm">
-            <Checkbox checked={activo} onChange={(e) => setActivo(e.target.checked)} aria-label="Activar campañas de reactivación" />
-            <span>Activar campañas de reactivación (se arman borradores a diario; nada se envía sin aprobación).</span>
+            <Checkbox checked={activo} onChange={(e) => setActivo(e.target.checked)} aria-label={t("restaurantes.campanas.cfg.activarAria")} />
+            <span>{t("restaurantes.campanas.cfg.activar")}</span>
           </label>
           <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-            <FormField label="Tarifa por mensaje de Meta (MXN)">{(p) => <Input {...p} inputMode="decimal" value={tarifa} onChange={(e) => setTarifa(e.target.value)} placeholder="0.80" />}</FormField>
-            <FormField label="Tope mensual de marketing (MXN, opcional)">{(p) => <Input {...p} inputMode="decimal" value={tope} onChange={(e) => setTope(e.target.value)} placeholder="Sin tope" />}</FormField>
-            <FormField label="Mínimo de clientes por campaña">{(p) => <Input {...p} inputMode="numeric" value={minimo} onChange={(e) => setMinimo(e.target.value)} />}</FormField>
-            <FormField label="Plantilla de marketing aprobada en Meta">{(p) => <Input {...p} value={plantilla} onChange={(e) => setPlantilla(e.target.value)} placeholder="reactivacion_promo" />}</FormField>
+            <FormField label={t("restaurantes.campanas.cfg.tarifa")}>{(p) => <Input {...p} inputMode="decimal" value={tarifa} onChange={(e) => setTarifa(e.target.value)} placeholder="0.80" />}</FormField>
+            <FormField label={t("restaurantes.campanas.cfg.tope")}>{(p) => <Input {...p} inputMode="decimal" value={tope} onChange={(e) => setTope(e.target.value)} placeholder={t("restaurantes.campanas.cfg.sinTope")} />}</FormField>
+            <FormField label={t("restaurantes.campanas.cfg.minimo")}>{(p) => <Input {...p} inputMode="numeric" value={minimo} onChange={(e) => setMinimo(e.target.value)} />}</FormField>
+            <FormField label={t("restaurantes.campanas.cfg.plantilla")}>{(p) => <Input {...p} value={plantilla} onChange={(e) => setPlantilla(e.target.value)} placeholder={PLANTILLA_EJEMPLO}
+ />}</FormField>
           </div>
           {error ? (
             <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-2 text-sm text-destructive">
@@ -298,7 +312,8 @@ function ConfigForm({
             </div>
           ) : null}
           <Button type="submit" size="sm" loading={guardando}>
-            Guardar configuración
+            {t("restaurantes.campanas.cfg.guardar")}
+
           </Button>
         </form>
       </CardContent>

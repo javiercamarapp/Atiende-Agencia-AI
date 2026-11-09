@@ -4,7 +4,8 @@
 // bitacora de auditoria; aqui el interruptor se deshabilita para quien no puede (cosmetico) y se explica por que.
 import { useCallback, useEffect, useState } from "react";
 import { Copy } from "lucide-react";
-import { Button, Switch, notify, useConfirm } from "@atiende/ui";
+import { Button, Switch, notify, useConfirm, useT } from "@atiende/ui";
+import { restaurantesSucursales } from "@atiende/ui/i18n/restaurantes/sucursales";
 import { fetchInterruptorAgenteWhatsapp, updateInterruptorAgenteWhatsapp } from "../lib/conocimiento-client.ts";
 import { fetchVozConfig, updateVozConfig } from "../lib/voz-client.ts";
 import type { VozConfig } from "../lib/voz-client.ts";
@@ -22,6 +23,7 @@ export interface ControlesSucursalProps {
 }
 
 export function ControlesSucursal({ apiBaseUrl, token, propertyId, branchId, branchName, puedeCambiar }: ControlesSucursalProps) {
+  const t = useT(restaurantesSucursales);
   const { confirmar, dialogo } = useConfirm();
   const [wa, setWa] = useState<Estado<{ disponible: boolean; activo: boolean }>>({ fase: "cargando" });
   const [voz, setVoz] = useState<Estado<VozConfig | null>>({ fase: "cargando" });
@@ -35,11 +37,11 @@ export function ControlesSucursal({ apiBaseUrl, token, propertyId, branchId, bra
     await Promise.all([
       fetchInterruptorAgenteWhatsapp(fetch, apiBaseUrl, token, propertyId, branchId).then(
         (v) => setWa({ fase: "listo", valor: { disponible: v.disponible, activo: v.agenteActivo } }),
-        (e) => setWa({ fase: "error", mensaje: e instanceof Error ? e.message : "No se pudo leer el agente de WhatsApp." }),
+        (e) => setWa({ fase: "error", mensaje: e instanceof Error ? e.message : t("restaurantes.sucursales.ctrl.errorWa") }),
       ),
       fetchVozConfig(fetch, apiBaseUrl, token, branchId).then(
         (v) => setVoz({ fase: "listo", valor: v }),
-        (e) => setVoz({ fase: "error", mensaje: e instanceof Error ? e.message : "No se pudo leer el agente de voz." }),
+        (e) => setVoz({ fase: "error", mensaje: e instanceof Error ? e.message : t("restaurantes.sucursales.ctrl.errorVoz") }),
       ),
     ]);
   }, [apiBaseUrl, token, propertyId, branchId, puedeCambiar]);
@@ -51,11 +53,11 @@ export function ControlesSucursal({ apiBaseUrl, token, propertyId, branchId, bra
   async function cambiarWhatsapp(activo: boolean) {
     if (!activo) {
       const ok = await confirmar({
-        titulo: `Apagar el agente de WhatsApp de ${branchName}`,
-        descripcion: "El agente dejará de contestar los mensajes de esta sucursal: el cliente recibirá un aviso de que lo atenderá una persona y su conversación llegará a Conversaciones. ¿Apagarlo?",
+        titulo: t("restaurantes.sucursales.ctrl.apagarWaTitulo", { sucursal: branchName }),
+        descripcion: t("restaurantes.sucursales.ctrl.apagarWaDesc"),
         tono: "danger",
-        confirmar: "Apagar agente",
-        cancelar: "Volver",
+        confirmar: t("restaurantes.sucursales.ctrl.apagarAgente"),
+        cancelar: t("restaurantes.sucursales.ctrl.volver"),
       });
       if (!ok) return;
     }
@@ -63,9 +65,9 @@ export function ControlesSucursal({ apiBaseUrl, token, propertyId, branchId, bra
     try {
       const v = await updateInterruptorAgenteWhatsapp(fetch, apiBaseUrl, token, propertyId, branchId, activo);
       setWa({ fase: "listo", valor: { disponible: v.disponible, activo: v.agenteActivo } });
-      notify.success(activo ? `Agente de WhatsApp encendido en ${branchName}.` : `Agente de WhatsApp apagado en ${branchName}.`);
+      notify.success(t(activo ? "restaurantes.sucursales.ctrl.waEncendido" : "restaurantes.sucursales.ctrl.waApagado", { sucursal: branchName }));
     } catch (e) {
-      notify.error(e instanceof Error ? e.message : "No se pudo cambiar el agente de WhatsApp.");
+      notify.error(e instanceof Error ? e.message : t("restaurantes.sucursales.ctrl.errorCambiarWa"));
     } finally {
       setGuardando(null);
     }
@@ -75,11 +77,11 @@ export function ControlesSucursal({ apiBaseUrl, token, propertyId, branchId, bra
     if (voz.fase !== "listo" || voz.valor === null) return;
     if (!habilitado) {
       const ok = await confirmar({
-        titulo: `Apagar el agente de voz de ${branchName}`,
-        descripcion: "El agente dejará de contestar las llamadas de esta sucursal. ¿Apagarlo?",
+        titulo: t("restaurantes.sucursales.ctrl.apagarVozTitulo", { sucursal: branchName }),
+        descripcion: t("restaurantes.sucursales.ctrl.apagarVozDesc"),
         tono: "danger",
-        confirmar: "Apagar agente",
-        cancelar: "Volver",
+        confirmar: t("restaurantes.sucursales.ctrl.apagarAgente"),
+        cancelar: t("restaurantes.sucursales.ctrl.volver"),
       });
       if (!ok) return;
     }
@@ -89,15 +91,15 @@ export function ControlesSucursal({ apiBaseUrl, token, propertyId, branchId, bra
       const fresca = await fetchVozConfig(fetch, apiBaseUrl, token, branchId);
       if (fresca === null) {
         setVoz({ fase: "listo", valor: null });
-        notify.error("El agente de voz ya no tiene configuración guardada. Configúralo en Agente de voz.");
+        notify.error(t("restaurantes.sucursales.ctrl.vozSinConfig"));
         return;
       }
       // updateVozConfig arma el cuerpo solo con campos editables (habilitado, proveedor, voz, comportamiento, saludo): nada de solo lectura.
       const nueva = await updateVozConfig(fetch, apiBaseUrl, token, branchId, { ...fresca, habilitado });
       setVoz({ fase: "listo", valor: nueva });
-      notify.success(habilitado ? `Agente de voz encendido en ${branchName}.` : `Agente de voz apagado en ${branchName}.`);
+      notify.success(t(habilitado ? "restaurantes.sucursales.ctrl.vozEncendido" : "restaurantes.sucursales.ctrl.vozApagado", { sucursal: branchName }));
     } catch (e) {
-      notify.error(e instanceof Error ? e.message : "No se pudo cambiar el agente de voz.");
+      notify.error(e instanceof Error ? e.message : t("restaurantes.sucursales.ctrl.errorCambiarVoz"));
     } finally {
       setGuardando(null);
     }
@@ -106,9 +108,9 @@ export function ControlesSucursal({ apiBaseUrl, token, propertyId, branchId, bra
   async function copiarId() {
     try {
       await navigator.clipboard.writeText(branchId);
-      notify.success("ID de la sucursal copiado.");
+      notify.success(t("restaurantes.sucursales.ctrl.idCopiado"));
     } catch {
-      notify.error("No se pudo copiar el ID. Selecciónalo y cópialo a mano.");
+      notify.error(t("restaurantes.sucursales.ctrl.errorCopiar"));
     }
   }
 
@@ -121,40 +123,41 @@ export function ControlesSucursal({ apiBaseUrl, token, propertyId, branchId, bra
       <div className="flex items-center gap-2">
         <Switch
           id={`ctrl-voz-${branchId}`}
-          aria-label={`Agente de voz activo, ${branchName}`}
+          aria-label={t("restaurantes.sucursales.ctrl.vozActivo", { sucursal: branchName })}
           checked={voz.fase === "listo" && voz.valor !== null && voz.valor.habilitado}
           disabled={voz.fase !== "listo" || vozSinConfig || guardando !== null}
           onCheckedChange={(v) => void cambiarVoz(v)}
         />
         <label htmlFor={`ctrl-voz-${branchId}`} className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          Voz
+          {t("restaurantes.sucursales.ctrl.voz")}
         </label>
-        {voz.fase === "error" && <span role="status" aria-live="polite" className="text-xs text-danger">No se pudo leer</span>}
-        {vozSinConfig && <span role="status" aria-live="polite" className="text-xs text-muted-foreground">Sin configurar</span>}
+        {voz.fase === "error" && <span role="status" aria-live="polite" className="text-xs text-danger">{t("restaurantes.sucursales.ctrl.noSePudoLeer")}</span>}
+        {vozSinConfig && <span role="status" aria-live="polite" className="text-xs text-muted-foreground">{t("restaurantes.sucursales.ctrl.sinConfigurar")}</span>}
       </div>
       <div className="flex items-center gap-2">
         <Switch
           id={`ctrl-wa-${branchId}`}
-          aria-label={`Agente de WhatsApp activo, ${branchName}`}
+          aria-label={t("restaurantes.sucursales.ctrl.waActivo", { sucursal: branchName })}
           checked={wa.fase === "listo" && wa.valor.activo}
           disabled={wa.fase !== "listo" || waNoDisponible || guardando !== null}
           onCheckedChange={(v) => void cambiarWhatsapp(v)}
         />
         <label htmlFor={`ctrl-wa-${branchId}`} className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          WhatsApp
+          {t("restaurantes.sucursales.ctrl.whatsapp")}
         </label>
-        {wa.fase === "error" && <span role="status" aria-live="polite" className="text-xs text-danger">No se pudo leer</span>}
-        {waNoDisponible && <span role="status" aria-live="polite" className="text-xs text-muted-foreground">No disponible aún</span>}
+        {wa.fase === "error" && <span role="status" aria-live="polite" className="text-xs text-danger">{t("restaurantes.sucursales.ctrl.noSePudoLeer")}</span>}
+        {waNoDisponible && <span role="status" aria-live="polite" className="text-xs text-muted-foreground">{t("restaurantes.sucursales.ctrl.noDisponible")}</span>}
       </div>
       {(wa.fase === "error" || voz.fase === "error") && (
         <Button type="button" variant="link" size="xs" onClick={() => void cargar()}>
-          Volver a leer agentes
+          {t("restaurantes.sucursales.ctrl.volverALeer")}
         </Button>
       )}
       </>)}
-      <Button type="button" variant="ghost" size="xs" onClick={() => void copiarId()} aria-label={`Copiar ID de ${branchName}`}>
+      <Button type="button" variant="ghost" size="xs" onClick={() => void copiarId()} aria-label={t("restaurantes.sucursales.ctrl.copiarIdAria", { sucursal: branchName })}>
         <Copy aria-hidden="true" />
-        Copiar ID
+        {t("restaurantes.sucursales.ctrl.copiarId")}
+
       </Button>
       {dialogo}
     </div>
