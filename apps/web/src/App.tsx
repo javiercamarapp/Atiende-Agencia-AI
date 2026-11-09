@@ -81,6 +81,7 @@ const SuperAdminModelOpsPage = cargaPerezosa(() => import("./superadmin/pages/Mo
 const PrivacidadOrganizacionPage = cargaPerezosa(() => import("./pages/PrivacidadOrganizacion.tsx"), "PrivacidadOrganizacionPage");
 const SuperAdminCostosFacturacionPage = cargaPerezosa(() => import("./superadmin/pages/CostosFacturacion.tsx"), "SuperAdminCostosFacturacionPage");
 const SuperAdminEjecutivoPage = cargaPerezosa(() => import("./superadmin/pages/Ejecutivo.tsx"), "SuperAdminEjecutivoPage");
+const SuperAdminCfoPlataformaPage = cargaPerezosa(() => import("./superadmin/pages/CfoPlataforma.tsx"), "SuperAdminCfoPlataformaPage");
 const SuperAdminZonaCfoPage = cargaPerezosa(() => import("./superadmin/pages/ZonaCfo.tsx"), "SuperAdminZonaCfoPage");
 const SuperAdminPlanesPage = cargaPerezosa(() => import("./superadmin/pages/Planes.tsx"), "SuperAdminPlanesPage");
 const NotificacionesPagina = cargaPerezosa(() => import("./components/NotificacionesPagina.tsx"), "NotificacionesPagina");
@@ -553,6 +554,11 @@ function SuperAdminModelOpsRoute() {
 function SuperAdminEjecutivoRoute() {
   const ctx = useSuperAdminCtx();
   return <SuperAdminEjecutivoPage {...ctx} />;
+}
+
+function SuperAdminCfoPlataformaRoute() {
+  const ctx = useSuperAdminCtx();
+  return <SuperAdminCfoPlataformaPage {...ctx} />;
 }
 
 function SuperAdminZonaCfoRoute() {
@@ -1158,6 +1164,7 @@ export function App() {
           <Route path="/superadmin/agente-whatsapp" element={<SuperAdminAgenteWhatsappRoute />} />
           <Route path="/superadmin/model-ops" element={<SuperAdminModelOpsRoute />} />
           <Route path="/superadmin/ejecutivo" element={<SuperAdminEjecutivoRoute />} />
+          <Route path="/superadmin/cfo-plataforma" element={<SuperAdminCfoPlataformaRoute />} />
           <Route path="/superadmin/zona-cfo" element={<SuperAdminZonaCfoRoute />} />
           <Route path="/superadmin/costos-facturacion" element={<SuperAdminCostosFacturacionRoute />} />
           <Route path="/superadmin/planes" element={<SuperAdminPlanesRoute />} />

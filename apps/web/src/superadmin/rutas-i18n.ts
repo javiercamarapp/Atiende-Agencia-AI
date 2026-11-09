@@ -18,6 +18,7 @@ export const CLAVE_RUTA_SUPERADMIN: Readonly<Record<string, Clave>> = {
   "/superadmin/costos-facturacion|Costos y facturación": "nav.costosFacturacion",
   "/superadmin/consumo-ia|Consumo de IA": "nav.consumoIa",
   "/superadmin/ejecutivo|Ejecutivo / Board": "nav.ejecutivo",
+  "/superadmin/cfo-plataforma|CFO de la plataforma": "nav.cfoPlataforma",
   "/superadmin/integraciones|Integraciones": "nav.integraciones",
   "/superadmin/seguridad|Seguridad (MFA)": "nav.seguridadMfa",
   "/superadmin/impersonacion|Impersonación": "nav.impersonacion",

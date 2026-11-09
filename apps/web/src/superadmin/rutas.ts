@@ -23,6 +23,7 @@ import {
   DollarSign,
   FileSearch,
   KeyRound,
+  Landmark,
   LayoutGrid,
   LineChart,
   ListChecks,
@@ -84,6 +85,8 @@ export const NEGOCIO: readonly RutaSuperadmin[] = [
   { to: "/superadmin/costos-facturacion", label: "Costos y facturación", icon: Coins },
   { to: "/superadmin/consumo-ia", label: "Consumo de IA", icon: DollarSign },
   { to: "/superadmin/ejecutivo", label: "Ejecutivo / Board", icon: LineChart },
+  // CFO de la plataforma (0085): economia por cliente, metricas SaaS, comparativos y supuestos del dueño.
+  { to: "/superadmin/cfo-plataforma", label: "CFO de la plataforma", icon: Landmark },
 ];
 
 export const PLATAFORMA: readonly RutaSuperadmin[] = [{ to: "/superadmin/integraciones", label: "Integraciones", icon: Plug }];

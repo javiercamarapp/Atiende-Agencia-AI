@@ -361,6 +361,8 @@ export const ACTIVIDAD_POR_ROL: Readonly<Record<string, ActividadLlm>> = {
   [REPORTE_REDACCION_FINANCIERO_ROLE]: "reporte_redaccion",
   [REPORTE_REDACCION_GENERAL_ROLE]: "reporte_redaccion",
   "plataforma:resumen_diario": "resumen_diario",
+  // CFO de la plataforma: el modelo solo explica y prioriza hechos ya calculados (apps/api/src/cfo/recomendaciones.ts).
+  "plataforma:recomendaciones_cfo": "reporte_analisis_financiero",
   [ENRUTADOR_TURNO_ROLE]: "tareas_cortas",
   [COMPUERTA_ESCALAMIENTO_ROLE]: "tareas_cortas",
   [TITULOS_RESUMENES_ROLE]: "tareas_cortas",

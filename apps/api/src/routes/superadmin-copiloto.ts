@@ -292,7 +292,10 @@ export function superadminCopilotoRoutes(deps: AppDeps): Hono<CoreAuthHonoEnv> {
       deps,
       async (turnDb, onEvento, signal) => {
         const fuentes = fuentesDe(turnDb, callerId);
-        const catalogo = buildCatalogoPlataforma(fuentes, scope, { topeCopilotoMicroUsd: tope(), acciones: accionesDe(callerId, fuentes) });
+        // `?ambito=finanzas`: «Pregúntale a tus datos» del CFO de la plataforma, limitado a las herramientas financieras (cada una exige step-up y
+        // deja fila en la bitacora de la zona CFO, igual que siempre).
+        const soloFinanzas = c.req.query("ambito") === "finanzas";
+        const catalogo = buildCatalogoPlataforma(fuentes, scope, { topeCopilotoMicroUsd: tope(), acciones: soloFinanzas ? undefined : accionesDe(callerId, fuentes), soloFinanzas });
         const sink = config.audit?.(turnDb) ?? new PostgresPlataformaAuditSink(turnDb);
         const motor = await runDataChatTurn({
           catalog: catalogo,

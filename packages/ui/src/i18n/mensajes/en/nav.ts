@@ -126,6 +126,7 @@ export const navEn: Traduccion<typeof nav> = {
   "nav.costosFacturacion": "Costs & billing",
   "nav.consumoIa": "AI usage",
   "nav.ejecutivo": "Executive / Board",
+  "nav.cfoPlataforma": "Platform CFO",
   "nav.plataforma": "Platform",
   "nav.integraciones": "Integrations",
   "nav.seguridadMfa": "Security (MFA)",

@@ -51,6 +51,9 @@ export const SENSITIVE_ROUTES: readonly SensitiveRoute[] = [
   { method: "POST", pattern: /^\/superadmin\/organizaciones\/[^/]+\/propiedades$/, label: "dar de alta una sucursal o propiedad de una organizacion" },
   { method: "PUT", pattern: /^\/superadmin\/costos\/tipo-cambio$/, label: "cambiar el tipo de cambio del reporte de costos" },
   { method: "PUT", pattern: /^\/superadmin\/pyl\/infra$/, label: "capturar la infraestructura compartida del P&L" },
+  // CFO de la plataforma (0085): un costo unitario, un umbral o una captura del dueño mueven margen, burn y alertas.
+  { method: "PUT", pattern: /^\/superadmin\/cfo\/supuestos$/, label: "cambiar un supuesto de costo unitario o un umbral del CFO" },
+  { method: "PUT", pattern: /^\/superadmin\/cfo\/capturas$/, label: "capturar gasto fijo, marketing, caja o presupuesto del CFO" },
   { method: "PUT", pattern: /^\/superadmin\/planes\/[^/]+$/, label: "editar un plan del catalogo" },
   { method: "PUT", pattern: /^\/superadmin\/planes\/[^/]+\/limites\/[^/]+$/, label: "fijar un limite de plan" },
   { method: "PUT", pattern: /^\/superadmin\/planes\/[^/]+\/tarifa$/, label: "fijar la tarifa medida de un plan" },
@@ -66,6 +69,9 @@ export const SENSITIVE_ROUTES: readonly SensitiveRoute[] = [
   { method: "POST", pattern: /^\/superadmin\/contratos\/[^/]+\/enmiendas$/, label: "enmendar el contrato de una organizacion" },
   // Zona CFO (SA-41): exportar datos financieros, asignar o retirar el rol `finanzas` y leer la bitacora de consultas.
   { method: "GET", pattern: /^\/superadmin\/pyl\/export\.csv$/, label: "exportar el P&L en CSV" },
+  { method: "GET", pattern: /^\/superadmin\/cfo\/cockpit\/export\.csv$/, label: "exportar la economia por cliente del CFO en CSV" },
+  { method: "GET", pattern: /^\/superadmin\/cfo\/cockpit\/export\.xlsx$/, label: "exportar el CFO de la plataforma en Excel" },
+  { method: "GET", pattern: /^\/superadmin\/cfo\/cockpit\/informe\.pdf$/, label: "descargar el resumen mensual de inversionistas" },
   { method: "PUT", pattern: /^\/superadmin\/zona-cfo\/roles\/[^/]+$/, label: "asignar o retirar el rol finanzas" },
   { method: "GET", pattern: /^\/superadmin\/zona-cfo\/bitacora$/, label: "leer la bitacora de consultas financieras" },
   { method: "GET", pattern: /^\/superadmin\/zona-cfo\/roles$/, label: "listar los roles de la zona CFO" },

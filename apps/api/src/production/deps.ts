@@ -95,6 +95,7 @@ import {
   PostgresImpersonationRepository,
   PostgresMfaRepository,
   PostgresCfoRepository,
+  PostgresCfoCockpitRepository,
   PostgresPylRepository,
   PostgresCfoZoneRepository,
   PostgresAgentRunRepository,
@@ -152,6 +153,7 @@ import {
   buildProductionLlmGateway,
   buildResumenDiarioLlmGateway,
   buildSuperadminCopilotoLlmGateway,
+  buildRecomendacionesCfoLlmGateway,
   loadLlmModelsConfig,
   CITAS_WHATSAPP_AGENT_ESCALATED_ROLE,
   CITAS_WHATSAPP_AGENT_ROLE,
@@ -364,6 +366,8 @@ export function buildProductionDeps(): AppDeps {
 
   // Gateway DEDICADO del Copiloto de superadmin (CHAT-16): gasto de plataforma, nunca de una organizacion (ver `./llm-gateway.ts`).
   const superadminCopilotoLlmGateway = buildSuperadminCopilotoLlmGateway(env, engine, gatewayKillSwitch);
+  // Gateway DEDICADO de las recomendaciones del CFO de la plataforma (gasto de plataforma; ver `./llm-gateway.ts`).
+  const recomendacionesCfoLlmGateway = buildRecomendacionesCfoLlmGateway(env, gatewayKillSwitch);
 
   // Dispatcher real de WhatsApp saliente — `undefined` si `WHATSAPP_ACCESS_TOKEN` no
   // está configurado (ver env.ts), mismo criterio fail-closed que `llmGateway`
@@ -652,6 +656,7 @@ export function buildProductionDeps(): AppDeps {
     cobroStripeRepo: (db) => new PostgresCobroStripeRepository(db),
     cfoRepo: (db) => new PostgresCfoRepository(db),
     pylRepo: (db) => new PostgresPylRepository(db),
+    cfoCockpitRepo: (db) => new PostgresCfoCockpitRepository(db),
     cfoZoneRepo: (db) => new PostgresCfoZoneRepository(db),
     consolaRepo: (db) => new PostgresConsolaRepository(db),
     orgFichaRepo: (db) => new PostgresOrgFichaRepository(db),
@@ -682,6 +687,7 @@ export function buildProductionDeps(): AppDeps {
     // de arriba, ver ./superadmin-acciones-repository.ts.
     accionesRepo: new ProductionSuperadminAccionesRepository(engine),
     resumenDiarioLlmGateway,
+    recomendacionesCfoLlmGateway,
     superadminCopiloto: buildProductionSuperadminCopiloto(superadminCopilotoLlmGateway),
     whatsAppDispatcher,
     saludMeta,
