@@ -4,6 +4,7 @@
 // Sin la bandera, la guia no se pinta. El boton «Guía» de la cabecera (carril del shell) emite `atiende:guia:abrir`; aqui se emite igual.
 import type { Page } from "@playwright/test";
 import type { ClienteMock } from "../mock-api/cliente.ts";
+import { esperarQuieto } from "../helpers/esperas.ts";
 import { expect, test } from "../helpers/fixtures.ts";
 import { restaurantes } from "../mock-api/fixtures/restaurantes.ts";
 
@@ -11,6 +12,25 @@ import { restaurantes } from "../mock-api/fixtures/restaurantes.ts";
 // progreso guardado), que la API simulada solo da si se le pide; el resto de las pruebas entra como quien ya descarto la invitacion.
 async function primerIngreso(mock: ClienteMock): Promise<void> {
   await mock.configurar({ guiaPrimerIngreso: true });
+}
+
+/**
+ * La tarjeta y el foco ya se colocaron: sus cajas quietas cinco cuadros seguidos (entrada de 180 ms y viaje de 360-380 ms terminados).
+ * No espera TODAS las animaciones de la pagina: en el paso «Vamos a» la barra de la cuenta de 3 s anima sin parar y esperarla dejaria
+ * que el viaje automatico ocurra antes de afirmar el paso.
+ */
+async function guiaAsentada(page: Page): Promise<void> {
+  await esperarQuieto(page.locator(".guia-tarjeta"), 5);
+  const foco = page.locator(".guia-capa:not([data-sin-foco]) .guia-foco");
+  if ((await foco.count()) > 0) await esperarQuieto(foco.first(), 5);
+}
+
+/** Avanza un paso con la flecha y espera a que la tarjeta muestre otro paso (su texto cambia). */
+async function avanzarPaso(page: Page): Promise<void> {
+  const tarjeta = page.locator(".guia-tarjeta");
+  const previo = await tarjeta.innerText();
+  await page.keyboard.press("ArrowRight");
+  await expect(tarjeta).not.toHaveText(previo, { useInnerText: true });
 }
 
 const abrirGuia = (page: Page) => page.evaluate(() => window.dispatchEvent(new CustomEvent("atiende:guia:abrir")));
@@ -39,14 +59,14 @@ test.describe("guia @ds3", () => {
     await expect(tarjeta).toBeVisible();
     await expect(tarjeta.locator(".guia-contador").first()).toHaveText(/Paso 1 de \d+/);
     await expect(page.locator(".guia-capa .guia-foco")).toBeVisible();
-    await page.waitForTimeout(500);
+    await guiaAsentada(page);
     expect(await seTocan(page), "la tarjeta tapa el elemento resaltado").toBe(false);
     await info.attach("02-paso-1", { body: await page.screenshot(), contentType: "image/png" });
 
     // Avanza hasta el primer salto de pantalla: cuenta de 3 s y viaje real por el menu.
     for (let i = 0; i < 4 && !(await tarjeta.locator("h2").innerText()).startsWith("Vamos a"); i++) {
-      await page.keyboard.press("ArrowRight");
-      await page.waitForTimeout(450);
+      await avanzarPaso(page);
+      await guiaAsentada(page);
       expect(await seTocan(page), "la tarjeta tapa el elemento resaltado").toBe(false);
     }
     await expect(tarjeta.locator("h2")).toHaveText(/^Vamos a /);
@@ -84,7 +104,7 @@ test.describe("guia @ds3", () => {
     await page.locator('.guia-invitacion [data-guia-modo="corto"]').click();
     const tarjeta = page.locator(".guia-tarjeta");
     await expect(tarjeta).toBeVisible();
-    await page.waitForTimeout(500);
+    await guiaAsentada(page);
     const caja = (await tarjeta.boundingBox())!;
     const vista = page.viewportSize()!;
     expect(caja.x).toBeGreaterThanOrEqual(11);
@@ -102,8 +122,7 @@ test.describe("guia @ds3", () => {
     await page.locator('.guia-invitacion [data-guia-modo="corto"]').click();
     const tarjeta = page.locator(".guia-tarjeta");
     for (let i = 0; i < 4 && !(await tarjeta.locator("h2").innerText()).startsWith("Vamos a"); i++) {
-      await page.keyboard.press("ArrowRight");
-      await page.waitForTimeout(150);
+      await avanzarPaso(page);
     }
     await expect(page.locator("[data-guia-cuenta]")).toHaveCount(0);
     await expect(page.locator("[data-guia-manual]")).toHaveText(/^Ir a /);
@@ -115,7 +134,17 @@ test.describe("guia @ds3", () => {
   test("por omision la guia existe: lee el progreso, no reinvita a quien la descarto y escucha el boton", async ({ page, iniciarSesion, mock }) => {
     await iniciarSesion("restaurantes", "owner");
     await expect.poll(async () => (await mock.buscar({ metodo: "GET", ruta: "/v1/onboarding/progreso" })).length).toBeGreaterThan(0);
-    await page.waitForTimeout(800);
+    // La respuesta del servidor ya se aplico: la guia la guarda en el navegador (clave atiende-guia.*) despues de reconciliarla.
+    await page.waitForFunction(() =>
+      Object.keys(localStorage).some((k) => {
+        if (!k.startsWith("atiende-guia.")) return false;
+        try {
+          return (JSON.parse(localStorage.getItem(k) ?? "{}") as { descartado?: unknown }).descartado === true;
+        } catch {
+          return false;
+        }
+      }),
+    );
     await expect(page.locator(".guia-invitacion")).toHaveCount(0);
     await abrirGuia(page);
     await expect(page.locator("#guia-menu")).toContainText("Recorrido corto");
