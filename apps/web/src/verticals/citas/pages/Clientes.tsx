@@ -28,7 +28,10 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  useT,
 } from "@atiende/ui";
+import { citasClientes } from "@atiende/ui/i18n/citas/clientes";
+import { citasComun } from "@atiende/ui/i18n/citas/comun";
 import { fetchCustomerDetail, fetchCustomers, updateCustomerEmail } from "../lib/customers-client.ts";
 import type { CustomerDetail, CustomerSummary } from "../lib/customers-client.ts";
 import { formatDateTime } from "../lib/format.ts";
@@ -37,6 +40,7 @@ import type { CitasShellContext } from "../CitasShell.tsx";
 const PAGE_SIZE = 20;
 
 export function ClientesListPage({ apiBaseUrl, token, propertyId, orgSlug }: CitasShellContext) {
+  const t = useT(citasComun, citasClientes);
   const [search, setSearch] = useState("");
   const [offset, setOffset] = useState(0);
   const [customers, setCustomers] = useState<readonly CustomerSummary[] | null>(null);
@@ -53,7 +57,7 @@ export function ClientesListPage({ apiBaseUrl, token, propertyId, orgSlug }: Cit
         setTotal(page.total);
         setNextOffset(page.nextOffset);
       })
-      .catch((err: unknown) => !cancelado && setError(err instanceof Error ? err.message : "No se pudieron cargar los clientes."));
+      .catch((err: unknown) => !cancelado && setError(err instanceof Error ? err.message : t("citas.clientes.errorLista")));
     return () => {
       cancelado = true;
     };
@@ -62,10 +66,10 @@ export function ClientesListPage({ apiBaseUrl, token, propertyId, orgSlug }: Cit
   return (
     <div className="flex flex-col gap-4">
       <header className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="font-display text-xl font-semibold text-foreground">Clientes</h1>
+        <h1 className="font-display text-xl font-semibold text-foreground">{t("citas.clientes.titulo")}</h1>
         <div className="relative min-w-[220px]">
           <Label htmlFor="citas-clientes-buscar" className="sr-only">
-            Buscar cliente
+            {t("citas.clientes.buscar")}
           </Label>
           <Search aria-hidden className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -75,16 +79,16 @@ export function ClientesListPage({ apiBaseUrl, token, propertyId, orgSlug }: Cit
               setSearch(e.target.value);
               setOffset(0);
             }}
-            placeholder="Buscar por nombre o teléfono…"
+            placeholder={t("citas.clientes.buscarPlaceholder")}
             className="pl-9"
           />
         </div>
       </header>
 
       {error && <EstadoError mensaje={error} />}
-      {!customers && !error && <EstadoCargando etiqueta="Cargando clientes…" />}
+      {!customers && !error && <EstadoCargando etiqueta={t("citas.clientes.cargandoLista")} />}
       {customers && customers.length === 0 && (
-        <EstadoVacio icon={Users} mensaje={search ? "Ningún cliente coincide con esa búsqueda." : "Este negocio todavía no tiene clientes."} />
+        <EstadoVacio icon={Users} mensaje={search ? t("citas.clientes.sinCoincidencias") : t("citas.clientes.sinClientes")} />
       )}
 
       {customers && customers.length > 0 && (
@@ -93,8 +97,8 @@ export function ClientesListPage({ apiBaseUrl, token, propertyId, orgSlug }: Cit
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Cliente</TableHead>
-                  <TableHead className="text-right">Contacto</TableHead>
+                  <TableHead>{t("citas.clientes.col.cliente")}</TableHead>
+                  <TableHead className="text-right">{t("citas.clientes.col.contacto")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -120,15 +124,15 @@ export function ClientesListPage({ apiBaseUrl, token, propertyId, orgSlug }: Cit
       {customers && customers.length > 0 && (
         <footer className="flex items-center justify-between gap-3 text-sm text-muted-foreground">
           <span>
-            {offset + 1}–{offset + customers.length} de {total}
+            {t("citas.clientes.rango", { desde: offset + 1, hasta: offset + customers.length, total })}
           </span>
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))} disabled={offset === 0}>
               <ChevronLeft aria-hidden />
-              Anterior
+              {t("citas.anterior")}
             </Button>
             <Button variant="outline" size="sm" onClick={() => nextOffset !== null && setOffset(nextOffset)} disabled={nextOffset === null}>
-              Siguiente
+              {t("citas.siguiente")}
               <ChevronRight aria-hidden />
             </Button>
           </div>
@@ -143,6 +147,7 @@ export interface ClienteFichaPageProps extends CitasShellContext {
 }
 
 export function ClienteFichaPage({ apiBaseUrl, token, propertyId, orgSlug, customerId }: ClienteFichaPageProps) {
+  const t = useT(citasComun, citasClientes);
   const [detail, setDetail] = useState<CustomerDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -161,7 +166,7 @@ export function ClienteFichaPage({ apiBaseUrl, token, propertyId, orgSlug, custo
     let cancelado = false;
     fetchCustomerDetail(fetch, apiBaseUrl, token, propertyId, customerId)
       .then((d) => !cancelado && setDetail(d))
-      .catch((err: unknown) => !cancelado && setError(err instanceof Error ? err.message : "No se pudo cargar el cliente."));
+      .catch((err: unknown) => !cancelado && setError(err instanceof Error ? err.message : t("citas.clientes.errorFicha")));
     return () => {
       cancelado = true;
     };
@@ -182,7 +187,7 @@ export function ClienteFichaPage({ apiBaseUrl, token, propertyId, orgSlug, custo
       setDetail((prev) => (prev ? { ...prev, customer: updated } : prev));
       setEditingEmail(false);
     } catch (err) {
-      setEmailError(err instanceof Error ? err.message : "No se pudo guardar el correo.");
+      setEmailError(err instanceof Error ? err.message : t("citas.clientes.errorCorreo"));
     } finally {
       setSavingEmail(false);
     }
@@ -193,11 +198,11 @@ export function ClienteFichaPage({ apiBaseUrl, token, propertyId, orgSlug, custo
       <Button asChild variant="ghost" size="sm" className="w-fit px-2 text-muted-foreground">
         <Link to={`/citas/${orgSlug}/clientes`}>
           <ArrowLeft aria-hidden />
-          Volver a clientes
+          {t("citas.clientes.volver")}
         </Link>
       </Button>
       {error && <EstadoError mensaje={error} />}
-      {!detail && !error && <EstadoCargando etiqueta="Cargando cliente…" />}
+      {!detail && !error && <EstadoCargando etiqueta={t("citas.clientes.cargandoFicha")} />}
       {detail && (
         <>
           <header>
@@ -206,22 +211,22 @@ export function ClienteFichaPage({ apiBaseUrl, token, propertyId, orgSlug, custo
             {editingEmail ? (
               <form onSubmit={handleSaveEmail} className="mt-2 flex flex-wrap items-center gap-2">
                 <Label htmlFor="citas-cliente-correo" className="sr-only">
-                  Correo del cliente
+                  {t("citas.clientes.correoCliente")}
                 </Label>
                 <Input
                   id="citas-cliente-correo"
                   type="email"
-                  placeholder="Correo (opcional)"
+                  placeholder={t("citas.correoOpcional")}
                   value={emailInput}
                   onChange={(e) => setEmailInput(e.target.value)}
                   className="h-9 max-w-xs"
                   autoFocus
                 />
                 <Button type="submit" size="sm" disabled={savingEmail}>
-                  {savingEmail ? "Guardando…" : "Guardar"}
+                  {savingEmail ? t("citas.clientes.guardando") : t("citas.clientes.guardar")}
                 </Button>
                 <Button type="button" variant="outline" size="sm" onClick={() => setEditingEmail(false)} disabled={savingEmail}>
-                  Cancelar
+                  {t("citas.cancelar")}
                 </Button>
               </form>
             ) : (
@@ -231,7 +236,7 @@ export function ClienteFichaPage({ apiBaseUrl, token, propertyId, orgSlug, custo
                 className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
               >
                 <Mail aria-hidden className="size-3.5" />
-                {detail.customer.email ?? "Agregar correo (para sincronizar con Cal.com)"}
+                {detail.customer.email ?? t("citas.clientes.agregarCorreo")}
                 <Pencil aria-hidden className="size-3" />
               </button>
             )}
@@ -243,18 +248,18 @@ export function ClienteFichaPage({ apiBaseUrl, token, propertyId, orgSlug, custo
           </header>
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="font-mono text-xs uppercase tracking-[0.06em] text-muted-foreground">Próximas citas</CardTitle>
+              <CardTitle className="font-mono text-xs uppercase tracking-[0.06em] text-muted-foreground">{t("citas.clientes.proximas")}</CardTitle>
             </CardHeader>
             <CardContent>
               {detail.upcomingAppointments.length === 0 ? (
-                <EstadoVacio icon={CalendarClock} mensaje="Sin citas próximas." />
+                <EstadoVacio icon={CalendarClock} mensaje={t("citas.clientes.sinProximas")} />
               ) : (
                 <div className="flex flex-col gap-2">
                   {detail.upcomingAppointments.map((apt) => (
                     <div key={apt.id} className="rounded-lg border border-border bg-card p-3">
-                      <p className="text-sm font-semibold text-foreground">{apt.serviceName ?? "Servicio desconocido"}</p>
+                      <p className="text-sm font-semibold text-foreground">{apt.serviceName ?? t("citas.servicioDesconocido")}</p>
                       <p className="mt-0.5 text-sm text-muted-foreground">
-                        {formatDateTime(apt.startsAt)} · {apt.providerName ?? "Proveedor desconocido"}
+                        {formatDateTime(apt.startsAt)} · {apt.providerName ?? t("citas.proveedorDesconocido")}
                       </p>
                     </div>
                   ))}

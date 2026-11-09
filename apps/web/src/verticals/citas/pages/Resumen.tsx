@@ -21,9 +21,13 @@ import {
   StatCard,
   StatusBadge,
   TileLink,
+  traductorActivo,
+  useT,
 } from "@atiende/ui";
 import type { StatusTone } from "@atiende/ui";
-import { saludoPorHora, primerNombreOCorreo } from "../../../lib/greeting.ts";
+import { citasResumen } from "@atiende/ui/i18n/citas/resumen";
+import { primerNombreOCorreo } from "../../../lib/greeting.ts";
+import { saludoTraducido } from "../lib/format.ts";
 import { fetchCitasResumen, formatDiaCorto, formatDiaNegocio } from "../lib/resumen-client.ts";
 import type { CitasResumen } from "../lib/resumen-client.ts";
 import { fetchAvisosCitas } from "../lib/avisos-client.ts";
@@ -33,21 +37,18 @@ import type { EstadoConexion, PanelAgenteWire } from "../lib/whatsapp-agente-cli
 import { COPILOTO_CITAS_ROLES, CitasFijadosCopiloto } from "./Copiloto.tsx";
 import type { CitasShellContext } from "../CitasShell.tsx";
 
-const SIN_MIGRAR = "No disponible aún en este ambiente";
+// Funciones de texto fuera del componente: traducen al idioma activo (la pagina consume el contexto con `useT`, asi que se repinta al cambiarlo).
+const tr = traductorActivo(citasResumen);
 
-const CONEXION_BADGE: Readonly<Record<EstadoConexion, { tone: StatusTone; etiqueta: string }>> = {
-  registrado: { tone: "success", etiqueta: "Conectado" },
-  pausado: { tone: "warning", etiqueta: "Pausado" },
-  sin_credenciales_de_envio: { tone: "warning", etiqueta: "Sin credenciales" },
-  sin_numero: { tone: "neutral", etiqueta: "Sin número" },
+const CONEXION_TONO: Readonly<Record<EstadoConexion, StatusTone>> = {
+  registrado: "success",
+  pausado: "warning",
+  sin_credenciales_de_envio: "warning",
+  sin_numero: "neutral",
 };
 
 /** Lectura secundaria: `null` = todavía no llega; `"error"` = falló (el tile lo dice, no inventa). */
 type Lectura<T> = T | null | "error";
-
-function plural(n: number, uno: string, varios: string): string {
-  return `${n} ${n === 1 ? uno : varios}`;
-}
 
 function ligado(to: string, tarjeta: React.ReactNode) {
   return (
@@ -58,24 +59,29 @@ function ligado(to: string, tarjeta: React.ReactNode) {
 }
 
 function descripcionRecordatorios(avisos: Lectura<AvisosCitas>): string {
-  if (avisos === null) return "Cargando…";
-  if (avisos === "error") return "No se pudo cargar el estado de entrega.";
+  if (avisos === null) return tr("citas.resumen.cargandoCorto");
+  if (avisos === "error") return tr("citas.resumen.errorEntrega");
   const r = avisos.recordatorios;
-  if (!r.visible) return "Solo owner o admin ven el estado de entrega.";
-  if (!r.disponible) return SIN_MIGRAR;
+  if (!r.visible) return tr("citas.resumen.soloOwner");
+  if (!r.disponible) return tr("citas.resumen.sinMigrar");
   const total = (estados: readonly string[]) => r.filas.filter((f) => estados.includes(f.estado)).reduce((n, f) => n + f.total, 0);
   const enviados = total(["sent"]);
   const fallidos = total(["failed", "dead"]);
-  return `${plural(enviados, "enviado", "enviados")} · ${plural(fallidos, "fallido", "fallidos")} (${r.ventanaDias} días)`;
+  return tr("citas.resumen.entrega", {
+    enviados: tr("citas.resumen.enviados", { count: enviados }),
+    fallidos: tr("citas.resumen.fallidos", { count: fallidos }),
+    dias: r.ventanaDias,
+  });
 }
 
-function descripcionPorCanal(resumen: CitasResumen, canal: "whatsapp" | "voice", singular: string, varias: string, sufijo: string): string {
+function descripcionPorCanal(resumen: CitasResumen, canal: "whatsapp" | "voice"): string {
   const por = resumen.createdBySourceLast30Days;
-  if (por === null) return SIN_MIGRAR;
-  return `${plural(por[canal], singular, varias)} ${sufijo} (30 días)`;
+  if (por === null) return tr("citas.resumen.sinMigrar");
+  return tr(canal === "whatsapp" ? "citas.resumen.porWhatsapp" : "citas.resumen.porVoz", { count: por[canal] });
 }
 
 export function ResumenPage({ apiBaseUrl, token, propertyId, orgSlug, role, staffFullName, staffEmail }: CitasShellContext) {
+  const t = useT(citasResumen);
   const [resumen, setResumen] = useState<CitasResumen | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [recarga, setRecarga] = useState(0);
@@ -89,7 +95,7 @@ export function ResumenPage({ apiBaseUrl, token, propertyId, orgSlug, role, staf
     setError(null);
     fetchCitasResumen(fetch, apiBaseUrl, token, propertyId)
       .then((r) => !cancelado && setResumen(r))
-      .catch((err: unknown) => !cancelado && setError(err instanceof Error ? err.message : "No se pudo cargar el resumen."));
+      .catch((err: unknown) => !cancelado && setError(err instanceof Error ? err.message : t("citas.resumen.errorResumen")));
     return () => {
       cancelado = true;
     };
@@ -124,64 +130,66 @@ export function ResumenPage({ apiBaseUrl, token, propertyId, orgSlug, role, staf
   if (resumen === null) {
     return (
       <PageContainer padding="none" size="xl" className="gap-4 [&>*]:min-w-0">
-        <EstadoCargando variante="tarjeta" etiqueta="Cargando resumen…" />
+        <EstadoCargando variante="tarjeta" etiqueta={t("citas.resumen.cargando")} />
       </PageContainer>
     );
   }
 
   const kpis = [
     <div key="semana" className="min-w-0">
-      {ligado(`${base}/agenda`, <StatCard icon={CalendarDays} label="Citas esta semana" value={String(resumen.week.total)} nota={`${formatDiaCorto(resumen.week.fromDate)} – ${formatDiaCorto(resumen.week.toDate)}`} />)}
+      {ligado(`${base}/agenda`, <StatCard icon={CalendarDays} label={t("citas.resumen.kpi.semana")} value={String(resumen.week.total)} nota={`${formatDiaCorto(resumen.week.fromDate)} – ${formatDiaCorto(resumen.week.toDate)}`} />)}
     </div>,
     <div key="por-confirmar" className="min-w-0">
-      {ligado(`${base}/avisos`, <StatCard icon={Clock} label="Por confirmar" value={String(resumen.pendingToConfirm)} nota="próximos 30 días" />)}
+      {ligado(`${base}/avisos`, <StatCard icon={Clock} label={t("citas.resumen.kpi.porConfirmar")} value={String(resumen.pendingToConfirm)} nota={t("citas.resumen.kpi.proximos30")} />)}
     </div>,
     <div key="no-show" className="min-w-0">
-      {ligado(`${base}/agenda`, <StatCard icon={CalendarX} label="No asistieron" value={String(resumen.noShowsLast30Days)} nota="últimos 30 días" />)}
+      {ligado(`${base}/agenda`, <StatCard icon={CalendarX} label={t("citas.resumen.kpi.noAsistieron")} value={String(resumen.noShowsLast30Days)} nota={t("citas.resumen.kpi.ultimos30")} />)}
     </div>,
     <div key="nuevos" className="min-w-0">
-      {ligado(`${base}/clientes`, <StatCard icon={UserPlus} label="Clientes nuevos" value={String(resumen.newCustomersLast30Days)} nota="últimos 30 días" />)}
+      {ligado(`${base}/clientes`, <StatCard icon={UserPlus} label={t("citas.resumen.kpi.nuevos")} value={String(resumen.newCustomersLast30Days)} nota={t("citas.resumen.kpi.ultimos30")} />)}
     </div>,
   ];
 
-  const conexion = panelAgente !== null && panelAgente !== "error" ? CONEXION_BADGE[panelAgente.conexion.estado] : undefined;
+  const estadoConexion = panelAgente !== null && panelAgente !== "error" ? panelAgente.conexion.estado : undefined;
+  const conexion = estadoConexion ? { tone: CONEXION_TONO[estadoConexion], etiqueta: t(`citas.resumen.conexion.${estadoConexion}`) } : undefined;
   const descripcionWhatsapp =
-    panelAgente === "error" ? `${descripcionPorCanal(resumen, "whatsapp", "cita creada", "citas creadas", "por WhatsApp")} · conexión no disponible` : descripcionPorCanal(resumen, "whatsapp", "cita creada", "citas creadas", "por WhatsApp");
+    panelAgente === "error" ? t("citas.resumen.conexionNoDisponible", { descripcion: descripcionPorCanal(resumen, "whatsapp") }) : descripcionPorCanal(resumen, "whatsapp");
+  const citasHoy = t("citas.resumen.citasHoy", { count: resumen.today.total });
 
   return (
     <PageContainer padding="none" size="xl" className="[&>*]:min-w-0">
       <ResumenLayout
-        saludo={saludoPorHora()}
+        saludo={saludoTraducido()}
         nombre={primerNombreOCorreo(staffFullName, staffEmail)}
         // El odómetro se oculta bajo `sm` (como en Likida): en móvil la cifra de hoy viaja en el subtítulo.
-        subtitulo={`${formatDiaNegocio(resumen.today.date)} · ${plural(resumen.today.total, "cita hoy", "citas hoy")}`}
+        subtitulo={`${formatDiaNegocio(resumen.today.date)} · ${citasHoy}`}
         // ds3: la cifra clave en negritas sustituye al odometro (Rovaq «Hoy»).
         frase={
           <>
-            {formatDiaNegocio(resumen.today.date)}: <strong>{plural(resumen.today.total, "cita hoy", "citas hoy")}</strong>.
+            {formatDiaNegocio(resumen.today.date)}: <strong>{citasHoy}</strong>.
           </>
         }
-        destacado={<Odometro valor={resumen.today.total} digitos={Math.max(3, String(resumen.today.total).length)} etiqueta="Citas hoy" tamano="md" />}
+        destacado={<Odometro valor={resumen.today.total} digitos={Math.max(3, String(resumen.today.total).length)} etiqueta={t("citas.resumen.citasHoyEtiqueta")} tamano="md" />}
         kpis={kpis}
-        acciones={<PillLink to={`${base}/agenda`}>Ver agenda</PillLink>}
+        acciones={<PillLink to={`${base}/agenda`}>{t("citas.resumen.verAgenda")}</PillLink>}
       >
         {verAgentes && (
           <>
-            <ResumenSeccion titulo="Orquestación de agentes">
+            <ResumenSeccion titulo={t("citas.resumen.orquestacion")}>
               <TileLink
                 to={`${base}/agente-whatsapp`}
                 icon={Bot}
-                titulo="Agente de WhatsApp"
+                titulo={t("citas.resumen.agenteWhatsapp")}
                 badge={conexion ? <StatusBadge tone={conexion.tone}>{conexion.etiqueta}</StatusBadge> : undefined}
                 descripcion={descripcionWhatsapp}
               />
-              <TileLink to={`${base}/avisos`} icon={Bell} titulo="Recordatorios 24 h" descripcion={descripcionRecordatorios(avisos)} />
-              <TileLink to={`${base}/agenda`} icon={Mic} titulo="Voz" descripcion={descripcionPorCanal(resumen, "voice", "cita creada", "citas creadas", "por voz")} />
-              <TileLink to={`${base}/copiloto`} icon={Sparkles} titulo="Copiloto" descripcion="Pregúntale a tus datos de citas." />
+              <TileLink to={`${base}/avisos`} icon={Bell} titulo={t("citas.resumen.recordatorios")} descripcion={descripcionRecordatorios(avisos)} />
+              <TileLink to={`${base}/agenda`} icon={Mic} titulo={t("citas.resumen.voz")} descripcion={descripcionPorCanal(resumen, "voice")} />
+              <TileLink to={`${base}/copiloto`} icon={Sparkles} titulo={t("citas.resumen.copiloto")} descripcion={t("citas.resumen.copilotoDesc")} />
             </ResumenSeccion>
-            <ResumenSeccion titulo="Agentes — última corrida">
+            <ResumenSeccion titulo={t("citas.resumen.ultimaCorrida")}>
               <p data-testid="sin-datos-corrida" className="col-span-full text-xs text-faint">
-                Aún no hay registro de corridas disponible para tu negocio.
+                {t("citas.resumen.sinCorridas")}
               </p>
             </ResumenSeccion>
           </>

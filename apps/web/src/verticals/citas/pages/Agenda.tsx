@@ -56,7 +56,12 @@ import {
   TabsTrigger,
   NativeSelect,
   FormDialog,
+  localeActivo,
+  traductorActivo,
+  useT,
 } from "@atiende/ui";
+import { citasAgenda } from "@atiende/ui/i18n/citas/agenda";
+import { citasComun } from "@atiende/ui/i18n/citas/comun";
 import { CITA_STATUS_TONES } from "../lib/status-tones.ts";
 import { cancelAppointment, completeAppointment, confirmAppointment, createAppointment, fetchAppointments, markAppointmentNoShow, retryAppointmentCalendarSync } from "../lib/appointments-client.ts";
 import type { AppointmentSummary } from "../lib/appointments-client.ts";
@@ -66,10 +71,9 @@ import { fetchServices } from "../lib/services-client.ts";
 import type { ServiceSummary } from "../lib/services-client.ts";
 import { broadcastWaitlist, fetchWaitlist } from "../lib/waitlist-client.ts";
 import type { WaitlistBroadcastSummary, WaitlistCandidate } from "../lib/waitlist-client.ts";
-import { formatAppointmentSource, formatAppointmentStatus, formatDateLong, formatGoogleSyncStatus, formatTimeRange, googleSyncStatusNeedsAttention } from "../lib/format.ts";
+import { formatAppointmentSource, formatAppointmentStatus, formatDateLong, formatGoogleSyncStatus, formatTimeRange, googleSyncStatusNeedsAttention, saludoConNombreTraducido } from "../lib/format.ts";
 import { subscribeToAppointmentChanges } from "../lib/realtime-client.ts";
 import { hoyFechaSolo, parseFechaSolo } from "../../../lib/formato-fecha.ts";
-import { saludoConNombre } from "../../../lib/greeting.ts";
 import type { CitasShellContext } from "../CitasShell.tsx";
 
 type ViewMode = "month" | "week";
@@ -94,19 +98,21 @@ function startOfWeek(date: Date): Date {
 // representa; NO se toca `formatDateLong`/`format.ts` (esa función también formatea
 // timestamps reales de citas en otro lugar de este mismo archivo, con una zona horaria
 // de negocio distinta -- un solo `timeZone` ahí serviría a un caso rompiendo el otro).
-const RANGO_LABEL_FORMATTER_LARGA = new Intl.DateTimeFormat("es-MX", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" });
-const RANGO_LABEL_FORMATTER_MES = new Intl.DateTimeFormat("es-MX", { month: "long", year: "numeric", timeZone: "UTC" });
+// Locale activo de la consola (i18n): es-MX como siempre, en-US si se eligio ingles.
+const RANGO_LABEL_OPCIONES_LARGA: Intl.DateTimeFormatOptions = { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" };
+const RANGO_LABEL_OPCIONES_MES: Intl.DateTimeFormatOptions = { month: "long", year: "numeric", timeZone: "UTC" };
+const tr = traductorActivo(citasAgenda);
 
 function computeRange(anchor: Date, view: ViewMode): { fromIso: string; toIso: string; label: string } {
   if (view === "week") {
     const from = startOfWeek(anchor);
     const to = new Date(from);
     to.setUTCDate(to.getUTCDate() + 7);
-    return { fromIso: from.toISOString(), toIso: to.toISOString(), label: `Semana del ${RANGO_LABEL_FORMATTER_LARGA.format(from)}` };
+    return { fromIso: from.toISOString(), toIso: to.toISOString(), label: tr("citas.agenda.semanaDel", { fecha: new Intl.DateTimeFormat(localeActivo(), RANGO_LABEL_OPCIONES_LARGA).format(from) }) };
   }
   const from = new Date(Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth(), 1));
   const to = new Date(Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth() + 1, 1));
-  const label = RANGO_LABEL_FORMATTER_MES.format(from);
+  const label = new Intl.DateTimeFormat(localeActivo(), RANGO_LABEL_OPCIONES_MES).format(from);
   return { fromIso: from.toISOString(), toIso: to.toISOString(), label };
 }
 
@@ -141,6 +147,7 @@ type LifecycleAction = "cancel" | "confirm" | "complete" | "no_show" | "retry_sy
 export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName, staffEmail }: CitasShellContext) {
   // Confirmaciones destructivas con el diálogo de @atiende/ui (antes `window.confirm`, que el navegador puede bloquear).
   const { confirmar, dialogo } = useConfirm();
+  const t = useT(citasComun, citasAgenda);
   const [view, setView] = useState<ViewMode>("month");
   // Bug real (revisión r6, punto 2 -- el fix de PR #164 solo corrigió la ETIQUETA):
   // `anchor` alimenta `startOfWeek`/`computeRange` (ambos con getters/setters `UTC*`,
@@ -196,15 +203,16 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
   const [creatingAppointment, setCreatingAppointment] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
-  const range = useMemo(() => computeRange(anchor, view), [anchor, view]);
+  // `t` entra a las dependencias: al cambiar de idioma la etiqueta del rango se vuelve a armar (las fechas a pedir no cambian).
+  const range = useMemo(() => computeRange(anchor, view), [anchor, view, t]);
 
   useEffect(() => {
     fetchProviders(fetch, apiBaseUrl, token, propertyId)
       .then(setProviders)
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : "No se pudieron cargar los proveedores."));
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : t("citas.agenda.errorProveedores")));
     fetchServices(fetch, apiBaseUrl, token, propertyId)
       .then(setServices)
-      .catch((err: unknown) => setWaitlistError(err instanceof Error ? err.message : "No se pudieron cargar los servicios."));
+      .catch((err: unknown) => setWaitlistError(err instanceof Error ? err.message : t("citas.agenda.errorServicios")));
   }, [apiBaseUrl, token, propertyId]);
 
   async function loadWaitlist() {
@@ -214,7 +222,7 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
       const result = await fetchWaitlist(fetch, apiBaseUrl, token, propertyId, { providerId: providerFilter || undefined, serviceId: waitlistServiceFilter || undefined });
       setWaitlist(result);
     } catch (err) {
-      setWaitlistError(err instanceof Error ? err.message : "No se pudo cargar la lista de espera.");
+      setWaitlistError(err instanceof Error ? err.message : t("citas.agenda.errorEspera"));
     } finally {
       setWaitlistLoading(false);
     }
@@ -229,10 +237,10 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
 
   async function handleBroadcastWaitlist() {
     const aceptado = await confirmar({
-      titulo: "¿Avisar a la lista de espera?",
-      descripcion: "Un horario se liberó. Se les manda un mensaje real de WhatsApp.",
-      confirmar: "Enviar aviso",
-      cancelar: "Volver",
+      titulo: t("citas.agenda.avisar.titulo"),
+      descripcion: t("citas.agenda.avisar.descripcion"),
+      confirmar: t("citas.agenda.avisar.confirmar"),
+      cancelar: t("citas.volver"),
     });
     if (!aceptado) return;
     setBroadcasting(true);
@@ -243,7 +251,7 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
       setBroadcastSummary(summary);
       await loadWaitlist();
     } catch (err) {
-      setWaitlistError(err instanceof Error ? err.message : "No se pudo avisar a la lista de espera.");
+      setWaitlistError(err instanceof Error ? err.message : t("citas.agenda.errorAvisar"));
     } finally {
       setBroadcasting(false);
     }
@@ -256,7 +264,7 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
       const result = await fetchAppointments(fetch, apiBaseUrl, token, propertyId, { fromIso: range.fromIso, toIso: range.toIso, providerId: providerFilter || undefined });
       setAppointments(result);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudieron cargar las citas.");
+      setError(err instanceof Error ? err.message : t("citas.agenda.errorCitas"));
     } finally {
       setLoading(false);
     }
@@ -295,15 +303,15 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
   }
 
   async function handleCancel(appointmentId: string) {
-    await runLifecycleAction(appointmentId, "cancel", { titulo: "¿Cancelar esta cita?", descripcion: "Esta acción no se puede deshacer.", tono: "danger", confirmar: "Cancelar cita", cancelar: "Volver" }, () => cancelAppointment(fetch, apiBaseUrl, token, propertyId, appointmentId), "No se pudo cancelar la cita.");
+    await runLifecycleAction(appointmentId, "cancel", { titulo: t("citas.agenda.cancelar.titulo"), descripcion: t("citas.agenda.cancelar.descripcion"), tono: "danger", confirmar: t("citas.agenda.cancelar.confirmar"), cancelar: t("citas.volver") }, () => cancelAppointment(fetch, apiBaseUrl, token, propertyId, appointmentId), t("citas.agenda.errorCancelar"));
   }
 
   async function handleConfirm(appointmentId: string) {
-    await runLifecycleAction(appointmentId, "confirm", null, () => confirmAppointment(fetch, apiBaseUrl, token, propertyId, appointmentId), "No se pudo confirmar la cita.");
+    await runLifecycleAction(appointmentId, "confirm", null, () => confirmAppointment(fetch, apiBaseUrl, token, propertyId, appointmentId), t("citas.agenda.errorConfirmar"));
   }
 
   async function handleComplete(appointmentId: string) {
-    await runLifecycleAction(appointmentId, "complete", null, () => completeAppointment(fetch, apiBaseUrl, token, propertyId, appointmentId), "No se pudo marcar la cita como completada.");
+    await runLifecycleAction(appointmentId, "complete", null, () => completeAppointment(fetch, apiBaseUrl, token, propertyId, appointmentId), t("citas.agenda.errorCompletar"));
   }
 
   async function handleNoShow(appointmentId: string) {
@@ -311,14 +319,14 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
       appointmentId,
       "no_show",
       {
-        titulo: "¿Marcar esta cita como no-show?",
-        descripcion: "El cliente no se presentó y el horario del proveedor queda libre de inmediato.",
+        titulo: t("citas.agenda.noShow.titulo"),
+        descripcion: t("citas.agenda.noShow.descripcion"),
         tono: "danger",
-        confirmar: "Marcar no-show",
-        cancelar: "Volver",
+        confirmar: t("citas.agenda.noShow.confirmar"),
+        cancelar: t("citas.volver"),
       },
       () => markAppointmentNoShow(fetch, apiBaseUrl, token, propertyId, appointmentId),
-      "No se pudo marcar la cita como no-show.",
+      t("citas.agenda.errorNoShow"),
     );
   }
 
@@ -328,7 +336,7 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
   // servidor responde 409 si la cita no está en ese estado (ver
   // appointments-lifecycle.ts).
   async function handleRetrySync(appointmentId: string) {
-    await runLifecycleAction(appointmentId, "retry_sync", null, () => retryAppointmentCalendarSync(fetch, apiBaseUrl, token, propertyId, appointmentId), "No se pudo reintentar la sincronización de esta cita.");
+    await runLifecycleAction(appointmentId, "retry_sync", null, () => retryAppointmentCalendarSync(fetch, apiBaseUrl, token, propertyId, appointmentId), t("citas.agenda.errorSync"));
   }
 
   async function handleCreateAppointment(e: FormEvent) {
@@ -359,7 +367,7 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
       setShowNewForm(false);
       await load();
     } catch (err) {
-      setCreateError(err instanceof Error ? err.message : "No se pudo crear la cita.");
+      setCreateError(err instanceof Error ? err.message : t("citas.agenda.errorCrear"));
     } finally {
       setCreatingAppointment(false);
     }
@@ -372,16 +380,16 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
     <div className="flex flex-col gap-4">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="text-sm text-muted-foreground">{saludoConNombre(staffFullName, staffEmail)}</p>
-          <h1 className="font-display text-xl font-semibold text-foreground">Agenda</h1>
+          <p className="text-sm text-muted-foreground">{saludoConNombreTraducido(staffFullName, staffEmail)}</p>
+          <h1 className="font-display text-xl font-semibold text-foreground">{t("citas.agenda.titulo")}</h1>
           <p className="mt-1 text-sm capitalize text-muted-foreground">{range.label}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Label htmlFor="citas-agenda-proveedor" className="sr-only">
-            Filtrar por proveedor
+            {t("citas.agenda.filtrarProveedor")}
           </Label>
           <NativeSelect wrapperClassName="w-auto" id="citas-agenda-proveedor" value={providerFilter} onChange={(e) => setProviderFilter(e.target.value)}>
-            <option value="">Todos los proveedores</option>
+            <option value="">{t("citas.agenda.todosProveedores")}</option>
             {providers?.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.displayName}
@@ -391,29 +399,29 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
 
           <Tabs value={view} onValueChange={(v) => setView(v as ViewMode)}>
             <TabsList>
-              <TabsTrigger value="month">Mes</TabsTrigger>
-              <TabsTrigger value="week">Semana</TabsTrigger>
+              <TabsTrigger value="month">{t("citas.agenda.mes")}</TabsTrigger>
+              <TabsTrigger value="week">{t("citas.agenda.semana")}</TabsTrigger>
             </TabsList>
           </Tabs>
 
           <Button variant="outline" size="sm" onClick={() => setAnchor((a) => shiftAnchor(a, view, -1))}>
             <ChevronLeft aria-hidden />
-            Anterior
+            {t("citas.anterior")}
           </Button>
           {/* Bug real (revisión r6 de corrección de PR #171, bloqueante 1): este botón seguía
               con `setAnchor(new Date())` -- el mismo bug que el estado inicial de `anchor` de
               arriba ya corrige (ver su comentario), pero reintroducido aquí. Mismo fix: anclar
               al día de CALENDARIO del negocio, nunca al instante UTC. */}
           <Button variant="outline" size="sm" onClick={() => setAnchor(parseFechaSolo(hoyFechaSolo()))}>
-            Hoy
+            {t("citas.agenda.hoy")}
           </Button>
           <Button variant="outline" size="sm" onClick={() => setAnchor((a) => shiftAnchor(a, view, 1))}>
-            Siguiente
+            {t("citas.siguiente")}
             <ChevronRight aria-hidden />
           </Button>
           <Button size="sm" onClick={() => setShowNewForm(true)}>
             <CalendarPlus aria-hidden />
-            Nueva cita
+            {t("citas.agenda.nuevaCita")}
           </Button>
         </div>
       </header>
@@ -427,21 +435,21 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
       <FormDialog
         open={showNewForm}
         onOpenChange={setShowNewForm}
-        titulo="Nueva cita"
-        subtitulo="Alta manual desde el panel — la misma cita que registraría el agente."
+        titulo={t("citas.agenda.nuevaCita")}
+        subtitulo={t("citas.agenda.nueva.subtitulo")}
         anchoClase="max-w-3xl"
         footer={
           <Button type="submit" form="citas-nueva-cita" disabled={creatingAppointment}>
-            {creatingAppointment ? "Creando…" : "Crear cita"}
+            {creatingAppointment ? t("citas.agenda.nueva.creando") : t("citas.agenda.nueva.crear")}
           </Button>
         }
       >
         <form id="citas-nueva-cita" onSubmit={handleCreateAppointment} className="flex flex-col gap-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="citas-nueva-proveedor">Proveedor</Label>
+              <Label htmlFor="citas-nueva-proveedor">{t("citas.agenda.nueva.proveedor")}</Label>
               <NativeSelect id="citas-nueva-proveedor" required value={newProviderId} onChange={(e) => setNewProviderId(e.target.value)}>
-                <option value="">Proveedor…</option>
+                <option value="">{t("citas.agenda.nueva.proveedorOpcion")}</option>
                 {providers?.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.displayName}
@@ -450,9 +458,9 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
               </NativeSelect>
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="citas-nueva-servicio">Servicio</Label>
+              <Label htmlFor="citas-nueva-servicio">{t("citas.agenda.nueva.servicio")}</Label>
               <NativeSelect id="citas-nueva-servicio" required value={newServiceId} onChange={(e) => setNewServiceId(e.target.value)}>
-                <option value="">Servicio…</option>
+                <option value="">{t("citas.agenda.nueva.servicioOpcion")}</option>
                 {services?.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.name}
@@ -461,24 +469,24 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
               </NativeSelect>
             </div>
             <div className="flex flex-col gap-1.5 sm:col-span-2">
-              <Label htmlFor="citas-nueva-inicio">Fecha y hora</Label>
+              <Label htmlFor="citas-nueva-inicio">{t("citas.agenda.nueva.fechaHora")}</Label>
               <Input id="citas-nueva-inicio" required type="datetime-local" value={newStartsAt} onChange={(e) => setNewStartsAt(e.target.value)} />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="citas-nueva-cliente">Nombre del cliente</Label>
-              <Input id="citas-nueva-cliente" required placeholder="Nombre del cliente" value={newCustomerName} onChange={(e) => setNewCustomerName(e.target.value)} />
+              <Label htmlFor="citas-nueva-cliente">{t("citas.agenda.nueva.nombre")}</Label>
+              <Input id="citas-nueva-cliente" required placeholder={t("citas.agenda.nueva.nombre")} value={newCustomerName} onChange={(e) => setNewCustomerName(e.target.value)} />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="citas-nueva-telefono">Teléfono</Label>
-              <Input id="citas-nueva-telefono" required placeholder="Teléfono" value={newCustomerPhone} onChange={(e) => setNewCustomerPhone(e.target.value)} />
+              <Label htmlFor="citas-nueva-telefono">{t("citas.agenda.nueva.telefono")}</Label>
+              <Input id="citas-nueva-telefono" required placeholder={t("citas.agenda.nueva.telefono")} value={newCustomerPhone} onChange={(e) => setNewCustomerPhone(e.target.value)} />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="citas-nueva-correo">Correo (opcional)</Label>
-              <Input id="citas-nueva-correo" type="email" placeholder="Correo (opcional)" value={newCustomerEmail} onChange={(e) => setNewCustomerEmail(e.target.value)} />
+              <Label htmlFor="citas-nueva-correo">{t("citas.correoOpcional")}</Label>
+              <Input id="citas-nueva-correo" type="email" placeholder={t("citas.correoOpcional")} value={newCustomerEmail} onChange={(e) => setNewCustomerEmail(e.target.value)} />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="citas-nueva-notas">Notas (opcional)</Label>
-              <Input id="citas-nueva-notas" placeholder="Notas (opcional)" value={newNotes} onChange={(e) => setNewNotes(e.target.value)} />
+              <Label htmlFor="citas-nueva-notas">{t("citas.agenda.nueva.notas")}</Label>
+              <Input id="citas-nueva-notas" placeholder={t("citas.agenda.nueva.notas")} value={newNotes} onChange={(e) => setNewNotes(e.target.value)} />
             </div>
           </div>
           {createError && (
@@ -491,9 +499,9 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
 
       {error && <EstadoError mensaje={error} />}
 
-      {loading && !appointments && <EstadoCargando etiqueta="Cargando citas…" />}
+      {loading && !appointments && <EstadoCargando etiqueta={t("citas.agenda.cargando")} />}
 
-      {appointments && appointments.length === 0 && !loading && <EstadoVacio icon={CalendarX2} mensaje="No hay citas en este rango." />}
+      {appointments && appointments.length === 0 && !loading && <EstadoVacio icon={CalendarX2} mensaje={t("citas.agenda.vacio")} />}
 
       {groups.map(([day, dayAppointments]) => (
         <section key={day} className="flex flex-col gap-2">
@@ -503,13 +511,13 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
               <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-foreground">
-                    {formatTimeRange(apt.startsAt, apt.endsAt)} — {apt.serviceName ?? "Servicio desconocido"}
+                    {formatTimeRange(apt.startsAt, apt.endsAt)} — {apt.serviceName ?? t("citas.servicioDesconocido")}
                   </p>
                   <p className="mt-0.5 text-sm text-foreground/80">
-                    {apt.customerName ?? "Cliente desconocido"} {apt.customerPhone ? `· ${apt.customerPhone}` : ""}
+                    {apt.customerName ?? t("citas.clienteDesconocido")} {apt.customerPhone ? `· ${apt.customerPhone}` : ""}
                   </p>
                   <p className="mt-0.5 text-xs text-muted-foreground">
-                    {apt.providerName ?? "Proveedor desconocido"} · {formatAppointmentSource(apt.source)}
+                    {apt.providerName ?? t("citas.proveedorDesconocido")} · {formatAppointmentSource(apt.source)}
                   </p>
                   {/* Fase 6 §2 (seguimiento, "citas-sync-errores-visibles") — indicador
                       discreto de sincronización con el calendario externo, solo cuando
@@ -530,25 +538,25 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
                   {apt.googleSyncStatus === "invalid" && (
                     <Button variant="outline" size="sm" onClick={() => void handleRetrySync(apt.id)} disabled={pendingAction !== null && pendingAction.id === apt.id}>
                       <RefreshCw aria-hidden />
-                      {pendingAction?.id === apt.id && pendingAction.action === "retry_sync" ? "Reintentando…" : "Reintentar sincronización"}
+                      {pendingAction?.id === apt.id && pendingAction.action === "retry_sync" ? t("citas.agenda.reintentando") : t("citas.agenda.reintentarSync")}
                     </Button>
                   )}
                   {CONFIRMABLE_STATUSES.has(apt.status) && (
                     <Button variant="outline" size="sm" onClick={() => void handleConfirm(apt.id)} disabled={pendingAction !== null && pendingAction.id === apt.id}>
                       <Check aria-hidden />
-                      {pendingAction?.id === apt.id && pendingAction.action === "confirm" ? "Confirmando…" : "Confirmar"}
+                      {pendingAction?.id === apt.id && pendingAction.action === "confirm" ? t("citas.agenda.confirmando") : t("citas.agenda.confirmar")}
                     </Button>
                   )}
                   {COMPLETABLE_STATUSES.has(apt.status) && (
                     <Button variant="outline" size="sm" onClick={() => void handleComplete(apt.id)} disabled={pendingAction !== null && pendingAction.id === apt.id}>
                       <CheckCheck aria-hidden />
-                      {pendingAction?.id === apt.id && pendingAction.action === "complete" ? "Completando…" : "Completar"}
+                      {pendingAction?.id === apt.id && pendingAction.action === "complete" ? t("citas.agenda.completando") : t("citas.agenda.completar")}
                     </Button>
                   )}
                   {NO_SHOW_STATUSES.has(apt.status) && (
                     <Button variant="outline" size="sm" onClick={() => void handleNoShow(apt.id)} disabled={pendingAction !== null && pendingAction.id === apt.id}>
                       <UserX aria-hidden />
-                      {pendingAction?.id === apt.id && pendingAction.action === "no_show" ? "Marcando…" : "No-show"}
+                      {pendingAction?.id === apt.id && pendingAction.action === "no_show" ? t("citas.agenda.marcando") : t("citas.agenda.noShow")}
                     </Button>
                   )}
                   {CANCELABLE_STATUSES.has(apt.status) && (
@@ -560,7 +568,7 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
                       disabled={pendingAction !== null && pendingAction.id === apt.id}
                     >
                       <X aria-hidden />
-                      {pendingAction?.id === apt.id && pendingAction.action === "cancel" ? "Cancelando…" : "Cancelar"}
+                      {pendingAction?.id === apt.id && pendingAction.action === "cancel" ? t("citas.agenda.cancelando") : t("citas.cancelar")}
                     </Button>
                   )}
                 </div>
@@ -573,15 +581,15 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
       <Card className="mt-2">
         <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
           <div>
-            <CardTitle className="text-base">Lista de espera</CardTitle>
-            <CardDescription className="mt-1">Clientes esperando un horario, en el mismo orden en que se les avisaría (FIFO).</CardDescription>
+            <CardTitle className="text-base">{t("citas.agenda.espera.titulo")}</CardTitle>
+            <CardDescription className="mt-1">{t("citas.agenda.espera.descripcion")}</CardDescription>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Label htmlFor="citas-espera-servicio" className="sr-only">
-              Filtrar la lista de espera por servicio
+              {t("citas.agenda.espera.filtrarServicio")}
             </Label>
             <NativeSelect wrapperClassName="w-auto" id="citas-espera-servicio" value={waitlistServiceFilter} onChange={(e) => setWaitlistServiceFilter(e.target.value)}>
-              <option value="">Todos los servicios</option>
+              <option value="">{t("citas.agenda.espera.todosServicios")}</option>
               {services?.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.name}
@@ -594,13 +602,15 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
               disabled={broadcasting || waitlistLoading || (waitlist !== null && waitlist.length === 0)}
             >
               <Megaphone aria-hidden />
-              {broadcasting ? "Avisando…" : "Avisar a la lista de espera"}
+              {broadcasting ? t("citas.agenda.espera.avisando") : t("citas.agenda.espera.avisar")}
             </Button>
           </div>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <p className="text-xs text-muted-foreground">
-            Filtro de proveedor: el mismo selector de arriba ({providerFilter ? providers?.find((p) => p.id === providerFilter)?.displayName ?? providerFilter : "todos los proveedores"}).
+            {t("citas.agenda.espera.filtroProveedor", {
+              proveedor: providerFilter ? providers?.find((p) => p.id === providerFilter)?.displayName ?? providerFilter : t("citas.agenda.espera.todosProveedores"),
+            })}
           </p>
 
           {waitlistError && <EstadoError mensaje={waitlistError} />}
@@ -613,7 +623,7 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
             // NUNCA debe decir "Aviso encolado" (sería una confirmación falsa
             // -- exactamente el éxito falso que la ronda 2 encontró).
             <p role="status" className="rounded-md border border-border bg-muted px-3 py-2 text-sm text-foreground">
-              Avisar a la lista de espera todavía no está disponible en este negocio (falta terminar de actualizar la base de datos). Ningún aviso se encoló; vuelve a intentarlo más tarde.
+              {t("citas.agenda.espera.noDisponible")}
             </p>
           )}
 
@@ -623,24 +633,24 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
                   post-commit, en segundo plano — este mensaje ya no promete un
                   "Avisados: N" síncrono (esa cifra no existe todavía cuando la
                   ruta responde), solo confirma que el aviso quedó encolado. */}
-              Aviso encolado para {broadcastSummary.candidatesConsidered} candidato{broadcastSummary.candidatesConsidered === 1 ? "" : "s"} considerado{broadcastSummary.candidatesConsidered === 1 ? "" : "s"}; se procesa en segundo plano.
-              {broadcastSummary.skippedNoWhatsappConfig ? " Este negocio no tiene WhatsApp configurado todavía, así que ningún aviso podrá salir." : ""}
+              {t("citas.agenda.espera.encolado", { count: broadcastSummary.candidatesConsidered })}
+              {broadcastSummary.skippedNoWhatsappConfig ? t("citas.agenda.espera.sinWhatsapp") : ""}
             </p>
           )}
 
-          {waitlistLoading && !waitlist && <EstadoCargando lineas={2} etiqueta="Cargando lista de espera…" />}
+          {waitlistLoading && !waitlist && <EstadoCargando lineas={2} etiqueta={t("citas.agenda.espera.cargando")} />}
 
-          {waitlist && waitlist.length === 0 && !waitlistLoading && <EstadoVacio icon={Clock} mensaje="Nadie está esperando con estos filtros." />}
+          {waitlist && waitlist.length === 0 && !waitlistLoading && <EstadoVacio icon={Clock} mensaje={t("citas.agenda.espera.vacio")} />}
 
           {waitlist && waitlist.length > 0 && (
             <Table>
-              <TableCaption>Orden real en que se avisaría a cada cliente (FIFO).</TableCaption>
+              <TableCaption>{t("citas.agenda.espera.caption")}</TableCaption>
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-14">#</TableHead>
-                  <TableHead>Cliente</TableHead>
-                  <TableHead>Preferencias</TableHead>
-                  <TableHead className="text-right">Avisos</TableHead>
+                  <TableHead>{t("citas.agenda.espera.col.cliente")}</TableHead>
+                  <TableHead>{t("citas.agenda.espera.col.preferencias")}</TableHead>
+                  <TableHead className="text-right">{t("citas.agenda.espera.col.avisos")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -653,11 +663,11 @@ export function AgendaPage({ apiBaseUrl, token, propertyId, orgId, staffFullName
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
                       {candidate.preferredDateFrom || candidate.preferredTimeWindow
-                        ? `${candidate.preferredDateFrom ? `desde ${candidate.preferredDateFrom}` : ""}${candidate.preferredDateFrom && candidate.preferredTimeWindow ? " · " : ""}${candidate.preferredTimeWindow ?? ""}`
-                        : "Sin preferencia"}
+                        ? `${candidate.preferredDateFrom ? t("citas.agenda.espera.desde", { fecha: candidate.preferredDateFrom }) : ""}${candidate.preferredDateFrom && candidate.preferredTimeWindow ? " · " : ""}${candidate.preferredTimeWindow ?? ""}`
+                        : t("citas.agenda.espera.sinPreferencia")}
                     </TableCell>
                     <TableCell className="text-right text-xs text-muted-foreground">
-                      {candidate.notifiedCount > 0 ? `ya avisado ${candidate.notifiedCount}x` : "nunca avisado"}
+                      {candidate.notifiedCount > 0 ? t("citas.agenda.espera.yaAvisado", { n: candidate.notifiedCount }) : t("citas.agenda.espera.nuncaAvisado")}
                     </TableCell>
                   </TableRow>
                 ))}
