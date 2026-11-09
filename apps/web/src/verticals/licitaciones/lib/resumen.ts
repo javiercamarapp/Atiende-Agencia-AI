@@ -1,9 +1,13 @@
 // Helpers puros del Resumen de licitaciones (UNI-RES-licitaciones). Sin red ni estado: la pagina inyecta lo que leyo de los
 // endpoints existentes y estas funciones solo cuentan, agrupan y formatean (sin inventar nada).
-import type { StatusTone } from "@atiende/ui";
+import { localeActivo, traductorActivo, type StatusTone } from "@atiende/ui";
+import { licitacionesResumen } from "@atiende/ui/i18n/licitaciones/resumen";
 import type { SourceConnectorInfo, SourceHealthState, SourceRun } from "./sources-client.ts";
 import { SOURCE_STATE_LABELS } from "./sources-client.ts";
 import type { TenderSummary } from "./tenders-client.ts";
+
+// Textos y fechas en el idioma activo de la consola (en espanol, los de siempre): la pagina consume el contexto con `useT` y se repinta al cambiarlo.
+const tr = traductorActivo(licitacionesResumen);
 
 export const DIA_MS = 24 * 60 * 60 * 1000;
 export const VENTANA_PLAZO_DIAS = 7;
@@ -52,25 +56,21 @@ function partesEnZona(fecha: Date, zona: string, opciones: Intl.DateTimeFormatOp
 }
 
 /** Saludo segun la hora de la ORGANIZACION (no la del navegador): mismos cortes que `saludoPorHora` (buenas tardes hasta las 19:59). */
-export function saludoEnZona(fecha: Date, zona: string = ZONA_LICITACIONES): "Buenos días" | "Buenas tardes" | "Buenas noches" {
+export function saludoEnZona(fecha: Date, zona: string = ZONA_LICITACIONES): string {
   const hora = Number(partesEnZona(fecha, zona, { hour: "numeric", hourCycle: "h23" }).find((p) => p.type === "hour")?.value);
-  if (hora >= 5 && hora < 12) return "Buenos días";
-  if (hora >= 12 && hora < 20) return "Buenas tardes"; // mismo corte que restaurantes: «buenas noches» desde las 20:00
-  return "Buenas noches";
+  if (hora >= 5 && hora < 12) return tr("licitaciones.resumen.saludo.manana");
+  if (hora >= 12 && hora < 20) return tr("licitaciones.resumen.saludo.tarde"); // mismo corte que restaurantes: «buenas noches» desde las 20:00
+  return tr("licitaciones.resumen.saludo.noche");
 }
 
-/** "sábado, 3 de octubre" en la zona de la organizacion. */
+/** "sábado, 3 de octubre" (EN: "Saturday, October 3") en la zona de la organizacion. */
 export function fechaLargaEnZona(fecha: Date, zona: string = ZONA_LICITACIONES): string {
-  return new Intl.DateTimeFormat("es-MX", { timeZone: zona, weekday: "long", day: "numeric", month: "long" }).format(fecha);
+  return new Intl.DateTimeFormat(localeActivo(), { timeZone: zona, weekday: "long", day: "numeric", month: "long" }).format(fecha);
 }
 
-/** "3 oct, 14:05" en la zona de la organizacion. */
+/** "3 oct, 14:05" (EN: "Oct 3, 02:05 PM") en la zona de la organizacion. */
 export function fechaHoraCortaEnZona(iso: string, zona: string = ZONA_LICITACIONES): string {
-  return new Intl.DateTimeFormat("es-MX", { timeZone: zona, day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
-}
-
-export function plural(n: number, uno: string, varios: string): string {
-  return `${n} ${n === 1 ? uno : varios}`;
+  return new Intl.DateTimeFormat(localeActivo(), { timeZone: zona, day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
 }
 
 const TONO_CORRIDA: Readonly<Record<SourceHealthState, StatusTone>> = {
@@ -107,8 +107,8 @@ export function ultimaCorridaPorFuente(conectores: readonly SourceConnectorInfo[
     const nombre = etiquetaDe.get(id) ?? id;
     const r = masReciente.get(id);
     if (!r) return { source: id, nombre };
-    const cobertura = r.evidence.coverage ? ` · ${r.evidence.coverage.obtained} de ${r.evidence.coverage.expected} resultados` : "";
-    return { source: id, nombre, estado: { tone: TONO_CORRIDA[r.state] ?? "neutral", etiqueta: r.state === "ok" ? "OK" : SOURCE_STATE_LABELS[r.state] ?? r.state }, meta: `${fechaHoraCortaEnZona(r.finishedAt, zona)}${cobertura}` };
+    const cobertura = r.evidence.coverage ? tr("licitaciones.resumen.corrida.cobertura", { obtenidos: r.evidence.coverage.obtained, esperados: r.evidence.coverage.expected }) : "";
+    return { source: id, nombre, estado: { tone: TONO_CORRIDA[r.state] ?? "neutral", etiqueta: r.state === "ok" ? tr("licitaciones.resumen.corrida.ok") : SOURCE_STATE_LABELS[r.state] ?? r.state }, meta: `${fechaHoraCortaEnZona(r.finishedAt, zona)}${cobertura}` };
   });
 }
 
@@ -134,11 +134,14 @@ export interface CorridaSimple {
 /** Ultima ingesta del listado 69-B del SAT (GET .../kyc-69b -> `lista`); sin lista ingerida no hay corrida que mostrar. */
 export function corridaKyc(lista: { readonly periodo: string; readonly filas: number; readonly ingestadoEn: string } | null | undefined, zona: string = ZONA_LICITACIONES): CorridaSimple | null {
   if (!lista || Number.isNaN(new Date(lista.ingestadoEn).getTime())) return null;
-  return { estado: { tone: "success", etiqueta: "Lista ingerida" }, meta: `Listado SAT ${lista.periodo} · ${plural(lista.filas, "fila", "filas")} · ${fechaHoraCortaEnZona(lista.ingestadoEn, zona)}` };
+  return {
+    estado: { tone: "success", etiqueta: tr("licitaciones.resumen.corrida.listaIngerida") },
+    meta: tr("licitaciones.resumen.corrida.kycMeta", { periodo: lista.periodo, filas: tr("licitaciones.resumen.corrida.filas", { count: lista.filas }), fecha: fechaHoraCortaEnZona(lista.ingestadoEn, zona) }),
+  };
 }
 
 /** Ultimo recordatorio o cambio de convocatoria generado (`createdAt` real); null si no hay ninguno. */
 export function corridaSeguimiento(creados: readonly string[], zona: string = ZONA_LICITACIONES): CorridaSimple | null {
   const ultima = fechaMasReciente(creados);
-  return ultima ? { estado: { tone: "success", etiqueta: "Generó avisos" }, meta: `Último aviso generado ${fechaHoraCortaEnZona(ultima, zona)}` } : null;
+  return ultima ? { estado: { tone: "success", etiqueta: tr("licitaciones.resumen.corrida.generoAvisos") }, meta: tr("licitaciones.resumen.corrida.ultimoAviso", { fecha: fechaHoraCortaEnZona(ultima, zona) }) } : null;
 }

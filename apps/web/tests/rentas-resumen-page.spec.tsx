@@ -4,11 +4,13 @@
 // error PARCIAL por bloque ("no disponible" sin tumbar el resto), bloques sin permiso ocultos y redirección del rol limpieza.
 import { act } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { RentasDashboardPage } from "../src/verticals/rentas/pages/Dashboard.tsx";
 import { fetchResumen } from "../src/verticals/rentas/lib/resumen-client.ts";
 import type { LoginSession } from "../src/lib/auth-client.ts";
 import { click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+import { IdiomaProvider, cargarIdioma } from "@atiende/ui";
+import { fijarIdiomaActivo } from "../../../packages/ui/src/i18n/activo.ts";
 
 let rendered: RenderedComponent | undefined;
 afterEach(() => {
@@ -151,5 +153,38 @@ describe("fetchResumen", () => {
     expect(r.conflictos).toEqual({ estado: "no_disponible" });
     expect(r.feeds).toEqual({ estado: "no_disponible" });
     expect(r.llegadasSalidas).toEqual({ estado: "ok", llegadas: 3, salidas: 2 });
+  });
+});
+
+describe("Resumen de rentas en ingles (i18n ES/EN)", () => {
+  beforeAll(() => cargarIdioma("en"));
+  beforeEach(() => {
+    document.documentElement.dataset.diseno = "ds3";
+  });
+  afterEach(() => {
+    fijarIdiomaActivo("es");
+    delete document.documentElement.dataset.diseno;
+  });
+
+  it("los 7 KPI, agentes y notas en ingles con las mismas cifras; los nombres del servidor no se traducen", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => json(RESUMEN())));
+    rendered = renderComponent(
+      <IdiomaProvider idiomaInicial="en">
+        <MemoryRouter initialEntries={["/rentas/gestora-demo"]}>
+          <Routes>
+            <Route
+              path="/rentas/gestora-demo"
+              element={<RentasDashboardPage apiBaseUrl="http://api.local" token="tok" propertyId="prop-1" setPropertyId={() => {}} properties={[{ propertyId: "prop-1", nombre: "Casa del mar" }]} orgSlug="gestora-demo" session={sesion("admin_gestora")} />}
+            />
+          </Routes>
+        </MemoryRouter>
+      </IdiomaProvider>,
+    );
+    await esperar();
+    const texto = rendered.container.textContent ?? "";
+    for (const etiqueta of ["Arrivals today", "Departures today", "Occupancy this month"]) expect(texto).toContain(etiqueta);
+    expect(texto).toContain("45.2%");
+    expect(texto).toContain("Sincronización iCal");
+    for (const es of ["Llegadas hoy", "Ocupación del mes", "Orquestación de agentes", "14 de 31 noches"]) expect(texto).not.toContain(es);
   });
 });

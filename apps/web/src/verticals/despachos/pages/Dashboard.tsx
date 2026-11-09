@@ -12,7 +12,9 @@ import { useEffect, useState, type ReactNode } from "react";
 import { COPILOTO_DESPACHOS_ROLES, DespachosFijadosCopiloto } from "./Copiloto.tsx";
 import { Link } from "react-router-dom";
 import { AlertTriangle, Bot, CalendarCheck, CheckCircle2, ClipboardList, FileText, HandCoins, Landmark, ShieldAlert, ShieldCheck, Sparkles, Users, Wallet } from "lucide-react";
-import { Card, CardContent, DataTable, EstadoCargando, EstadoError, EstadoVacio, Odometro, PageContainer, PillLink, ResumenLayout, ResumenSeccion, StatCard, StatusBadge, TileLink, statusTone } from "@atiende/ui";
+import { Card, CardContent, DataTable, EstadoCargando, EstadoError, EstadoVacio, Odometro, PageContainer, PillLink, ResumenLayout, ResumenSeccion, StatCard, StatusBadge, TileLink, statusTone, traductorActivo, useT } from "@atiende/ui";
+import type { Clave } from "@atiende/ui";
+import { despachosResumen } from "@atiende/ui/i18n/despachos/resumen";
 import { primerNombreOCorreo } from "../../../lib/greeting.ts";
 import { saludoDespacho } from "../lib/saludo.ts";
 import { fetchDashboardDespacho } from "../lib/dashboard-client.ts";
@@ -21,19 +23,38 @@ import { formatMoney, formatPeriodo } from "../lib/format.ts";
 import { NIVEL_ATENCION_TONES, SEVERIDAD_ANOMALIA_TONES } from "../lib/status-tones.ts";
 import type { DespachosShellContext } from "../DespachosShell.tsx";
 
-const NIVEL_ETIQUETA: Record<NivelAtencion, string> = { critico: "Crítico", atencion: "Atención", al_corriente: "Al corriente", sin_datos: "Sin datos" };
-const SEVERIDAD_ETIQUETA: Record<SeveridadAnomalia, string> = { alta: "Alta", media: "Media", baja: "Baja" };
-const FUENTE_ETIQUETA: Record<FuenteDashboard, string> = {
-  cartera: "cartera y cobranza",
-  revisiones: "revisiones de CFDI",
-  vencimientos: "vencimientos fiscales",
-  cierre: "cierre mensual",
-  cfdi: "CFDI del mes",
+// Funciones de texto fuera del componente: traducen al idioma activo (la pagina consume el contexto con `useT`, asi que se repinta al cambiarlo).
+const tr = traductorActivo(despachosResumen);
+
+const NIVEL_CLAVE: Record<NivelAtencion, Clave> = {
+  critico: "despachos.resumen.nivel.critico",
+  atencion: "despachos.resumen.nivel.atencion",
+  al_corriente: "despachos.resumen.nivel.alCorriente",
+  sin_datos: "despachos.resumen.nivel.sinDatos",
 };
-const SIN_CARTERA = "Sin cartera disponible: aún no hay cuentas por cobrar registradas o la base no tiene ese módulo.";
+const SEVERIDAD_CLAVE: Record<SeveridadAnomalia, Clave> = { alta: "despachos.resumen.severidad.alta", media: "despachos.resumen.severidad.media", baja: "despachos.resumen.severidad.baja" };
+const FUENTE_CLAVE: Record<FuenteDashboard, Clave> = {
+  cartera: "despachos.resumen.fuente.cartera",
+  revisiones: "despachos.resumen.fuente.revisiones",
+  vencimientos: "despachos.resumen.fuente.vencimientos",
+  cierre: "despachos.resumen.fuente.cierre",
+  cfdi: "despachos.resumen.fuente.cfdi",
+};
+const CIERRE_CLAVE: Record<"cerrado" | "abierto" | "vencido" | "sin_periodo", Clave> = {
+  cerrado: "despachos.resumen.cierre.cerrado",
+  abierto: "despachos.resumen.cierre.abierto",
+  vencido: "despachos.resumen.cierre.vencido",
+  sin_periodo: "despachos.resumen.cierre.sinPeriodo",
+};
+/** Saludo de la franja horaria de Mexico (`saludoDespacho`) en el idioma activo. */
+const SALUDO_CLAVE: Record<ReturnType<typeof saludoDespacho>, Clave> = {
+  "Buenos días": "despachos.resumen.saludo.manana",
+  "Buenas tardes": "despachos.resumen.saludo.tarde",
+  "Buenas noches": "despachos.resumen.saludo.noche",
+};
 
 export function NivelBadge({ nivel }: { nivel: NivelAtencion }) {
-  return <StatusBadge tone={statusTone(NIVEL_ATENCION_TONES, nivel)}>{NIVEL_ETIQUETA[nivel]}</StatusBadge>;
+  return <StatusBadge tone={statusTone(NIVEL_ATENCION_TONES, nivel)}>{tr(NIVEL_CLAVE[nivel])}</StatusBadge>;
 }
 
 function formatPct(value: number | null): string {
@@ -61,17 +82,17 @@ function kpisResumen(d: DashboardDespacho, base: string): ReactNode[] {
   const total = d.anomaliasPorSeveridad.alta + d.anomaliasPorSeveridad.media + d.anomaliasPorSeveridad.baja;
   return [
     <div key="clientes" className="min-w-0">
-      {ligado(`${base}/cartera`, <StatCard icon={Users} label="Clientes" value={String(d.totalClientes)} nota={`${d.clientesPorNivel.critico} crítico(s) · ${d.clientesPorNivel.atencion} en atención`} />)}
+      {ligado(`${base}/cartera`, <StatCard icon={Users} label={tr("despachos.resumen.kpi.clientes")} value={String(d.totalClientes)} nota={tr("despachos.resumen.kpi.clientesNota", { criticos: d.clientesPorNivel.critico, atencion: d.clientesPorNivel.atencion })} />)}
     </div>,
     <div key="vencida" className="min-w-0">
       {ligado(
         `${base}/cobranza`,
         <StatCard
           icon={AlertTriangle}
-          label="Cartera vencida"
+          label={tr("despachos.resumen.kpi.vencida")}
           value={cartera ? formatMoney(cartera.montoVencido) : ""}
-          nota={cartera ? `${formatMoney(cartera.monto90Mas)} con más de 90 días` : undefined}
-          sinDato={cartera ? undefined : SIN_CARTERA}
+          nota={cartera ? tr("despachos.resumen.kpi.vencidaNota", { monto: formatMoney(cartera.monto90Mas) }) : undefined}
+          sinDato={cartera ? undefined : tr("despachos.resumen.sinCartera")}
         />,
       )}
     </div>,
@@ -80,10 +101,10 @@ function kpisResumen(d: DashboardDespacho, base: string): ReactNode[] {
         `${base}/cobranza`,
         <StatCard
           icon={HandCoins}
-          label="Tasa de cobranza"
+          label={tr("despachos.resumen.kpi.tasa")}
           value={cartera ? formatPct(cartera.tasaCobranzaPct) : ""}
-          nota={cartera ? `${formatMoney(cartera.montoCobrado)} cobrado` : undefined}
-          sinDato={cartera?.tasaCobranzaPct === null || !cartera ? "Sin cartera registrada para calcular la tasa." : undefined}
+          nota={cartera ? tr("despachos.resumen.kpi.tasaNota", { monto: formatMoney(cartera.montoCobrado) }) : undefined}
+          sinDato={cartera?.tasaCobranzaPct === null || !cartera ? tr("despachos.resumen.kpi.tasaSinDato") : undefined}
         />,
       )}
     </div>,
@@ -92,10 +113,10 @@ function kpisResumen(d: DashboardDespacho, base: string): ReactNode[] {
         `${base}/vencimientos`,
         <StatCard
           icon={ClipboardList}
-          label="Pendientes de trabajo"
+          label={tr("despachos.resumen.kpi.pendientes")}
           value={cargaTrabajo ? String(cargaTrabajo.totalPendientes) : ""}
-          nota={cargaTrabajo ? `${cargaTrabajo.revisionesPendientes} revisión(es) · ${cargaTrabajo.vencimientosAbiertos} vencimiento(s) · ${cargaTrabajo.tareasCierrePendientes} tarea(s) de cierre` : undefined}
-          sinDato={cargaTrabajo ? undefined : "Ninguna fuente de trabajo disponible todavía."}
+          nota={cargaTrabajo ? tr("despachos.resumen.kpi.pendientesNota", { revisiones: cargaTrabajo.revisionesPendientes, vencimientos: cargaTrabajo.vencimientosAbiertos, tareas: cargaTrabajo.tareasCierrePendientes }) : undefined}
+          sinDato={cargaTrabajo ? undefined : tr("despachos.resumen.kpi.pendientesSinDato")}
         />,
       )}
     </div>,
@@ -104,25 +125,25 @@ function kpisResumen(d: DashboardDespacho, base: string): ReactNode[] {
         `${base}/cierre-mensual`,
         <StatCard
           icon={CalendarCheck}
-          label="Cierres sin cerrar"
+          label={tr("despachos.resumen.kpi.cierres")}
           value={cierres ? String(cierres.periodosSinCerrar) : ""}
-          nota={cierres ? `${cierres.periodosVencidos} vencido(s) · ${cierres.clientesMesAnteriorSinCerrar} cliente(s) con el mes anterior abierto` : undefined}
-          sinDato={cierres ? undefined : "Cierre mensual no disponible todavía."}
+          nota={cierres ? tr("despachos.resumen.kpi.cierresNota", { vencidos: cierres.periodosVencidos, clientes: cierres.clientesMesAnteriorSinCerrar }) : undefined}
+          sinDato={cierres ? undefined : tr("despachos.resumen.cierreNoDisponible")}
         />,
       )}
     </div>,
     <div key="anomalias" className="min-w-0">
-      <StatCard icon={ShieldAlert} label="Anomalías" value={String(total)} nota={`${d.anomaliasPorSeveridad.alta} alta(s) · ${d.anomaliasPorSeveridad.media} media(s) · ${d.anomaliasPorSeveridad.baja} baja(s)`} />
+      <StatCard icon={ShieldAlert} label={tr("despachos.resumen.kpi.anomalias")} value={String(total)} nota={tr("despachos.resumen.kpi.anomaliasNota", { alta: d.anomaliasPorSeveridad.alta, media: d.anomaliasPorSeveridad.media, baja: d.anomaliasPorSeveridad.baja })} />
     </div>,
     <div key="cfdi" className="min-w-0">
       {ligado(
         `${base}/cfdi`,
         <StatCard
           icon={FileText}
-          label="CFDI del mes"
+          label={tr("despachos.resumen.kpi.cfdi")}
           value={cfdi ? String(cfdi.total) : ""}
-          nota={cfdi ? `${formatPeriodo(Number(cfdi.periodo.slice(0, 4)), Number(cfdi.periodo.slice(5, 7)))} · ${cfdi.clientes} cliente(s)` : undefined}
-          sinDato={cfdi ? undefined : "CFDI del mes no disponibles todavía."}
+          nota={cfdi ? tr("despachos.resumen.kpi.cfdiNota", { periodo: formatPeriodo(Number(cfdi.periodo.slice(0, 4)), Number(cfdi.periodo.slice(5, 7))), clientes: cfdi.clientes }) : undefined}
+          sinDato={cfdi ? undefined : tr("despachos.resumen.kpi.cfdiSinDato")}
         />,
       )}
     </div>,
@@ -134,7 +155,7 @@ function ListaAnomalias({ anomalias }: { anomalias: readonly AnomaliaDashboard[]
     return (
       <p className="flex items-center gap-2 text-sm text-muted-foreground">
         <CheckCircle2 className="h-4 w-4 text-success" strokeWidth={1.75} />
-        Sin anomalías detectadas con los datos disponibles.
+        {tr("despachos.resumen.sinAnomalias")}
       </p>
     );
   }
@@ -143,7 +164,7 @@ function ListaAnomalias({ anomalias }: { anomalias: readonly AnomaliaDashboard[]
       {anomalias.map((a) => (
         <li key={a.codigo} className="flex items-start gap-2 text-sm text-foreground">
           <StatusBadge tone={statusTone(SEVERIDAD_ANOMALIA_TONES, a.severidad)} className="shrink-0">
-            {SEVERIDAD_ETIQUETA[a.severidad]}
+            {tr(SEVERIDAD_CLAVE[a.severidad])}
           </StatusBadge>
           <span>
             {a.mensaje}
@@ -156,42 +177,43 @@ function ListaAnomalias({ anomalias }: { anomalias: readonly AnomaliaDashboard[]
 }
 
 function DetalleCliente({ cliente }: { cliente: KpisCliente }) {
+  const t = useT(despachosResumen);
   const { cartera, cargaTrabajo, cierres, cfdiMes } = cliente;
   return (
     <Card>
       <CardContent className="flex flex-col gap-4 p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="font-display text-base font-semibold text-foreground">Cliente activo · {cliente.nombre}</h2>
+          <h2 className="font-display text-base font-semibold text-foreground">{t("despachos.resumen.clienteActivo", { nombre: cliente.nombre })}</h2>
           <NivelBadge nivel={cliente.nivelAtencion} />
         </div>
         <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(190px,1fr))]">
           <StatCard
             icon={Wallet}
-            label="Cartera pendiente"
+            label={t("despachos.resumen.carteraPendiente")}
             value={cartera ? formatMoney(cartera.montoPendiente) : ""}
-            nota={cartera ? `${cartera.cuentasPendientes} cuenta(s) · score promedio ${cartera.scorePromedio ?? "—"}` : undefined}
-            sinDato={cartera ? undefined : SIN_CARTERA}
+            nota={cartera ? t("despachos.resumen.carteraPendienteNota", { cuentas: cartera.cuentasPendientes, score: cartera.scorePromedio ?? "—" }) : undefined}
+            sinDato={cartera ? undefined : tr("despachos.resumen.sinCartera")}
           />
           <StatCard
             icon={ClipboardList}
-            label="Carga de trabajo"
+            label={t("despachos.resumen.cargaTrabajo")}
             value={cargaTrabajo ? String(cargaTrabajo.totalPendientes) : ""}
-            nota={cargaTrabajo ? `${cargaTrabajo.vencimientosVencidos ?? 0} vencimiento(s) vencido(s)` : undefined}
-            sinDato={cargaTrabajo ? undefined : "Sin fuentes de trabajo disponibles."}
+            nota={cargaTrabajo ? t("despachos.resumen.cargaTrabajoNota", { n: cargaTrabajo.vencimientosVencidos ?? 0 }) : undefined}
+            sinDato={cargaTrabajo ? undefined : t("despachos.resumen.cargaTrabajoSinDato")}
           />
           <StatCard
             icon={CalendarCheck}
-            label="Cierre del mes anterior"
-            value={cierres ? { cerrado: "Cerrado", abierto: "Abierto", vencido: "Vencido", sin_periodo: "Sin período" }[cierres.mesAnterior.estado] : ""}
+            label={t("despachos.resumen.cierreMesAnterior")}
+            value={cierres ? t(CIERRE_CLAVE[cierres.mesAnterior.estado]) : ""}
             nota={cierres ? formatPeriodo(cierres.mesAnterior.year, cierres.mesAnterior.month) : undefined}
-            sinDato={cierres ? undefined : "Cierre mensual no disponible todavía."}
+            sinDato={cierres ? undefined : tr("despachos.resumen.cierreNoDisponible")}
           />
           <StatCard
             icon={ClipboardList}
-            label={`CFDI 4.0 de ${cfdiMes?.periodo ?? "el mes"}`}
+            label={t("despachos.resumen.cfdiDe", { periodo: cfdiMes?.periodo ?? t("despachos.resumen.elMes") })}
             value={cfdiMes ? String(cfdiMes.total) : ""}
-            nota={cfdiMes ? `${cfdiMes.invalidos} con hallazgos · ${cfdiMes.requierenRevision} por revisar` : undefined}
-            sinDato={cfdiMes ? undefined : "CFDI del mes no disponibles."}
+            nota={cfdiMes ? t("despachos.resumen.cfdiClienteNota", { invalidos: cfdiMes.invalidos, revisar: cfdiMes.requierenRevision }) : undefined}
+            sinDato={cfdiMes ? undefined : t("despachos.resumen.cfdiClienteSinDato")}
           />
         </div>
         <ListaAnomalias anomalias={cliente.anomalias} />
@@ -201,6 +223,7 @@ function DetalleCliente({ cliente }: { cliente: KpisCliente }) {
 }
 
 export function DashboardPage({ apiBaseUrl, token, orgSlug, propertyId, role, staffFullName, staffEmail }: DespachosShellContext) {
+  const t = useT(despachosResumen);
   const [data, setData] = useState<DashboardDespacho | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -211,7 +234,7 @@ export function DashboardPage({ apiBaseUrl, token, orgSlug, propertyId, role, st
     try {
       setData(await fetchDashboardDespacho(fetch, apiBaseUrl, token, orgSlug));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo cargar el dashboard del despacho.");
+      setError(err instanceof Error ? err.message : t("despachos.resumen.errorCarga"));
     } finally {
       setLoading(false);
     }
@@ -228,8 +251,8 @@ export function DashboardPage({ apiBaseUrl, token, orgSlug, propertyId, role, st
     return (
       <PageContainer padding="none" size="xl" className="gap-4 [&>*]:min-w-0">
         {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
-        {loading && !data && <EstadoCargando etiqueta="Cargando dashboard…" />}
-        {data && <EstadoVacio mensaje="Todavía no hay clientes (contribuyentes) visibles para tu usuario." />}
+        {loading && !data && <EstadoCargando etiqueta={t("despachos.resumen.cargando")} />}
+        {data && <EstadoVacio mensaje={t("despachos.resumen.vacio")} />}
       </PageContainer>
     );
   }
@@ -241,13 +264,13 @@ export function DashboardPage({ apiBaseUrl, token, orgSlug, propertyId, role, st
         valor={cartera ? Math.round(cartera.montoPendiente) : null}
         digitos={Math.max(5, cartera ? String(Math.round(cartera.montoPendiente)).length : 5)}
         prefijo="$"
-        etiqueta="Cartera pendiente"
-        sinDato="sin cartera registrada"
+        etiqueta={t("despachos.resumen.carteraPendiente")}
+        sinDato={t("despachos.resumen.carteraSinDato")}
         tamano="md"
       />
       {/* El odómetro se oculta bajo `sm` (como en Likida): en móvil la cifra viaja en una línea. */}
       <p className="ds3-resumen-movil text-ui text-muted-foreground sm:hidden">
-        Cartera pendiente <span className="font-medium tabular-nums text-foreground">{cartera ? formatMoney(cartera.montoPendiente) : "—"}</span>
+        {t("despachos.resumen.carteraPendiente")} <span className="font-medium tabular-nums text-foreground">{cartera ? formatMoney(cartera.montoPendiente) : "—"}</span>
       </p>
     </div>
   );
@@ -255,13 +278,13 @@ export function DashboardPage({ apiBaseUrl, token, orgSlug, propertyId, role, st
   return (
     <PageContainer padding="none" size="xl" className="[&>*]:min-w-0">
       <ResumenLayout
-        saludo={saludoDespacho()}
+        saludo={t(SALUDO_CLAVE[saludoDespacho()])}
         nombre={primerNombreOCorreo(staffFullName, staffEmail)}
-        subtitulo={`${data.organizacion.nombre} · ${data.totalClientes} cliente(s)`}
+        subtitulo={t("despachos.resumen.subtitulo", { organizacion: data.organizacion.nombre, n: data.totalClientes })}
         frase={
           cartera ? (
             <>
-              {data.organizacion.nombre} · {data.totalClientes} cliente(s). Cartera pendiente: <strong>{formatMoney(cartera.montoPendiente)}</strong>.
+              {t("despachos.resumen.frase", { organizacion: data.organizacion.nombre, n: data.totalClientes })}<strong>{formatMoney(cartera.montoPendiente)}</strong>.
             </>
           ) : undefined
         }
@@ -269,67 +292,67 @@ export function DashboardPage({ apiBaseUrl, token, orgSlug, propertyId, role, st
         kpis={kpisResumen(data, base)}
         acciones={
           <>
-            <PillLink to={`${base}/cobranza`}>Ver cobranza</PillLink>
-            <PillLink to={`${base}/cierre-mensual`}>Ver cierre</PillLink>
+            <PillLink to={`${base}/cobranza`}>{t("despachos.resumen.verCobranza")}</PillLink>
+            <PillLink to={`${base}/cierre-mensual`}>{t("despachos.resumen.verCierre")}</PillLink>
           </>
         }
       >
         {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
         {data.fuentesNoDisponibles.length > 0 && (
           <p role="status" className="rounded-lg border border-border bg-muted px-3 py-2 text-sm text-muted-foreground">
-            Algunos indicadores aún no están disponibles en esta base de datos ({data.fuentesNoDisponibles.map((f) => FUENTE_ETIQUETA[f]).join(", ")}); se muestran como «sin dato» en vez de cero.
+            {t("despachos.resumen.fuentesNoDisponibles", { fuentes: data.fuentesNoDisponibles.map((f) => t(FUENTE_CLAVE[f])).join(", ") })}
           </p>
         )}
         {data.truncado && (
           <p role="status" className="rounded-lg border border-border bg-muted px-3 py-2 text-sm text-muted-foreground">
-            Se consolidan los primeros {data.totalClientes} de {data.totalClientesVisibles} clientes visibles.
+            {t("despachos.resumen.truncado", { n: data.totalClientes, total: data.totalClientesVisibles })}
           </p>
         )}
 
-        <ResumenSeccion titulo="Orquestación de agentes">
+        <ResumenSeccion titulo={t("despachos.resumen.orquestacion")}>
           <TileLink
             to={`${base}/cola-cobranza`}
             icon={HandCoins}
-            titulo="Recordatorios de cobranza"
-            descripcion={cartera ? `${cartera.cuentasPendientes} cuenta(s) por cobrar pendientes` : undefined}
+            titulo={t("despachos.resumen.recordatorios")}
+            descripcion={cartera ? t("despachos.resumen.recordatoriosNota", { n: cartera.cuentasPendientes }) : undefined}
           />
-          <TileLink to={`${base}/cfdi`} icon={ShieldCheck} titulo="Lista 69-B del SAT" />
-          <TileLink to={`${base}/conciliacion`} icon={Landmark} titulo="Conciliación asistida" />
-          {COPILOTO_DESPACHOS_ROLES.has(role) && <TileLink to={`${base}/copiloto`} icon={Sparkles} titulo="Copiloto" descripcion="Pregúntale a tus datos del despacho." />}
+          <TileLink to={`${base}/cfdi`} icon={ShieldCheck} titulo={t("despachos.resumen.lista69b")} />
+          <TileLink to={`${base}/conciliacion`} icon={Landmark} titulo={t("despachos.resumen.conciliacion")} />
+          {COPILOTO_DESPACHOS_ROLES.has(role) && <TileLink to={`${base}/copiloto`} icon={Sparkles} titulo={t("despachos.resumen.copiloto")} descripcion={t("despachos.resumen.copilotoNota")} />}
         </ResumenSeccion>
-        <ResumenSeccion titulo="Última corrida">
+        <ResumenSeccion titulo={t("despachos.resumen.ultimaCorrida")}>
           <EstadoVacio
             icon={Bot}
             compacto
             className="col-span-full"
-            titulo="Sin registro de corridas"
-            mensaje="Falta un endpoint de lectura que exponga los latidos de los procesos automáticos del despacho; hasta entonces no se muestra ninguna corrida."
+            titulo={t("despachos.resumen.sinCorridas")}
+            mensaje={t("despachos.resumen.sinCorridasMensaje")}
           />
         </ResumenSeccion>
 
         {activo && <DetalleCliente cliente={activo} />}
 
         <DataTable
-          etiqueta="Clientes del despacho por nivel de atención"
+          etiqueta={t("despachos.resumen.tabla.etiqueta")}
           obtenerId={(c) => c.propertyId}
           filas={data.ranking}
           paginacion={false}
           columnas={[
-            { id: "cliente", encabezado: "Cliente", principal: true, celda: (c) => <span className="font-medium">{c.nombre}</span> },
-            { id: "atencion", encabezado: "Atención", celda: (c) => <NivelBadge nivel={c.nivelAtencion} /> },
-            { id: "cartera", encabezado: "Cartera vencida", celda: (c) => <span className="tabular-nums text-muted-foreground">{c.cartera ? formatMoney(c.cartera.montoVencido) : "Sin dato"}</span> },
-            { id: "cobranza", encabezado: "Cobranza", celda: (c) => <span className="tabular-nums text-muted-foreground">{c.cartera ? formatPct(c.cartera.tasaCobranzaPct) : "Sin dato"}</span> },
-            { id: "pendientes", encabezado: "Pendientes", celda: (c) => <span className="tabular-nums text-muted-foreground">{c.cargaTrabajo ? c.cargaTrabajo.totalPendientes : "Sin dato"}</span> },
+            { id: "cliente", encabezado: t("despachos.resumen.tabla.cliente"), principal: true, celda: (c) => <span className="font-medium">{c.nombre}</span> },
+            { id: "atencion", encabezado: t("despachos.resumen.tabla.atencion"), celda: (c) => <NivelBadge nivel={c.nivelAtencion} /> },
+            { id: "cartera", encabezado: t("despachos.resumen.tabla.cartera"), celda: (c) => <span className="tabular-nums text-muted-foreground">{c.cartera ? formatMoney(c.cartera.montoVencido) : t("despachos.resumen.sinDato")}</span> },
+            { id: "cobranza", encabezado: t("despachos.resumen.tabla.cobranza"), celda: (c) => <span className="tabular-nums text-muted-foreground">{c.cartera ? formatPct(c.cartera.tasaCobranzaPct) : t("despachos.resumen.sinDato")}</span> },
+            { id: "pendientes", encabezado: t("despachos.resumen.tabla.pendientes"), celda: (c) => <span className="tabular-nums text-muted-foreground">{c.cargaTrabajo ? c.cargaTrabajo.totalPendientes : t("despachos.resumen.sinDato")}</span> },
             {
               id: "cierre",
-              encabezado: "Cierre mes anterior",
+              encabezado: t("despachos.resumen.tabla.cierre"),
               celda: (c) => (
                 <span className="text-muted-foreground">
-                  {c.cierres ? { cerrado: "Cerrado", abierto: "Abierto", vencido: "Vencido", sin_periodo: "Sin período" }[c.cierres.mesAnterior.estado] : "Sin dato"}
+                  {c.cierres ? t(CIERRE_CLAVE[c.cierres.mesAnterior.estado]) : t("despachos.resumen.sinDato")}
                 </span>
               ),
             },
-            { id: "anomalias", encabezado: "Anomalías", className: "min-w-64", celda: (c) => <ListaAnomalias anomalias={c.anomalias} /> },
+            { id: "anomalias", encabezado: t("despachos.resumen.tabla.anomalias"), className: "min-w-64", celda: (c) => <ListaAnomalias anomalias={c.anomalias} /> },
           ]}
         />
         <DespachosFijadosCopiloto apiBaseUrl={apiBaseUrl} token={token} propertyId={propertyId} orgSlug={orgSlug} />

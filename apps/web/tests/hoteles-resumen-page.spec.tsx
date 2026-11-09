@@ -8,12 +8,14 @@
 //   - el rango de P&L usa el dia de calendario de CDMX, no el dia UTC (hallazgo de auditoria a4, antes en
 //     hoteles-dashboard-resumen-ejecutivo-rango-cdmx.spec.tsx).
 import { act } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { DashboardPage } from "../src/verticals/hoteles/pages/Dashboard.tsx";
 import type { HotelesShellContext } from "../src/verticals/hoteles/HotelesShell.tsx";
 import { formatFechaSolo } from "../src/lib/formato-fecha.ts";
 import { flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+import { IdiomaProvider, cargarIdioma } from "@atiende/ui";
+import { fijarIdiomaActivo } from "../../../packages/ui/src/i18n/activo.ts";
 
 let rendered: RenderedComponent | undefined;
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -361,5 +363,39 @@ describe("Resumen de hoteles -- el rango del P&L es el dia de calendario CDMX, n
 
     expect(rutasPedidas()).toEqual(["pl"]);
     expect(fetchMock.mock.calls[0]![0]).toBe(`${BASE}/pl?desde=2026-09-26&hasta=2026-10-02`);
+  });
+});
+
+describe("Resumen de hoteles en ingles (i18n ES/EN)", () => {
+  beforeAll(() => cargarIdioma("en"));
+  beforeEach(() => {
+    document.documentElement.dataset.diseno = "ds3";
+  });
+  afterEach(() => {
+    fijarIdiomaActivo("es");
+    delete document.documentElement.dataset.diseno;
+  });
+
+  it("owner: saludo, KPIs, RevPAR, pildoras y secciones en ingles; las cifras y los datos del negocio no cambian", async () => {
+    stubApi();
+    rendered = renderComponent(
+      <IdiomaProvider idiomaInicial="en">
+        <MemoryRouter>
+          <DashboardPage {...ctxDe("owner")} />
+        </MemoryRouter>
+      </IdiomaProvider>,
+    );
+    await esperarCarga();
+    const c = rendered.container;
+    expect(c.querySelector("h1")?.textContent).toMatch(/^(Good morning|Good afternoon|Good evening), Ana$/);
+    expect(cifra(c, "Occupancy")).toBe("75.0%");
+    expect(cifra(c, "ADR")).toBe("$1,200");
+    expect(cifra(c, "Arrivals")).toBe("3");
+    expect(cifra(c, "Tickets past SLA")).toBe("2");
+    expect(c.querySelector('[data-testid="odometro"]')?.getAttribute("aria-label")).toBe("RevPAR · 30 days: $900");
+    expect(c.textContent).toContain("Hotel Casa Azul · 30 days");
+    expect(c.textContent).toContain("Agent orchestration");
+    expect(c.textContent).toContain("View front desk");
+    for (const es of ["Ocupación", "Llegadas", "Orquestación de agentes", "Ver recepción", "30 días", "Última corrida"]) expect(c.textContent).not.toContain(es);
   });
 });

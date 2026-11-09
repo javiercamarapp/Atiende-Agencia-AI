@@ -7,8 +7,9 @@ import { useEffect, useState } from "react";
 import { RentasFijadosCopiloto } from "./Copiloto.tsx";
 import { Navigate, Link } from "react-router-dom";
 import { AlertTriangle, BedDouble, ClipboardList, Inbox, LogIn, LogOut, RefreshCcw } from "lucide-react";
-import { AgentRunCard, EstadoCargando, EstadoError, PageContainer, PillLink, ResumenLayout, ResumenSeccion, StatCard } from "@atiende/ui";
+import { AgentRunCard, EstadoCargando, EstadoError, PageContainer, PillLink, ResumenLayout, ResumenSeccion, StatCard, localeActivo, traductorActivo, useT } from "@atiende/ui";
 import type { AgentRunEstado } from "@atiende/ui";
+import { rentasResumen } from "@atiende/ui/i18n/rentas/resumen";
 import { saludoPorHora, primerNombreOCorreo } from "../../../lib/greeting.ts";
 import { fetchResumen } from "../lib/resumen-client.ts";
 import type { AgenteResumen, Bloque, ResumenOperativo } from "../lib/resumen-client.ts";
@@ -16,13 +17,20 @@ import type { RentasShellContext } from "../RentasShell.tsx";
 
 /** Roles con acceso a Reportes (mismo techo que el reporte de Rn-03: finanzas). */
 const ROLES_REPORTES: ReadonlySet<string> = new Set(["admin_gestora", "contador"]);
-const SIN_DATO = "No disponible aún en este ambiente";
+// Funciones de texto fuera del componente: traducen al idioma activo (la pagina consume el contexto con `useT`, asi que se repinta al cambiarlo).
+const tr = traductorActivo(rentasResumen);
 
-const ESTADO_AGENTE: Record<AgenteResumen["estado"], AgentRunEstado> = {
-  ok: { tone: "success", etiqueta: "Al día" },
-  atencion: { tone: "warning", etiqueta: "Requiere atención" },
-  error: { tone: "danger", etiqueta: "Con error" },
-};
+const TONO_AGENTE: Record<AgenteResumen["estado"], AgentRunEstado["tone"]> = { ok: "success", atencion: "warning", error: "danger" };
+
+function estadoAgente(estado: AgenteResumen["estado"]): AgentRunEstado {
+  return { tone: TONO_AGENTE[estado], etiqueta: tr(`rentas.resumen.agente.${estado}`) };
+}
+
+/** Saludo por hora (greeting.ts) en el idioma activo. */
+function saludoTraducido(): string {
+  const s = saludoPorHora(); // i18n-ignorar (se compara con el literal de greeting.ts, no se pinta)
+  return tr(s === "Buenos días" ? "rentas.resumen.saludo.manana" : s === "Buenas tardes" ? "rentas.resumen.saludo.tarde" : "rentas.resumen.saludo.noche");
+}
 
 const PANTALLA_AGENTE: Record<AgenteResumen["clave"], string> = {
   sync_ical: "ical-sync",
@@ -31,19 +39,15 @@ const PANTALLA_AGENTE: Record<AgenteResumen["clave"], string> = {
   checkout_sweep: "mis-tareas",
 };
 
-function plural(n: number, uno: string, varios: string): string {
-  return `${n} ${n === 1 ? uno : varios}`;
-}
-
 /** "2 oct, 14:05" en la zona de la property; si la zona no es válida, cae a la del navegador. */
 function cuando(iso: string, zona: string): string {
   const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "fecha desconocida";
+  if (Number.isNaN(d.getTime())) return tr("rentas.resumen.fechaDesconocida");
   const opciones: Intl.DateTimeFormatOptions = { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" };
   try {
-    return new Intl.DateTimeFormat("es-MX", { ...opciones, timeZone: zona }).format(d);
+    return new Intl.DateTimeFormat(localeActivo(), { ...opciones, timeZone: zona }).format(d);
   } catch {
-    return new Intl.DateTimeFormat("es-MX", opciones).format(d);
+    return new Intl.DateTimeFormat(localeActivo(), opciones).format(d);
   }
 }
 
@@ -51,7 +55,7 @@ function cuando(iso: string, zona: string): string {
 function fechaLarga(hoy: string): string {
   const d = new Date(`${hoy}T12:00:00Z`);
   if (Number.isNaN(d.getTime())) return hoy;
-  return new Intl.DateTimeFormat("es-MX", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" }).format(d);
+  return new Intl.DateTimeFormat(localeActivo(), { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" }).format(d);
 }
 
 function ligado(to: string, tarjeta: React.ReactNode) {
@@ -68,10 +72,10 @@ function kpis(r: ResumenOperativo, base: string, puedeReportes: boolean): React.
     if (b.estado === "sin_permiso") return;
     out.push(<div key={clave} className="min-w-0">{ligado(to, b.estado === "ok" ? render(b as Extract<Bloque<T>, { estado: "ok" }>) : vacio(etiqueta))}</div>);
   };
-  const sinDato = (icon: typeof LogIn) => (etiqueta: string) => <StatCard variante="neutra" icon={icon} label={etiqueta} value="—" sinDato={SIN_DATO} />;
+  const sinDato = (icon: typeof LogIn) => (etiqueta: string) => <StatCard variante="neutra" icon={icon} label={etiqueta} value="—" sinDato={tr("rentas.resumen.sinDato")} />;
 
-  agrega(r.llegadasSalidas, "llegadas", `${base}/calendario`, (v) => <StatCard variante="neutra" icon={LogIn} label="Llegadas hoy" value={String(v.llegadas)} nota={v.llegadas === 0 ? "Sin llegadas hoy" : "Reservas confirmadas"} />, sinDato(LogIn), "Llegadas hoy");
-  agrega(r.llegadasSalidas, "salidas", `${base}/calendario`, (v) => <StatCard variante="neutra" icon={LogOut} label="Salidas hoy" value={String(v.salidas)} nota={v.salidas === 0 ? "Sin salidas hoy" : "Check-outs del día"} />, sinDato(LogOut), "Salidas hoy");
+  agrega(r.llegadasSalidas, "llegadas", `${base}/calendario`, (v) => <StatCard variante="neutra" icon={LogIn} label={tr("rentas.resumen.kpi.llegadas")} value={String(v.llegadas)} nota={tr(v.llegadas === 0 ? "rentas.resumen.kpi.llegadasCero" : "rentas.resumen.kpi.llegadasNota")} />, sinDato(LogIn), tr("rentas.resumen.kpi.llegadas"));
+  agrega(r.llegadasSalidas, "salidas", `${base}/calendario`, (v) => <StatCard variante="neutra" icon={LogOut} label={tr("rentas.resumen.kpi.salidas")} value={String(v.salidas)} nota={tr(v.salidas === 0 ? "rentas.resumen.kpi.salidasCero" : "rentas.resumen.kpi.salidasNota")} />, sinDato(LogOut), tr("rentas.resumen.kpi.salidas"));
   agrega(
     r.ocupacionMes,
     "ocupacion",
@@ -80,37 +84,38 @@ function kpis(r: ResumenOperativo, base: string, puedeReportes: boolean): React.
       <StatCard
         variante="neutra"
         icon={BedDouble}
-        label="Ocupación del mes"
+        label={tr("rentas.resumen.kpi.ocupacion")}
         value={v.ocupacionBasisPoints === null ? "—" : `${(v.ocupacionBasisPoints / 100).toFixed(1)}%`}
-        nota={v.nochesDisponibles === null ? `${plural(v.nochesOcupadas, "noche ocupada", "noches ocupadas")}` : `${v.nochesOcupadas} de ${v.nochesDisponibles} noches`}
-        sinDato={v.ocupacionBasisPoints === null ? "Aún no hay unidades con noches disponibles" : undefined}
+        nota={v.nochesDisponibles === null ? tr("rentas.resumen.kpi.nochesOcupadas", { count: v.nochesOcupadas }) : tr("rentas.resumen.kpi.nochesDe", { ocupadas: v.nochesOcupadas, disponibles: v.nochesDisponibles })}
+        sinDato={v.ocupacionBasisPoints === null ? tr("rentas.resumen.kpi.sinUnidades") : undefined}
       />
     ),
     sinDato(BedDouble),
-    "Ocupación del mes",
+    tr("rentas.resumen.kpi.ocupacion"),
   );
-  agrega(r.conflictos, "conflictos", `${base}/monitor-sync`, (v) => <StatCard variante="neutra" icon={AlertTriangle} label="Conflictos abiertos" value={String(v.abiertos)} nota={v.abiertos === 0 ? "Sin cruces de calendario" : "Requieren decisión"} />, sinDato(AlertTriangle), "Conflictos abiertos");
+  agrega(r.conflictos, "conflictos", `${base}/monitor-sync`, (v) => <StatCard variante="neutra" icon={AlertTriangle} label={tr("rentas.resumen.kpi.conflictos")} value={String(v.abiertos)} nota={tr(v.abiertos === 0 ? "rentas.resumen.kpi.conflictosCero" : "rentas.resumen.kpi.conflictosNota")} />, sinDato(AlertTriangle), tr("rentas.resumen.kpi.conflictos"));
   agrega(
     r.limpieza,
     "limpieza",
     `${base}/mis-tareas`,
-    (v) => <StatCard variante="neutra" icon={ClipboardList} label="Tareas pendientes" value={String(v.pendientes)} nota={v.vencidas > 0 ? `${plural(v.vencidas, "vencida", "vencidas")}` : "Ninguna vencida"} />,
+    (v) => <StatCard variante="neutra" icon={ClipboardList} label={tr("rentas.resumen.kpi.tareas")} value={String(v.pendientes)} nota={v.vencidas > 0 ? tr("rentas.resumen.kpi.vencidas", { count: v.vencidas }) : tr("rentas.resumen.kpi.ningunaVencida")} />,
     sinDato(ClipboardList),
-    "Tareas pendientes",
+    tr("rentas.resumen.kpi.tareas"),
   );
-  agrega(r.aprobaciones, "aprobaciones", `${base}/aprobaciones`, (v) => <StatCard variante="neutra" icon={Inbox} label="Por aprobar" value={String(v.pendientes)} nota={v.pendientes === 0 ? "Bandeja al día" : "Borradores esperando aprobación"} />, sinDato(Inbox), "Por aprobar");
+  agrega(r.aprobaciones, "aprobaciones", `${base}/aprobaciones`, (v) => <StatCard variante="neutra" icon={Inbox} label={tr("rentas.resumen.kpi.porAprobar")} value={String(v.pendientes)} nota={tr(v.pendientes === 0 ? "rentas.resumen.kpi.bandejaAlDia" : "rentas.resumen.kpi.borradores")} />, sinDato(Inbox), tr("rentas.resumen.kpi.porAprobar"));
   agrega(
     r.feeds,
     "feeds",
     `${base}/monitor-sync`,
-    (v) => <StatCard variante="neutra" icon={RefreshCcw} label="Feeds iCal con problema" value={String(v.conProblema)} nota={`de ${plural(v.activos, "feed activo", "feeds activos")}`} />,
+    (v) => <StatCard variante="neutra" icon={RefreshCcw} label={tr("rentas.resumen.kpi.feeds")} value={String(v.conProblema)} nota={tr("rentas.resumen.kpi.feedsActivos", { count: v.activos })} />,
     sinDato(RefreshCcw),
-    "Feeds iCal con problema",
+    tr("rentas.resumen.kpi.feeds"),
   );
   return out;
 }
 
 export function RentasDashboardPage({ apiBaseUrl, token, propertyId, properties, orgSlug, session }: RentasShellContext) {
+  const t = useT(rentasResumen);
   const org = session.organizations.find((o) => o.slug === orgSlug);
   const esLimpieza = org?.rol === "limpieza";
   const [resumen, setResumen] = useState<ResumenOperativo | null>(null);
@@ -126,7 +131,7 @@ export function RentasDashboardPage({ apiBaseUrl, token, propertyId, properties,
         const r = await fetchResumen(fetch, apiBaseUrl, token, propertyId);
         if (!cancelado) setResumen(r);
       } catch (err) {
-        if (!cancelado) setError(err instanceof Error ? err.message : "No se pudo cargar el resumen.");
+        if (!cancelado) setError(err instanceof Error ? err.message : t("rentas.resumen.errorResumen"));
       }
     })();
     return () => {
@@ -139,7 +144,7 @@ export function RentasDashboardPage({ apiBaseUrl, token, propertyId, properties,
   if (esLimpieza) return <Navigate to={`${base}/mis-tareas`} replace />;
 
   const propiedad = properties.find((p) => p.propertyId === propertyId);
-  const saludo = saludoPorHora();
+  const saludo = saludoTraducido();
   const nombre = primerNombreOCorreo(session.fullName, session.email);
 
   if (error !== null) {
@@ -152,7 +157,7 @@ export function RentasDashboardPage({ apiBaseUrl, token, propertyId, properties,
   if (resumen === null) {
     return (
       <PageContainer padding="none" size="xl" className="gap-4 [&>*]:min-w-0">
-        <EstadoCargando variante="tarjeta" etiqueta="Cargando el resumen…" />
+        <EstadoCargando variante="tarjeta" etiqueta={t("rentas.resumen.cargando")} />
       </PageContainer>
     );
   }
@@ -170,18 +175,18 @@ export function RentasDashboardPage({ apiBaseUrl, token, propertyId, properties,
         kpis={tarjetas}
         acciones={
           <>
-            <PillLink to={`${base}/calendario`}>Ver calendario</PillLink>
-            {resumen.aprobaciones.estado !== "sin_permiso" && <PillLink to={`${base}/aprobaciones`}>Ver aprobaciones</PillLink>}
-            {puedeReportes && <PillLink to={`${base}/reportes`}>Ver reportes</PillLink>}
+            <PillLink to={`${base}/calendario`}>{t("rentas.resumen.verCalendario")}</PillLink>
+            {resumen.aprobaciones.estado !== "sin_permiso" && <PillLink to={`${base}/aprobaciones`}>{t("rentas.resumen.verAprobaciones")}</PillLink>}
+            {puedeReportes && <PillLink to={`${base}/reportes`}>{t("rentas.resumen.verReportes")}</PillLink>}
           </>
         }
       >
-        <ResumenSeccion titulo="Orquestación de agentes">
+        <ResumenSeccion titulo={t("rentas.resumen.orquestacion")}>
           {resumen.agentes.length === 0 ? (
-            <p className="col-span-full text-xs text-faint">Todavía no hay corridas registradas de los agentes de esta propiedad.</p>
+            <p className="col-span-full text-xs text-faint">{t("rentas.resumen.sinCorridas")}</p>
           ) : (
             resumen.agentes.map((a) => (
-              <AgentRunCard key={a.clave} nombre={a.nombre} estado={ESTADO_AGENTE[a.estado]} meta={`${a.detalle} · ${cuando(a.ultimaCorridaEn, resumen.zonaHoraria)}`} href={`${base}/${PANTALLA_AGENTE[a.clave]}`} />
+              <AgentRunCard key={a.clave} nombre={a.nombre} estado={estadoAgente(a.estado)} meta={`${a.detalle} · ${cuando(a.ultimaCorridaEn, resumen.zonaHoraria)}`} href={`${base}/${PANTALLA_AGENTE[a.clave]}`} />
             ))
           )}
         </ResumenSeccion>

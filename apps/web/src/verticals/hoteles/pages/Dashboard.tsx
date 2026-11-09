@@ -33,8 +33,11 @@ import {
   StatCard,
   StatusBadge,
   TileLink,
+  traductorActivo,
+  useT,
 } from "@atiende/ui";
 import type { StatusTone } from "@atiende/ui";
+import { hotelesResumen } from "@atiende/ui/i18n/hoteles/resumen";
 import { BedDouble, Bot, CalendarCheck, CalendarClock, CircleDollarSign, ClipboardList, Gauge, LifeBuoy, ShieldAlert, Star, UtensilsCrossed, Wrench } from "lucide-react";
 import { fetchAgentes, fetchAprobaciones } from "../lib/agentes-client.ts";
 import type { AgenteCatalogo, AgenteClave, AgenteEstado, CatalogoAgentes, AprobacionesResultado } from "../lib/agentes-client.ts";
@@ -48,7 +51,7 @@ import { fetchRecepcion } from "../lib/recepcion-client.ts";
 import type { Recepcion } from "../lib/recepcion-client.ts";
 import { fetchHoldsAbiertos } from "../lib/reservas-agente-client.ts";
 import type { HoldsResultado } from "../lib/reservas-agente-client.ts";
-import { capacidadesResumen, cuandoNegocio, plural } from "../lib/resumen.ts";
+import { capacidadesResumen, cuandoNegocio } from "../lib/resumen.ts";
 import { fetchTickets as fetchTicketsHuesped } from "../lib/tickets-client.ts";
 import type { TicketListado } from "../lib/tickets-client.ts";
 import { dineroMxConSigno } from "../lib/dinero.ts";
@@ -58,11 +61,16 @@ import type { HotelesShellContext } from "../HotelesShell.tsx";
 import { COPILOTO_HOTELES_ROLES, HotelesFijadosCopiloto } from "./Copiloto.tsx";
 
 type PeriodDays = "7" | "30" | "90";
-const PERIOD_OPTIONS: ReadonlyArray<{ id: PeriodDays; rotulo: string }> = [
-  { id: "7", rotulo: "7 días" },
-  { id: "30", rotulo: "30 días" },
-  { id: "90", rotulo: "90 días" },
-];
+const PERIOD_IDS: readonly PeriodDays[] = ["7", "30", "90"];
+
+// Funciones de texto fuera del componente: traducen al idioma activo (la pagina consume el contexto con `useT`, asi que se repinta al cambiarlo).
+const tr = traductorActivo(hotelesResumen);
+
+/** "Buenos días" / "Buenas tardes" / "Buenas noches" (misma regla de hora que `saludoPorHora`) en el idioma activo. */
+function saludoTraducido(): string {
+  const s = saludoPorHora(); // i18n-ignorar (se compara con el literal de greeting.ts, no se pinta)
+  return tr(s === "Buenos días" ? "hoteles.resumen.saludo.manana" : s === "Buenas tardes" ? "hoteles.resumen.saludo.tarde" : "hoteles.resumen.saludo.noche"); // i18n-ignorar
+}
 
 /** El servidor exige `desde <= hasta` (YYYY-MM-DD) pero no calcula ningun "hoy": el dia de calendario del negocio sale de
  * `hoyFechaSolo` (America/Mexico_City), nunca del dia UTC (hallazgo de auditoria a4: entre las 18:00 y las 23:59 de CDMX el
@@ -113,18 +121,19 @@ interface Medida {
 
 /** Una `StatCard` a partir de una carga: dato real, "Cargando…" o su propio error ("—" + motivo). Nunca un cero inventado. */
 function tarjeta<T>(carga: Carga<T>, clave: string, icon: typeof BedDouble, label: string, medir: (data: T) => Medida | { readonly sinDato: string }) {
-  if (carga.estado === "cargando") return <StatCard key={clave} variante="neutra" icon={icon} label={label} value="—" sinDato="Cargando…" />;
-  if (carga.estado === "error") return <StatCard key={clave} variante="neutra" icon={icon} label={label} value="—" sinDato={`No se pudo cargar: ${carga.mensaje}`} />;
+  if (carga.estado === "cargando") return <StatCard key={clave} variante="neutra" icon={icon} label={label} value="—" sinDato={tr("hoteles.resumen.cargando")} />;
+  if (carga.estado === "error") return <StatCard key={clave} variante="neutra" icon={icon} label={label} value="—" sinDato={tr("hoteles.resumen.noSeCargo", { mensaje: carga.mensaje })} />;
   const m = medir(carga.data);
   if ("sinDato" in m) return <StatCard key={clave} variante="neutra" icon={icon} label={label} value="—" sinDato={m.sinDato} />;
   return <StatCard key={clave} variante="neutra" icon={icon} label={label} value={m.value} nota={m.nota} />;
 }
 
 const AGENTE_ESTADO_TONES: Readonly<Record<AgenteEstado, StatusTone>> = { activo: "success", pausado: "warning", presupuesto_agotado: "danger" };
-const AGENTE_ESTADO_ETIQUETAS: Readonly<Record<AgenteEstado, string>> = { activo: "Activo", pausado: "Pausado", presupuesto_agotado: "Sin presupuesto" };
+const AGENTE_ESTADO_CLAVES = { activo: "hoteles.resumen.agente.activo", pausado: "hoteles.resumen.agente.pausado", presupuesto_agotado: "hoteles.resumen.agente.presupuesto_agotado" } as const satisfies Readonly<Record<AgenteEstado, string>>;
 
 export function DashboardPage(ctx: HotelesShellContext) {
   const { apiBaseUrl, token, propertyId, orgSlug, role } = ctx;
+  const t = useT(hotelesResumen);
   const cap = capacidadesResumen(role);
   const base = `/hoteles/${orgSlug}`;
   const [periodo, setPeriodo] = useState<PeriodDays>("30");
@@ -138,62 +147,63 @@ export function DashboardPage(ctx: HotelesShellContext) {
       return fetchPlSummary(fetch, apiBaseUrl, token, propertyId, desde, hasta);
     },
     [...dep, periodo],
-    "No se pudo cargar el resumen financiero.",
+    t("hoteles.resumen.error.pl"),
   );
-  const recepcion = useCarga<Recepcion>(cap.recepcion, () => fetchRecepcion(fetch, apiBaseUrl, token, propertyId), dep, "No se pudo cargar la recepción.");
-  const ticketsSla = useCarga<TicketListado>(true, () => fetchTicketsHuesped(fetch, apiBaseUrl, token, propertyId, { activos: true }), dep, "No se pudieron cargar los tickets.");
-  const aprobaciones = useCarga<AprobacionesResultado>(cap.agentes, () => fetchAprobaciones(fetch, apiBaseUrl, token, propertyId, { abiertas: true }), dep, "No se pudieron cargar las aprobaciones.");
-  const holds = useCarga<HoldsResultado>(cap.agentes, () => fetchHoldsAbiertos(fetch, apiBaseUrl, token, propertyId), dep, "No se pudieron cargar los holds del agente.");
-  const agentes = useCarga<CatalogoAgentes>(cap.agentes, () => fetchAgentes(fetch, apiBaseUrl, token, propertyId), dep, "No se pudo cargar el catálogo de agentes.");
-  const corridas = useCarga<readonly NightAuditCorrida[]>(cap.nightAudit, () => fetchNightAuditRuns(fetch, apiBaseUrl, token, propertyId), dep, "No se pudo cargar el night audit.");
-  const mantenimiento = useCarga(cap.mantenimiento, () => fetchTicketsMantenimiento(fetch, apiBaseUrl, token, propertyId, "abierto"), dep, "No se pudieron cargar los tickets de mantenimiento.");
-  const pedidos = useCarga(cap.pedidosFnb, () => fetchPedidosFnb(fetch, apiBaseUrl, token, propertyId), dep, "No se pudieron cargar los pedidos de F&B.");
+  const recepcion = useCarga<Recepcion>(cap.recepcion, () => fetchRecepcion(fetch, apiBaseUrl, token, propertyId), dep, t("hoteles.resumen.error.recepcion"));
+  const ticketsSla = useCarga<TicketListado>(true, () => fetchTicketsHuesped(fetch, apiBaseUrl, token, propertyId, { activos: true }), dep, t("hoteles.resumen.error.tickets"));
+  const aprobaciones = useCarga<AprobacionesResultado>(cap.agentes, () => fetchAprobaciones(fetch, apiBaseUrl, token, propertyId, { abiertas: true }), dep, t("hoteles.resumen.error.aprobaciones"));
+  const holds = useCarga<HoldsResultado>(cap.agentes, () => fetchHoldsAbiertos(fetch, apiBaseUrl, token, propertyId), dep, t("hoteles.resumen.error.holds"));
+  const agentes = useCarga<CatalogoAgentes>(cap.agentes, () => fetchAgentes(fetch, apiBaseUrl, token, propertyId), dep, t("hoteles.resumen.error.agentes"));
+  const corridas = useCarga<readonly NightAuditCorrida[]>(cap.nightAudit, () => fetchNightAuditRuns(fetch, apiBaseUrl, token, propertyId), dep, t("hoteles.resumen.error.nightAudit"));
+  const mantenimiento = useCarga(cap.mantenimiento, () => fetchTicketsMantenimiento(fetch, apiBaseUrl, token, propertyId, "abierto"), dep, t("hoteles.resumen.error.mantenimiento"));
+  const pedidos = useCarga(cap.pedidosFnb, () => fetchPedidosFnb(fetch, apiBaseUrl, token, propertyId), dep, t("hoteles.resumen.error.pedidos"));
 
   const kpis: ReactNode[] = [];
 
   if (cap.pl) {
     kpis.push(
-      tarjeta(pl, "ocupacion", BedDouble, "Ocupación", (d) => ({ value: formatPct(d.kpis.occupancyPct), nota: `${d.kpis.occupiedRoomNights}/${d.kpis.availableRoomNights} noches-habitación` })),
-      tarjeta(pl, "adr", CircleDollarSign, "ADR", (d) => ({ value: dineroMxConSigno(d.kpis.adr, 0), nota: "tarifa promedio diaria" })),
+      tarjeta(pl, "ocupacion", BedDouble, t("hoteles.resumen.kpi.ocupacion"), (d) => ({ value: formatPct(d.kpis.occupancyPct), nota: t("hoteles.resumen.kpi.ocupacionNota", { ocupadas: d.kpis.occupiedRoomNights, disponibles: d.kpis.availableRoomNights }) })),
+      tarjeta(pl, "adr", CircleDollarSign, t("hoteles.resumen.kpi.adr"), (d) => ({ value: dineroMxConSigno(d.kpis.adr, 0), nota: t("hoteles.resumen.kpi.adrNota") })),
     );
   }
   if (cap.recepcion) {
     kpis.push(
-      tarjeta(recepcion, "llegadas", CalendarCheck, "Llegadas", (d) => ({ value: String(d.resumen.llegadas), nota: `${d.resumen.llegadasPendientes} por llegar` })),
-      tarjeta(recepcion, "salidas", CalendarClock, "Salidas", (d) => ({ value: String(d.resumen.salidas), nota: `${d.resumen.salidasPendientes} por salir` })),
-      tarjeta(recepcion, "en-casa", BedDouble, "En casa", (d) => ({ value: String(d.resumen.enCasa), nota: "huéspedes en estancia" })),
+      tarjeta(recepcion, "llegadas", CalendarCheck, t("hoteles.resumen.kpi.llegadas"), (d) => ({ value: String(d.resumen.llegadas), nota: t("hoteles.resumen.kpi.llegadasNota", { n: d.resumen.llegadasPendientes }) })),
+      tarjeta(recepcion, "salidas", CalendarClock, t("hoteles.resumen.kpi.salidas"), (d) => ({ value: String(d.resumen.salidas), nota: t("hoteles.resumen.kpi.salidasNota", { n: d.resumen.salidasPendientes }) })),
+      tarjeta(recepcion, "en-casa", BedDouble, t("hoteles.resumen.kpi.enCasa"), (d) => ({ value: String(d.resumen.enCasa), nota: t("hoteles.resumen.kpi.enCasaNota") })),
     );
   }
   kpis.push(
-    tarjeta(ticketsSla, "tickets-sla", LifeBuoy, "Tickets con SLA vencido", (d) => {
-      if (!d.disponible) return { sinDato: "Aún no disponible: esta base todavía no tiene los tickets de huésped." };
+    tarjeta(ticketsSla, "tickets-sla", LifeBuoy, t("hoteles.resumen.kpi.ticketsSla"), (d) => {
+      if (!d.disponible) return { sinDato: t("hoteles.resumen.kpi.ticketsSlaSinTabla") };
       const vencidos = d.tickets.filter((t) => t.estadoSla === "vencido").length;
-      return { value: String(vencidos), nota: plural(d.tickets.length, "ticket activo", "tickets activos") };
+      return { value: String(vencidos), nota: t("hoteles.resumen.kpi.ticketsActivos", { count: d.tickets.length }) };
     }),
   );
   if (cap.agentes) {
     kpis.push(
-      tarjeta(aprobaciones, "aprobaciones", ClipboardList, "Aprobaciones pendientes", (d) => {
-        if (!d.disponible) return { sinDato: "Aún no disponible: esta base todavía no tiene la cola de aprobaciones." };
-        return { value: String(d.aprobaciones.filter((a) => a.estado === "pendiente").length), nota: "esperan a una persona" };
+      tarjeta(aprobaciones, "aprobaciones", ClipboardList, t("hoteles.resumen.kpi.aprobaciones"), (d) => {
+        if (!d.disponible) return { sinDato: t("hoteles.resumen.kpi.aprobacionesSinTabla") };
+        return { value: String(d.aprobaciones.filter((a) => a.estado === "pendiente").length), nota: t("hoteles.resumen.kpi.aprobacionesNota") };
       }),
-      tarjeta(holds, "holds", Bot, "Holds del agente", (d) => {
-        if (!d.disponible) return { sinDato: "Aún no disponible: esta base todavía no tiene los holds del agente de reservas." };
-        return { value: String(d.holds.length), nota: "reservas en curso por WhatsApp o voz" };
+      tarjeta(holds, "holds", Bot, t("hoteles.resumen.kpi.holds"), (d) => {
+        if (!d.disponible) return { sinDato: t("hoteles.resumen.kpi.holdsSinTabla") };
+        return { value: String(d.holds.length), nota: t("hoteles.resumen.kpi.holdsNota") };
       }),
     );
   }
   if (cap.mantenimiento) {
-    kpis.push(tarjeta(mantenimiento, "mantenimiento", Wrench, "Tickets de mantenimiento abiertos", (ts) => ({ value: String(ts.length), nota: "pendientes de cerrar" })));
+    kpis.push(tarjeta(mantenimiento, "mantenimiento", Wrench, t("hoteles.resumen.kpi.mantenimiento"), (ts) => ({ value: String(ts.length), nota: t("hoteles.resumen.kpi.mantenimientoNota") })));
   }
   if (cap.pedidosFnb) {
     kpis.push(
-      tarjeta(pedidos, "pedidos", UtensilsCrossed, "Pedidos activos", (ps) => ({ value: String(ps.length), nota: "cocina y servicio a cuarto" })),
-      tarjeta(pedidos, "alergias", ShieldAlert, "Alergia sin confirmar", (ps) => ({ value: String(ps.filter((p) => p.alergiaDeclarada && !p.cocineroConfirmoEn).length), nota: "esperan confirmación de cocina" })),
+      tarjeta(pedidos, "pedidos", UtensilsCrossed, t("hoteles.resumen.kpi.pedidos"), (ps) => ({ value: String(ps.length), nota: t("hoteles.resumen.kpi.pedidosNota") })),
+      tarjeta(pedidos, "alergias", ShieldAlert, t("hoteles.resumen.kpi.alergias"), (ps) => ({ value: String(ps.filter((p) => p.alergiaDeclarada && !p.cocineroConfirmoEn).length), nota: t("hoteles.resumen.kpi.alergiasNota") })),
     );
   }
 
-  const etiquetaPeriodo = PERIOD_OPTIONS.find((o) => o.id === periodo)?.rotulo ?? periodo;
+  const rotuloPeriodo = (id: PeriodDays) => t(`hoteles.resumen.periodo.${id}`);
+  const etiquetaPeriodo = rotuloPeriodo(periodo);
   const revpar = pl.estado === "ok" ? Math.round(pl.data.kpis.revpar) : null;
   const destacado = cap.pl ? (
     <div className="flex min-w-0 flex-col items-end gap-2.5">
@@ -201,19 +211,19 @@ export function DashboardPage(ctx: HotelesShellContext) {
         valor={revpar}
         digitos={4}
         prefijo="$"
-        etiqueta={`RevPAR · ${etiquetaPeriodo}`}
-        sinDato={pl.estado === "error" ? `No se pudo cargar: ${pl.mensaje}` : pl.estado === "cargando" ? "Cargando…" : undefined}
+        etiqueta={t("hoteles.resumen.revparEtiqueta", { periodo: etiquetaPeriodo })}
+        sinDato={pl.estado === "error" ? t("hoteles.resumen.noSeCargo", { mensaje: pl.mensaje }) : pl.estado === "cargando" ? t("hoteles.resumen.cargando") : undefined}
         tamano="md"
       />
       {/* El odometro solo se pinta desde `sm`: en movil el mismo dato va en texto. */}
       <p className="ds3-resumen-movil text-ui text-muted-foreground sm:hidden">
-        RevPAR{" "}
+        {t("hoteles.resumen.revpar")}{" "}
         <span className="font-medium tabular-nums text-foreground">{pl.estado === "ok" ? dineroMxConSigno(pl.data.kpis.revpar, 0) : "—"}</span>
       </p>
       <RadioSegmentado
         name="resumen-periodo"
-        label="Periodo"
-        opciones={PERIOD_OPTIONS.map((o) => ({ id: o.id, rotulo: o.rotulo }))}
+        label={t("hoteles.resumen.periodo")}
+        opciones={PERIOD_IDS.map((id) => ({ id, rotulo: rotuloPeriodo(id) }))}
         value={periodo}
         onChange={setPeriodo}
         className="justify-end gap-1.5"
@@ -224,12 +234,12 @@ export function DashboardPage(ctx: HotelesShellContext) {
   const nombreProperty = ctx.propertyName ?? orgSlug;
   const acciones = (
     <>
-      {cap.recepcion && <PillLink to={`${base}/recepcion`}>Ver recepción</PillLink>}
-      {cap.revenue && <PillLink to={`${base}/revenue`}>Ver revenue</PillLink>}
-      {!cap.recepcion && <PillLink to={`${base}/reservas`}>Ver reservas</PillLink>}
-      {cap.mantenimiento && <PillLink to={`${base}/mantenimiento`}>Ver mantenimiento</PillLink>}
-      {cap.pedidosFnb && <PillLink to={`${base}/pedidos-fnb`}>Ver pedidos F&amp;B</PillLink>}
-      {COPILOTO_HOTELES_ROLES.has(role) && <PillLink to={`${base}/copiloto`}>Pregúntale a tus datos</PillLink>}
+      {cap.recepcion && <PillLink to={`${base}/recepcion`}>{t("hoteles.resumen.verRecepcion")}</PillLink>}
+      {cap.revenue && <PillLink to={`${base}/revenue`}>{t("hoteles.resumen.verRevenue")}</PillLink>}
+      {!cap.recepcion && <PillLink to={`${base}/reservas`}>{t("hoteles.resumen.verReservas")}</PillLink>}
+      {cap.mantenimiento && <PillLink to={`${base}/mantenimiento`}>{t("hoteles.resumen.verMantenimiento")}</PillLink>}
+      {cap.pedidosFnb && <PillLink to={`${base}/pedidos-fnb`}>{t("hoteles.resumen.verPedidos")}</PillLink>}
+      {COPILOTO_HOTELES_ROLES.has(role) && <PillLink to={`${base}/copiloto`}>{t("hoteles.resumen.preguntale")}</PillLink>}
     </>
   );
 
@@ -238,13 +248,13 @@ export function DashboardPage(ctx: HotelesShellContext) {
   return (
     <PageContainer padding="none" size="xl" className="[&>*]:min-w-0">
       <ResumenLayout
-        saludo={saludoPorHora()}
+        saludo={saludoTraducido()}
         nombre={primerNombreOCorreo(ctx.staffFullName, ctx.staffEmail)}
         subtitulo={cap.pl ? `${nombreProperty} · ${etiquetaPeriodo}` : nombreProperty}
         frase={
           cap.pl && pl.estado === "ok" ? (
             <>
-              {nombreProperty} · RevPAR {etiquetaPeriodo}: <strong>{dineroMxConSigno(pl.data.kpis.revpar, 0)}</strong>.
+              {t("hoteles.resumen.frase", { propiedad: nombreProperty, periodo: etiquetaPeriodo })}<strong>{dineroMxConSigno(pl.data.kpis.revpar, 0)}</strong>.
             </>
           ) : undefined
         }
@@ -253,15 +263,15 @@ export function DashboardPage(ctx: HotelesShellContext) {
         acciones={acciones}
       >
         {cap.agentes && (
-          <ResumenSeccion titulo="Orquestación de agentes">
-            {agentes.estado === "cargando" && <p className="text-xs text-muted-foreground sm:col-span-2 lg:col-span-3">Cargando agentes…</p>}
+          <ResumenSeccion titulo={t("hoteles.resumen.orquestacion")}>
+            {agentes.estado === "cargando" && <p className="text-xs text-muted-foreground sm:col-span-2 lg:col-span-3">{t("hoteles.resumen.cargandoAgentes")}</p>}
             {agentes.estado === "error" && (
               <p role="alert" className="text-xs text-destructive sm:col-span-2 lg:col-span-3">
-                No se pudo cargar: {agentes.mensaje}
+                {t("hoteles.resumen.noSeCargo", { mensaje: agentes.mensaje })}
               </p>
             )}
             {agentes.estado === "ok" && !agentes.data.disponible && (
-              <p className="text-xs text-muted-foreground sm:col-span-2 lg:col-span-3">Aún no disponible: esta base todavía no tiene el catálogo de agentes.</p>
+              <p className="text-xs text-muted-foreground sm:col-span-2 lg:col-span-3">{t("hoteles.resumen.agentesSinTabla")}</p>
             )}
             {agentes.estado === "ok" &&
               agentes.data.disponible &&
@@ -271,7 +281,7 @@ export function DashboardPage(ctx: HotelesShellContext) {
                   to={destinoAgente(base, a.clave, cap)}
                   icon={iconoAgente(a.clave)}
                   titulo={a.nombre}
-                  badge={<StatusBadge tone={AGENTE_ESTADO_TONES[a.estado] ?? "neutral"}>{AGENTE_ESTADO_ETIQUETAS[a.estado] ?? a.estado}</StatusBadge>}
+                  badge={<StatusBadge tone={AGENTE_ESTADO_TONES[a.estado] ?? "neutral"}>{AGENTE_ESTADO_CLAVES[a.estado] ? t(AGENTE_ESTADO_CLAVES[a.estado]) : a.estado}</StatusBadge>}
                   descripcion={descripcionAgente(a, agentes.data.mes)}
                 />
               ))}
@@ -280,26 +290,26 @@ export function DashboardPage(ctx: HotelesShellContext) {
 
         {cap.nightAudit && (
           <Card className="p-3" role="region" aria-labelledby="resumen-ultima-corrida">
-            <SectionLabel id="resumen-ultima-corrida">Última corrida</SectionLabel>
+            <SectionLabel id="resumen-ultima-corrida">{t("hoteles.resumen.ultimaCorrida")}</SectionLabel>
             <div className="mt-2">
-              {corridas.estado === "cargando" && <p className="text-xs text-muted-foreground">Cargando la última corrida…</p>}
+              {corridas.estado === "cargando" && <p className="text-xs text-muted-foreground">{t("hoteles.resumen.cargandoCorrida")}</p>}
               {corridas.estado === "error" && (
                 <p role="alert" className="text-xs text-destructive">
-                  No se pudo cargar: {corridas.mensaje}
+                  {t("hoteles.resumen.noSeCargo", { mensaje: corridas.mensaje })}
                 </p>
               )}
               {corridas.estado === "ok" && ultima === null && (
                 <EstadoVacio
                   compacto
-                  titulo="Sin bitácora de corridas"
-                  mensaje="El night audit aún no ha corrido en esta propiedad. Aún no existe una bitácora de corridas de los agentes; aparecerá aquí en cuanto haya una."
+                  titulo={t("hoteles.resumen.sinBitacora")}
+                  mensaje={t("hoteles.resumen.sinBitacoraMensaje")}
                 />
               )}
               {ultima !== null && (
                 <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
                   <AgentRunCard
-                    nombre="Night audit"
-                    estado={ultima.estado === "completado" ? { tone: "success", etiqueta: "OK" } : { tone: "warning", etiqueta: "En curso" }}
+                    nombre={t("hoteles.resumen.nightAudit")}
+                    estado={ultima.estado === "completado" ? { tone: "success", etiqueta: t("hoteles.resumen.corrida.ok") } : { tone: "warning", etiqueta: t("hoteles.resumen.corrida.enCurso") }}
                     meta={metaCorrida(ultima)}
                   />
                 </div>
@@ -317,7 +327,7 @@ export function DashboardPage(ctx: HotelesShellContext) {
 
 function metaCorrida(c: NightAuditCorrida): string {
   const cierre = cuandoNegocio(c.completadoEn);
-  return `Fecha de negocio ${formatFechaSolo(c.fecha)}${cierre ? ` · completado ${cierre}` : " · sin cerrar todavía"}`;
+  return tr("hoteles.resumen.corrida.meta", { fecha: formatFechaSolo(c.fecha) }) + (cierre ? tr("hoteles.resumen.corrida.completado", { cuando: cierre }) : tr("hoteles.resumen.corrida.sinCerrar"));
 }
 
 function iconoAgente(clave: AgenteClave) {
@@ -341,7 +351,7 @@ function destinoAgente(base: string, clave: AgenteClave, cap: ReturnType<typeof 
 }
 
 function descripcionAgente(a: AgenteCatalogo, mes: string): string {
-  const uso = `${plural(a.llamadas, "llamada", "llamadas")} en ${mes}`;
-  if (a.presupuestoUsd !== null && a.porcentajeUso !== null) return `${uso} · ${Math.round(a.porcentajeUso)}% del presupuesto`;
+  const uso = tr("hoteles.resumen.agente.llamadas", { count: a.llamadas, mes });
+  if (a.presupuestoUsd !== null && a.porcentajeUso !== null) return tr("hoteles.resumen.agente.presupuesto", { uso, pct: Math.round(a.porcentajeUso) });
   return uso;
 }
