@@ -27,6 +27,7 @@ export const CLAVE_RUTA_SUPERADMIN: Readonly<Record<string, Clave>> = {
   "/superadmin/supresion|Supresión de contactos": "nav.supresion",
   "/superadmin/zona-cfo|Zona CFO segura": "nav.zonaCfo",
   "/superadmin/planes|Planes y precios": "nav.planes",
+  "/superadmin/cobro|Cobro y cotizador": "nav.cobroCotizador",
   "/superadmin/interruptores|Interruptores": "nav.interruptores",
   "/superadmin/salud|Salud operativa": "nav.saludOperativa",
   "/superadmin/organizaciones|Orgs": "nav.orgs",

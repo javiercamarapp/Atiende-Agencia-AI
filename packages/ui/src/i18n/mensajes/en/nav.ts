@@ -135,6 +135,7 @@ export const navEn: Traduccion<typeof nav> = {
   "nav.supresion": "Contact suppression",
   "nav.zonaCfo": "Secure CFO zone",
   "nav.planes": "Plans & pricing",
+  "nav.cobroCotizador": "Billing and quote builder",
   "nav.sistema": "System",
   "nav.interruptores": "Kill switches",
   "nav.saludOperativa": "Operational health",
