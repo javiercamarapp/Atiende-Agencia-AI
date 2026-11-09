@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, Copy, FileDown, Pin, RotateCcw, Sheet } from "lucide-react";
 import { bloqueACsv, bloqueATsv, nombreArchivoCsv } from "./formato";
+import { useIdiomaCopiloto } from "./idioma";
 import type { CopilotoBloque, CopilotoMensaje, CopilotoTransporte } from "./tipos";
 
 const BOTON = "flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50";
@@ -55,6 +56,7 @@ export function CopilotoAcciones({
   /** Vertical para el nombre del archivo CSV (opcional). */
   vertical?: string;
 }) {
+  const { t } = useIdiomaCopiloto();
   const [errorCsv, setErrorCsv] = useState(false);
   const [copiado, setCopiado] = useState(false);
   // Estado de "Fijar" por indice de bloque (una respuesta puede traer varias tablas y cada una se fija por separado).
@@ -97,7 +99,7 @@ export function CopilotoAcciones({
       await transporte.descargarPdf(conversacionId, mensaje.seq);
       setPdf({ estado: "libre" });
     } catch (e) {
-      setPdf({ estado: "error", mensaje: e instanceof Error && e.message ? e.message : "No se pudo generar el PDF; intenta de nuevo." });
+      setPdf({ estado: "error", mensaje: e instanceof Error && e.message ? e.message : t("errorPdf") });
     }
   };
 
@@ -108,26 +110,26 @@ export function CopilotoAcciones({
 
   return (
     <div className="flex items-center gap-3 ml-6 flex-wrap">
-      <button type="button" className={BOTON} onClick={() => void copiar()} aria-label="Copiar respuesta">
+      <button type="button" className={BOTON} onClick={() => void copiar()} aria-label={t("copiarRespuesta")}>
         {copiado ? <Check className="w-3.5 h-3.5" aria-hidden /> : <Copy className="w-3.5 h-3.5" aria-hidden />}
-        {copiado ? "Copiado" : "Copiar"}
+        {copiado ? t("copiado") : t("copiar")}
       </button>
       {bloquesCsv.map((b, i) => (
-        <button key={`${b.tool}-${i}`} type="button" className={BOTON} onClick={() => csv(b)} aria-label={bloquesCsv.length > 1 ? `Descargar CSV de ${b.title}` : "Descargar CSV"}>
+        <button key={`${b.tool}-${i}`} type="button" className={BOTON} onClick={() => csv(b)} aria-label={bloquesCsv.length > 1 ? t("descargarCsvDe", { t: b.title }) : t("descargarCsv")}>
           <Sheet className="w-3.5 h-3.5" aria-hidden />
-          {bloquesCsv.length > 1 ? `CSV: ${b.title}` : "CSV"}
+          {bloquesCsv.length > 1 ? t("csvDe", { t: b.title }) : t("csv")}
         </button>
       ))}
       {urlPdf ? (
-        <a className={BOTON} href={urlPdf} download aria-label="Descargar PDF">
+        <a className={BOTON} href={urlPdf} download aria-label={t("descargarPdf")}>
           <FileDown className="w-3.5 h-3.5" aria-hidden />
-          Descargar PDF
+          {t("descargarPdf")}
         </a>
       ) : null}
       {!urlPdf && puedePdf ? (
-        <button type="button" className={BOTON} onClick={() => void descargarPdf()} disabled={pdf.estado === "generando"} aria-label="Descargar PDF">
+        <button type="button" className={BOTON} onClick={() => void descargarPdf()} disabled={pdf.estado === "generando"} aria-label={t("descargarPdf")}>
           <FileDown className="w-3.5 h-3.5" aria-hidden />
-          {pdf.estado === "generando" ? "Generando PDF…" : "Descargar PDF"}
+          {pdf.estado === "generando" ? t("generandoPdf") : t("descargarPdf")}
         </button>
       ) : null}
       {bloquesFijables.map(({ b, i }) => (
@@ -137,21 +139,21 @@ export function CopilotoAcciones({
           className={BOTON}
           onClick={() => void fijar(i)}
           disabled={fijando || fijados[i] === "ok"}
-          aria-label={bloquesFijables.length > 1 ? `Fijar ${b.title} en el tablero` : "Fijar en el tablero"}
+          aria-label={bloquesFijables.length > 1 ? t("fijarDeEnTablero", { t: b.title }) : t("fijarEnTablero")}
         >
           <Pin className="w-3.5 h-3.5" aria-hidden />
-          {fijados[i] === "ok" ? "Fijado" : bloquesFijables.length > 1 ? `Fijar: ${b.title}` : "Fijar"}
+          {fijados[i] === "ok" ? t("fijado") : bloquesFijables.length > 1 ? t("fijarDe", { t: b.title }) : t("fijar")}
         </button>
       ))}
       {esUltima ? (
-        <button type="button" className={BOTON} onClick={onRegenerar} disabled={ocupado} aria-label="Regenerar respuesta">
+        <button type="button" className={BOTON} onClick={onRegenerar} disabled={ocupado} aria-label={t("regenerarRespuesta")}>
           <RotateCcw className="w-3.5 h-3.5" aria-hidden />
-          Regenerar
+          {t("regenerar")}
         </button>
       ) : null}
       {errorCsv ? (
         <span role="alert" className="text-xs text-destructive">
-          No se pudo crear el archivo CSV.
+          {t("errorCsv")}
         </span>
       ) : null}
       {pdf.estado === "error" ? (
@@ -161,11 +163,11 @@ export function CopilotoAcciones({
       ) : null}
       {Object.values(fijados).includes("error") ? (
         <span role="alert" className="text-xs text-destructive">
-          No se pudo fijar; intenta de nuevo.
+          {t("errorFijar")}
         </span>
       ) : null}
       <span className="sr-only" role="status" aria-live="polite">
-        {copiado ? "Copiado" : ""}
+        {copiado ? t("copiado") : ""}
       </span>
     </div>
   );

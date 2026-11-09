@@ -5,8 +5,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Lock, Sparkles } from "lucide-react";
-import { Callout, ChatDatosShell, EstadoCargando, EstadoError, EstadoVacio, useBarraDeConsola } from "@atiende/ui";
+import { Callout, ChatDatosShell, EstadoCargando, EstadoError, EstadoVacio, useBarraDeConsola, useIdiomaCopiloto } from "@atiende/ui";
 import type { CopilotoTransporte } from "@atiende/ui";
+import { configEnIdioma } from "../lib/copiloto/config/idioma.ts";
 import type { CopilotoConfigVertical } from "../lib/copiloto/config/tipos.ts";
 import type { EstadoCopiloto } from "../lib/copiloto/transporte.ts";
 
@@ -36,10 +37,13 @@ export function rutasFuenteDe(rutas: Readonly<Record<string, string>>, orgSlug: 
   return out;
 }
 
-export function CopilotoPage({ config, transporte, consultarEstado, propertyId, orgSlug, contexto, zonaHoraria }: CopilotoPageProps) {
+export function CopilotoPage({ config: configEs, transporte, consultarEstado, propertyId, orgSlug, contexto, zonaHoraria }: CopilotoPageProps) {
   // Decision del dueno: «Pregúntale a tus datos» NUNCA va en el encabezado. La barra lleva el titulo de la consola; el nombre vive en el
   // menu (pildora del pie) y en el unico h1 de la portada.
   useBarraDeConsola();
+  const { t, idioma } = useIdiomaCopiloto();
+  // Textos, temas y chips en el idioma de la consola; las consultas directas en ingles apuntan a la misma herramienta.
+  const config = useMemo(() => configEnIdioma(configEs, idioma), [configEs, idioma]);
   const [carga, setCarga] = useState<Carga>({ fase: "cargando" });
   const [intento, setIntento] = useState(0);
   const [params, setParams] = useSearchParams();
@@ -78,7 +82,7 @@ export function CopilotoPage({ config, transporte, consultarEstado, propertyId, 
   if (carga.fase === "cargando") {
     return (
       <div className="p-4">
-        <EstadoCargando etiqueta="Preparando el Copiloto…" />
+        <EstadoCargando etiqueta={t("paginaPreparando")} />
       </div>
     );
   }
@@ -87,14 +91,14 @@ export function CopilotoPage({ config, transporte, consultarEstado, propertyId, 
   if (estado.tipo === "sin_acceso") {
     return (
       <div className="p-4">
-        <EstadoVacio icon={Lock} titulo="Sin acceso" mensaje={config.textoSinAcceso} />
+        <EstadoVacio icon={Lock} titulo={t("paginaSinAcceso")} mensaje={config.textoSinAcceso} />
       </div>
     );
   }
   if (estado.tipo === "error") {
     return (
       <div className="p-4">
-        <EstadoError titulo="No se pudo abrir el Copiloto" mensaje="No pude verificar si el Copiloto está disponible. Revisa tu conexión e inténtalo de nuevo." onReintentar={() => setIntento((n) => n + 1)} />
+        <EstadoError titulo={t("paginaErrorTitulo")} mensaje={t("paginaErrorMensaje")} onReintentar={() => setIntento((n) => n + 1)} />
       </div>
     );
   }
@@ -103,8 +107,8 @@ export function CopilotoPage({ config, transporte, consultarEstado, propertyId, 
       <div className="p-4">
         <EstadoVacio
           icon={Sparkles}
-          titulo="Pronto"
-          mensaje="El Copiloto todavía no está activado para tu cuenta: requiere un proveedor de IA configurado. Tus tableros siguen disponibles y no se muestran cifras inventadas."
+          titulo={t("paginaProntoTitulo")}
+          mensaje={t("paginaProntoMensaje")}
         />
       </div>
     );
@@ -114,8 +118,8 @@ export function CopilotoPage({ config, transporte, consultarEstado, propertyId, 
     <>
       {!estado.permitido && estado.motivo === "tope_diario" ? (
         <div className="px-4 pt-4">
-          <Callout tone="warning" titulo="Llegaste al tope diario de preguntas">
-            Podrás volver a preguntar mañana. Mientras tanto puedes revisar tus conversaciones anteriores desde el historial.
+          <Callout tone="warning" titulo={t("paginaTopeTitulo")}>
+            {t("paginaTopeMensaje")}
           </Callout>
         </div>
       ) : null}
@@ -129,7 +133,7 @@ export function CopilotoPage({ config, transporte, consultarEstado, propertyId, 
         rutasFuente={rutasFuente}
         maxCaracteres={config.maxCaracteres}
         vertical={config.vertical}
-        {...(estado.usoHoyPct !== null ? { uso: { pct: estado.usoHoyPct, etiqueta: "Uso de hoy" } } : {})}
+        {...(estado.usoHoyPct !== null ? { uso: { pct: estado.usoHoyPct, etiqueta: t("usoHoy") } } : {})}
         {...(conversacionInicial ? { conversacionInicial } : {})}
         onConversacionCambia={alCambiarConversacion}
         {...(zonaHoraria ? { zonaHoraria } : {})}

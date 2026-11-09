@@ -4,6 +4,7 @@ import { ListChecks, ShieldCheck } from "lucide-react";
 import { Button } from "../ui/button";
 import { Textarea } from "../ui/textarea";
 import { StatusBadge, type StatusTone } from "../ui/status-badge";
+import { useIdiomaCopiloto, type ClaveCopiloto } from "./idioma";
 import { CopilotoAccionError } from "./tipos";
 import type { CopilotoAccionEstado, CopilotoAccionPropuesta, CopilotoAccionVista, CopilotoAccionesCliente, CopilotoBloque } from "./tipos";
 
@@ -25,20 +26,20 @@ export function propuestaDeBloque(b: CopilotoBloque): CopilotoAccionPropuesta | 
   return { propuesta, clase, tipo, resumen, ...(typeof agente === "string" ? { agente } : {}) };
 }
 
-const ESTADOS: Readonly<Record<Exclude<CopilotoAccionEstado, "pendiente">, { readonly tone: StatusTone; readonly etiqueta: string; readonly detalle: string }>> = {
-  ejecutada: { tone: "success", etiqueta: "Ejecutada", detalle: "Ya se ejecutó. Quedó registrada en la bitácora." },
-  fallida: { tone: "danger", etiqueta: "Falló", detalle: "Se intentó y falló. Revisa el detalle en Acciones." },
-  cancelada: { tone: "neutral", etiqueta: "Cancelada", detalle: "No se ejecutó nada. La propuesta vence sola." },
-  vencida: { tone: "warning", etiqueta: "Vencida", detalle: "Venció sin confirmarse. Pídele al Copiloto que la prepare de nuevo." },
-  archivada: { tone: "neutral", etiqueta: "Archivada", detalle: "Esta propuesta ya no está vigente. Pídele al Copiloto que la prepare de nuevo." },
+const ESTADOS: Readonly<Record<Exclude<CopilotoAccionEstado, "pendiente">, { readonly tone: StatusTone; readonly clave: ClaveCopiloto; readonly claveDetalle: ClaveCopiloto }>> = {
+  ejecutada: { tone: "success", clave: "accionEjecutada", claveDetalle: "accionEjecutadaDetalle" },
+  fallida: { tone: "danger", clave: "accionFallida", claveDetalle: "accionFallidaDetalle" },
+  cancelada: { tone: "neutral", clave: "accionCancelada", claveDetalle: "accionCanceladaDetalle" },
+  vencida: { tone: "warning", clave: "accionVencida", claveDetalle: "accionVencidaDetalle" },
+  archivada: { tone: "neutral", clave: "accionArchivada", claveDetalle: "accionArchivadaDetalle" },
 };
 
-const TEXTO_FALLA: Readonly<Record<string, string>> = {
-  stepup_cancelado: "Falta verificar tu identidad. No se ejecutó nada.",
-  conflicto: "La propuesta ya no es válida (venció, ya se usó o el estado cambió). No se ejecutó nada.",
-  motivo: "El motivo debe tener al menos 20 caracteres.",
-  no_disponible: "Esta acción todavía no está disponible en este despliegue. No se ejecutó nada.",
-  error: "No pude confirmar la acción en este momento. No se ejecutó nada; inténtalo de nuevo.",
+const TEXTO_FALLA: Readonly<Record<string, ClaveCopiloto>> = {
+  stepup_cancelado: "fallaStepup",
+  conflicto: "fallaConflicto",
+  motivo: "fallaMotivo",
+  no_disponible: "fallaNoDisponible",
+  error: "fallaError",
 };
 
 type Fase = "cargando" | "pendiente" | "confirmando" | "cancelada" | "ejecutada" | "fallida" | "vencida" | "archivada";
@@ -50,6 +51,7 @@ type Fase = "cargando" | "pendiente" | "confirmando" | "cancelada" | "ejecutada"
  * confirmar lo vencido, usado o cambiado.
  */
 export function CopilotoTarjetaAccion({ propuesta, cliente }: { propuesta: CopilotoAccionPropuesta; cliente: CopilotoAccionesCliente }) {
+  const { t } = useIdiomaCopiloto();
   const [fase, setFase] = useState<Fase>("cargando");
   const [vista, setVista] = useState<CopilotoAccionVista | null>(null);
   const [motivo, setMotivo] = useState("");
@@ -94,7 +96,7 @@ export function CopilotoTarjetaAccion({ propuesta, cliente }: { propuesta: Copil
       if (r.mensaje) setAviso(r.mensaje);
     } catch (e) {
       const tipo = e instanceof CopilotoAccionError ? e.tipo : "error";
-      setAviso(TEXTO_FALLA[tipo] ?? TEXTO_FALLA["error"] ?? null);
+      setAviso(t(TEXTO_FALLA[tipo] ?? "fallaError"));
       // Un conflicto es terminal (ya no se puede reintentar); lo demas deja volver a intentar.
       setFase(tipo === "conflicto" ? "archivada" : "pendiente");
     } finally {
@@ -106,13 +108,13 @@ export function CopilotoTarjetaAccion({ propuesta, cliente }: { propuesta: Copil
   const estado = terminal ? ESTADOS[fase] : null;
 
   return (
-    <section className="rounded-xl border border-border bg-card p-3" aria-label="Acción propuesta por el Copiloto" data-testid="copiloto-tarjeta-accion" data-fase={fase}>
+    <section className="rounded-xl border border-border bg-card p-3" aria-label={t("accionAria")} data-testid="copiloto-tarjeta-accion" data-fase={fase}>
       <div className="mb-2 flex items-center justify-between gap-2">
         <p className="flex items-center gap-1.5 font-mono text-2xs uppercase tracking-[0.08em] text-muted-foreground">
           <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
-          Acción propuesta
+          {t("accionPropuesta")}
         </p>
-        {estado ? <StatusBadge tone={estado.tone}>{estado.etiqueta}</StatusBadge> : null}
+        {estado ? <StatusBadge tone={estado.tone}>{t(estado.clave)}</StatusBadge> : null}
       </div>
 
       <p className="text-sm text-foreground">{resumen}</p>
@@ -120,18 +122,18 @@ export function CopilotoTarjetaAccion({ propuesta, cliente }: { propuesta: Copil
 
       {estado ? (
         <p className="mt-2 text-xs text-muted-foreground" role="status">
-          {aviso ?? estado.detalle}
+          {aviso ?? t(estado.claveDetalle)}
         </p>
       ) : fase === "cargando" ? (
         <p className="mt-2 text-xs text-muted-foreground" role="status">
-          Revisando si la propuesta sigue vigente…
+          {t("revisandoVigencia")}
         </p>
       ) : (
         <>
           {necesitaMotivo ? (
             <div className="mt-3">
               <label htmlFor={idMotivo} className="mb-1 block text-xs font-medium text-foreground">
-                Motivo (obligatorio)
+                {t("motivoEtiqueta")}
               </label>
               <Textarea
                 id={idMotivo}
@@ -143,17 +145,17 @@ export function CopilotoTarjetaAccion({ propuesta, cliente }: { propuesta: Copil
                 aria-describedby={idAyuda}
                 aria-required="true"
                 className="min-h-0 text-sm"
-                placeholder="Por qué haces este cambio (queda en la bitácora)"
+                placeholder={t("motivoPlaceholder")}
               />
               <p id={idAyuda} className="mt-1 text-2xs text-muted-foreground">
-                Mínimo {MOTIVO_MIN} caracteres ({Math.min(motivo.trim().length, MOTIVO_MIN)}/{MOTIVO_MIN}). Queda en la bitácora de seguridad.
+                {t("motivoAyuda", { min: MOTIVO_MIN, n: Math.min(motivo.trim().length, MOTIVO_MIN) })}
               </p>
             </div>
           ) : null}
 
           {!verifico ? (
             <p className="mt-2 text-xs text-muted-foreground" role="status">
-              No pude verificar si la propuesta sigue vigente; el servidor la comprueba al confirmar.
+              {t("sinVerificarVigencia")}
             </p>
           ) : null}
           {aviso ? (
@@ -164,12 +166,12 @@ export function CopilotoTarjetaAccion({ propuesta, cliente }: { propuesta: Copil
 
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <Button type="button" size="sm" loading={fase === "confirmando"} disabled={!motivoOk} onClick={() => void confirmar()}>
-              Confirmar
+              {t("confirmar")}
             </Button>
             <Button type="button" size="sm" variant="outline" disabled={fase === "confirmando"} onClick={() => setFase("cancelada")}>
-              Cancelar
+              {t("cancelar")}
             </Button>
-            <p className="text-2xs text-muted-foreground">Pedirá tu verificación MFA si hace falta. No se ejecuta nada hasta que confirmes.</p>
+            <p className="text-2xs text-muted-foreground">{t("notaMfa")}</p>
           </div>
         </>
       )}
@@ -177,7 +179,7 @@ export function CopilotoTarjetaAccion({ propuesta, cliente }: { propuesta: Copil
       <p className="mt-3 border-t border-dashed border-border pt-2 text-xs">
         <Link to={cliente.enlacePendientes} className="inline-flex items-center gap-1.5 text-muted-foreground underline underline-offset-2 hover:text-foreground">
           <ListChecks className="h-3.5 w-3.5" aria-hidden />
-          Ver pendientes en Acciones
+          {t("verPendientes")}
         </Link>
       </p>
     </section>

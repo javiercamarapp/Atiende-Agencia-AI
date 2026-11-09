@@ -8,8 +8,11 @@
 //
 // Nada se inventa: cualquier fallo se traduce a un `FijadosErrorCliente` con el estado honesto correcto. `fetchImpl` es
 // inyectable (las pruebas nunca tocan la red).
-import { FijadosErrorCliente, type CopilotoBloque, type CopilotoFuente, type FijadoResultado, type FijadoResumen, type FijadosCliente } from "@atiende/ui";
+import { FijadosErrorCliente, leerIdioma, traductorCopiloto, type CopilotoBloque, type CopilotoFuente, type FijadoResultado, type FijadoResumen, type FijadosCliente } from "@atiende/ui";
 import { normalizarStatus, type CopilotoTransporteConfig } from "./transporte.ts";
+
+/** Textos del cliente de fijados en el idioma de la consola en el momento de la llamada. */
+const tr = (clave: "errRespuestaInvalida" | "fijadoSinTitulo"): string => traductorCopiloto(leerIdioma())(clave);
 
 function esObjeto(v: unknown): v is Record<string, unknown> {
   return v !== null && typeof v === "object" && !Array.isArray(v);
@@ -43,7 +46,7 @@ export function crearClienteFijados(cfg: CopilotoTransporteConfig): FijadosClien
       const res = await llamar((t) => cfg.fetchImpl(url(), { headers: cabecera(t), signal: senal }));
       if (!res.ok) throw falla(res, "leer");
       const json: unknown = await res.json().catch(() => undefined);
-      if (!esObjeto(json) || typeof json["disponible"] !== "boolean" || !Array.isArray(json["pins"])) throw new FijadosErrorCliente("error", "Respuesta inválida.");
+      if (!esObjeto(json) || typeof json["disponible"] !== "boolean" || !Array.isArray(json["pins"])) throw new FijadosErrorCliente("error", tr("errRespuestaInvalida"));
       const fijados: FijadoResumen[] = [];
       for (const p of json["pins"] as unknown[]) {
         if (!esObjeto(p) || typeof p["id"] !== "string" || typeof p["titulo"] !== "string" || typeof p["herramienta"] !== "string") continue;
@@ -56,10 +59,10 @@ export function crearClienteFijados(cfg: CopilotoTransporteConfig): FijadosClien
       const res = await llamar((t) => cfg.fetchImpl(idUrl(id, "/resultado"), { headers: cabecera(t), signal: senal }));
       if (!res.ok) throw falla(res, "leer");
       const json: unknown = await res.json().catch(() => undefined);
-      if (!esObjeto(json) || typeof json["id"] !== "string") throw new FijadosErrorCliente("error", "Respuesta inválida.");
+      if (!esObjeto(json) || typeof json["id"] !== "string") throw new FijadosErrorCliente("error", tr("errRespuestaInvalida"));
       return {
         id: json["id"],
-        titulo: typeof json["titulo"] === "string" ? json["titulo"] : "Fijado",
+        titulo: typeof json["titulo"] === "string" ? json["titulo"] : tr("fijadoSinTitulo"),
         status: normalizarStatus(json["status"]),
         text: typeof json["text"] === "string" ? json["text"] : "",
         blocks: Array.isArray(json["blocks"]) ? (json["blocks"] as CopilotoBloque[]) : [],

@@ -21,4 +21,21 @@ export interface CopilotoConfigVertical {
   readonly maxCaracteres: number;
   /** Texto del estado vacio cuando el rol no tiene acceso. */
   readonly textoSinAcceso: string;
+  /** Ingles de esta config (i18n ES/EN). Sin el, la vertical sigue en espanol aunque la consola este en EN. Ver `configEnIdioma`. */
+  readonly en?: CopilotoConfigIngles;
+}
+
+/**
+ * Traduccion al ingles de una config. Las preguntas se traducen por su texto EXACTO en espanol (`preguntas`): el chip en ingles
+ * apunta a la MISMA consulta directa (herramienta + argumentos), asi que el servidor ejecuta lo mismo en los dos idiomas.
+ * `copiloto-config-idioma.spec.ts` exige que cada pregunta, tema y herramienta de la config tenga su ingles.
+ */
+export interface CopilotoConfigIngles {
+  readonly textos: Omit<CopilotoTextos, "contexto"> & { readonly contexto?: string };
+  /** Titulo del tema en espanol -> en ingles. */
+  readonly temas: Readonly<Record<string, string>>;
+  /** Pregunta en espanol (chip, tarjeta o directa) -> en ingles. */
+  readonly preguntas: Readonly<Record<string, string>>;
+  readonly etiquetasHerramienta: Readonly<Record<string, string>>;
+  readonly textoSinAcceso: string;
 }

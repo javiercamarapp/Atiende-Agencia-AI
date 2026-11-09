@@ -2,7 +2,7 @@
 // housekeeping) y apuntan a una herramienta que EXISTE en `buildHotelesDataChatTools` (packages/domain-hoteles/src/data-chat/catalog.ts):
 // ocupacion_adr_revpar, ingresos_por_periodo, llegadas_y_salidas, cancelaciones, tickets_abiertos_sla y housekeeping_pendiente.
 // Nada aqui son respuestas: solo preguntas que el servidor contesta con datos reales (el catalogo es cerrado y solo owner/gm lo usan).
-import type { CopilotoConfigVertical } from "./tipos.ts";
+import type { CopilotoConfigIngles, CopilotoConfigVertical } from "./tipos.ts";
 
 export const SUGERENCIAS_COPILOTO_HOTELES: readonly string[] = [
   "¿Cómo va la ocupación esta semana?",
@@ -11,6 +11,45 @@ export const SUGERENCIAS_COPILOTO_HOTELES: readonly string[] = [
   "¿Cuántos tickets abiertos tengo con el SLA vencido?",
   "¿Cuántas reservas se cancelaron este mes?",
 ];
+
+/** Ingles de la config (i18n ES/EN): misma consulta directa por pregunta, textos de la portada y temas. */
+export const COPILOTO_HOTELES_EN: CopilotoConfigIngles = {
+  textos: {
+    titulo: "Ask your data",
+    subtitulo: "Your occupancy, bookings and operations, with the figure the system already calculated.",
+    nota: "Answers only with figures already calculated on the server and tells you where they come from; if there's no data, it says so. It never makes up numbers.",
+    placeholder: "Ask about your hotel…",
+    fases: [
+      [0, "Reading your bookings…"],
+      [2500, "Querying your data…"],
+      [8000, "Putting the answer together…"],
+      [20000, "Still working on this…"],
+    ],
+  },
+  temas: {
+    "Ocupación e ingresos": "Occupancy and revenue",
+    "Reservas": "Bookings",
+    "Operación": "Operations",
+  },
+  preguntas: {
+    "¿Cómo va la ocupación esta semana?": "How is occupancy this week?",
+    "¿Cuál fue el ADR y el RevPAR de los últimos 30 días?": "What were ADR and RevPAR over the last 30 days?",
+    "¿Qué llegadas y salidas tengo mañana?": "What arrivals and departures do I have tomorrow?",
+    "¿Cuántos tickets abiertos tengo con el SLA vencido?": "How many open tickets are past their SLA?",
+    "¿Cuántas reservas se cancelaron este mes?": "How many bookings were canceled this month?",
+    "¿Cuánto ingresé por habitaciones y A&B este mes?": "How much did I earn from rooms and F&B this month?",
+    "¿Cuántas tareas de housekeeping tengo pendientes hoy?": "How many housekeeping tasks are pending today?",
+  },
+  etiquetasHerramienta: {
+    ocupacion_adr_revpar: "Calculating occupancy, ADR and RevPAR",
+    ingresos_por_periodo: "Adding up revenue by period",
+    llegadas_y_salidas: "Reading arrivals and departures",
+    cancelaciones: "Reviewing cancellations",
+    tickets_abiertos_sla: "Reviewing tickets and their SLA",
+    housekeeping_pendiente: "Counting pending housekeeping",
+  },
+  textoSinAcceso: "Your role doesn't have access to the Copilot. Ask the owner or the manager for access.",
+};
 
 export const COPILOTO_HOTELES: CopilotoConfigVertical = {
   vertical: "hoteles",
@@ -68,4 +107,5 @@ export const COPILOTO_HOTELES: CopilotoConfigVertical = {
   },
   maxCaracteres: 600,
   textoSinAcceso: "Tu rol no tiene acceso al Copiloto. Pídele acceso al dueño o al gerente.",
+  en: COPILOTO_HOTELES_EN,
 };

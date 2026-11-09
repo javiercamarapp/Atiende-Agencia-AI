@@ -52,10 +52,27 @@
     "apps/web/src/verticals/despachos",
     "apps/web/src/verticals/licitaciones",
     "apps/web/src/verticals/rentas",
-    "apps/web/src/superadmin/pages/WhatsappMeta.tsx"
+    "apps/web/src/superadmin/pages/WhatsappMeta.tsx",
+    "packages/ui/src/components/ResumenLayout.tsx",
+    "packages/ui/src/components/copiloto",
+    "apps/web/src/pages/CopilotoPage.tsx",
+    "apps/web/src/lib/copiloto",
+    "apps/web/src/verticals/citas/pages/Copiloto.tsx",
+    "apps/web/src/verticals/despachos/pages/Copiloto.tsx",
+    "apps/web/src/verticals/hoteles/pages/Copiloto.tsx",
+    "apps/web/src/verticals/licitaciones/pages/Copiloto.tsx",
+    "apps/web/src/verticals/rentas/pages/Copiloto.tsx",
+    "apps/web/src/verticals/restaurantes/pages/Copiloto.tsx"
   ],
   "excluir": [
-    "packages/ui/src/i18n/mensajes"
+    "packages/ui/src/i18n/mensajes",
+    "packages/ui/src/components/copiloto/idioma.ts",
+    "apps/web/src/lib/copiloto/config/citas.ts",
+    "apps/web/src/lib/copiloto/config/despachos.ts",
+    "apps/web/src/lib/copiloto/config/hoteles.ts",
+    "apps/web/src/lib/copiloto/config/licitaciones.ts",
+    "apps/web/src/lib/copiloto/config/rentas.ts",
+    "apps/web/src/lib/copiloto/config/restaurantes.ts"
   ],
   "baseline": {
     "apps/web/src/superadmin/cerebro/BarraScore.tsx": 1,
@@ -113,7 +130,6 @@
     "apps/web/src/verticals/citas/pages/Auditoria.tsx": 26,
     "apps/web/src/verticals/citas/pages/Configuracion.tsx": 28,
     "apps/web/src/verticals/citas/pages/Conversaciones.tsx": 58,
-    "apps/web/src/verticals/citas/pages/Copiloto.tsx": 1,
     "apps/web/src/verticals/citas/pages/Login.tsx": 4,
     "apps/web/src/verticals/citas/pages/PlantillasWhatsapp.tsx": 29,
     "apps/web/src/verticals/citas/pages/PrimerosPasos.tsx": 32,
@@ -150,7 +166,6 @@
     "apps/web/src/verticals/despachos/pages/ConciliacionSesiones.tsx": 68,
     "apps/web/src/verticals/despachos/pages/Configuracion.tsx": 18,
     "apps/web/src/verticals/despachos/pages/ContabilidadElectronica.tsx": 56,
-    "apps/web/src/verticals/despachos/pages/Copiloto.tsx": 1,
     "apps/web/src/verticals/despachos/pages/Declaraciones.tsx": 61,
     "apps/web/src/verticals/despachos/pages/DevolucionIva.tsx": 152,
     "apps/web/src/verticals/despachos/pages/ImportarEstadoCuenta.tsx": 65,
@@ -206,7 +221,6 @@
     "apps/web/src/verticals/hoteles/pages/Cfdi.tsx": 28,
     "apps/web/src/verticals/hoteles/pages/CfdiListado.tsx": 6,
     "apps/web/src/verticals/hoteles/pages/Conversaciones.tsx": 68,
-    "apps/web/src/verticals/hoteles/pages/Copiloto.tsx": 1,
     "apps/web/src/verticals/hoteles/pages/CotizadorPanel.tsx": 14,
     "apps/web/src/verticals/hoteles/pages/Folio.tsx": 63,
     "apps/web/src/verticals/hoteles/pages/Fraude.tsx": 19,

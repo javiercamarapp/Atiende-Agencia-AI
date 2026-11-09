@@ -7,6 +7,8 @@ import { useState } from "react";
 import type { PointerEvent as EventoPuntero, ReactNode } from "react";
 import { Card, CardContent } from "../ui/card";
 import { formatoCelda } from "./formato";
+import { traductorCopiloto, useIdiomaCopiloto, type TraducirCopiloto } from "./idioma";
+import type { Idioma } from "../../lib/idioma";
 import type { CopilotoBloque, CopilotoCelda, CopilotoColumna, CopilotoColumnaTipo } from "./tipos";
 
 const ACENTO = "hsl(var(--copiloto-acento, 224 76% 48%))";
@@ -18,6 +20,8 @@ export const MAX_BARRAS = 12;
 export const MAX_SEGMENTOS_DONA = 6;
 export const UMBRAL_SEMANAL = 90;
 export const MAX_KPI = 4;
+/** Traductor por omision (espanol) de las funciones puras: quien pinta pasa el del idioma activo. */
+const ES: TraducirCopiloto = traductorCopiloto("es");
 
 export interface Punto {
   readonly etiqueta: string;
@@ -80,7 +84,7 @@ export function lunesDe(fecha: string): string | null {
 }
 
 /** Con mas de 90 puntos y fechas ISO, agrupa por semana: suma las magnitudes aditivas (MXN, enteros) y promedia el resto. */
-export function agruparPorSemana(crudos: ReadonlyArray<{ x: string; y: number }>, kind: CopilotoColumnaTipo): Punto[] | null {
+export function agruparPorSemana(crudos: ReadonlyArray<{ x: string; y: number }>, kind: CopilotoColumnaTipo, t: TraducirCopiloto = ES): Punto[] | null {
   const por = new Map<string, number[]>();
   for (const c of crudos) {
     const lunes = lunesDe(c.x);
@@ -92,12 +96,12 @@ export function agruparPorSemana(crudos: ReadonlyArray<{ x: string; y: number }>
     .sort(([a], [b]) => (a < b ? -1 : 1))
     .map(([lunes, vs]) => {
       const suma = vs.reduce((a, b) => a + b, 0);
-      return { etiqueta: `Sem. ${lunes}`, valor: aditivo ? suma : suma / vs.length };
+      return { etiqueta: t("semana", { f: lunes }), valor: aditivo ? suma : suma / vs.length };
     });
 }
 
-/** Decide que dibujar. null = no hay con que: se muestra la tabla. */
-export function planGrafica(b: CopilotoBloque): PlanGrafica | null {
+/** Decide que dibujar. null = no hay con que: se muestra la tabla. `t` traduce las etiquetas que arma la grafica («Sem.», «Otros»). */
+export function planGrafica(b: CopilotoBloque, t: TraducirCopiloto = ES): PlanGrafica | null {
   const chart = b.chart;
   if (!chart || b.rows.length === 0) return null;
 
@@ -128,7 +132,7 @@ export function planGrafica(b: CopilotoBloque): PlanGrafica | null {
     let serie: Punto[] = puntos;
     let agrupado = false;
     if (puntos.length > UMBRAL_SEMANAL) {
-      const g = agruparPorSemana(crudos, kind);
+      const g = agruparPorSemana(crudos, kind, t);
       if (g) {
         serie = g;
         agrupado = true;
@@ -145,17 +149,20 @@ export function planGrafica(b: CopilotoBloque): PlanGrafica | null {
   const agrupados = ordenados.length > MAX_SEGMENTOS_DONA;
   if (agrupados) {
     const resto = ordenados.slice(MAX_SEGMENTOS_DONA - 1);
-    base = [...ordenados.slice(0, MAX_SEGMENTOS_DONA - 1), { etiqueta: "Otros", valor: resto.reduce((a, p) => a + p.valor, 0) }];
+    base = [...ordenados.slice(0, MAX_SEGMENTOS_DONA - 1), { etiqueta: t("otros"), valor: resto.reduce((a, p) => a + p.valor, 0) }];
   }
   const total = base.reduce((a, p) => a + p.valor, 0);
   return { tipo: "donut", segmentos: base.map((p) => ({ ...p, porcentaje: (p.valor / total) * 100 })), total, agrupados, kind };
 }
 
-const compacto = new Intl.NumberFormat("es-MX", { notation: "compact", maximumFractionDigits: 1 });
+const COMPACTO: Readonly<Record<Idioma, Intl.NumberFormat>> = {
+  es: new Intl.NumberFormat("es-MX", { notation: "compact", maximumFractionDigits: 1 }),
+  en: new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }),
+};
 
-/** Valor corto para ejes. */
-export function valorCompacto(kind: CopilotoColumnaTipo, v: number): string {
-  const t = compacto.format(v);
+/** Valor corto para ejes, en el formato del idioma («1.5 mil» / «1.5K»). */
+export function valorCompacto(kind: CopilotoColumnaTipo, v: number, idioma: Idioma = "es"): string {
+  const t = COMPACTO[idioma].format(v);
   if (kind === "mxn") return `$${t}`;
   if (kind === "percent") return `${t} %`;
   return t;
@@ -166,21 +173,21 @@ function recortar(t: string, max: number): string {
 }
 
 /** Resumen para lectores de pantalla: titulo, tipo y valores (todos si son pocos; si no, extremos). */
-export function resumenAria(titulo: string, plan: PlanGrafica): string {
+export function resumenAria(titulo: string, plan: PlanGrafica, t: TraducirCopiloto = ES): string {
   switch (plan.tipo) {
     case "kpi":
       return `${titulo}: ${plan.items.map((i) => `${i.etiqueta} ${i.texto}`).join("; ")}.`;
     case "donut":
-      return `${titulo}, composición: ${plan.segmentos.map((s) => `${s.etiqueta} ${formatoCelda("percent", Math.round(s.porcentaje * 10) / 10)}`).join("; ")}.`;
+      return t("ariaComposicion", { titulo, v: plan.segmentos.map((s) => `${s.etiqueta} ${formatoCelda("percent", Math.round(s.porcentaje * 10) / 10)}`).join("; ") });
     case "bar":
     case "line": {
       const f = (p: Punto) => `${p.etiqueta} ${formatoCelda(plan.kind, p.valor)}`;
-      const nombre = plan.tipo === "bar" ? "barras" : plan.agrupadoPorSemana ? "línea por semana" : "línea";
+      const tipo = t(plan.tipo === "bar" ? "graficaBarras" : plan.agrupadoPorSemana ? "graficaLineaSemana" : "graficaLinea");
       const n = plan.puntos.length;
-      if (n <= 8) return `${titulo}, ${nombre}: ${plan.puntos.map(f).join("; ")}.`;
+      if (n <= 8) return t("ariaValores", { titulo, tipo, v: plan.puntos.map(f).join("; ") });
       const max = plan.puntos.reduce((a, p) => (p.valor > a.valor ? p : a));
       const min = plan.puntos.reduce((a, p) => (p.valor < a.valor ? p : a));
-      return `${titulo}, ${nombre}, ${n} valores: de ${f(plan.puntos[0]!)} a ${f(plan.puntos[n - 1]!)}; máximo ${f(max)}; mínimo ${f(min)}.`;
+      return t("ariaExtremos", { titulo, tipo, n, a: f(plan.puntos[0]!), b: f(plan.puntos[n - 1]!), max: f(max), min: f(min) });
     }
   }
 }
@@ -235,6 +242,7 @@ const ALTO = 180;
 const M = { izq: 52, der: 12, arr: 12, abajo: 24 } as const;
 
 export function Barras({ plan, etiqueta }: { plan: Extract<PlanGrafica, { tipo: "bar" }>; etiqueta: string }) {
+  const { idioma } = useIdiomaCopiloto();
   const [activo, setActivo] = useState<number | null>(null);
   const { puntos, kind } = plan;
   const [min, max] = dominio(puntos.map((p) => p.valor), true);
@@ -260,7 +268,7 @@ export function Barras({ plan, etiqueta }: { plan: Extract<PlanGrafica, { tipo: 
               </text>
               <rect x={a} y={y + 3} width={w} height={fila - 8} rx={3} fill={ACENTO} />
               <text x={a + w + 6} y={y + 14} style={FUENTE_EJE}>
-                {valorCompacto(kind, p.valor)}
+                {valorCompacto(kind, p.valor, idioma)}
               </text>
               <title>{`${p.etiqueta}: ${formatoCelda(kind, p.valor)}`}</title>
             </g>
@@ -285,7 +293,7 @@ export function Barras({ plan, etiqueta }: { plan: Extract<PlanGrafica, { tipo: 
         <g key={i}>
           <line x1={x0} x2={x1} y1={py(v)} y2={py(v)} stroke={BORDE} strokeDasharray="3 3" />
           <text x={x0 - 8} y={py(v) + 3} textAnchor="end" style={FUENTE_EJE}>
-            {valorCompacto(kind, v)}
+            {valorCompacto(kind, v, idioma)}
           </text>
         </g>
       ))}
@@ -312,6 +320,7 @@ export function Barras({ plan, etiqueta }: { plan: Extract<PlanGrafica, { tipo: 
 }
 
 export function Linea({ plan, etiqueta }: { plan: Extract<PlanGrafica, { tipo: "line" }>; etiqueta: string }) {
+  const { idioma } = useIdiomaCopiloto();
   const [activo, setActivo] = useState<number | null>(null);
   const { puntos, kind } = plan;
   const [min, max] = dominio(puntos.map((p) => p.valor), false);
@@ -338,7 +347,7 @@ export function Linea({ plan, etiqueta }: { plan: Extract<PlanGrafica, { tipo: "
         <g key={i}>
           <line x1={x0} x2={x1} y1={py(v)} y2={py(v)} stroke={BORDE} strokeDasharray="3 3" />
           <text x={x0 - 8} y={py(v) + 3} textAnchor="end" style={FUENTE_EJE}>
-            {valorCompacto(kind, v)}
+            {valorCompacto(kind, v, idioma)}
           </text>
         </g>
       ))}
@@ -387,6 +396,7 @@ export function opacidadSegmento(i: number, n: number): number {
 }
 
 export function Dona({ plan, etiqueta }: { plan: Extract<PlanGrafica, { tipo: "donut" }>; etiqueta: string }) {
+  const { idioma } = useIdiomaCopiloto();
   const { segmentos, kind, total } = plan;
   const n = segmentos.length;
   let acumulado = 0;
@@ -409,7 +419,7 @@ export function Dona({ plan, etiqueta }: { plan: Extract<PlanGrafica, { tipo: "d
         ))}
         {aditivo ? (
           <text x={96} y={101} textAnchor="middle" style={{ fontSize: 14, fontWeight: 600, fill: "hsl(var(--foreground))" }}>
-            {valorCompacto(kind, total)}
+            {valorCompacto(kind, total, idioma)}
           </text>
         ) : null}
       </svg>
@@ -428,14 +438,15 @@ export function Dona({ plan, etiqueta }: { plan: Extract<PlanGrafica, { tipo: "d
 
 /** Mini serie de 64x16 para una celda de tabla. Con menos de 2 valores finitos no dibuja nada (no hay tendencia que mostrar). */
 export function Sparkline({ valores, etiqueta }: { valores: readonly number[]; etiqueta: string }) {
+  const { t } = useIdiomaCopiloto();
   const v = valores.filter((n) => Number.isFinite(n));
-  if (v.length < 2) return <span className="text-muted-foreground" aria-label={`${etiqueta}: sin datos suficientes`}>—</span>;
+  if (v.length < 2) return <span className="text-muted-foreground" aria-label={t("sparkSinDatos", { e: etiqueta })}>—</span>;
   const min = Math.min(...v);
   const max = Math.max(...v);
   const y = (n: number) => (max === min ? 8 : 15 - ((n - min) / (max - min)) * 14);
   const d = v.map((n, i) => `${i === 0 ? "M" : "L"}${((i / (v.length - 1)) * 62 + 1).toFixed(1)} ${y(n).toFixed(1)}`).join(" ");
   return (
-    <svg viewBox="0 0 64 16" width={64} height={16} role="img" aria-label={`${etiqueta}: ${v.length} puntos, de ${formatoCelda("decimal", v[0]!)} a ${formatoCelda("decimal", v[v.length - 1]!)}`} className="inline-block align-middle">
+    <svg viewBox="0 0 64 16" width={64} height={16} role="img" aria-label={t("sparkAria", { e: etiqueta, n: v.length, a: formatoCelda("decimal", v[0]!), b: formatoCelda("decimal", v[v.length - 1]!) })} className="inline-block align-middle">
       <path d={d} fill="none" stroke={ACENTO} strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" />
     </svg>
   );
@@ -459,9 +470,10 @@ export function Kpi({ items }: { items: readonly ItemKpi[] }) {
  * como tabla, para accesibilidad). Devuelve null si el bloque no se puede dibujar: el llamador muestra la tabla.
  */
 export function GraficaBloque({ bloque, tabla }: { bloque: CopilotoBloque; tabla: ReactNode }) {
-  const plan = planGrafica(bloque);
+  const { t } = useIdiomaCopiloto();
+  const plan = planGrafica(bloque, t);
   if (!plan) return null;
-  const etiqueta = resumenAria(bloque.title, plan);
+  const etiqueta = resumenAria(bloque.title, plan, t);
   const alturaFija = plan.tipo === "bar" && !plan.horizontal ? true : plan.tipo === "line";
   return (
     <Card>
@@ -473,11 +485,11 @@ export function GraficaBloque({ bloque, tabla }: { bloque: CopilotoBloque; tabla
           {plan.tipo === "donut" ? <Dona plan={plan} etiqueta={etiqueta} /> : null}
           {plan.tipo === "kpi" ? <Kpi items={plan.items} /> : null}
         </div>
-        {plan.tipo === "line" && plan.agrupadoPorSemana ? <p className="text-xs text-muted-foreground mt-2">Más de {UMBRAL_SEMANAL} días: se agrupan por semana.</p> : null}
-        {plan.tipo === "bar" && plan.omitidos > 0 ? <p className="text-xs text-muted-foreground mt-2">Se grafican las primeras {MAX_BARRAS} filas.</p> : null}
-        {plan.tipo === "donut" && plan.agrupados ? <p className="text-xs text-muted-foreground mt-2">Los segmentos menores se agrupan en «Otros»; el detalle está en la tabla (hasta 10 filas).</p> : null}
+        {plan.tipo === "line" && plan.agrupadoPorSemana ? <p className="text-xs text-muted-foreground mt-2">{t("notaSemanal", { n: UMBRAL_SEMANAL })}</p> : null}
+        {plan.tipo === "bar" && plan.omitidos > 0 ? <p className="text-xs text-muted-foreground mt-2">{t("notaBarras", { n: MAX_BARRAS })}</p> : null}
+        {plan.tipo === "donut" && plan.agrupados ? <p className="text-xs text-muted-foreground mt-2">{t("notaDona")}</p> : null}
         <details className="mt-3 group">
-          <summary className="text-xs text-muted-foreground hover:text-foreground cursor-pointer select-none transition-colors">Ver como tabla</summary>
+          <summary className="text-xs text-muted-foreground hover:text-foreground cursor-pointer select-none transition-colors">{t("verComoTabla")}</summary>
           <div className="mt-2">{tabla}</div>
         </details>
       </CardContent>

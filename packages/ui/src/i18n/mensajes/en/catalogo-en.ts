@@ -15,6 +15,7 @@ import { MODULOS_EN_DESPACHOS } from "./despachos/index.ts";
 import { MODULOS_EN_HOTELES } from "./hoteles/index.ts";
 import { MODULOS_EN_CITAS } from "./citas/index.ts";
 import { MODULOS_EN_SUPERADMIN } from "./superadmin/index.ts";
+import { resumenEn } from "./resumen.ts";
 import { rolEn } from "./rol.ts";
 import { shellEn } from "./shell.ts";
 import { waMetaEn } from "./waMeta.ts";
@@ -35,4 +36,5 @@ export const MODULOS_EN = {
   ...MODULOS_EN_HOTELES,
   ...MODULOS_EN_CITAS,
   ...MODULOS_EN_SUPERADMIN,
+  resumen: resumenEn,
 } as const satisfies ModulosTraducidos;

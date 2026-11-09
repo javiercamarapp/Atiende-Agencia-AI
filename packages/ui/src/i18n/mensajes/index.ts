@@ -23,6 +23,7 @@ import type { ModulosDespachos } from "./despachos/index.ts";
 import type { ModulosHoteles } from "./hoteles/index.ts";
 import type { ModulosCitas } from "./citas/index.ts";
 import type { ModulosSuperadmin } from "./superadmin/index.ts";
+import type { resumen } from "./resumen.ts";
 import type { rol } from "./rol.ts";
 import type { shell } from "./shell.ts";
 import type { waMeta } from "./waMeta.ts";
@@ -55,6 +56,7 @@ interface ModulosDeArea
   readonly notif: typeof notif;
   readonly datos: typeof datos;
   readonly waMeta: typeof waMeta;
+  readonly resumen: typeof resumen;
 }
 
 type Modulos = typeof MODULOS & ModulosDeArea;
