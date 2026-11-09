@@ -7,7 +7,7 @@
 // `Input`/`Label` para el formulario de edición y `Button` para Editar/Guardar/
 // Cancelar. Toda la lógica de carga/edición/guardado de abajo es la MISMA.
 import { useEffect, useState } from "react";
-import { Button, Callout, Card, CardContent, EstadoCargando, EstadoError, FormField, Input, Label, PageContainer, StatusBadge, useT } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, EstadoCargando, EstadoError, FormField, Input, Label, PageContainer, PageHeader, StatusBadge, useT } from "@atiende/ui";
 import { restaurantesComun } from "@atiende/ui/i18n/restaurantes/comun";
 import { restaurantesSucursales } from "@atiende/ui/i18n/restaurantes/sucursales";
 import { ExternalLink, MapPin, Pencil } from "lucide-react";
@@ -131,7 +131,7 @@ export function SucursalesPage({ apiBaseUrl, token, propertyId, role, orgSlug }:
   const sinCoordenadas = (branches ?? []).filter((b) => b.status === "active" && (b.lat === null || b.lng === null));
   return (
     <PageContainer padding="none">
-      <h1 className="sr-only">{t("restaurantes.sucursales.titulo")}</h1>
+      <PageHeader titulo={t("restaurantes.sucursales.titulo")} />
       <Callout tone="info">
         {t("restaurantes.sucursales.plataformaAntes")}{" "}
         <Link to={`/restaurantes/${orgSlug}/plan`} className="underline">{t("restaurantes.sucursales.planYUso")}</Link>{t("restaurantes.sucursales.plataformaDespues")}

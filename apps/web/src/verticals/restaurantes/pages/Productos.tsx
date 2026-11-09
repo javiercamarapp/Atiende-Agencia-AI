@@ -25,6 +25,7 @@ import {
   Input,
   Selector,
   PageContainer,
+  PageHeader,
   Textarea,
   formatMoney,
   notify,
@@ -257,26 +258,31 @@ export function ProductosPage({ apiBaseUrl, token, propertyId, role }: Restauran
 
   return (
     <PageContainer padding="none">
-      <h1 className="sr-only">{t("restaurantes.productos.titulo")}</h1>
+      <PageHeader
+        titulo={t("restaurantes.productos.titulo")}
+        acciones={
+          puedeEditarCatalogo ? (
+            <>
+              <Button type="button" variant="outline" onClick={() => setDialogoImportar(true)}>
+                <FileUp />
+                {t("restaurantes.productos.importarMenu")}
+              </Button>
+              <Button type="button" variant="outline" onClick={abrirCategoria}>
+                <FolderPlus />
+                {t("restaurantes.productos.nuevaCategoria")}
+              </Button>
+              <Button type="button" onClick={abrirProducto}>
+                <Plus />
+                {t("restaurantes.productos.nuevoProducto")}
+              </Button>
+            </>
+          ) : undefined
+        }
+      />
 
       {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
 
-      {puedeEditarCatalogo ? (
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <Button type="button" variant="outline" onClick={() => setDialogoImportar(true)}>
-            <FileUp />
-            {t("restaurantes.productos.importarMenu")}
-          </Button>
-          <Button type="button" variant="outline" onClick={abrirCategoria}>
-            <FolderPlus />
-            {t("restaurantes.productos.nuevaCategoria")}
-          </Button>
-          <Button type="button" onClick={abrirProducto}>
-            <Plus />
-            {t("restaurantes.productos.nuevoProducto")}
-          </Button>
-        </div>
-      ) : (
+      {puedeEditarCatalogo ? null : (
         <Callout tone="info">{t("restaurantes.productos.soloStaff")}</Callout>
       )}
 

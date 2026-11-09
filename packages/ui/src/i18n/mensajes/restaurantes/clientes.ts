@@ -27,6 +27,7 @@ export const restaurantesClientes = {
   "restaurantes.clientes.distribucion.noCambia": "No cambia con los filtros de abajo.",
   "restaurantes.clientes.kpisNoDisponible": "Resumen de cartera no disponible aún",
   "restaurantes.clientes.requiereMigracion": "Requiere la migración 054 de restaurantes en esta base de datos.",
+  "restaurantes.clientes.filtrosAria": "Filtros de clientes",
   "restaurantes.clientes.buscar": "Buscar",
   "restaurantes.clientes.buscarPlaceholder": "Buscar por nombre o teléfono…",
   "restaurantes.clientes.filtro.nivel": "Nivel",

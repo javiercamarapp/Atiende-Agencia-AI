@@ -20,6 +20,7 @@ import {
   Input,
   Selector,
   PageContainer,
+  PageHeader,
   StatusBadge,
   Textarea,
   formatMoney,
@@ -205,15 +206,17 @@ function FichaBasica({ detalle }: { readonly detalle: CustomerDetail }) {
   if (detalle.isNew) return <EstadoVacio mensaje={t("restaurantes.clienteFicha.sinPedidos")} />;
   return (
     <>
-      <div className="flex items-center gap-2.5">
-        <h1 className="m-0 font-display text-xl font-semibold text-foreground">{detalle.name ?? t("restaurantes.clienteFicha.sinNombre")}</h1>
-        {detalle.tier && (
-          <StatusBadge dot={false} tone={statusTone(CUSTOMER_TIER_TONES, detalle.tier)} className={`gap-1.5 px-2.5 py-1 ${tierBadgeClase(detalle.tier) ?? ""}`}>
-            <span aria-hidden>{CUSTOMER_TIER_META[detalle.tier].glyph}</span>
-            {CUSTOMER_TIER_META[detalle.tier].label}
-          </StatusBadge>
-        )}
-      </div>
+      <PageHeader
+        titulo={detalle.name ?? t("restaurantes.clienteFicha.sinNombre")}
+        meta={
+          detalle.tier ? (
+            <StatusBadge dot={false} tone={statusTone(CUSTOMER_TIER_TONES, detalle.tier)} className={`gap-1.5 px-2.5 py-1 ${tierBadgeClase(detalle.tier) ?? ""}`}>
+              <span aria-hidden>{CUSTOMER_TIER_META[detalle.tier].glyph}</span>
+              {CUSTOMER_TIER_META[detalle.tier].label}
+            </StatusBadge>
+          ) : undefined
+        }
+      />
       <Seccion titulo={t("restaurantes.clienteFicha.direcciones")}>
         {detalle.addresses.length === 0 ? (
           <p className="m-0 text-ui text-muted-foreground">{t("restaurantes.clienteFicha.sinDirecciones")}</p>
@@ -259,20 +262,26 @@ function FichaCompleta({ ficha, puedeAdministrar, ejecutar, api }: { readonly fi
 
   return (
     <>
-      <div className="flex flex-wrap items-center gap-2.5">
-        <h1 className="m-0 font-display text-xl font-semibold text-foreground">{customer.name ?? t("restaurantes.clienteFicha.sinNombre")}</h1>
-        {ficha.tier && (
-          <StatusBadge dot={false} tone={statusTone(CUSTOMER_TIER_TONES, ficha.tier)} className={`gap-1.5 px-2.5 py-1 ${tierBadgeClase(ficha.tier) ?? ""}`}>
-            <span aria-hidden>{CUSTOMER_TIER_META[ficha.tier].glyph}</span>
-            {CUSTOMER_TIER_META[ficha.tier].label}
-          </StatusBadge>
-        )}
-        {reincidente && (
-          <StatusBadge tone="warning">
-            {t("restaurantes.clienteFicha.reincidente")}
-          </StatusBadge>
-        )}
-      </div>
+      <PageHeader
+        titulo={customer.name ?? t("restaurantes.clienteFicha.sinNombre")}
+        meta={
+          ficha.tier || reincidente ? (
+            <>
+              {ficha.tier && (
+                <StatusBadge dot={false} tone={statusTone(CUSTOMER_TIER_TONES, ficha.tier)} className={`gap-1.5 px-2.5 py-1 ${tierBadgeClase(ficha.tier) ?? ""}`}>
+                  <span aria-hidden>{CUSTOMER_TIER_META[ficha.tier].glyph}</span>
+                  {CUSTOMER_TIER_META[ficha.tier].label}
+                </StatusBadge>
+              )}
+              {reincidente && (
+                <StatusBadge tone="warning">
+                  {t("restaurantes.clienteFicha.reincidente")}
+                </StatusBadge>
+              )}
+            </>
+          ) : undefined
+        }
+      />
 
       <dl className="m-0 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-ui">
         <dt className="text-muted-foreground">{t("restaurantes.clienteFicha.telefono")}</dt>

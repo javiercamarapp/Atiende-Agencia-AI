@@ -18,7 +18,7 @@
 // que cambia es que los formularios ya no viven siempre abiertos en la página.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { Button, Callout, Card, CardContent, Checkbox, EstadoCargando, EstadoError, EstadoVacio, FormDialog, FormField, Input, Label, Selector, PageContainer, StatusBadge, formatMoney, localeActivo, useT } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, Checkbox, EstadoCargando, EstadoError, EstadoVacio, FormDialog, FormField, Input, Label, Selector, PageContainer, PageHeader, StatusBadge, formatMoney, localeActivo, useT } from "@atiende/ui";
 import type { Traductor } from "@atiende/ui";
 import { restaurantesPromociones } from "@atiende/ui/i18n/restaurantes/promociones";
 import { restaurantesReglas } from "@atiende/ui/i18n/restaurantes/reglas";
@@ -120,7 +120,7 @@ export function PromocionesPage(ctx: RestaurantesShellContext) {
   if (!puedeEn(ctx.role, "promociones.ver")) {
     return (
       <PageContainer padding="none">
-        <h1 className="sr-only">{t("restaurantes.promociones.titulo")}</h1>
+        <PageHeader titulo={t("restaurantes.promociones.titulo")} />
         <Callout tone="info">{t("restaurantes.promociones.soloDueno")}</Callout>
       </PageContainer>
     );
@@ -264,19 +264,21 @@ function PromocionesContenido({ apiBaseUrl, token, propertyId }: RestaurantesShe
 
   return (
     <PageContainer padding="none">
-      <header className="flex flex-wrap items-center justify-end gap-3">
-        <h1 className="sr-only">{t("restaurantes.promociones.titulo")}</h1>
-        <Button
-          type="button"
-          onClick={() => {
-            setErrorCrear(null);
-            setModalCrearAbierto(true);
-          }}
-        >
-          <Plus />
-          {t("restaurantes.promociones.crearNuevo")}
-        </Button>
-      </header>
+      <PageHeader
+        titulo={t("restaurantes.promociones.titulo")}
+        acciones={
+          <Button
+            type="button"
+            onClick={() => {
+              setErrorCrear(null);
+              setModalCrearAbierto(true);
+            }}
+          >
+            <Plus />
+            {t("restaurantes.promociones.crearNuevo")}
+          </Button>
+        }
+      />
 
       {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
 

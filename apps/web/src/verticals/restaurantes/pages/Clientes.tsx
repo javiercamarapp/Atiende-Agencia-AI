@@ -16,11 +16,11 @@ import {
   EstadoCargando,
   EstadoError,
   EstadoVacio,
-  FormField,
   Input,
   Label,
   Selector,
   PageContainer,
+  PageHeader,
   SectionLabel,
   StatCard,
   StatusBadge,
@@ -136,7 +136,21 @@ export function ClientesListPage({ apiBaseUrl, token, propertyId, orgSlug, role 
 
   return (
     <PageContainer padding="none">
-      <h1 className="sr-only">{t("restaurantes.clientes.titulo")}</h1>
+      <PageHeader
+        titulo={t("restaurantes.clientes.titulo")}
+        acciones={
+          <>
+            {puedeImportar && (
+              <Button type="button" size="sm" variant="outline" onClick={() => setImportando(true)}>
+                <Upload className="mr-1 h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
+                {t("restaurantes.clientes.importar")}
+              </Button>
+            )}
+            {/* R-17: exporta TODOS los clientes que coinciden con la búsqueda vigente (no solo los 50 en pantalla). Solo owner/admin. */}
+            <BotonExportar role={role} token={token} urlPara={(formato) => urlExportarClientes(apiBaseUrl, propertyId, formato, search || undefined)} />
+          </>
+        }
+      />
 
       {k && (
         <section aria-label={t("restaurantes.clientes.kpis.aria")} className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(210px,1fr))]" data-testid="cartera-kpis">
@@ -201,73 +215,54 @@ export function ClientesListPage({ apiBaseUrl, token, propertyId, orgSlug, role 
         </Callout>
       )}
 
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="w-full max-w-xs">
-            <Label htmlFor="restaurantes-clientes-buscar" className="mb-1.5 block text-xs text-muted-foreground">
-              {t("restaurantes.clientes.buscar")}
-            </Label>
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" strokeWidth={1.75} />
-              <Input
-                id="restaurantes-clientes-buscar"
-                placeholder={t("restaurantes.clientes.buscarPlaceholder")}
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-9"
-              />
-            </div>
+      {/* Filtros en una sola linea de pildoras (Rovaq); las etiquetas quedan para lectores de pantalla. */}
+      <div role="group" aria-label={t("restaurantes.clientes.filtrosAria")} className="flex flex-wrap items-center gap-2">
+        <div className="w-full max-w-xs">
+          <Label htmlFor="restaurantes-clientes-buscar" className="sr-only">
+            {t("restaurantes.clientes.buscar")}
+          </Label>
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" strokeWidth={1.75} />
+            <Input
+              id="restaurantes-clientes-buscar"
+              placeholder={t("restaurantes.clientes.buscarPlaceholder")}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="rounded-full pl-9"
+            />
           </div>
-          <FormField label={t("restaurantes.clientes.filtro.nivel")}>
-            <Selector id="restaurantes-clientes-nivel" size="sm" value={nivel} onChange={(e) => setNivel(e.target.value as CustomerTier | "")} wrapperClassName="w-auto min-w-36">
-              <option value="">{t("restaurantes.clientes.filtro.todosNiveles")}</option>
-              {NIVELES.map((n) => (
-                <option key={n} value={n}>
-                  {CUSTOMER_TIER_META[n].label}
-                </option>
-              ))}
-            </Selector>
-          </FormField>
-          <FormField label={t("restaurantes.clientes.filtro.frecuencia")}>
-            <Selector id="restaurantes-clientes-frecuencia" size="sm" value={frecuencia} onChange={(e) => setFrecuencia(e.target.value as FrecuenciaCliente | "")} wrapperClassName="w-auto min-w-40">
-              <option value="">{t("restaurantes.clientes.filtro.cualquiera")}</option>
-              <option value="una_vez">{t("restaurantes.clientes.filtro.unaVez")}</option>
-              <option value="recurrentes">{t("restaurantes.clientes.filtro.recurrentes")}</option>
-            </Selector>
-          </FormField>
-          <FormField label={t("restaurantes.clientes.filtro.sinPedirEn")}>
-            <Selector id="restaurantes-clientes-inactivo" size="sm" value={String(inactivoDias)} onChange={(e) => setInactivoDias(e.target.value === "" ? "" : Number(e.target.value))} wrapperClassName="w-auto min-w-36">
-              <option value="">{t("restaurantes.clientes.filtro.cualquierMomento")}</option>
-              {DIAS_SIN_PEDIR.map((d) => (
-                <option key={d} value={d}>
-                  {t("restaurantes.clientes.filtro.dias", { d })}
-                </option>
-              ))}
-            </Selector>
-          </FormField>
-          {sucursales.length > 1 && (
-            <FormField label={t("restaurantes.clientes.filtro.sucursal")}>
-              <Selector id="restaurantes-clientes-sucursal" size="sm" value={branchId} onChange={(e) => setBranchId(e.target.value)} wrapperClassName="w-auto min-w-40">
-                <option value="">{t("restaurantes.clientes.filtro.todasSucursales")}</option>
-                {sucursales.map((b) => (
-                  <option key={b.propertyId} value={b.propertyId}>
-                    {b.name}
-                  </option>
-                ))}
-              </Selector>
-            </FormField>
-          )}
         </div>
-        <div className="flex items-end gap-2">
-          {puedeImportar && (
-            <Button type="button" size="sm" variant="outline" onClick={() => setImportando(true)}>
-              <Upload className="mr-1 h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
-              {t("restaurantes.clientes.importar")}
-            </Button>
-          )}
-          {/* R-17: exporta TODOS los clientes que coinciden con la búsqueda vigente (no solo los 50 en pantalla). Solo owner/admin. */}
-          <BotonExportar role={role} token={token} urlPara={(formato) => urlExportarClientes(apiBaseUrl, propertyId, formato, search || undefined)} />
-        </div>
+        <Selector id="restaurantes-clientes-nivel" aria-label={t("restaurantes.clientes.filtro.nivel")} size="sm" value={nivel} onChange={(e) => setNivel(e.target.value as CustomerTier | "")} wrapperClassName="w-auto" className="rounded-full">
+          <option value="">{t("restaurantes.clientes.filtro.todosNiveles")}</option>
+          {NIVELES.map((n) => (
+            <option key={n} value={n}>
+              {CUSTOMER_TIER_META[n].label}
+            </option>
+          ))}
+        </Selector>
+        <Selector id="restaurantes-clientes-frecuencia" aria-label={t("restaurantes.clientes.filtro.frecuencia")} size="sm" value={frecuencia} onChange={(e) => setFrecuencia(e.target.value as FrecuenciaCliente | "")} wrapperClassName="w-auto" className="rounded-full">
+          <option value="">{t("restaurantes.clientes.filtro.cualquiera")}</option>
+          <option value="una_vez">{t("restaurantes.clientes.filtro.unaVez")}</option>
+          <option value="recurrentes">{t("restaurantes.clientes.filtro.recurrentes")}</option>
+        </Selector>
+        <Selector id="restaurantes-clientes-inactivo" aria-label={t("restaurantes.clientes.filtro.sinPedirEn")} size="sm" value={String(inactivoDias)} onChange={(e) => setInactivoDias(e.target.value === "" ? "" : Number(e.target.value))} wrapperClassName="w-auto" className="rounded-full">
+          <option value="">{t("restaurantes.clientes.filtro.cualquierMomento")}</option>
+          {DIAS_SIN_PEDIR.map((d) => (
+            <option key={d} value={d}>
+              {t("restaurantes.clientes.filtro.dias", { d })}
+            </option>
+          ))}
+        </Selector>
+        {sucursales.length > 1 && (
+          <Selector id="restaurantes-clientes-sucursal" aria-label={t("restaurantes.clientes.filtro.sucursal")} size="sm" value={branchId} onChange={(e) => setBranchId(e.target.value)} wrapperClassName="w-auto" className="rounded-full">
+            <option value="">{t("restaurantes.clientes.filtro.todasSucursales")}</option>
+            {sucursales.map((b) => (
+              <option key={b.propertyId} value={b.propertyId}>
+                {b.name}
+              </option>
+            ))}
+          </Selector>
+        )}
       </div>
 
       {!filtrosDisponibles && (

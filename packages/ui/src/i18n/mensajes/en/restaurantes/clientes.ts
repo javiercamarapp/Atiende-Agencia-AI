@@ -27,6 +27,7 @@ export const restaurantesClientesEn: Traduccion<typeof restaurantesClientes> = {
   "restaurantes.clientes.distribucion.noCambia": "Not affected by the filters below.",
   "restaurantes.clientes.kpisNoDisponible": "Customer base summary not available yet",
   "restaurantes.clientes.requiereMigracion": "Requires restaurants migration 054 on this database.",
+  "restaurantes.clientes.filtrosAria": "Customer filters",
   "restaurantes.clientes.buscar": "Search",
   "restaurantes.clientes.buscarPlaceholder": "Search by name or phone…",
   "restaurantes.clientes.filtro.nivel": "Tier",
