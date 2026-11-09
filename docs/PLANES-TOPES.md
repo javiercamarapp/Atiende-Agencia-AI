@@ -7,8 +7,12 @@ Verificación contra Postgres real: `scripts/verify-planes-topes-prueba/` (45 es
 
 - **Qué cuenta**: cada mensaje saliente de WhatsApp **enviado** por el outbox (`WhatsAppOutboundDispatcher`), por organización y mes.
   Las respuestas del agente salen por el mismo outbox, así que no se cuentan aparte (contarlas dos veces duplicaría el consumo).
-  Hoy mide **citas, hoteles y restaurantes** (sus puertos de outbox ya devuelven `organizationId`); licitaciones, rentas y
-  despachos no tienen ese outbox de WhatsApp genérico y quedan fuera hasta que lo tengan.
+  Hoy mide **citas, hoteles, restaurantes y licitaciones** (sus puertos de outbox devuelven `organizationId`; licitaciones desde
+  Ola 4 H3: sus avisos y solicitudes de decisión de `licitaciones.whatsapp_outbox` salían sin medir). **Rentas y despachos no envían
+  WhatsApp todavía** (rentas: la mensajería con huésped usa el canal simulado; despachos: `cobranza_whatsapp_outbox` se encola pero
+  ningún proceso la despacha). Cuando lo hagan, basta con que su puerto de outbox devuelva `organizationId` y entre a
+  `dispatchWhatsAppVertical`: el medidor (`crearMedidorMensajes`, que ya acepta las 6 verticales) y los avisos del catálogo
+  (`<vertical>.plan.mensajes_80` / `_excedido`) ya existen para ellas.
 - **Corte de mes**: en la zona horaria del negocio (`core.organization.timezone`, por omisión `America/Mexico_City`), no en UTC. Un
   mensaje a las 23:30 de `America/Merida` del último día cuenta en ese mes.
 - **Libro mayor**: `core.message_usage_event`, idempotente por (`ref_tipo`, `ref_id`): reintentar un registro no cuenta dos veces.

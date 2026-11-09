@@ -1,5 +1,6 @@
 // Configuracion del worker: tabla DNIS -> sucursal, modo "no configurado" (nunca atiende a medias), tope mensual y modo de entrada.
 import { describe, expect, it } from "vitest";
+import { Worker } from "../src/worker.ts";
 import { cargarConfig, franjaDeHora, modoEntradaDeLlamada, normalizarNumero, parsearTablaDnis, resolverTopeMensualMicroUsd, sinDiagonalFinal } from "../src/config.ts";
 
 const ORG = "00000000-0000-4000-8000-000000000001";
@@ -130,7 +131,31 @@ describe("cargarConfig: modo NO CONFIGURADO", () => {
   it("VOICE_TOPE_MENSUAL_USD invalido es un motivo; valido se guarda en micro-USD", () => {
     expect(cargarConfig({ ...ENV_BASE, VOICE_TOPE_MENSUAL_USD: "abc" }).motivos.join(" ")).toContain("VOICE_TOPE_MENSUAL_USD");
     expect(cargarConfig({ ...ENV_BASE, VOICE_TOPE_MENSUAL_USD: "12.5" }).topeMensualPlataformaMicroUsd).toBe(12_500_000);
-    expect(cargarConfig(ENV_BASE).topeMensualPlataformaMicroUsd).toBeNull();
+  });
+
+  // Ola 4 (H4, decisión de Omar 9-nov): NO hay tope por omisión ("es lo que necesite PM o el cliente"). Vacío = sin tope mensual: ninguna
+  // llamada se corta por gasto, pero el worker lo AVISA (aviso informativo en /salud y en el log de arranque) para que nunca sea un descuido.
+  it("sin VOICE_TOPE_MENSUAL_USD no hay tope (no corta) y queda un aviso informativo, nunca un motivo de no configurado", () => {
+    const c = cargarConfig(ENV_BASE);
+    expect(c.topeMensualPlataformaMicroUsd).toBeNull();
+    expect(c.motivos).toEqual([]);
+    expect(c.estado).toBe("configurado");
+    expect(c.avisos.join(" ")).toContain("sin tope mensual de voz");
+    expect(cargarConfig({ ...ENV_BASE, VOICE_TOPE_MENSUAL_USD: "   " }).topeMensualPlataformaMicroUsd).toBeNull();
+  });
+
+  it("`sin_tope` explícito equivale a vacío (sin tope, con el mismo aviso)", () => {
+    const c = cargarConfig({ ...ENV_BASE, VOICE_TOPE_MENSUAL_USD: "sin_tope" });
+    expect(c.topeMensualPlataformaMicroUsd).toBeNull();
+    expect(c.motivos).toEqual([]);
+    expect(c.avisos.join(" ")).toContain("sin tope mensual de voz");
+  });
+
+  it("con un tope numérico no hay aviso y una organización sin sobreescritura usa ese tope", () => {
+    const c = cargarConfig({ ...ENV_BASE, VOICE_TOPE_MENSUAL_USD: "75" });
+    expect(c.avisos).toEqual([]);
+    expect(resolverTopeMensualMicroUsd(c.topeMensualPlataformaMicroUsd, null)).toBe(75_000_000);
+    expect(resolverTopeMensualMicroUsd(cargarConfig(ENV_BASE).topeMensualPlataformaMicroUsd, null)).toBeNull();
   });
 });
 
@@ -207,5 +232,14 @@ describe("VAD por variable (VOICE_VAD_SILENCIO_MS, VOICE_VAD_SENSIBILIDAD_FIN)",
     const c = cargarConfig({ ...base, [nombre]: valor });
     expect(c.estado).toBe("no_configurado");
     expect(c.motivos.join(" ")).toContain(nombre);
+  });
+});
+
+describe("aviso informativo de tope (Ola 4, H4)", () => {
+  it("/salud expone los avisos sin cambiar `sano` ni el estado", () => {
+    const w = new Worker({ config: cargarConfig(ENV_BASE), telefonia: null, deps: null, log: () => undefined });
+    const s = w.salud();
+    expect(s.avisos.join(" ")).toContain("sin tope mensual de voz");
+    expect(s.estado).toBe("configurado");
   });
 });

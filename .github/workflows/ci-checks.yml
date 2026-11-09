@@ -134,7 +134,10 @@ jobs:
       - name: Typecheck (raíz + --workspaces --if-present, incluye apps/web)
         env:
           NODE_OPTIONS: --max-old-space-size=6144
-        run: /usr/bin/time -f "typecheck: pico de memoria %M KB, %e s" npm run typecheck
+        # Bloque literal: un `run:` plano con "typecheck: ..." (dos puntos + espacio) no es YAML válido y Actions rechazaba
+        # el workflow entero (ningún job de ci-checks corría en ningún PR ni en main).
+        run: |
+          /usr/bin/time -f "typecheck: pico de memoria %M KB, %e s" npm run typecheck
 
       - name: Lint (ESLint, todo el árbol)
         run: npm run lint

@@ -108,6 +108,7 @@ describe("tope mensual de gasto de voz por organizacion", () => {
     la.clienteCuelga();
     await ta.esperarFin();
     expect(a.cuerpos.has("/internal/restaurantes/voz/tope-mensual")).toBe(false);
+    // Sin VOICE_TOPE_MENSUAL_USD no hay tope (Ola 4, H4: decisión de Omar): ni aviso del 80 % ni corte, aunque el gasto sea alto.
     const b = await crearMundoApi({ gastoPrevioMicroUsd: 999_000_000 });
     const tb = await escenario(b, () => [new AgenteGuionado([]).escalon()]);
     const lb = tb.telefonia.llamar({ id: "llamada-sin-tope", dnis: NUMERO_SUCURSAL, desde: SIP });
@@ -136,6 +137,17 @@ describe("tope mensual de gasto de voz por organizacion", () => {
     await t.esperarFin();
     expect(agente.aperturasPedidas).toBe(0);
     expect(pregrabadosQueSonaron(llamada)).toEqual(["tope_mensual"]);
+  });
+
+  it("sin VOICE_TOPE_MENSUAL_USD no hay tope: con 999 USD gastados la llamada nueva SI se atiende", async () => {
+    const api = await crearMundoApi({ gastoPrevioMicroUsd: 999_000_000 });
+    const agente = new AgenteGuionado([]);
+    const t = await escenario(api, () => [agente.escalon()]);
+    const llamada = t.telefonia.llamar({ id: "llamada-sin-tope-omision", dnis: NUMERO_SUCURSAL, desde: SIP });
+    await vi.waitFor(() => expect(agente.saludos).toBe(1), { timeout: 5_000, interval: 5 });
+    llamada.clienteCuelga();
+    await t.esperarFin();
+    expect(pregrabadosQueSonaron(llamada)).not.toContain("tope_mensual");
   });
 
   it("la sobreescritura de la organizacion gana al tope de plataforma", async () => {
