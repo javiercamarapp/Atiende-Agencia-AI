@@ -218,6 +218,14 @@ describe("encabezado de la pantalla y avisos debajo", () => {
     expect(orden(av, q('[data-testid="lista"]')!)).toBeTruthy();
   });
 
+  it("con un <h1> sr-only de la pagina: el nombre se ve en el encabezado del shell pero no duplica el nivel 1", () => {
+    rendered = shell("/v/demo/staff", <h1 className="sr-only">Staff</h1>);
+    const t = q('[data-testid="encabezado-shell-titulo"]')!;
+    expect(t.textContent).toBe("Staff");
+    expect(t.getAttribute("role")).toBeNull();
+    expect(t.getAttribute("aria-hidden")).toBe("true");
+  });
+
   it("con PageHeader: el aviso va en la ranura que sigue al encabezado, no arriba", () => {
     rendered = shell("/v/demo/staff", <>{aviso}<PageHeader titulo="Staff" descripcion="Tu equipo" /><ul data-testid="lista" /></>);
     const av = q('[data-testid="aviso"]')!;
@@ -288,6 +296,6 @@ describe("ds3/contenido.css", () => {
     // que se apaga entero con PageHeader/Resumen y en el chat, y apaga solo el nombre si la pagina trae su <h1>.
     expect(CSS).toMatch(/\.ds3-encabezado-shell-titulo\.ds3-encabezado-shell-titulo \{[^}]*font-size: 20px;[^}]*font-weight: 600;[^}]*letter-spacing: -0\.5px;/);
     expect(CSS).toMatch(/\.ds3-encabezado-shell\.ds3-solo:has\(~ \.ds3-shell-pagina :is\(\.ds3-encabezado, \.ds3-resumen\)\),\s*html\[data-diseno="ds3"\] \.ds3-shell-marco\[data-pantalla="chat"\] \.ds3-encabezado-shell\.ds3-solo \{\s*display: none;/);
-    expect(CSS).toMatch(/\.ds3-encabezado-shell\.ds3-solo:has\(~ \.ds3-shell-pagina :is\(h1, \[role="heading"\]\[aria-level="1"\]\)\) \.ds3-encabezado-shell-titulo \{\s*display: none;/);
+    expect(CSS).toMatch(/\.ds3-encabezado-shell\.ds3-solo:has\(~ \.ds3-shell-pagina :is\(h1, \[role="heading"\]\[aria-level="1"\]\):not\(\.sr-only\)\) \.ds3-encabezado-shell-titulo \{\s*display: none;/);
   });
 });
