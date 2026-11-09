@@ -12,7 +12,8 @@ const Table = React.forwardRef<HTMLTableElement, React.HTMLAttributes<HTMLTableE
 Table.displayName = "Table";
 
 const TableHeader = React.forwardRef<HTMLTableSectionElement, React.HTMLAttributes<HTMLTableSectionElement>>(
-  ({ className, ...props }, ref) => <thead ref={ref} className={cn("[&_tr]:border-b [&_tr]:border-line2 [&_th]:bg-canvas [&_th:first-child]:rounded-l-lg [&_th:last-child]:rounded-r-lg", className)} {...props} />,
+  // Cabecera teñida como la de Rovaq (`color-mix(chart-5 7%, surface)`), con el azul de Atiende: --primary-soft (auditoria R2 #10).
+  ({ className, ...props }, ref) => <thead ref={ref} className={cn("[&_tr]:border-b [&_tr]:border-line2 [&_th]:bg-primary-soft [&_th:first-child]:rounded-l-lg [&_th:last-child]:rounded-r-lg", className)} {...props} />,
 );
 TableHeader.displayName = "TableHeader";
 
@@ -44,7 +45,8 @@ const TableHead = React.forwardRef<HTMLTableCellElement, React.ThHTMLAttributes<
     <th
       ref={ref}
       className={cn(
-        "px-3 py-1.5 text-left align-middle etiqueta-mono text-2xs font-medium uppercase text-muted-foreground [&:has([role=checkbox])]:pr-0",
+        // th de Rovaq: Hanken (sans) 13/600 en --foreground-2, sin mayusculas ni mono (antes IBM Plex Mono 10 px MAYUSCULAS; auditoria R2 #10).
+        "px-3 py-2 text-left align-middle text-ui font-semibold text-foreground-2 [&:has([role=checkbox])]:pr-0",
         className,
       )}
       {...props}
