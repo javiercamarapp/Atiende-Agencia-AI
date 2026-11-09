@@ -6,12 +6,24 @@
 // Uso:   node --experimental-strip-types scripts/smoke-post-deploy/smoke.ts https://tu-dominio [--api-only]
 //        (o SMOKE_BASE_URL=... en el entorno). Sale con codigo 1 si falla cualquier comprobacion.
 // Pruebas: apps/api/tests/smoke-post-deploy.spec.ts ejecuta `runSmoke` contra la app Hono real en proceso.
-import { pathToFileURL } from "node:url";
+//
+// Migraciones (Ola 4, G4): con SMOKE_INTERNAL_SECRET en el entorno, pide el DETALLE de /health (que trae las versiones
+// aplicadas, `core.migraciones_aplicadas()`) y lo compara con `supabase/migrations/` de este checkout. Si la base va por
+// detrás, AVISA con el conteo (nunca la lista: los logs de Actions de un repo público son públicos; `--detalle` la
+// imprime en una corrida local). Un aviso no cambia el código de salida salvo con `--estricto`. Sin el secreto la
+// comprobación queda "sin medir" (aviso honesto), nunca "al día".
+import { readdirSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 export interface SmokeCheck {
   readonly name: string;
   readonly ok: boolean;
   readonly detail: string;
+  /** Advertencia que no tumba el smoke (salvo `--estricto`): hoy solo la de migraciones. */
+  readonly aviso?: boolean;
+  /** Versiones que faltan en la base (solo para `--detalle`; nunca se imprimen por omisión). */
+  readonly faltan?: readonly string[];
 }
 
 export type SmokeFetch = (url: string, init?: RequestInit) => Promise<Response>;
@@ -21,6 +33,33 @@ export interface SmokeOptions {
   readonly checkSpa?: boolean;
   readonly fetchImpl?: SmokeFetch;
   readonly timeoutMs?: number;
+  /** Comparar migraciones aplicadas contra el repo. `secreto: null` -> "sin medir". */
+  readonly migraciones?: { readonly secreto: string | null; readonly versionesRepo: readonly string[] };
+}
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+
+/** Versiones (prefijo de 14 dígitos) de `supabase/migrations/` de este checkout, ordenadas. */
+export function versionesDelRepo(dir: string = path.join(HERE, "..", "..", "supabase", "migrations")): string[] {
+  return readdirSync(dir)
+    .filter((f) => f.endsWith(".sql"))
+    .map((f) => f.split("_")[0] ?? "")
+    .filter((v) => /^\d{14}$/.test(v))
+    .sort();
+}
+
+/** Versiones del repo que la base no tiene aplicadas (incluye huecos por debajo de la máxima aplicada). */
+export function compararMigraciones(repo: readonly string[], aplicadas: readonly string[]): { alDia: boolean; faltan: string[] } {
+  const hechas = new Set(aplicadas);
+  const faltan = [...new Set(repo)].filter((v) => !hechas.has(v)).sort();
+  return { alDia: faltan.length === 0, faltan };
+}
+
+/** 1 si alguna comprobación falló, o si hay avisos y se pidió `estricto`. */
+export function codigoDeSalida(results: readonly SmokeCheck[], opts: { readonly estricto: boolean }): 0 | 1 {
+  if (results.some((r) => !r.ok)) return 1;
+  if (opts.estricto && results.some((r) => r.aviso)) return 1;
+  return 0;
 }
 
 const EVIL_ORIGIN = "https://smoke-origen-ajeno.invalid";
@@ -97,6 +136,28 @@ export async function runSmoke(baseUrl: string, options: SmokeOptions = {}): Pro
     }),
   );
 
+  if (options.migraciones) {
+    const { secreto, versionesRepo } = options.migraciones;
+    results.push(
+      await (async (): Promise<SmokeCheck> => {
+        const name = "migraciones: la base no va por detrás del repo";
+        if (!secreto) return { name, ok: true, aviso: true, detail: "sin medir: falta SMOKE_INTERNAL_SECRET (el detalle de /health lo exige)" };
+        try {
+          const res = await doFetch(`${base}/health`, { headers: { "x-atiende-internal-secret": secreto } });
+          const body = (await res.json()) as { migraciones?: { estado?: string; motivo?: string; aplicadas?: unknown } };
+          const m = body.migraciones;
+          if (!m) return { name, ok: true, aviso: true, detail: "sin medir: /health no trajo `migraciones` (¿secreto incorrecto o API anterior a la 0101?)" };
+          if (m.estado !== "medido" || !Array.isArray(m.aplicadas)) return { name, ok: true, aviso: true, detail: `sin medir: ${m.motivo ?? "desconocido"}` };
+          const { alDia, faltan } = compararMigraciones(versionesRepo, m.aplicadas.map(String));
+          if (alDia) return { name, ok: true, aviso: false, detail: `al día (${versionesRepo.length} migraciones del repo aplicadas)` };
+          return { name, ok: true, aviso: true, faltan, detail: `AVISO: la base va ${faltan.length} migraciones por detrás del repo (aplica con supabase db push; ver docs/DEPLOY.md)` };
+        } catch (err) {
+          return { name, ok: true, aviso: true, detail: `sin medir: ${err instanceof Error ? err.message : String(err)}` };
+        }
+      })(),
+    );
+  }
+
   if (options.checkSpa) {
     results.push(
       await check("GET / sirve la SPA (HTML)", async () => {
@@ -115,16 +176,29 @@ export async function runSmoke(baseUrl: string, options: SmokeOptions = {}): Pro
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const apiOnly = args.includes("--api-only");
+  const estricto = args.includes("--estricto");
+  const detalle = args.includes("--detalle");
   const base = args.find((a) => !a.startsWith("--")) ?? process.env.SMOKE_BASE_URL;
   if (!base || !/^https?:\/\//.test(base)) {
     console.error("Falta la URL base: smoke.ts https://tu-dominio  (o SMOKE_BASE_URL)");
     process.exit(2);
   }
-  const results = await runSmoke(base, { checkSpa: !apiOnly });
-  for (const r of results) console.log(`${r.ok ? "OK  " : "FALLA"} ${r.name} -- ${r.detail}`);
+  const results = await runSmoke(base, {
+    checkSpa: !apiOnly,
+    migraciones: { secreto: process.env.SMOKE_INTERNAL_SECRET || null, versionesRepo: versionesDelRepo() },
+  });
+  for (const r of results) {
+    console.log(`${!r.ok ? "FALLA" : r.aviso ? "AVISO" : "OK  "} ${r.name} -- ${r.detail}`);
+    if (detalle && r.faltan && r.faltan.length > 0) console.log(`      faltan: ${r.faltan.join(", ")}`);
+  }
   const fallos = results.filter((r) => !r.ok).length;
-  console.log(fallos === 0 ? `\nSmoke OK (${results.length} comprobaciones)` : `\nSmoke FALLO: ${fallos} de ${results.length}`);
-  process.exit(fallos === 0 ? 0 : 1);
+  const avisos = results.filter((r) => r.ok && r.aviso).length;
+  console.log(
+    fallos === 0
+      ? `\nSmoke OK (${results.length} comprobaciones${avisos > 0 ? `, ${avisos} aviso(s)${estricto ? " -- --estricto los trata como fallo" : ""}` : ""})`
+      : `\nSmoke FALLO: ${fallos} de ${results.length}`,
+  );
+  process.exit(codigoDeSalida(results, { estricto }));
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
