@@ -164,7 +164,7 @@ export function CopilotoHistorial({
       setLista((l) => l.map((x) => (x.id === c.id ? { ...x, titulo } : x)));
       setFallo(null);
     } catch {
-      setFallo("No se pudo renombrar el chat; intenta de nuevo.");
+      setFallo(t("errorRenombrar"));
     }
   };
 
@@ -173,7 +173,7 @@ export function CopilotoHistorial({
     try {
       await transporte.borrar(c.id);
     } catch {
-      setFallo("No se pudo borrar el chat; intenta de nuevo.");
+      setFallo(t("errorBorrar"));
       throw new Error("borrar");
     }
     setLista((l) => l.filter((x) => x.id !== c.id));
@@ -355,16 +355,16 @@ export function CopilotoHistorial({
           </p>
         ) : null}
         {estado === "cargando" ? (
-          <RegionCargando etiqueta="Cargando historial" className="px-3 space-y-2" claseDs3="min-h-24">
+          <RegionCargando etiqueta={t("cargandoHistorial")} className="px-3 space-y-2" claseDs3="min-h-24">
             <Skeleton className="h-8 w-full" />
             <Skeleton className="h-8 w-full" />
             <Skeleton className="h-8 w-full" />
           </RegionCargando>
         ) : estado === "error" ? (
           <div className="px-4 text-sm text-muted-foreground" role="alert">
-            <p>No se pudo leer el historial ahora mismo — tus conversaciones siguen guardadas; reintenta en un momento.</p>
+            <p>{t("errorHistorial")}</p>
             <button type="button" onClick={reintentar} className="mt-2 text-xs underline underline-offset-2 hover:text-foreground">
-              Reintentar
+              {t("reintentar")}
             </button>
           </div>
         ) : lista.length === 0 ? (
@@ -421,7 +421,7 @@ export function CopilotoHistorial({
           })
         )}
         {estado === "listo" && lista.length >= TOPE_HISTORIAL ? (
-          <p className="px-4 pt-2 text-xs text-muted-foreground">Las {TOPE_HISTORIAL} más recientes — las anteriores siguen guardadas.</p>
+          <p className="px-4 pt-2 text-xs text-muted-foreground">{t("topeHistorial", { n: TOPE_HISTORIAL })}</p>
         ) : null}
       </div>
 
@@ -439,10 +439,10 @@ export function CopilotoHistorial({
         onOpenChange={(o) => {
           if (!o) setABorrar(null);
         }}
-        titulo="¿Borrar este chat?"
-        descripcion="Se borra para siempre. Las cifras no cambian."
+        titulo={t("borrarTitulo")}
+        descripcion={t("borrarDescripcion")}
         tono="danger"
-        confirmar="Borrar"
+        confirmar={t("borrarConfirmar")}
         onConfirm={async () => {
           if (aBorrar) await borrar(aBorrar);
         }}

@@ -16,6 +16,7 @@ import type { consola } from "./consola.ts";
 import type { datos } from "./datos.ts";
 import type { nav } from "./nav.ts";
 import type { notif } from "./notif.ts";
+import type { resumen } from "./resumen.ts";
 import type { rol } from "./rol.ts";
 import type { shell } from "./shell.ts";
 import type { waMeta } from "./waMeta.ts";
@@ -41,6 +42,7 @@ interface ModulosDeArea {
   readonly notif: typeof notif;
   readonly datos: typeof datos;
   readonly waMeta: typeof waMeta;
+  readonly resumen: typeof resumen;
 }
 
 type Modulos = typeof MODULOS & ModulosDeArea;
