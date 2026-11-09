@@ -12,7 +12,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { KeyboardEvent } from "react";
 import { BookOpen, CheckCircle2, Circle, PlayCircle, Wrench } from "lucide-react";
-import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, EstadoVacio, PageContainer, Selector, Textarea, VistaPreviaLlamada, StatusBadge, useAccionesBarra, useMarcoShell, useT } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, EstadoVacio, PageContainer, PageHeader, Selector, Textarea, VistaPreviaLlamada, StatusBadge, useAccionesBarra, useMarcoShell, useT } from "@atiende/ui";
 import type { Clave } from "@atiende/ui";
 import { restaurantesAgenteVoz } from "@atiende/ui/i18n/restaurantes/agenteVoz";
 import { VozNoDisponibleError, crearSesionPreviewVoz, ejecutarHerramientaPreviewVoz, fetchConversacionesVoz, fetchConversacionVoz, fetchSaludVoz, fetchVozConfig, updateVozConfig } from "../lib/voz-client.ts";
@@ -180,14 +180,12 @@ export function AgenteVozPage({ apiBaseUrl, token, propertyId, role, nombreSucur
   return (
     <div className="relative min-h-[620px] h-full">
       <PageContainer padding="none">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className="sr-only">{t("restaurantes.agenteVoz.titulo")}</h1>
-            <p className="text-ui text-muted-foreground">{t("restaurantes.agenteVoz.subtitulo")}</p>
-          </div>
-          {/* «Vista previa» arriba a la derecha de la página, como en el original (píldora compacta con PlayCircle). */}
-          <div className="md:hidden">{botonVistaPrevia}</div>
-        </div>
+        {/* «Vista previa» arriba a la derecha de la página, como en el original (píldora compacta con PlayCircle); en escritorio vive en la barra. */}
+        <PageHeader
+          titulo={t("restaurantes.agenteVoz.titulo")}
+          descripcion={t("restaurantes.agenteVoz.subtitulo")}
+          acciones={<div className="md:hidden">{botonVistaPrevia}</div>}
+        />
 
         <div role="tablist" aria-label={t("restaurantes.agenteVoz.secciones")} onKeyDown={alTeclearPestanas} className="flex flex-wrap gap-1.5 border-b border-border pb-2">
           {PESTANAS.map((p) => (

@@ -6,7 +6,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { ShieldCheck } from "lucide-react";
-import { Button, Callout, Card, CardContent, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, Input, Label, Selector, PageContainer, SolicitudesArcoPanel, SOLICITUD_ARCO_DERECHO_LABEL, SOLICITUD_ARCO_ESTADO_LABEL, useT } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, CardHeader, CardTitle, Checkbox, EstadoCargando, EstadoError, Input, Label, Selector, PageContainer, PageHeader, SolicitudesArcoPanel, SOLICITUD_ARCO_DERECHO_LABEL, SOLICITUD_ARCO_ESTADO_LABEL, useT } from "@atiende/ui";
 import { restaurantesPrivacidad } from "@atiende/ui/i18n/restaurantes/privacidad";
 import type { SolicitudArcoAccion, SolicitudArcoDerecho, SolicitudArcoEstado, SolicitudArcoVista } from "@atiende/ui";
 import { actualizarEstadoSolicitudArco, fetchConfiguracionPrivacidad, fetchSolicitudesArco, guardarConfiguracionPrivacidad } from "../lib/privacidad-client.ts";
@@ -202,11 +202,13 @@ export function PrivacidadPage({ apiBaseUrl, token, propertyId, role }: Restaura
   // min-w-0 en la pagina y en cada hijo: la tabla de solicitudes ARCO (min-content ancho) no debe ensanchar la pagina mas alla de 375 px.
   return (
     <PageContainer padding="none" className="min-w-0 *:min-w-0">
-      <header>
-        <h1 className="sr-only">{t("restaurantes.privacidad.titulo")}</h1>
-        <p className="m-0 text-ui text-muted-foreground">{t("restaurantes.privacidad.descripcion")}</p>
+      <PageHeader titulo={t("restaurantes.privacidad.titulo")} />
+      <div>
+        <p className="m-0 text-ui text-muted-foreground">
+          {t("restaurantes.privacidad.descripcion")}
+        </p>
         <p className="m-0 mt-1 text-xs text-muted-foreground">{t("restaurantes.privacidad.nota")}</p>
-      </header>
+      </div>
 
       {!puedeLeer ? (
         <Callout tone="info">

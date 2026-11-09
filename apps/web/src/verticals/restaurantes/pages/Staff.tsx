@@ -30,6 +30,7 @@ import {
   Input,
   Selector,
   PageContainer,
+  PageHeader,
   StatusBadge,
   statusTone,
   etiquetasTraducidas,
@@ -241,7 +242,17 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role, staffEmail }: R
 
   return (
     <PageContainer padding="none">
-      <h1 className="sr-only">{t("restaurantes.staff.titulo")}</h1>
+      <PageHeader
+        titulo={t("restaurantes.staff.titulo")}
+        acciones={
+          canManage ? (
+            <Button type="button" onClick={abrirInvitar}>
+              <UserPlus />
+              {t("restaurantes.staff.invitar")}
+            </Button>
+          ) : undefined
+        }
+      />
 
       {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
 
@@ -249,14 +260,6 @@ export function StaffPage({ apiBaseUrl, token, propertyId, role, staffEmail }: R
         <Callout tone="info">{t("restaurantes.staff.soloLectura", { rol: role })}</Callout>
       )}
 
-      {canManage && (
-        <div className="flex justify-end">
-          <Button type="button" onClick={abrirInvitar}>
-            <UserPlus />
-            {t("restaurantes.staff.invitar")}
-          </Button>
-        </div>
-      )}
 
       {canManage && lastCreated && (
         <Callout tone="success" titulo={t("restaurantes.staff.invitacionCreada", { correo: lastCreated.email, rol: ROLE_LABELS[lastCreated.verticalRole] })}>

@@ -18,7 +18,7 @@
 // inventar sin dirección explícita.
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, Label, Selector, PageContainer, useConfirm, StatusBadge, FormField, useT } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, EstadoVacio, Input, Label, Selector, PageContainer, PageHeader, useConfirm, StatusBadge, FormField, useT } from "@atiende/ui";
 import type { Clave } from "@atiende/ui";
 import { restaurantesConfiguracion } from "@atiende/ui/i18n/restaurantes/configuracion";
 import { Clock, MapPin, MessageCircle, Trash2 } from "lucide-react";
@@ -171,7 +171,7 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, role, nombreS
   if (!canManage) {
     return (
       <PageContainer padding="none">
-        <h1 className="sr-only">{t("restaurantes.configuracion.titulo")}</h1>
+        <PageHeader titulo={t("restaurantes.configuracion.titulo")} />
         <Callout tone="info">{t("restaurantes.configuracion.soloAdmin", { rol: role })}</Callout>
       </PageContainer>
     );
@@ -179,7 +179,7 @@ export function ConfiguracionPage({ apiBaseUrl, token, propertyId, role, nombreS
 
   return (
     <PageContainer padding="none">
-      <h1 className="sr-only">{t("restaurantes.configuracion.titulo")}</h1>
+      <PageHeader titulo={t("restaurantes.configuracion.titulo")} />
 
       {error && <EstadoError mensaje={error} onReintentar={() => void load()} />}
 

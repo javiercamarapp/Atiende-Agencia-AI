@@ -8,7 +8,7 @@
 // La voz, el saludo por sucursal y el conocimiento automatico viven aqui mismo como secciones propias.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Info } from "lucide-react";
-import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, Selector, PageContainer, RadioSegmentado, StatusBadge, Switch, formatMoney, useT } from "@atiende/ui";
+import { Button, Callout, Card, CardContent, CardDescription, CardHeader, CardTitle, EstadoCargando, EstadoError, Selector, PageContainer, PageHeader, RadioSegmentado, StatusBadge, Switch, formatMoney, useT } from "@atiende/ui";
 import { restaurantesAjustesAgente } from "@atiende/ui/i18n/restaurantes/ajustesAgente";
 import { fechaCortaEsMx } from "../../../lib/formato-fecha.ts";
 import { fetchAjustesAgente, guardarAjustesAgente } from "../lib/ajustes-agente-client.ts";
@@ -140,10 +140,8 @@ export function AjustesAgentePage({ apiBaseUrl, token, propertyId, crearAudio }:
 
   return (
     <PageContainer padding="none">
-      <div>
-        <h1 className="sr-only">{t("restaurantes.ajustesAgente.titulo")}</h1>
-        <p className="text-ui text-muted-foreground">{t("restaurantes.ajustesAgente.subtitulo")}</p>
-      </div>
+      <PageHeader titulo={t("restaurantes.ajustesAgente.titulo")} />
+      <p className="m-0 text-ui text-muted-foreground">{t("restaurantes.ajustesAgente.subtitulo")}</p>
 
       {carga.estado === "cargando" ? <EstadoCargando etiqueta={t("restaurantes.ajustesAgente.cargando")} /> : null}
       {carga.estado === "error" ? <EstadoError mensaje={carga.mensaje} onReintentar={reintentar} /> : null}
