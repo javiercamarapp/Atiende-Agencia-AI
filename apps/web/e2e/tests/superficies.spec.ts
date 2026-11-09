@@ -75,7 +75,7 @@ test.describe("superficies de Likida @ds @oscuro", () => {
     });
   }
 
-  test("receta medida: tarjeta de radio 16 con hairline, cabecera mono de 10 px y celdas de 12 x 8 px (tolerancia 1 px)", async ({ page, iniciarSesion, vigilante }) => {
+  test("receta medida: tarjeta de radio 12 con hairline, cabecera mono de 10 px y celdas de 12 x 8 px (tolerancia 1 px)", async ({ page, iniciarSesion, vigilante }) => {
     await iniciarSesion("citas", "owner");
     await page.goto(`/citas/${citas.orgSlug}/clientes`);
     await afirmarPantallaSana(page, "citas clientes");
@@ -99,7 +99,7 @@ test.describe("superficies de Likida @ds @oscuro", () => {
         thMayusculas: cth.textTransform,
       };
     });
-    if (m.radioTarjeta !== null) expect(Math.abs(m.radioTarjeta - 16)).toBeLessThanOrEqual(1);
+    if (m.radioTarjeta !== null) expect(Math.abs(m.radioTarjeta - 12)).toBeLessThanOrEqual(1);
     expect(Math.abs(m.thFuente - 10)).toBeLessThanOrEqual(1);
     expect(Math.abs(m.thPadX - 12)).toBeLessThanOrEqual(1);
     expect(Math.abs(m.thPadY - 6)).toBeLessThanOrEqual(1);

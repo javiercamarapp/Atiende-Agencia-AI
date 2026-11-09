@@ -71,6 +71,12 @@ export const SENSITIVE_ROUTES: readonly SensitiveRoute[] = [
   { method: "POST", pattern: /^\/superadmin\/supresion\/no-contactar$/, label: "agregar un contacto a la lista de no contactar" },
   // Cerebro de ventas (SA-L-38): editar la taxonomia de una vertical crea una version nueva de las reglas del scoring y del mensaje base.
   { method: "PUT", pattern: /^\/superadmin\/cerebro\/taxonomia\/[^/]+$/, label: "editar la taxonomia de una vertical del cerebro de ventas" },
+  // Credenciales de Meta por organizacion (migracion 0090): registrar, rotar y revocar el token y el secreto de una app de Meta y decidir
+  // con que app sale y se verifica cada numero.
+  { method: "POST", pattern: /^\/superadmin\/organizaciones\/[^/]+\/whatsapp-meta\/credenciales$/, label: "registrar las credenciales de Meta de una organizacion" },
+  { method: "PUT", pattern: /^\/superadmin\/organizaciones\/[^/]+\/whatsapp-meta\/credenciales\/[^/]+$/, label: "rotar las credenciales de Meta de una organizacion" },
+  { method: "POST", pattern: /^\/superadmin\/organizaciones\/[^/]+\/whatsapp-meta\/credenciales\/[^/]+\/revocar$/, label: "revocar las credenciales de Meta de una organizacion" },
+  { method: "PUT", pattern: /^\/superadmin\/organizaciones\/[^/]+\/whatsapp-meta\/numeros$/, label: "asignar un numero de WhatsApp a una sucursal y una app de Meta" },
 ];
 
 export function isSensitiveRoute(method: string, path: string): boolean {
