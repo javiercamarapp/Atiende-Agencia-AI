@@ -1,0 +1,1 @@
+rep5 70/80 invalidas=0

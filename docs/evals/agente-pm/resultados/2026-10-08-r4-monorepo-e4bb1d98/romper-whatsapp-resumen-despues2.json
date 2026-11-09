@@ -1,0 +1,1 @@
+{"pasan":0,"total":3,"porSeveridad":{"P2":2,"P1":1},"cierre":{"debianCrear":1,"crearon":0},"pedidosCreados":0,"afirmacionesFalsas":0,"invariantesPrecio":[],"duplicados":[],"tuteo":[],"latencia":{"n":12,"med":6027,"p95":24767,"max":24767,"sobre10s":3,"sobre30s":0,"sobre45s":0},"gastoSimJuezUsd":0.015,"usoLlaveDeltaUsd":0.026}
