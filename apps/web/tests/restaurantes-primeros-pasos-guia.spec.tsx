@@ -9,6 +9,10 @@ import { RestaurantesPrimerosPasosPage } from "../src/verticals/restaurantes/pag
 import type { RestaurantesShellContext } from "../src/verticals/restaurantes/RestaurantesShell.tsx";
 import { flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
 
+// El diseno nuevo es el de siempre (leerDisenoDs3() = true salvo VITE_DISENO_LEGADO=1); el caso legado se simula aqui.
+let ds3 = true;
+vi.mock("@atiende/ui", async (importOriginal) => ({ ...(await importOriginal<typeof import("@atiende/ui")>()), leerDisenoDs3: () => ds3 }));
+
 let rendered: RenderedComponent | undefined;
 let fetchMock: ReturnType<typeof vi.fn>;
 
@@ -38,6 +42,7 @@ async function esperar(): Promise<void> {
 }
 
 beforeEach(() => {
+  ds3 = true;
   fetchMock = vi.fn();
   vi.stubGlobal("fetch", fetchMock);
 });
@@ -73,6 +78,7 @@ describe("RestaurantesPrimerosPasosPage (guía ds3)", () => {
   });
 
   it("sin la bandera ds3: la lista de siempre y sin «Hacer el recorrido» (la guía no existe sin ds3)", async () => {
+    ds3 = false;
     fetchMock.mockResolvedValue(json(CHECKLIST));
     rendered = renderComponent(
       <MemoryRouter>
