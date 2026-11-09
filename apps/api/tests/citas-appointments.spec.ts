@@ -3,11 +3,23 @@
 // desde el panel de staff (JWT + requirePropertyMembership) — sobre la app Hono
 // real, con InMemoryCitasRepository en vez de Postgres real.
 import { randomUUID } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildApp } from "../src/app.ts";
 import { buildCitasTestContext } from "./citas-fixtures.ts";
 import { authedJson } from "./hoteles-fixtures.ts";
 import { jsonRequestInit } from "./fixtures.ts";
+
+// El guard "ese horario ya paso" usa el reloj real: las fechas fijas de este archivo (septiembre de 2026 / 2027) se evaluan con un reloj fijo anterior a ellas.
+beforeAll(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-09-01T00:00:00.000Z"));
+});
+beforeEach(() => {
+  vi.setSystemTime(new Date("2026-09-01T00:00:00.000Z"));
+});
+afterAll(() => {
+  vi.useRealTimers();
+});
 
 // Date-rot: debe seguir siendo una fecha futura respecto al reloj real de la
 // suite (ver el mismo patrón ya corregido en packages/domain-citas/tests/appointments.spec.ts).
@@ -273,10 +285,12 @@ describe("POST /v1/citas/properties/:propertyId/appointments/:appointmentId/{con
   });
 
   it("un staff autenticado completa una cita real (pending, sin pasar por confirmed)", async () => {
+    vi.setSystemTime(new Date("2027-09-13T15:55:00.000Z")); // 5 min antes de la cita: reservarla es valido
     const ctx = await buildCitasTestContext(buildApp);
     const app = buildApp(ctx.deps);
     const appointmentId = await createRealAppointmentFromWeb(ctx, app);
 
+    vi.setSystemTime(new Date("2027-09-13T16:01:00.000Z")); // la cita (10:00 Merida = 16:00Z) ya empezo; el JWT sigue vigente
     const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/appointments/${appointmentId}/complete`, authedJson(ctx.staff.owner.token, {}));
     expect(res.status).toBe(200);
     const body = (await res.json()) as { appointment: { status: string } };
@@ -284,10 +298,12 @@ describe("POST /v1/citas/properties/:propertyId/appointments/:appointmentId/{con
   });
 
   it("un staff autenticado marca una cita real como no-show", async () => {
+    vi.setSystemTime(new Date("2027-09-13T15:55:00.000Z")); // 5 min antes de la cita: reservarla es valido
     const ctx = await buildCitasTestContext(buildApp);
     const app = buildApp(ctx.deps);
     const appointmentId = await createRealAppointmentFromWeb(ctx, app);
 
+    vi.setSystemTime(new Date("2027-09-13T16:01:00.000Z")); // la cita (10:00 Merida = 16:00Z) ya empezo; el JWT sigue vigente
     const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/appointments/${appointmentId}/no-show`, authedJson(ctx.staff.owner.token, {}));
     expect(res.status).toBe(200);
     const body = (await res.json()) as { appointment: { status: string } };
@@ -323,10 +339,12 @@ describe("POST /v1/citas/properties/:propertyId/appointments/:appointmentId/{con
   });
 
   it("completar encola el correo real de agradecimiento en messaging_outbox", async () => {
+    vi.setSystemTime(new Date("2027-09-13T15:55:00.000Z")); // 5 min antes de la cita: reservarla es valido
     const ctx = await buildCitasTestContext(buildApp);
     const app = buildApp(ctx.deps);
     const appointmentId = await createRealAppointmentWithEmail(ctx, app);
 
+    vi.setSystemTime(new Date("2027-09-13T16:01:00.000Z")); // la cita (10:00 Merida = 16:00Z) ya empezo; el JWT sigue vigente
     const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/appointments/${appointmentId}/complete`, authedJson(ctx.staff.owner.token, {}));
     expect(res.status).toBe(200);
 
@@ -338,10 +356,12 @@ describe("POST /v1/citas/properties/:propertyId/appointments/:appointmentId/{con
   });
 
   it("marcar no-show encola el correo real correspondiente en messaging_outbox", async () => {
+    vi.setSystemTime(new Date("2027-09-13T15:55:00.000Z")); // 5 min antes de la cita: reservarla es valido
     const ctx = await buildCitasTestContext(buildApp);
     const app = buildApp(ctx.deps);
     const appointmentId = await createRealAppointmentWithEmail(ctx, app);
 
+    vi.setSystemTime(new Date("2027-09-13T16:01:00.000Z")); // la cita (10:00 Merida = 16:00Z) ya empezo; el JWT sigue vigente
     const res = await app.request(`/v1/citas/properties/${ctx.propertyId}/appointments/${appointmentId}/no-show`, authedJson(ctx.staff.owner.token, {}));
     expect(res.status).toBe(200);
 

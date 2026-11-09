@@ -5,11 +5,22 @@
 // nada (no es un error), (3) cada evento tiene su dedupe_key real, (4) es
 // best-effort de verdad (tryEnqueueAppointmentEmail nunca lanza).
 import { randomUUID } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { cancelAppointment, completeAppointmentFromPanel, confirmAppointmentFromPanel, createAppointment, markAppointmentNoShowFromPanel, rescheduleAppointment } from "../src/appointments.ts";
 import { enqueueAppointmentEmailCore, tryEnqueueAppointmentEmail } from "../src/appointment-email-notifications.ts";
 import { zonedTimeToUtc } from "../src/availability.ts";
 import { buildCitasFixture } from "./fixtures.ts";
+
+const DESPUES_DE_LA_CITA = new Date("2027-12-31T00:00:00.000Z"); // completar / no-show exigen que la cita ya haya empezado
+
+// El guard "ese horario ya paso" usa el reloj real: las fechas fijas de este archivo (septiembre de 2026 / 2027) se evaluan con un reloj fijo anterior a ellas.
+beforeAll(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-09-01T00:00:00.000Z"));
+});
+afterAll(() => {
+  vi.useRealTimers();
+});
 
 describe("enqueueAppointmentEmailCore", () => {
   it("appointment.created: arma el correo real con to/subject/html a partir de solo el appointmentId", async () => {
@@ -97,7 +108,7 @@ describe("enqueueAppointmentEmailCore", () => {
     const fixture = buildCitasFixture();
     const startsAt = zonedTimeToUtc("2026-09-14", "10:00", "America/Merida").toISOString();
     const appointment = await createAppointment(fixture.repo, { organizationId: fixture.organizationId, providerId: fixture.providerId, serviceId: fixture.serviceId, customerName: "Cliente", customerPhone: "9998887766", customerEmail: "cliente@example.com", startsAt, source: "web" });
-    await completeAppointmentFromPanel(fixture.repo, fixture.organizationId, appointment.id, randomUUID());
+    await completeAppointmentFromPanel(fixture.repo, fixture.organizationId, appointment.id, randomUUID(), DESPUES_DE_LA_CITA);
 
     const result = await enqueueAppointmentEmailCore(fixture.repo, fixture.organizationId, "appointment.completed", appointment.id);
     expect(result.enqueued).toBe(true);
@@ -112,7 +123,7 @@ describe("enqueueAppointmentEmailCore", () => {
     const fixture = buildCitasFixture();
     const startsAt = zonedTimeToUtc("2026-09-14", "10:00", "America/Merida").toISOString();
     const appointment = await createAppointment(fixture.repo, { organizationId: fixture.organizationId, providerId: fixture.providerId, serviceId: fixture.serviceId, customerName: "Cliente", customerPhone: "9998887766", customerEmail: "cliente@example.com", startsAt, source: "web" });
-    await markAppointmentNoShowFromPanel(fixture.repo, fixture.organizationId, appointment.id, randomUUID());
+    await markAppointmentNoShowFromPanel(fixture.repo, fixture.organizationId, appointment.id, randomUUID(), DESPUES_DE_LA_CITA);
 
     const result = await enqueueAppointmentEmailCore(fixture.repo, fixture.organizationId, "appointment.no_show", appointment.id);
     expect(result.enqueued).toBe(true);

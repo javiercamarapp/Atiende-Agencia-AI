@@ -1,5 +1,5 @@
 // PL-31 -- ventana de 24 h de Meta y plantillas HSM por organizacion en los avisos proactivos de citas. Reloj simulado (`now`), sin red.
-import { describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createAppointment } from "../src/appointments.ts";
 import { zonedTimeToUtc } from "../src/availability.ts";
 import { InMemoryCitasRepository } from "../src/in-memory-repository.ts";
@@ -8,6 +8,15 @@ import { runListaEsperaCore, runOptimizadorCore, runConfirmacionCitaCore } from 
 import { VENTANA_SEGURA_MS, armarParametrosPlantilla, decidirEnvioProactivo, variantesTelefonoEntrante } from "../src/whatsapp/proactivo.ts";
 import { AbortAwareFakeSession } from "./support/aborting-fake-session.ts";
 import { buildCitasFixture } from "./fixtures.ts";
+
+// El guard "ese horario ya paso" usa el reloj real: las fechas fijas de este archivo (septiembre de 2026 / 2027) se evaluan con un reloj fijo anterior a ellas.
+beforeAll(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-09-01T00:00:00.000Z"));
+});
+afterAll(() => {
+  vi.useRealTimers();
+});
 
 const NOW = new Date("2026-09-14T18:00:00.000Z");
 const TELEFONO = "5219981110001";

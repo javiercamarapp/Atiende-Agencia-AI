@@ -14,7 +14,7 @@ export interface WaitlistCandidate {
    * verdad (ver sortWaitlistByPosition en domain-citas) — el orden en que llegaría
    * el aviso si se dispara el broadcast ahora mismo con estos mismos filtros. */
   readonly position: number;
-  readonly customerName: string;
+  readonly customerName: string | null;
   readonly customerPhone: string;
   /** `null` = "sin preferencia de proveedor/servicio" — el candidato NO se excluye
    * al filtrar, mismo criterio que admin.ts::GET .../waitlist. */
@@ -30,7 +30,7 @@ export interface WaitlistCandidate {
 interface WaitlistCandidateApiRow {
   readonly id: string;
   readonly position: number;
-  readonly customer_name: string;
+  readonly customer_name: string | null;
   readonly customer_phone: string;
   readonly provider_id: string | null;
   readonly service_id: string | null;
@@ -124,4 +124,39 @@ export async function broadcastWaitlist(fetchImpl: typeof fetch, apiBaseUrl: str
     limit: input.limit,
   });
   return { queued: body.queued, reason: body.reason ?? null, candidatesConsidered: body.candidates_considered, skippedNoWhatsappConfig: body.skipped_no_whatsapp_config };
+}
+
+export type FranjaListaEspera = "morning" | "afternoon" | "evening" | "any";
+
+/** Rotulo para el staff de la franja preferida (el valor crudo `any`/`morning` nunca se muestra). */
+export const FRANJA_ROTULOS: Readonly<Record<FranjaListaEspera, string>> = { any: "Sin preferencia", morning: "Mañana", afternoon: "Tarde", evening: "Noche" };
+
+export function formatPreferenciasListaEspera(c: Pick<WaitlistCandidate, "preferredDateFrom" | "preferredDateTo" | "preferredTimeWindow">): string {
+  const franja = c.preferredTimeWindow && c.preferredTimeWindow !== "any" ? (FRANJA_ROTULOS[c.preferredTimeWindow as FranjaListaEspera] ?? c.preferredTimeWindow) : null;
+  const fechas = c.preferredDateFrom ? (c.preferredDateTo && c.preferredDateTo !== c.preferredDateFrom ? `del ${c.preferredDateFrom} al ${c.preferredDateTo}` : `desde ${c.preferredDateFrom}`) : null;
+  return [fechas, franja].filter(Boolean).join(" · ") || FRANJA_ROTULOS.any;
+}
+
+export interface WaitlistEnrollInput {
+  readonly customerName?: string;
+  readonly customerPhone: string;
+  readonly providerId?: string;
+  readonly serviceId?: string;
+  readonly preferredDateFrom?: string;
+  readonly preferredDateTo?: string;
+  readonly preferredTimeWindow?: FranjaListaEspera;
+}
+
+/** POST real que anota a un cliente en la lista de espera (admin.ts::POST .../waitlist). `created: false` = ya estaba anotado con esas mismas preferencias. */
+export async function enrollWaitlist(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, input: WaitlistEnrollInput): Promise<{ readonly entry: WaitlistCandidate; readonly created: boolean }> {
+  const body = await postJson<{ waitlist_entry: WaitlistCandidateApiRow; created: boolean }>(fetchImpl, `${apiBaseUrl}/v1/citas/properties/${propertyId}/waitlist`, token, {
+    customer_phone: input.customerPhone,
+    ...(input.customerName ? { customer_name: input.customerName } : {}),
+    ...(input.providerId ? { provider_id: input.providerId } : {}),
+    ...(input.serviceId ? { service_id: input.serviceId } : {}),
+    ...(input.preferredDateFrom ? { preferred_date_from: input.preferredDateFrom } : {}),
+    ...(input.preferredDateTo ? { preferred_date_to: input.preferredDateTo } : {}),
+    ...(input.preferredTimeWindow ? { preferred_time_window: input.preferredTimeWindow } : {}),
+  });
+  return { entry: mapCandidate(body.waitlist_entry), created: body.created };
 }

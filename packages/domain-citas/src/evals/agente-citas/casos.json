@@ -868,6 +868,124 @@
   },
   {
    "ahora": "2026-03-02T16:00:00.000Z",
+   "id": "D09",
+   "categoria": "disponibilidad",
+   "negocio": "dental",
+   "tz": "America/Merida",
+   "disponibilidad": {
+    "prov-ana": {
+     "2026-03-03": [
+      "09:00",
+      "10:00",
+      "11:30",
+      "16:00"
+     ],
+     "2026-03-04": [
+      "09:00",
+      "12:30",
+      "17:30"
+     ],
+     "2026-03-05": [
+      "10:00",
+      "15:00"
+     ]
+    },
+    "prov-luis": {
+     "2026-03-03": [
+      "09:30",
+      "12:00",
+      "17:00"
+     ],
+     "2026-03-04": [
+      "10:30",
+      "13:00"
+     ],
+     "2026-03-05": [
+      "09:00",
+      "18:00"
+     ]
+    }
+   },
+   "mensajes": [
+    "Agéndame limpieza con la Dra. Ana mañana a las 8 pm, seguro tienes",
+    "Entonces no hay lugar a esa hora, anótame en la lista de espera por favor, soy Rosa Chan"
+   ],
+   "guion": [
+    [
+     {
+      "tool": "listar_servicios"
+     },
+     {
+      "tool": "listar_proveedores",
+      "args": {
+       "service_id": "svc-limpieza"
+      }
+     },
+     {
+      "tool": "consultar_disponibilidad",
+      "args": {
+       "provider_id": "prov-ana",
+       "service_id": "svc-limpieza",
+       "date": "2026-03-03"
+      }
+     },
+     {
+      "say": "Mañana no tengo nada a las 8 pm; el último lugar de la Dra. Ana es a las {h:2026-03-03 16:00}. ¿Quieres que revise otro día?"
+     }
+    ],
+    [
+     {
+      "tool": "anotar_lista_espera",
+      "args": {
+       "service_id": "svc-limpieza",
+       "provider_id": "prov-ana",
+       "date_from": "2026-03-03",
+       "date_to": "2026-03-03",
+       "time_window": "evening",
+       "customer_name": "Rosa Chan"
+      }
+     },
+     {
+      "say": "Rosa, ya quedaste en la lista de espera para limpieza con la Dra. Ana en la noche; si se libera un lugar te avisamos por aquí. No te prometo que haya."
+     }
+    ]
+   ],
+   "esperado": {
+    "resultado": "sin_cambios",
+    "herramientas_requeridas": [
+     "consultar_disponibilidad",
+     "anotar_lista_espera"
+    ],
+    "herramientas_prohibidas": [
+     "crear_cita"
+    ],
+    "fechas_consulta": [
+     "2026-03-03"
+    ],
+    "texto_debe_contener": [
+     "lista de espera"
+    ]
+   },
+   "graders": [
+    "nunca_inventa_horario",
+    "escribe_con_slot_real",
+    "ids_reales",
+    "confirma_solo_tras_exito",
+    "no_doble_creacion",
+    "precision_herramientas",
+    "resultado_final",
+    "texto_esperado",
+    "no_inventa_cifras",
+    "fecha_consulta_en_zona"
+   ],
+   "cliente": {
+    "telefono": "5219991230000",
+    "nombre": null,
+    "citas": []
+   }
+  },
+  {
+   "ahora": "2026-03-02T16:00:00.000Z",
    "carrera": [
     "2026-03-03 10:00"
    ],

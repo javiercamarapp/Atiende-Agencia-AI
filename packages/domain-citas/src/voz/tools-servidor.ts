@@ -2,7 +2,7 @@
 // que ponen la autenticacion, el rate limit y el limite de cuerpo) y el transporte EN PROCESO del simulador. Asi la prueba ciega ejercita la misma
 // logica que produccion.
 //
-// Las 8 herramientas de agenda son LAS MISMAS que las del agente de WhatsApp (`whatsapp/llm-turn-handler.ts::executeToolCall`, mismas funciones de
+// Las 9 herramientas de agenda son LAS MISMAS que las del agente de WhatsApp (`whatsapp/llm-turn-handler.ts::executeToolCall`, mismas funciones de
 // dominio: `queryAvailability`, `createAppointment`, `cancelAppointment`...): una sola logica, dos canales; solo cambia el origen de la cita
 // (`voice`). La novena, `derivar_a_humano`, es exclusiva de la voz: una llamada no tiene la bandeja de conversaciones de WhatsApp.
 import { randomUUID } from "node:crypto";
@@ -22,6 +22,7 @@ export const TOOLS_VOZ_CITAS = [
   "cancelar_cita",
   "reagendar_cita",
   "modificar_cita",
+  "anotar_lista_espera",
   "derivar_a_humano",
 ] as const;
 export type ToolVozCitas = (typeof TOOLS_VOZ_CITAS)[number];
@@ -54,7 +55,7 @@ export interface CitasVozContexto {
   readonly handoffGate?: HandoffAgentGate;
 }
 
-const REQUIEREN_TELEFONO: ReadonlySet<string> = new Set(["buscar_mis_citas", "crear_cita", "cancelar_cita", "reagendar_cita", "modificar_cita"]);
+const REQUIEREN_TELEFONO: ReadonlySet<string> = new Set(["buscar_mis_citas", "crear_cita", "cancelar_cita", "reagendar_cita", "modificar_cita", "anotar_lista_espera"]);
 
 export interface ResultadoDerivacion {
   readonly ok: true;
@@ -116,7 +117,7 @@ export async function derivarAHumanoVoz(ctx: CitasVozContexto, entrada: { readon
   };
 }
 
-/** Despacho EN PROCESO de cualquiera de las 9 herramientas (simulador y pruebas; en produccion el worker usa las rutas HTTP, que llaman a lo mismo). */
+/** Despacho EN PROCESO de cualquiera de las 10 herramientas (simulador y pruebas; en produccion el worker usa las rutas HTTP, que llaman a lo mismo). */
 export async function ejecutarToolVozCitas(ctx: CitasVozContexto, nombre: string, args: Readonly<Record<string, unknown>>): Promise<{ resultado: unknown; entidadId: string | null }> {
   if (!esToolVozCitas(nombre)) return { resultado: { error: `Herramienta desconocida: ${nombre}` }, entidadId: null };
   try {
