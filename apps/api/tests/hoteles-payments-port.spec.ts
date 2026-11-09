@@ -82,4 +82,48 @@ describe("StripeHotelesPaymentsPort", () => {
     await expect(port.charge(input({ idempotencyKey: "" }))).rejects.toThrow(/idempotencyKey/);
     expect(fetchCalled).toBe(false);
   });
+
+  it("cada llamada a Stripe lleva un AbortSignal con tope de tiempo (una conexión colgada no retiene el request)", async () => {
+    let capturedSignal: AbortSignal | null | undefined;
+    const fetchImpl = (async (_url: string | URL | Request, init?: RequestInit) => {
+      capturedSignal = init?.signal;
+      return new Response(JSON.stringify({ id: "pi_t", status: "succeeded" }), { status: 200 });
+    }) as typeof fetch;
+    const port = new StripeHotelesPaymentsPort(fetchImpl, { secretKey: "sk_test_real" });
+    await port.charge(input());
+    expect(capturedSignal).toBeInstanceOf(AbortSignal);
+    expect(capturedSignal!.aborted).toBe(false);
+  });
+
+  it("si Stripe no responde a tiempo, lanza un error de timeout legible (no un AbortError crudo) y no inventa un estado", async () => {
+    const fetchImpl = (async (_url: string | URL | Request, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        const signal = init?.signal;
+        if (!signal) return reject(new Error("fetch sin AbortSignal: se quedaría colgado para siempre"));
+        signal.addEventListener("abort", () => reject(signal.reason));
+      })) as typeof fetch;
+    const port = new StripeHotelesPaymentsPort(fetchImpl, { secretKey: "sk_test_real", timeoutMs: 20 });
+    await expect(port.charge(input())).rejects.toThrow(/Stripe no respondió en 20 ms/);
+  });
+
+  it("una respuesta no-JSON (página HTML de un 502 de un proxy) lanza un error con el status, no un SyntaxError", async () => {
+    const fetchImpl = (async () => new Response("<html><body>502 Bad Gateway</body></html>", { status: 502, headers: { "content-type": "text/html" } })) as typeof fetch;
+    const port = new StripeHotelesPaymentsPort(fetchImpl, { secretKey: "sk_test_real" });
+    const err = await port.charge(input()).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect(err).not.toBeInstanceOf(SyntaxError);
+    expect((err as Error).message).toMatch(/Stripe respondió 502 con un cuerpo no-JSON/);
+  });
+
+  it("un 200 con cuerpo no-JSON tampoco se interpreta como cobro: lanza", async () => {
+    const fetchImpl = (async () => new Response("ok", { status: 200 })) as typeof fetch;
+    const port = new StripeHotelesPaymentsPort(fetchImpl, { secretKey: "sk_test_real" });
+    await expect(port.charge(input())).rejects.toThrow(/Stripe respondió 200 con un cuerpo no-JSON/);
+  });
+
+  it("un error no-card_error conserva el mensaje de Stripe (el cuerpo se lee una sola vez)", async () => {
+    const fetchImpl = (async () => new Response(JSON.stringify({ error: { type: "api_error" } }), { status: 500 })) as typeof fetch;
+    const port = new StripeHotelesPaymentsPort(fetchImpl, { secretKey: "sk_test_real" });
+    await expect(port.charge(input())).rejects.toThrow(/Stripe respondió 500: api_error/);
+  });
 });
