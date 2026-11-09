@@ -773,7 +773,7 @@ class SesionCascadaV2 implements VozSesionLlamada {
       }),
     );
     const utiles = resultados.filter((r) => resultadoUtil(r.salida));
-    this.log("v2_precarga", { cantidad: utiles.length, ms: Math.round(this.ahora() - t0) });
+    this.log("v2_precarga", { intento: llamadas.length, invalidos: llamadas.length - utiles.length, ms: Math.round(this.ahora() - t0) });
     if (utiles.length === 0 || !vigente()) return;
     this.mensajes.push({ role: "assistant", content: "", toolCalls: utiles.map((u) => u.tc) });
     for (const u of utiles) this.mensajes.push({ role: "tool", toolCallId: u.tc.id, content: JSON.stringify(u.salida).slice(0, PRECARGA_MAX_CHARS) });
