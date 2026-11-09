@@ -8,6 +8,8 @@ por facturación) ni sin OK de Javier. Las letras son las de las tareas de prepa
 - Aplicar las migraciones pendientes de `main`: 0075, `mcp_cfdi` 002, 0077, 0085, 0090 (ver `bloqueantes.md`).
 
 ## Ola 1 — correcciones de dinero y CI (A, B, C, E)
+Rama de integración: `ola/1` (en construcción por otros agentes).
+
 | Letra | Rama | Qué | Estado |
 |---|---|---|---|
 | A | `fix/hoteles-cobro-centavos` | hoteles: cobro con tarjeta en centavos tipados, timeout y cuerpo no-JSON en el fetch a Stripe, un cobro 3DS pendiente no responde como cobrado | 5 commits locales (prueba roja → arreglo) |
@@ -18,10 +20,12 @@ por facturación) ni sin OK de Javier. Las letras son las de las tareas de prepa
 Además, los PRs ya listos que solo esperan CI: #762, #764, #812, #791 y, tras cambiar su base a `main`, #798, #703, #709.
 
 ## Ola 2 — seguridad, D y documentación (F, D, docs)
+Rama de integración de seguridad: `ola/2-seguridad` (en construcción por otros agentes).
+
 | Letra | Rama / PR | Qué |
 |---|---|---|
 | F | `seg/revoke-security-definer` | `revoke` de `public` en funciones `security definer` de core, hoteles, licitaciones y rentas, con `scripts/verify` contra Postgres (5 commits locales; espejos 830-833) |
-| D | — | definido en la conversación del 9-nov; sin rama local identificada al escribir este documento |
+| D | — | PM: cerrar (o confirmar cerrados) D31 (pedido grande) y D12 (cortesías y extras con un total que no suma los renglones), cada uno con su prueba; y fusionar la línea de voz #697 → #698 → #752 → #813 con CI verde (#697, #698 y #752 tienen base `main`; solo #813 está apilado sobre #752) |
 | docs | `docs/evals-voz-relevo` (este PR) | evals, voz y relevo en el repo |
 
 También en esta ola: MFA superadmin #766, CSP enforce #775 (rojo: lint + CodeQL), smoke #779, Sentry #780.
@@ -31,12 +35,14 @@ También en esta ola: MFA superadmin #766, CSP enforce #775 (rojo: lint + CodeQL
 - CFO de la plataforma: #791 → #794 → #797 → #808 → #810 (migración 0085 de #786 pendiente de aplicar). Datos del dueño pendientes.
 
 ## Ola 4 — G y H
+Rama de integración: `ola/4` (en construcción por otros agentes).
+
 | Letra | Rama | Qué |
 |---|---|---|
 | G | `db/g1-espejos-huerfanos` | el guard `verify:migration-versions` falla ante espejos huérfanos; importa como canónicas las migraciones 0008-0014 que solo vivían en `supabase/migrations` (5 commits locales) |
-| H | — | definido en la conversación del 9-nov; sin rama local identificada |
+| H | — | costos: techo duro de gasto por organización del agente de WhatsApp; partir el lote de Meta (`maxDuration` de 30 s y doble cobro de turnos del LLM por reintento) o hacerlo idempotente; medidor de mensajes para rentas, licitaciones y despachos; `VOICE_TOPE_MENSUAL_USD` con un valor por omisión seguro |
 
-Agente de PM en paralelo, con OK de gasto: medir #718 en `fa304de9f` (C4 ×5) y #813 en su cabeza final; voz #752 → #813.
+Agente de PM en paralelo, con OK de gasto: medir #718 en `fa304de9f` (C4 ×5) y #813 en su cabeza final (la fusión de la línea de voz es parte de D, Ola 2).
 
 ## Ola 5 — frontend y alta
 - ds3: páginas de restaurantes #763 (conflicto), Resumen general #759, rediseño R2 #819, contenido #754 → #755, guía #747 → #749, retiro #760.
