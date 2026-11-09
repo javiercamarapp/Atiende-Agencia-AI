@@ -1,7 +1,8 @@
 // Historial de transiciones de un pedido (A-03): quien lo movio (equipo, agente, POS o sistema), de que estado a cual, cuando y con que motivo.
 // Lee `order_status_events` (append-only, una fila por transicion). Base sin migrar: estado honesto, sin lista.
 import { useEffect, useState } from "react";
-import { Button, EstadoCargando, EstadoError, EstadoVacio, FormDialog } from "@atiende/ui";
+import { Button, EstadoCargando, EstadoError, EstadoVacio, FormDialog, useT } from "@atiende/ui";
+import { restaurantesAutopiloto } from "@atiende/ui/i18n/restaurantes/autopiloto";
 import { MOTIVO_CANCELACION_ETIQUETAS, etiquetaActor, fetchHistorialPedido } from "../lib/autopiloto-client.ts";
 import type { EventoEstado, MotivoCancelacion } from "../lib/autopiloto-client.ts";
 import { fechaHoraEsMx } from "../../../lib/formato-fecha.ts";
@@ -23,6 +24,7 @@ export function HistorialPedidoDialogo({
   readonly token: string;
   readonly propertyId: string;
 }) {
+  const t = useT(restaurantesAutopiloto);
   const [datos, setDatos] = useState<{ readonly disponible: boolean; readonly eventos: readonly EventoEstado[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -33,7 +35,7 @@ export function HistorialPedidoDialogo({
     setError(null);
     fetchHistorialPedido(fetch, apiBaseUrl, token, propertyId, orderId)
       .then((r) => !cancelado && setDatos(r))
-      .catch((err) => !cancelado && setError(err instanceof Error ? err.message : "No se pudo cargar el historial."));
+      .catch((err) => !cancelado && setError(err instanceof Error ? err.message : t("restaurantes.autopiloto.historial.error")));
     return () => {
       cancelado = true;
     };
@@ -43,29 +45,30 @@ export function HistorialPedidoDialogo({
     <FormDialog
       open={orderId !== null}
       onOpenChange={(o) => !o && onClose()}
-      titulo="Historial del pedido"
+      titulo={t("restaurantes.autopiloto.historial.titulo")}
       subtitulo={titulo}
       anchoClase="max-w-2xl"
       footer={
         <Button type="button" variant="outline" onClick={onClose}>
-          Cerrar
+          {t("restaurantes.autopiloto.historial.cerrar")}
         </Button>
       }
     >
       {error ? (
         <EstadoError mensaje={error} />
       ) : datos === null ? (
-        <EstadoCargando etiqueta="Cargando historial…" />
+        <EstadoCargando etiqueta={t("restaurantes.autopiloto.historial.cargando")} />
       ) : !datos.disponible ? (
-        <EstadoVacio mensaje="El historial todavía no está disponible en esta cuenta (falta aplicar la actualización de base de datos)." />
+        <EstadoVacio mensaje={t("restaurantes.autopiloto.historial.noDisponible")} />
       ) : datos.eventos.length === 0 ? (
-        <EstadoVacio mensaje="Este pedido no tiene transiciones registradas (es anterior al historial)." />
+        <EstadoVacio mensaje={t("restaurantes.autopiloto.historial.vacio")} />
       ) : (
         <ol className="m-0 grid list-none gap-2 p-0" data-testid="historial-pedido">
           {datos.eventos.map((e, i) => (
             <li key={`${e.at}-${i}`} className="text-sm text-foreground">
               <span className="font-medium">
-                {e.desde ? `${ORDER_STATUS_LABELS[e.desde]} → ` : "Creado como "}
+                {e.desde ? `${ORDER_STATUS_LABELS[e.desde]} → ` : t("restaurantes.autopiloto.historial.creadoComo")}
+
                 {ORDER_STATUS_LABELS[e.hacia]}
               </span>
               <span className="block text-xs text-muted-foreground">

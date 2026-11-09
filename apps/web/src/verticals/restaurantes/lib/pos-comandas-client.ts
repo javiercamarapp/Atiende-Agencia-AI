@@ -2,7 +2,8 @@
 // apps/api/.../restaurantes/admin-softrestaurant.ts. Los tipos replican la forma del servidor (apps/web no depende de los
 // paquetes de dominio, mismo criterio que orders-client.ts). Las funciones puras (texto para el POS, mascara de telefono,
 // antiguedad, etiqueta de estado) viven aqui para poder probarlas sin pintar nada.
-import { etiquetasTraducidas } from "@atiende/ui";
+import { etiquetasTraducidas, traductorActivo } from "@atiende/ui";
+import { restaurantesComandas } from "@atiende/ui/i18n/restaurantes/comandas";
 import { restaurantesComun } from "@atiende/ui/i18n/restaurantes/comun";
 import { horaEsMx } from "../../../lib/formato-fecha.ts";
 import { fetchJson, sendJson } from "./admin-client.ts";
@@ -172,11 +173,13 @@ export function referenciaPedido(orderId: string): string {
 
 export function antiguedadTexto(desdeIso: string, ahoraMs: number): string {
   const min = Math.max(0, Math.floor((ahoraMs - Date.parse(desdeIso)) / 60_000));
-  if (min < 1) return "hace menos de 1 min";
-  if (min < 60) return `hace ${min} min`;
+  const tr = traductorActivo(restaurantesComandas);
+  if (min < 1) return tr("restaurantes.comandas.antiguedad.menos");
+  if (min < 60) return tr("restaurantes.comandas.antiguedad.min", { min });
   const h = Math.floor(min / 60);
-  if (h < 24) return `hace ${h} h ${min % 60} min`;
-  return `hace ${Math.floor(h / 24)} d`;
+  if (h < 24) return tr("restaurantes.comandas.antiguedad.horas", { h, min: min % 60 });
+  return tr("restaurantes.comandas.antiguedad.dias", { d: Math.floor(h / 24) });
+
 }
 
 function pesos(n: number): string {

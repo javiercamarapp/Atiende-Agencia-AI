@@ -93,6 +93,7 @@ const IGUALES_PERMITIDOS = new Set<string>([
   "{propiedad} · RevPAR {periodo}: ",
   "OK",
   "Night audit",
+  "Callbacks",
 ]);
 
 

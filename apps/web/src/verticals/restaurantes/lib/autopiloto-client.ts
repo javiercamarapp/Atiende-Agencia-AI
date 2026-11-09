@@ -1,9 +1,14 @@
 // Cliente del autopiloto de restaurantes (migracion 050): aprobaciones "Por aprobar" con un clic, reglas por sucursal y "Agotado hasta manana".
 // Endpoints reales de apps/api/src/routes/verticals/restaurantes/autopiloto.ts. Los tipos se duplican a proposito (apps/web no depende de ningun
 // paquete domain-*, mismo aislamiento que orders-client.ts); el servidor SIEMPRE re-valida decision, motivo, alcance y rol.
+import { etiquetasTraducidas, traductorActivo } from "@atiende/ui";
+import { restaurantesAutopiloto } from "@atiende/ui/i18n/restaurantes/autopiloto";
 import { fetchJson, sendJson } from "./admin-client.ts";
 import { ORDER_STATUS_LABELS } from "./orders-client.ts";
 import type { OrderCanal, OrderStatus } from "./orders-client.ts";
+
+const tr = traductorActivo(restaurantesAutopiloto);
+
 
 export type SolicitudTipo = "pedido_grande" | "cancelacion" | "compensacion" | "pausa_sucursal";
 export type SolicitudDecision = "aprobar" | "rechazar" | "cancelar" | "mantener" | "sin_compensacion" | "reponer_producto" | "descuento_proximo" | "pausar" | "descartar";
@@ -12,21 +17,18 @@ export type SolicitudDecision = "aprobar" | "rechazar" | "cancelar" | "mantener"
 export const MOTIVOS_CANCELACION = ["cliente_desistio", "sin_producto", "fuera_de_zona", "duplicado", "error_agente", "otro"] as const;
 export type MotivoCancelacion = (typeof MOTIVOS_CANCELACION)[number];
 
-export const MOTIVO_CANCELACION_ETIQUETAS: Readonly<Record<MotivoCancelacion, string>> = {
-  cliente_desistio: "El cliente desistió",
-  sin_producto: "Sin producto",
-  fuera_de_zona: "Fuera de zona",
-  duplicado: "Pedido duplicado",
-  error_agente: "Error del agente",
-  otro: "Otro",
-};
+/** Etiquetas en el idioma activo (i18n): cada lectura traduce; en espanol, los textos de siempre. */
+export const MOTIVO_CANCELACION_ETIQUETAS: Readonly<Record<MotivoCancelacion, string>> = etiquetasTraducidas<MotivoCancelacion>(
+  ["cliente_desistio", "sin_producto", "fuera_de_zona", "duplicado", "error_agente", "otro"],
+  (m) => `restaurantes.autopiloto.motivo.${m}` as const,
+  restaurantesAutopiloto,
+);
 
-export const SOLICITUD_TIPO_ETIQUETAS: Readonly<Record<SolicitudTipo, string>> = {
-  pedido_grande: "Pedido grande",
-  cancelacion: "Cancelación pedida por el cliente",
-  compensacion: "Queja: compensación",
-  pausa_sucursal: "Pausa por saturación",
-};
+export const SOLICITUD_TIPO_ETIQUETAS: Readonly<Record<SolicitudTipo, string>> = etiquetasTraducidas<SolicitudTipo>(
+  ["pedido_grande", "cancelacion", "compensacion", "pausa_sucursal"],
+  (s) => `restaurantes.autopiloto.tipo.${s}` as const,
+  restaurantesAutopiloto,
+);
 
 export interface SolicitudPedido {
   readonly numero: number | null;
@@ -102,15 +104,15 @@ export function mensajeResultadoSolicitud(entrada: Pick<ResolverEntrada, "decisi
   if (r.aplicado) {
     if (entrada.decision === "cancelar" && r.decision === "mantener") {
       const estado = r.estadoPedido ? ORDER_STATUS_LABELS[r.estadoPedido] : null;
-      return { tono: "warning", texto: `No se pudo cancelar: el pedido ya salió o ya cerró${estado ? ` (estado: ${estado})` : ""}. Se avisó al cliente que sigue en proceso y la solicitud quedó cerrada.` };
+      return { tono: "warning", texto: estado ? tr("restaurantes.autopiloto.resultado.noCanceloEstado", { estado }) : tr("restaurantes.autopiloto.resultado.noCancelo") };
     }
-    return { tono: "success", texto: r.codigoDescuento ? `Listo. Código de descuento enviado al cliente: ${r.codigoDescuento}.` : "Listo: decisión aplicada y cliente avisado." };
+    return { tono: "success", texto: r.codigoDescuento ? tr("restaurantes.autopiloto.resultado.codigo", { codigo: r.codigoDescuento }) : tr("restaurantes.autopiloto.resultado.aplicado") };
   }
   if (r.motivo === "pedido_ya_no_estaba_por_aprobar") {
     const estado = r.estadoPedido ? ORDER_STATUS_LABELS[r.estadoPedido] : null;
-    return { tono: "warning", texto: `El pedido ya no estaba por aprobar${estado ? ` (estado actual: ${estado})` : ""}: la solicitud se cerró sin mandar nada a cocina ni avisar al cliente desde aquí.` };
+    return { tono: "warning", texto: estado ? tr("restaurantes.autopiloto.resultado.yaNoPorAprobarEstado", { estado }) : tr("restaurantes.autopiloto.resultado.yaNoPorAprobar") };
   }
-  return { tono: "info", texto: "Esta solicitud ya estaba resuelta; no se repitió ningún aviso." };
+  return { tono: "info", texto: tr("restaurantes.autopiloto.resultado.yaResuelta") };
 }
 
 export function resolverSolicitud(fetchImpl: typeof fetch, apiBaseUrl: string, token: string, propertyId: string, solicitudId: string, entrada: ResolverEntrada): Promise<ResolverRespuesta> {
@@ -202,8 +204,9 @@ export function fetchHistorialPedido(fetchImpl: typeof fetch, apiBaseUrl: string
 }
 
 export function etiquetaActor(actor: string): string {
-  if (actor.startsWith("staff:")) return "Equipo";
-  if (actor === "agente") return "Agente";
-  if (actor === "pos") return "POS";
-  return "Sistema";
+  if (actor.startsWith("staff:")) return tr("restaurantes.autopiloto.actor.equipo");
+  if (actor === "agente") return tr("restaurantes.autopiloto.actor.agente");
+  if (actor === "pos") return tr("restaurantes.autopiloto.actor.pos");
+  return tr("restaurantes.autopiloto.actor.sistema");
+
 }

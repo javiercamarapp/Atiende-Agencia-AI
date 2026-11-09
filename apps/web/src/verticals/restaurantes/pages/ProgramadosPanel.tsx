@@ -3,7 +3,10 @@
 // servidor al consultar; aqui, ademas, la fila sale de la vista en cuanto llega su hora de promocion, igual que el original). Desde aqui el
 // staff puede ADELANTAR el pedido a cocina o CANCELARLO (la cancelacion pide motivo en Pedidos.tsx).
 import { CalendarClock, MapPin, Store } from "lucide-react";
-import { Button, StatusBadge, cn, statusTone } from "@atiende/ui";
+import { Button, StatusBadge, cn, statusTone, useT } from "@atiende/ui";
+import { restaurantesAutopiloto } from "@atiende/ui/i18n/restaurantes/autopiloto";
+import { restaurantesComun } from "@atiende/ui/i18n/restaurantes/comun";
+import { restaurantesPedidos } from "@atiende/ui/i18n/restaurantes/pedidos";
 import { montoFila } from "../components/pedidos/formato.ts";
 import { fechaCortaHoraEsMx, hora24EsMx } from "../../../lib/formato-fecha.ts";
 import { faltaPara } from "../lib/sondeo-pedidos.ts";
@@ -39,6 +42,7 @@ export function ProgramadosPanel({
   readonly onAdelantar: (order: OrderSummary) => void;
   readonly onCancelar: (order: OrderSummary) => void;
 }) {
+  const t = useT(restaurantesComun, restaurantesPedidos, restaurantesAutopiloto);
   const visibles = orders
     .filter((o) => sigueProgramado(o, ahoraMs))
     .slice()
@@ -47,18 +51,18 @@ export function ProgramadosPanel({
     <div className="space-y-3 rounded-2xl border border-border bg-card p-4" data-testid="programados-lista">
       <div className="flex items-center gap-2">
         <CalendarClock className="h-4 w-4 text-muted-foreground" strokeWidth={1.75} aria-hidden="true" />
-        <p className="font-mono text-eyebrow uppercase tracking-[0.08em] text-muted-foreground">Se promueven a Recibidas automáticamente {ANTICIPACION_PROMOCION_MIN} min antes de su hora</p>
+        <p className="font-mono text-eyebrow uppercase tracking-[0.08em] text-muted-foreground">{t("restaurantes.autopiloto.prog.promueven", { min: ANTICIPACION_PROMOCION_MIN })}</p>
       </div>
 
       {!disponible ? (
         <div className="py-16 text-center" role="status">
           <CalendarClock className="mx-auto mb-3 h-10 w-10 text-muted-foreground/30" strokeWidth={1.5} aria-hidden="true" />
-          <p className="text-ui text-muted-foreground">Los pedidos programados todavía no están disponibles en esta cuenta (falta aplicar la actualización de base de datos).</p>
+          <p className="text-ui text-muted-foreground">{t("restaurantes.autopiloto.prog.noDisponible")}</p>
         </div>
       ) : visibles.length === 0 ? (
         <div className="py-16 text-center" role="status">
           <CalendarClock className="mx-auto mb-3 h-10 w-10 text-muted-foreground/30" strokeWidth={1.5} aria-hidden="true" />
-          <p className="text-ui text-muted-foreground">No hay pedidos programados</p>
+          <p className="text-ui text-muted-foreground">{t("restaurantes.autopiloto.prog.vacio")}</p>
         </div>
       ) : (
         <div className="overflow-hidden rounded-xl border border-border">
@@ -70,14 +74,14 @@ export function ProgramadosPanel({
                     <CalendarClock className="h-5 w-5 text-primary" strokeWidth={1.75} aria-hidden="true" />
                   </div>
                   <div className="min-w-0 space-y-0.5">
-                    <button type="button" onClick={(e) => { e.stopPropagation(); onAbrir(o); }} className="block max-w-full truncate rounded text-left text-ui font-medium text-foreground" aria-label={`Abrir el pedido de ${o.customerName}`}>
+                    <button type="button" onClick={(e) => { e.stopPropagation(); onAbrir(o); }} className="block max-w-full truncate rounded text-left text-ui font-medium text-foreground" aria-label={t("restaurantes.pedidos.fila.abrir", { cliente: o.customerName })}>
                       {o.customerName}
                     </button>
                     <p className="font-mono text-eyebrow uppercase tracking-[0.06em] text-muted-foreground">
-                      Pedido #{idCortoPedido(o.id)}
+                      {t("restaurantes.pedidos.fila.pedido", { id: idCortoPedido(o.id) })}
                       {o.orderNumber != null && (
                         <>
-                          {" "}· Venta <span className="tabular-nums">{String(o.orderNumber).padStart(4, "0")}</span>
+                          {" "}· {t("restaurantes.pedidos.fila.venta")} <span className="tabular-nums">{String(o.orderNumber).padStart(4, "0")}</span>
                         </>
                       )}
                     </p>
@@ -101,7 +105,7 @@ export function ProgramadosPanel({
                         {fechaCortaHoraEsMx(o.programadoPara)}
                       </p>
                       <p className="text-eyebrow text-muted-foreground">{faltaPara(o.programadoPara, ahoraMs)}</p>
-                      <p className="text-eyebrow text-muted-foreground">entra a cocina a las {hora24EsMx(new Date(Date.parse(o.programadoPara) - ANTICIPACION_PROMOCION_MIN * 60_000))}</p>
+                      <p className="text-eyebrow text-muted-foreground">{t("restaurantes.autopiloto.prog.entraCocina", { hora: hora24EsMx(new Date(Date.parse(o.programadoPara) - ANTICIPACION_PROMOCION_MIN * 60_000)) })}</p>
                     </>
                   )}
                 </div>
@@ -109,7 +113,7 @@ export function ProgramadosPanel({
               <div className="mt-2 flex flex-wrap items-center gap-1.5 sm:ml-[52px]">
                 {o.canal && (
                   <StatusBadge tone="neutral" dot={false} className="text-2xs">
-                    {o.canal === "recoger" ? "Recoger" : "Domicilio"}
+                    {t(o.canal === "recoger" ? "restaurantes.canal.recoger" : "restaurantes.canal.domicilio")}
                   </StatusBadge>
                 )}
                 <StatusBadge tone={statusTone(ORDER_STATUS_TONES, o.status)} className="text-2xs">
@@ -118,10 +122,11 @@ export function ProgramadosPanel({
               </div>
               <div className={cn("mt-2.5 flex flex-wrap items-center gap-1.5 sm:ml-[52px]")} onClick={(e) => e.stopPropagation()}>
                 <Button type="button" size="sm" variant="outline" className="h-7 rounded-full px-3 text-eyebrow" loading={changingId === o.id} disabled={changingId === o.id} onClick={() => onAdelantar(o)}>
-                  Enviar a cocina ahora
+                  {t("restaurantes.autopiloto.prog.enviarCocina")}
                 </Button>
                 <Button type="button" size="sm" variant="danger" className="h-7 rounded-full px-3 text-eyebrow" disabled={changingId === o.id} onClick={() => onCancelar(o)}>
-                  Cancelar pedido
+                  {t("restaurantes.pedidos.fila.cancelarPedido")}
+
                 </Button>
               </div>
             </div>
