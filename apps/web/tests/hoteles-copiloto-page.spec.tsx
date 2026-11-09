@@ -270,3 +270,32 @@ describe("HotelesCopilotoPage", () => {
     expect(llamadas.find((l) => l.method === "POST")?.url).toBe(`${API}/hoteles/prop-2/chat-datos`);
   });
 });
+
+describe("HotelesCopilotoPage en ingles (i18n ES/EN)", () => {
+  it("portada, chips, «Uso de hoy» y la consulta directa del chip en ingles (misma herramienta y argumentos)", async () => {
+    window.localStorage.setItem("atiende-idioma", "en");
+    instalarFetch(estadoOk);
+    const root = await montar();
+    expect(root.querySelector("h1")?.textContent).toBe("Ask your data");
+    const chipsEn = COPILOTO_HOTELES.sugerencias.map((q) => COPILOTO_HOTELES.en?.preguntas[q] ?? q);
+    for (const chip of chipsEn) expect(porTexto(root, chip), chip).toBeDefined();
+    expect(chipsEn).toContain("How is occupancy this week?");
+    expect(root.textContent).toContain("Today's usage");
+    expect(root.textContent).not.toContain("Uso de hoy");
+    click(porTexto(root, "Explore")!);
+    expect(root.textContent).toContain("Occupancy and revenue");
+    click(porTexto(root, "How is occupancy this week?")!);
+    await esperar();
+    const post = llamadas.find((l) => l.method === "POST");
+    expect(post?.body).toEqual({ tool: "ocupacion_adr_revpar", args: { periodo: "esta_semana" }, label: "How is occupancy this week?", conversationId: "new" });
+  });
+
+  it("rol sin acceso: estado vacio en ingles sin llamar al backend", async () => {
+    window.localStorage.setItem("atiende-idioma", "en");
+    instalarFetch(estadoOk);
+    const root = await montar("prop-1", "recepcion");
+    expect(root.textContent).toContain("No access");
+    expect(root.textContent).toContain("Your role doesn't have access to the Copilot. Ask the owner or the manager for access.");
+    expect(llamadas).toHaveLength(0);
+  });
+});
