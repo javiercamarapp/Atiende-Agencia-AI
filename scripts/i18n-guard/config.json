@@ -45,10 +45,14 @@
     "packages/ui/src/components/ui/form-field.tsx",
     "packages/ui/src/components/ui/drawer.tsx",
     "packages/ui/src/components/VerticalNoEncontrado.tsx",
-    "apps/web/src/superadmin/pages/WhatsappMeta.tsx"
+    "apps/web/src/superadmin/pages/WhatsappMeta.tsx",
+    "packages/ui/src/components/ResumenLayout.tsx",
+    "packages/ui/src/components/copiloto",
+    "apps/web/src/pages/CopilotoPage.tsx"
   ],
   "excluir": [
-    "packages/ui/src/i18n/mensajes"
+    "packages/ui/src/i18n/mensajes",
+    "packages/ui/src/components/copiloto/idioma.ts"
   ],
   "baseline": {
     "apps/web/src/superadmin/rutas.ts": 59
