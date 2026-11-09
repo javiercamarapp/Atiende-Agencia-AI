@@ -1,3 +1,4 @@
+import { esperarAnimaciones, esperarCuadros } from "../helpers/esperas.ts";
 import { expect, test } from "../helpers/fixtures.ts";
 
 // These tests inspect the decorative canvas and auth geometry only. The API is
@@ -11,7 +12,7 @@ test("la animación responde al cursor y respeta movimiento reducido sin control
   const pixels = () => canvas.evaluate((el) => (el as HTMLCanvasElement).toDataURL());
   await expect(canvas).toHaveAttribute("data-motion", "reduced");
   const still = await pixels();
-  await page.waitForTimeout(160);
+  await esperarCuadros(page, 10); // diez cuadros de pintado: con movimiento la esfera ya habria cambiado
   expect(await pixels()).toBe(still);
   await expect(page.getByRole("button", { name: /Pausar animación|Reanudar animación/ })).toHaveCount(0);
   await page.emulateMedia({ reducedMotion: "no-preference" });
@@ -23,7 +24,7 @@ test("la animación responde al cursor y respeta movimiento reducido sin control
   const button = page.getByRole("button", { name: "Continuar con correo" });
   const before = await button.boundingBox();
   await button.hover();
-  await page.waitForTimeout(250);
+  await esperarAnimaciones(page); // la transicion de hover (si la hubiera) ya termino
   expect(await button.boundingBox()).toEqual(before);
 });
 
