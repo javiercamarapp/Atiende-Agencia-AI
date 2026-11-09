@@ -103,6 +103,7 @@ import {
   PostgresAltaPropiedadRepository,
   PostgresLoginChoferRepository,
   PostgresOrgFichaRepository,
+  PostgresOnboardingProgresoRepository,
   PostgresFichasAgenteRepository,
   PostgresContratosRepository,
   PostgresPlataformaPrivacidadRepository,
@@ -112,7 +113,7 @@ import {
   PostgresStaffSecurityRepository,
 } from "@atiende/db";
 import type { TenancyEngine, TenantDbSession } from "@atiende/core-tenancy";
-import { MetaGraphWhatsAppClient, MetaGraphWhatsAppReader, WhatsAppOutboundDispatcher } from "@atiende/whatsapp-gateway";
+import { MetaGraphWhatsAppClient, MetaGraphWhatsAppReader, WhatsAppGraphClientPorNumero, WhatsAppOutboundDispatcher } from "@atiende/whatsapp-gateway";
 import { crearLectorTokenMetaGraph } from "../salud/salud-meta.ts";
 import type { SaludMetaDeps } from "../salud/salud-meta.ts";
 import { cifradorAccesoDeEntorno } from "../routes/verticals/rentas/acceso-cipher.ts";
@@ -125,6 +126,7 @@ import { ProductionDespachosAuditSink } from "./despachos-audit-sink.ts";
 import { ProductionHotelesFraudeAuditSink } from "./hoteles-fraude-audit-sink.ts";
 import { encolarComandaParaPedido } from "@atiende/domain-restaurantes/softrestaurant";
 import { crearPuertoNotasDeVoz } from "../routes/verticals/restaurantes/transcripcion-voz.ts";
+import { construirWhatsAppMeta } from "../whatsapp-credenciales/produccion.ts";
 import { softRestaurantComandaDeps, type SoftRestaurantDeps } from "../routes/verticals/restaurantes/softrestaurant-wiring.ts";
 import { PersistentAuthzAuditSink } from "./authz-audit-sink.ts";
 import { ProductionCfdiFolioReservationStore } from "./cfdi-folio-reservation-store.ts";
@@ -364,7 +366,21 @@ export function buildProductionDeps(): AppDeps {
   // arriba: la ruta que lo consume (routes/internal/whatsapp-dispatch.ts) responde
   // 503 explícito en vez de fingir un envío. Ningún token real de Meta se usa en
   // tests/CI — este constructor solo corre en producción real.
-  const whatsAppDispatcher = env.whatsappAccessToken ? new WhatsAppOutboundDispatcher({ graphClient: new MetaGraphWhatsAppClient({ accessToken: env.whatsappAccessToken, approvedTemplates: env.whatsappApprovedTemplates, ...(env.whatsappGraphApiVersion ? { apiVersion: env.whatsappGraphApiVersion } : {}) }) }) : undefined;
+  //
+  // Credenciales de Meta por organizacion (migracion 0090, varias apps a la vez): con WHATSAPP_CREDENTIALS_KEY el cliente elige el token
+  // por el numero REMITENTE (credencial propia de la organizacion o, si el numero no tiene, el de plataforma). Sin la llave el cliente es
+  // exactamente el de antes y el dispatcher solo existe con WHATSAPP_ACCESS_TOKEN.
+  const whatsappMeta = construirWhatsAppMeta(env, engine);
+  const crearClienteMeta = (accessToken: string) => new MetaGraphWhatsAppClient({ accessToken, approvedTemplates: env.whatsappApprovedTemplates, ...(env.whatsappGraphApiVersion ? { apiVersion: env.whatsappGraphApiVersion } : {}) });
+  const clienteMetaPlataforma = env.whatsappAccessToken ? crearClienteMeta(env.whatsappAccessToken) : undefined;
+  const graphClientWhatsApp = whatsappMeta
+    ? new WhatsAppGraphClientPorNumero({
+        ...(clienteMetaPlataforma ? { plataforma: clienteMetaPlataforma } : {}),
+        resolutor: { tokenDeNumero: async (phoneNumberId) => (await whatsappMeta.resolutor.credencialDeNumero(phoneNumberId))?.accessToken ?? null },
+        crearCliente: crearClienteMeta,
+      })
+    : clienteMetaPlataforma;
+  const whatsAppDispatcher = graphClientWhatsApp ? new WhatsAppOutboundDispatcher({ graphClient: graphClientWhatsApp }) : undefined;
 
   // Vigilancia de salud de Meta (token por vencer, timeouts del agente): el lector del token existe solo con WHATSAPP_ACCESS_TOKEN; sin el no se llama a Meta.
   const saludMeta: SaludMetaDeps = {
@@ -376,6 +392,8 @@ export function buildProductionDeps(): AppDeps {
   // R-32: notas de voz de WhatsApp de restaurantes. Necesita el token de Meta (descarga de media) Y el gateway LLM (transcripcion); sin alguno de
   // los dos queda `undefined` y el webhook conserva el comportamiento anterior (pedir al cliente que escriba).
   const notasDeVoz = env.whatsappAccessToken && llmGateway ? crearPuertoNotasDeVoz({ gateway: llmGateway, accessToken: env.whatsappAccessToken }) : undefined;
+  // Numeros con app propia (0090): la media se descarga con el token de ESA app.
+  const notasDeVozConToken = whatsappMeta && llmGateway ? (accessToken: string) => crearPuertoNotasDeVoz({ gateway: llmGateway, accessToken }) : undefined;
 
   // Bitacora de corridas (SA-L-07): cada turno de WhatsApp deja una fila en core.agent_run (best-effort, sesion de
   // sistema propia por escritura; ver ../agentes/corridas.ts). Sin la 0044 aplicada se omite en silencio.
@@ -631,6 +649,7 @@ export function buildProductionDeps(): AppDeps {
     cfoZoneRepo: (db) => new PostgresCfoZoneRepository(db),
     consolaRepo: (db) => new PostgresConsolaRepository(db),
     orgFichaRepo: (db) => new PostgresOrgFichaRepository(db),
+    onboardingProgresoRepo: (db) => new PostgresOnboardingProgresoRepository(db),
     orgEquipoRepo: (db) => new PostgresOrgEquipoRepository(db),
     altaPropiedadRepo: (db) => new PostgresAltaPropiedadRepository(db),
     loginChoferRepo: (db) => new PostgresLoginChoferRepository(db),
@@ -660,6 +679,8 @@ export function buildProductionDeps(): AppDeps {
     whatsAppDispatcher,
     saludMeta,
     notasDeVoz,
+    ...(notasDeVozConToken ? { notasDeVozConToken } : {}),
+    ...(whatsappMeta ? { whatsappMeta } : {}),
     // Suscripción SaaS propia de Atiende (auditoría de 22 rubros, hallazgo P1
     // #6) -- mismo criterio EXACTO que `hotelesPaymentsPort` arriba: real en
     // cuanto `STRIPE_SECRET_KEY` esté configurada, `undefined` (503 honesto en

@@ -5,6 +5,9 @@ import { cn } from "../lib/utils";
 import { AtiendeMark } from "./AtiendeLogo";
 import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./ui/dialog";
+import { useT } from "../i18n/proveedor";
+import { comun } from "../i18n/mensajes/comun.ts";
+import { datos } from "../i18n/mensajes/datos.ts";
 
 export interface FormDialogPaso {
   readonly id: string;
@@ -56,13 +59,15 @@ export function FormDialog({
   footer,
   onGuardar,
   guardando = false,
-  textoBotonGuardar = "Guardar cambios",
+  textoBotonGuardar: textoBotonGuardarProp,
   guardarDeshabilitado = false,
   anchoClase = "max-w-5xl",
   anchoRiel = "220px",
   altoMinimoClase,
   bloquearCierre = false,
 }: FormDialogProps) {
+  const t = useT(comun, datos);
+  const textoBotonGuardar = textoBotonGuardarProp ?? t("datos.guardarCambios");
   const indiceActivo = pasos ? pasos.findIndex((p) => p.id === pasoActivo) : -1;
 
   const pie =
@@ -73,7 +78,7 @@ export function FormDialog({
         loading={guardando}
         disabled={guardando || guardarDeshabilitado}
       >
-        {guardando ? "Guardando…" : textoBotonGuardar}
+        {guardando ? t("datos.guardando") : textoBotonGuardar}
       </Button>
     );
 
@@ -116,7 +121,7 @@ export function FormDialog({
               )}
 
               {pasos && pasos.length > 0 && (
-                <ol className="mt-4 hidden space-y-2.5 md:block" aria-label="Pasos">
+                <ol className="mt-4 hidden space-y-2.5 md:block" aria-label={t("datos.pasos")}>
                   {pasos.map((p, i) => {
                     const activo = p.id === pasoActivo;
                     const completado = indiceActivo > i;
@@ -131,7 +136,7 @@ export function FormDialog({
               )}
               {pasos && pasos.length > 0 && indiceActivo >= 0 && (
                 <p className="mt-2 text-xs text-muted-foreground md:hidden">
-                  Paso {indiceActivo + 1} de {pasos.length}: {pasos[indiceActivo]?.etiqueta}
+                  {t("datos.pasoDe", { actual: indiceActivo + 1, total: pasos.length, etiqueta: pasos[indiceActivo]?.etiqueta ?? "" })}
                 </p>
               )}
             </div>
@@ -156,7 +161,7 @@ export function FormDialog({
           <button
             type="button"
             onClick={() => onOpenChange(false)}
-            aria-label="Cerrar"
+            aria-label={t("comun.cerrar")}
             className="absolute right-2 top-3 z-10 flex size-11 items-center justify-center rounded-full text-muted-foreground transition-[color,background-color] duration-fast ease-brand hover:bg-muted hover:text-foreground md:right-3 md:size-7 rest:focus-visible:outline-none rest:focus-visible:ring-2 rest:focus-visible:ring-ring rest:focus-visible:ring-offset-2 rest:ring-offset-card"
           >
             <X aria-hidden="true" className="size-4" strokeWidth={1.75} />
