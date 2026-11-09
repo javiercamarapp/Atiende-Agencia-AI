@@ -5,6 +5,8 @@ import {
   claveFuncion,
   leerExcepciones,
   leerMigraciones,
+  normalizarTipo,
+  tipoDeArgumento,
   separarSentencias,
   type Excepciones,
 } from "../../../scripts/guard-sql-privilegios/guard.ts";
@@ -145,5 +147,41 @@ describe("guard-sql-privilegios: migraciones reales", () => {
   it("cada excepción de anon trae justificación", () => {
     const e = leerExcepciones(path.join(REPO_ROOT, "scripts", "guard-sql-privilegios", "excepciones.json"));
     for (const x of [...e.anon, ...e.definerConPublic]) expect(x.justificacion.length).toBeGreaterThan(20);
+  });
+});
+
+describe("guard-sql-privilegios: entradas patológicas (sin backtracking catastrófico)", () => {
+  const MS_MAX = 50;
+  const medir = (fn: () => unknown): number => {
+    const t0 = performance.now();
+    fn();
+    return performance.now() - t0;
+  };
+
+  it("sufijos de arreglo: conserva la normalización", () => {
+    expect(normalizarTipo("text[]")).toBe("text[]");
+    expect(normalizarTipo("int4 [ ] [3]")).toBe("integer[][]");
+    expect(normalizarTipo("character varying(20)[]")).toBe("character varying[]");
+    expect(normalizarTipo("numeric(12, 2)")).toBe("numeric");
+    expect(normalizarTipo('"core"."mi_tipo"')).toBe("core.mi_tipo");
+    expect(tipoDeArgumento("p_ids uuid [ ]  default '{}'")).toBe("uuid[]");
+    expect(tipoDeArgumento("p_x int = 3")).toBe("integer");
+  });
+
+  it.each([
+    ["espacios y corchetes sin cerrar", `x${" [".repeat(25_000)}`],
+    ["muchos espacios antes de un corchete abierto", `x${" ".repeat(50_000)}[`],
+    ["corchetes vacíos repetidos y basura final", `x${"[ ]".repeat(17_000)}!`],
+    ["paréntesis sin cerrar y espacios", `numeric${" (".repeat(25_000)}`],
+  ])("%s (50k caracteres) termina en menos de 50 ms", (_nombre, entrada) => {
+    expect(entrada.length).toBeGreaterThanOrEqual(50_000);
+    normalizarTipo("int"); // calentamiento del JIT
+    expect(medir(() => normalizarTipo(entrada))).toBeLessThan(MS_MAX);
+    expect(medir(() => tipoDeArgumento(`p ${entrada}`))).toBeLessThan(MS_MAX);
+  });
+
+  it("argumento con 50k espacios antes de default termina en menos de 50 ms", () => {
+    const entrada = `p_x integer${" ".repeat(50_000)}x`;
+    expect(medir(() => tipoDeArgumento(entrada))).toBeLessThan(MS_MAX);
   });
 });
