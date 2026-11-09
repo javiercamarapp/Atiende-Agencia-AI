@@ -7,7 +7,7 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { Link, Navigate, useLocation } from "react-router-dom";
-import { Callout, EstadoCargando } from "@atiende/ui";
+import { AvisoPagina, Callout, EstadoCargando } from "@atiende/ui";
 import { fetchOnboardingGate, gateOmitido, type OnboardingGateEstado } from "./lib/onboarding-client.ts";
 
 const ROLES_CON_GATE: ReadonlySet<string> = new Set(["owner", "admin"]);
@@ -46,18 +46,23 @@ export function PuertaOnboarding({ apiBaseUrl, token, propertyId, orgSlug, role,
   if (gate && gate.bloquea && !omitido) return <Navigate to={`${base}/primeros-pasos`} replace />;
   return (
     <>
+      {/* Como los demas avisos globales, debajo del encabezado del Resumen (auditoria R2 #5). */}
       {gate && gate.obligatoriosPendientes > 0 && (
-        <Callout
-          tone="warning"
-          titulo="Faltan puntos obligatorios de configuración"
-          accion={
-            <Link className="text-xs underline underline-offset-2" to={`${base}/primeros-pasos`}>
-              Ver primeros pasos
-            </Link>
-          }
-        >
-          {gate.obligatoriosPendientes} punto(s) obligatorio(s) pendiente(s) antes de operar con tranquilidad.
-        </Callout>
+        <AvisoPagina>
+          <div className="mb-3">
+            <Callout
+              tone="warning"
+              titulo="Faltan puntos obligatorios de configuración"
+              accion={
+                <Link className="text-xs underline underline-offset-2" to={`${base}/primeros-pasos`}>
+                  Ver primeros pasos
+                </Link>
+              }
+            >
+              {gate.obligatoriosPendientes} punto(s) obligatorio(s) pendiente(s) antes de operar con tranquilidad.
+            </Callout>
+          </div>
+        </AvisoPagina>
       )}
       {children}
     </>
