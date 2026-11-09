@@ -34,15 +34,21 @@ leer), reutilizados tanto por el test unitario como por la CLI:
    varios paquetes de dominio reutilizan nombres base genéricos a propósito (p. ej.
    `014_email_outbox_authenticated_grants.sql` existe en más de un
    `domain-*/migrations/`, cada uno con su propio contenido) y este check no debe
-   producir falsos positivos por esa ambigüedad. Sin ningún candidato, no hay nada
-   que comparar y no se reporta nada (puede ser una migración sin fuente de paquete,
-   fuera del alcance de este guard).
+   producir falsos positivos por esa ambigüedad.
+3. **`findOrphanMirrors`** (Ola 4, G1) — un espejo **sin ningún candidato** ya no
+   pasa en silencio: es un **espejo huérfano** (SQL aplicado en producción sin fuente
+   canónica en el paquete) y hace fallar el guard. Excepción: los espejos que se
+   **renombraron** al copiarlos (p. ej. `003_cierre_mensual_schema.sql` ->
+   `20240101000048_003_despachos_cierre_mensual_schema.sql`) se declaran en
+   `RENAMED_MIRRORS` (espejo -> fuente) y también se exigen byte-idénticos; si la
+   fuente declarada desaparece, vuelve a contar como huérfano.
 
 ## Cómo se conecta
 
 - **`npm run test:unit`** — `packages/db/tests/migration-versions-guard.spec.ts`
   importa las funciones de este módulo y las corre contra fixtures en un directorio
-  temporal (`mkdtempSync`), nunca contra `supabase/migrations/` real — incluye un
+  temporal (`mkdtempSync`) — salvo el bloque «árbol real del repo», que corre el guard
+  completo contra `supabase/migrations/` y `packages/` reales (solo lectura) — incluye un
   caso que reproduce exactamente la colisión real de #119/#120 y confirma que el
   guard la detecta.
 - **`.github/workflows/postgres-real-gate.yml`** — corre
@@ -65,4 +71,4 @@ node scripts/verify-migration-versions/check-migration-versions.ts
 ```
 
 Sale con código `0` y un mensaje `OK` si no encuentra ningún problema; con código
-`1` y el detalle de cada versión duplicada / espejo divergente si encuentra alguno.
+`1` y el detalle de cada versión duplicada / espejo divergente / espejo huérfano si encuentra alguno.
