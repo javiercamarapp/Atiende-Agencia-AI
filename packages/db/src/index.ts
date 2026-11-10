@@ -123,6 +123,7 @@ export type {
   ImpersonationAuditEventType,
   ImpersonationAvailability,
   ImpersonationRepository,
+  SupportSessionState,
 } from "./impersonation-repository.ts";
 export {
   ImpersonationError,

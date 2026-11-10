@@ -9,11 +9,12 @@
 // `shell/GoogleCallback.tsx`: resolver `/auth/me` con el token nuevo, persistir
 // con la función `persist<Vertical>Session` de esa vertical, navegar a
 // `/<vertical>/<slug>`).
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeftRight, BedDouble, Calculator, CalendarCheck, Gavel, Home, UtensilsCrossed } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { Button, Card, CardContent, CardHeader, CardTitle, PageContainer, useTituloBarra } from "@atiende/ui";
+import { Button, Card, CardContent, CardHeader, CardTitle, DataTable, PageContainer, StatusBadge, statusTone, useTituloBarra } from "@atiende/ui";
+import type { DataTableColumna } from "@atiende/ui";
 import type { LoginSession } from "../../lib/auth-client.ts";
 import { persistSession } from "../../lib/auth-client.ts";
 import { persistHotelesSession } from "../../verticals/hoteles/lib/auth-client.ts";
@@ -21,6 +22,11 @@ import { persistCitasSession } from "../../verticals/citas/lib/auth-client.ts";
 import { persistLicitacionesSession } from "../../verticals/licitaciones/lib/auth-client.ts";
 import { persistDespachosSession } from "../../verticals/despachos/lib/auth-client.ts";
 import { persistRentasSession } from "../../verticals/rentas/lib/auth-client.ts";
+import { fetchJson } from "../lib/fetch-json.ts";
+import { ORG_STATUS_TONES } from "../lib/status-tones.ts";
+import { NOMBRE_ESTADO_ORG, NOMBRE_VERTICAL } from "../lib/organizaciones.ts";
+import type { FilaOrganizacion, RespuestaResumen } from "../lib/organizaciones.ts";
+import { useEntrarOrganizacion } from "../components/EntrarOrganizacion.tsx";
 
 interface VerticalEntry {
   readonly slug: string;
@@ -53,6 +59,114 @@ const PERSISTIR_POR_VERTICAL: Record<string, (storage: Storage, session: LoginSe
   despachos: persistDespachosSession,
   rentas: persistRentasSession,
 };
+
+const ES_DEMO = (slug: string): boolean => slug.startsWith("demo-");
+
+type CargaClientes = { readonly estado: "cargando" } | { readonly estado: "error" } | { readonly estado: "ok"; readonly filas: readonly FilaOrganizacion[] };
+
+/** «Organizaciones de clientes»: las organizaciones REALES (no demo) con «Entrar», que abre una sesión de soporte con motivo y lleva a su
+ *  panel en solo lectura (ver components/EntrarOrganizacion.tsx). Fuente: GET /superadmin/organizaciones/resumen; si la base aún no tiene sus
+ *  métricas cae a GET /superadmin/organizations (sin plan). */
+export function OrganizacionesDeClientes({ apiBaseUrl, token }: { readonly apiBaseUrl: string; readonly token: string }) {
+  const [carga, setCarga] = useState<CargaClientes>({ estado: "cargando" });
+  const { entrar, dialogo } = useEntrarOrganizacion(apiBaseUrl, token);
+
+  const cargar = useCallback(async () => {
+    setCarga({ estado: "cargando" });
+    try {
+      const r = await fetchJson<RespuestaResumen>(apiBaseUrl, token, "/superadmin/organizaciones/resumen");
+      if (r.disponible) {
+        setCarga({ estado: "ok", filas: r.organizaciones.filter((o) => !ES_DEMO(o.slug)) });
+        return;
+      }
+    } catch {
+      // cae a la lista simple
+    }
+    try {
+      const r = await fetchJson<{ organizations: readonly { id: string; name: string; slug: string; vertical: string; status: FilaOrganizacion["estado"]; createdAt: string; staffCount?: number }[] }>(
+        apiBaseUrl,
+        token,
+        "/superadmin/organizations",
+      );
+      const sinDato = { valor: null, razon: "Sin dato: las métricas por organización no están disponibles aún." } as const;
+      setCarga({
+        estado: "ok",
+        filas: r.organizations
+          .filter((o) => !ES_DEMO(o.slug))
+          .map((o) => ({ id: o.id, nombre: o.name, slug: o.slug, vertical: o.vertical, estado: o.status, creadaEn: o.createdAt, staff: o.staffCount ?? 0, plan: sinDato, operaciones30d: sinDato, costoIa30dUsd: sinDato, onboarding: sinDato })),
+      });
+    } catch {
+      setCarga({ estado: "error" });
+    }
+  }, [apiBaseUrl, token]);
+
+  useEffect(() => {
+    void cargar();
+  }, [cargar]);
+
+  const columnas: readonly DataTableColumna<FilaOrganizacion>[] = [
+    {
+      id: "organizacion",
+      encabezado: "Organización",
+      principal: true,
+      valorOrden: (f) => f.nombre,
+      celda: (f) => (
+        <span className="block min-w-0">
+          <span className="block truncate font-medium text-foreground">{f.nombre}</span>
+          <span className="block truncate text-xs text-muted-foreground">{f.slug}</span>
+        </span>
+      ),
+    },
+    { id: "vertical", encabezado: "Vertical", valorOrden: (f) => NOMBRE_VERTICAL[f.vertical] ?? f.vertical, celda: (f) => NOMBRE_VERTICAL[f.vertical] ?? f.vertical },
+    {
+      id: "estado",
+      encabezado: "Estado",
+      valorOrden: (f) => f.estado,
+      celda: (f) => <StatusBadge tone={statusTone(ORG_STATUS_TONES, f.estado)}>{NOMBRE_ESTADO_ORG[f.estado] ?? f.estado}</StatusBadge>,
+    },
+    { id: "plan", encabezado: "Plan", valorOrden: (f) => f.plan.valor?.nombre ?? null, celda: (f) => (f.plan.valor ? f.plan.valor.nombre : <span className="text-muted-foreground">—</span>) },
+    {
+      id: "entrar",
+      encabezado: "Acceso",
+      alinear: "right",
+      celda: (f) => (
+        <Button size="sm" variant="outline" className="rounded-full px-4" onClick={() => entrar({ id: f.id, nombre: f.nombre })}>
+          Entrar
+        </Button>
+      ),
+    },
+  ];
+
+  const filas = carga.estado === "ok" ? carga.filas : [];
+  return (
+    <section className="flex flex-col gap-3" aria-labelledby="clientes-titulo">
+      <div>
+        <h2 id="clientes-titulo" className="text-lg font-semibold text-foreground">
+          Organizaciones de clientes
+        </h2>
+        <p className="text-sm text-muted-foreground mt-1">
+          Entra al panel real de un cliente para ver cómo quedó. Pide un motivo, dura 60 minutos, empieza en solo lectura y queda en la bitácora.
+        </p>
+      </div>
+      <Card>
+        <CardContent className="pt-4">
+          <DataTable
+            etiqueta="Organizaciones de clientes"
+            columnas={columnas}
+            filas={filas}
+            obtenerId={(f) => f.id}
+            estado={carga.estado === "cargando" ? "loading" : carga.estado === "error" ? "error" : filas.length === 0 ? "empty" : "ok"}
+            vacio={{ mensaje: "Todavía no hay organizaciones de clientes (las demo están arriba)." }}
+            error={{ mensaje: "No se pudieron cargar las organizaciones.", onReintentar: () => void cargar() }}
+            atributosFila={(f) => ({ "data-org-id": f.id })}
+            paginacion={{ tamano: 10 }}
+          />
+        </CardContent>
+      </Card>
+      {dialogo}
+    </section>
+  );
+}
 
 export function SuperAdminPanelesPage({ apiBaseUrl, token }: { readonly apiBaseUrl: string; readonly token: string }) {
   const navigate = useNavigate();
@@ -139,6 +253,8 @@ export function SuperAdminPanelesPage({ apiBaseUrl, token }: { readonly apiBaseU
           </Card>
         ))}
       </div>
+
+      <OrganizacionesDeClientes apiBaseUrl={apiBaseUrl} token={token} />
     </PageContainer>
   );
 }

@@ -1,4 +1,4 @@
-export type { AccessTokenClaims, RefreshTokenClaims } from "./jwt.ts";
+export type { AccessTokenClaims, RefreshTokenClaims, SoporteClaim } from "./jwt.ts";
 export {
   signAccessToken,
   signRefreshToken,

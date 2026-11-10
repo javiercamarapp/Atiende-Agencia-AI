@@ -3,9 +3,14 @@
 // API simulada por ruta; 404 honesto, base sin migrar y 'no se pudo medir' distinto de 'pendiente'.
 import { act } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SuperAdminOrganizacionFichaPage } from "../src/superadmin/pages/OrganizacionFicha.tsx";
 import { changeValue, click, flushMicrotasks, renderComponent, type RenderedComponent } from "./test-utils/render.tsx";
+import { instalarLocalStorageEnMemoria, respuestaEntrar } from "./test-utils/token-soporte.ts";
+
+beforeEach(() => {
+  instalarLocalStorageEnMemoria();
+});
 
 let rendered: RenderedComponent | undefined;
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -159,7 +164,8 @@ describe("SuperAdminOrganizacionFichaPage", () => {
 
   it("'Entrar' sin motivo no abre la sesion; con motivo llama al POST real", async () => {
     fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
-      if (init?.method === "POST") return json({ session: { id: "s1" } }, true, 201);
+      if (init?.method === "POST") return json(respuestaEntrar({ slug: "taquitos", nombre: "Los Taquitos de PM", expMs: Date.now() + 3_600_000 }), true, 201);
+      if (url.endsWith("/auth/me")) return json({ email: "javier@atiende.ai", fullName: "Javier", organizations: [] });
       if (url.includes("/ficha")) return json(FICHA);
       return json(MARGEN);
     });
@@ -169,7 +175,7 @@ describe("SuperAdminOrganizacionFichaPage", () => {
     click([...rendered.container.querySelectorAll("button")].find((b) => b.textContent?.includes("Entrar"))!);
     await esperar();
     const dialogo = document.body.querySelector('[role="alertdialog"]')!;
-    const confirmar = () => click([...dialogo.querySelectorAll("button")].find((b) => b.textContent?.includes("Abrir sesión"))!);
+    const confirmar = () => click([...dialogo.querySelectorAll("button")].find((b) => b.textContent?.includes("Entrar al panel"))!);
     confirmar();
     await esperar();
     expect(fetchMock.mock.calls.filter((c) => (c[1] as RequestInit | undefined)?.method === "POST")).toHaveLength(0);
@@ -177,7 +183,7 @@ describe("SuperAdminOrganizacionFichaPage", () => {
     confirmar();
     await esperar();
     const post = fetchMock.mock.calls.find((c) => (c[1] as RequestInit | undefined)?.method === "POST")!;
-    expect(post[0]).toBe("https://api.test/superadmin/impersonacion/sesiones");
+    expect(post[0]).toBe("https://api.test/superadmin/soporte/entrar");
     expect(JSON.parse(String((post[1] as RequestInit).body))).toEqual({ organizationId: "o1", reason: "Revisar por que el cliente no recibe mensajes." });
   });
 });
